@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 
+import pytest
+
 from loushang.agent.types import AgentToolResult
-from loushang.harness.tools.workspace import ToolContext
+from loushang.harness.tools.execution import direct_execution
+from loushang.harness.tools.workspace import ToolContext, direct_tool
 
 
 def _runtime_footer(cwd: str) -> str:
@@ -31,7 +34,7 @@ def test_session_materialized_decorated_tool_receives_session_cwd(tmp_path) -> N
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
-    registry.register_tool(show_session_cwd)
+    registry.register_tool(direct_tool(show_session_cwd))
     model = Model(
         id="faux-model",
         name="Faux",
@@ -67,7 +70,7 @@ def test_session_materialized_decorated_tool_receives_session_cwd(tmp_path) -> N
     assert result.content[0].text == "/tmp/project"
 
 
-def test_session_get_all_tools_without_registry_supports_raw_runtime_tools(
+def test_session_without_registry_rejects_raw_runtime_tools(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
@@ -123,11 +126,8 @@ def test_session_get_all_tools_without_registry_supports_raw_runtime_tools(
         convert_to_llm=lambda messages: [],
     )
 
-    session = AgentSession(agent=agent, session_manager=manager)
-
-    assert [definition.name for definition in session.get_all_tools()] == [
-        "runtime_tool"
-    ]
+    with pytest.raises(TypeError, match="explicitly bound ToolDefinitions"):
+        AgentSession(agent=agent, session_manager=manager)
 
 
 def test_agent_session_tracks_active_tool_names_and_runtime_tools(tmp_path) -> None:
@@ -475,7 +475,7 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
                     "required": [],
                     "additionalProperties": False,
                 },
-                execute=execute_dynamic,
+                execution=direct_execution(execute_dynamic),
                 prompt_snippet="- dynamic_tool: Run dynamic test behavior",
                 prompt_guidelines=(
                     "Use dynamic_tool when the user asks for dynamic behavior tests.",
@@ -566,7 +566,7 @@ def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_se
                     "required": [],
                     "additionalProperties": False,
                 },
-                execute=execute_dynamic,
+                execution=direct_execution(execute_dynamic),
                 prompt_snippet="- api_dynamic_tool: Run api dynamic behavior",
             )
         )
@@ -625,7 +625,7 @@ def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(
                     "required": [],
                     "additionalProperties": False,
                 },
-                execute=execute_dynamic,
+                execution=direct_execution(execute_dynamic),
                 prompt_snippet="- dynamic_tool: Run dynamic test behavior",
             )
         )
@@ -719,7 +719,7 @@ def test_agent_session_get_all_tools_projects_sdk_source_info(tmp_path) -> None:
                 "required": [],
                 "additionalProperties": False,
             },
-            execute=execute_custom_tool,
+            execution=direct_execution(execute_custom_tool),
         )
     )
     model = Model(
@@ -923,7 +923,7 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
         return ctx.cwd or ""
 
     registry = ToolRegistry()
-    registry.register_tool(show_session_cwd)
+    registry.register_tool(direct_tool(show_session_cwd))
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
@@ -943,7 +943,7 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
     session = create_agent_session(
         session_manager=manager,
         model=model,
-        tools=registry.list_enabled_tools(),
+        tools=registry.list_enabled_definitions(),
     )
 
     result = asyncio.run(session.agent.tools[0].execute("call-1", {}))
@@ -956,8 +956,8 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
 def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
     import asyncio
 
-    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecOutputChunk, ExecRequest, ExecResult
 
     seen_updates: list[AgentToolResult[dict[str, object]]] = []
@@ -984,12 +984,13 @@ def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
             )
 
     async def scenario() -> None:
-        definition = create_bash_tool_definition(
-            policy_engine=PolicyEngine(),
-            exec_service=FakeExecService(),
+        runtime_tool = wrap_tool_definition(
+            create_bash_tool_definition(
+                exec_service=FakeExecService(),
+            )
         )
 
-        result = await definition.execute(
+        result = await runtime_tool.execute(
             "tool-call-1",
             {"command": ["/bin/sh", "-c", "echo hi"]},
             None,
@@ -1019,8 +1020,8 @@ def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
 def test_bash_tool_details_include_pi_style_truncation_schema(tmp_path) -> None:
     import asyncio
 
-    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecRequest, ExecResult
 
     stdout_artifact_path = str(tmp_path / "stdout.log")
@@ -1040,10 +1041,12 @@ def test_bash_tool_details_include_pi_style_truncation_schema(tmp_path) -> None:
             )
 
     async def scenario() -> None:
-        result = await create_bash_tool_definition(
-            policy_engine=PolicyEngine(),
-            exec_service=FakeExecService(),
-        ).execute("tool-call-1", {"command": ["/bin/sh", "-c", "echo hi"]})
+        runtime_tool = wrap_tool_definition(
+            create_bash_tool_definition(exec_service=FakeExecService())
+        )
+        result = await runtime_tool.execute(
+            "tool-call-1", {"command": ["/bin/sh", "-c", "echo hi"]}
+        )
 
         assert result.details["stdout_artifact_path"] == stdout_artifact_path
         assert result.details["full_output_path"] == stdout_artifact_path
@@ -1062,8 +1065,8 @@ def test_bash_tool_full_output_path_uses_stderr_artifact_when_stdout_is_present(
 ) -> None:
     import asyncio
 
-    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecRequest, ExecResult
 
     stderr_artifact_path = str(tmp_path / "stderr.log")
@@ -1084,10 +1087,12 @@ def test_bash_tool_full_output_path_uses_stderr_artifact_when_stdout_is_present(
             )
 
     async def scenario() -> None:
-        result = await create_bash_tool_definition(
-            policy_engine=PolicyEngine(),
-            exec_service=FakeExecService(),
-        ).execute("tool-call-1", {"command": ["/bin/sh", "-c", "echo hi"]})
+        runtime_tool = wrap_tool_definition(
+            create_bash_tool_definition(exec_service=FakeExecService())
+        )
+        result = await runtime_tool.execute(
+            "tool-call-1", {"command": ["/bin/sh", "-c", "echo hi"]}
+        )
 
         assert result.details["stdout_artifact_path"] is None
         assert result.details["stderr_artifact_path"] == stderr_artifact_path

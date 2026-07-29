@@ -4,7 +4,7 @@ import inspect
 import os
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol, cast
+from typing import Any, cast
 
 from loushang.harness.approval import (
     ApprovalDecision,
@@ -16,7 +16,6 @@ from loushang.harness.approval import (
     resolve_approval,
 )
 from loushang.harness.policy import (
-    MaybeAwaitable,
     PolicyDecision,
     PolicyEvaluationError,
     PolicyEvaluator,
@@ -33,11 +32,7 @@ from loushang.harness.policy_grants import (
 
 from .audit import snapshot_audit_event
 
-
-class ToolPolicyEvaluator(Protocol):
-    def evaluate(
-        self, subject: ToolPolicySubject, /
-    ) -> MaybeAwaitable[PolicyDecision | None]: ...
+ToolPolicyEvaluator = PolicyEvaluator
 
 
 class PolicyEnforcementError(PermissionError):

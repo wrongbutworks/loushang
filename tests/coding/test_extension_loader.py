@@ -8,6 +8,7 @@ def test_extension_loader_supports_register_api_modules(tmp_path) -> None:
     extension_file = tmp_path / "register_extension.py"
     extension_file.write_text(
         """
+from loushang.harness.tools.execution import direct_execution
 from loushang.harness.tools.workspace import ToolDefinition
 
 
@@ -23,7 +24,7 @@ def register(api):
             label="Registered Tool",
             description="tool from register(api)",
             parameters={},
-            execute=_execute_tool,
+            execution=direct_execution(_execute_tool),
         )
     )
         """.strip()
@@ -56,6 +57,7 @@ def test_extension_loader_keeps_build_extension_compatibility(tmp_path) -> None:
     extension_file = tmp_path / "legacy_builder.py"
     extension_file.write_text(
         """
+from loushang.harness.tools.execution import direct_execution
 from loushang.harness.tools.workspace import ToolDefinition
 
 
@@ -74,7 +76,7 @@ class LegacyExtension:
                 label="Legacy Tool",
                 description="tool from build_extension()",
                 parameters={},
-                execute=_execute_tool,
+                execution=direct_execution(_execute_tool),
             )
         ]
 

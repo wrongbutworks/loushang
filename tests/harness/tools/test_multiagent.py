@@ -95,12 +95,16 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
         )
 
         definitions = {definition.name: definition for definition in pack.definitions()}
+        tools = {
+            name: registry.materialize_tool(name)
+            for name in MULTIAGENT_TOOL_NAMES
+        }
         assert "failed call creates no child" in definitions["spawn_agent"].description
         assert "free open-agent capacity" in definitions["close_agent"].description
         assert "remain open until explicitly closed" in (
             definitions["close_agent"].description
         )
-        spawned = await definitions["spawn_agent"].execute(
+        spawned = await tools["spawn_agent"].execute(
             "spawn-1",
             {
                 "name": "reviewer-1",
@@ -112,7 +116,7 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
         )
         assert spawned.details["path"] == "/root/reviewer-1"
 
-        waited = await definitions["wait_agent"].execute(
+        waited = await tools["wait_agent"].execute(
             "wait-1",
             {},
             None,
@@ -126,7 +130,7 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
         assert len(first_mailbox) == 1
         assert first_mailbox[0].kind == "mailbox"
 
-        sent = await definitions["send_message"].execute(
+        sent = await tools["send_message"].execute(
             "send-1",
             {
                 "target": "/root/reviewer-1",
@@ -138,7 +142,7 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
         assert sent.details["triggered_new_round"] is True
         assert sent.details["round_id"] == 2
 
-        second_wait = await definitions["wait_agent"].execute(
+        second_wait = await tools["wait_agent"].execute(
             "wait-2",
             {},
             None,
@@ -149,7 +153,7 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
         assert len(second_mailbox) == 1
         assert second_mailbox[0].kind == "mailbox"
 
-        listed = await definitions["list_agents"].execute(
+        listed = await tools["list_agents"].execute(
             "list-1",
             {},
             None,
@@ -164,7 +168,7 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
         assert listed.details["agents"][1]["artifact_refs"] == []
         assert listed.details["agents"][1]["change_set_ref"] is None
 
-        closed = await definitions["close_agent"].execute(
+        closed = await tools["close_agent"].execute(
             "close-1",
             {"target": "/root/reviewer-1"},
             None,
@@ -194,11 +198,14 @@ def test_wait_expiration_is_a_normal_tool_result_not_an_execution_timeout() -> N
             caller=AgentCaller(control.root_ref),
             default_wait_seconds=0,
         )
-        wait = next(
+        wait_definition = next(
             definition
             for definition in pack.definitions()
             if definition.name == "wait_agent"
         )
+        registry = WorkspaceToolRegistry()
+        registry.register_tool(wait_definition)
+        wait = registry.materialize_tool("wait_agent")
 
         result = await wait.execute("wait-expired", {}, None, None)
 

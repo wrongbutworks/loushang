@@ -93,14 +93,14 @@ class PermissionBehaviorHarness:
             execution_profile=execution_profile,
         )
         runtime_settings = workspace_tool_runtime_settings(self.settings)
-        self.registry = WorkspaceToolRegistry()
+        self.registry = WorkspaceToolRegistry(
+            approval_resolver=approval_resolver,  # type: ignore[arg-type]
+        )
         register_coding_builtin_tools(
             self.registry,
             policy_engine=runtime_settings.policy_engine,  # type: ignore[arg-type]
-            approval_resolver=approval_resolver,  # type: ignore[arg-type]
             exec_service=self.exec_service,
         )
-        self._approval_resolver = approval_resolver
         self._call_sequence = 0
 
     async def run(
@@ -123,7 +123,6 @@ class PermissionBehaviorHarness:
                 cwd=str(self.workspace),
                 event_sink=self.events.append,
                 exec_service=self.exec_service,
-                approval_resolver=self._approval_resolver,  # type: ignore[arg-type]
             ),
         )
         outcome = "allowed"

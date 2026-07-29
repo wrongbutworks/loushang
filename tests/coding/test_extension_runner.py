@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
+from loushang.harness.tools.execution import direct_execution
+from loushang.harness.tools.workspace import ToolContext
 
 
 def _usage() -> Usage:
@@ -69,7 +71,7 @@ def _tool(name: str):
         label=name.replace("_", " ").title(),
         description=f"{name} description",
         parameters={},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
 
 
@@ -123,53 +125,43 @@ def test_extension_runner_merges_resource_contributions_from_loaded_extensions()
 
 
 def test_extension_runner_wraps_extension_tools_with_context() -> None:
-    from loushang.agent.types import AgentToolResult
-    from loushang.ai.types import TextPart
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
-    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace import direct_tool
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     seen: dict[str, object] = {}
 
-    async def _execute(tool_call_id, params, signal, on_update, ctx):
-        del signal, on_update
-        seen["tool_call_id"] = tool_call_id
-        seen["params"] = params
+    @tool(name="demo_tool")
+    async def demo_tool(x: int, ctx: ToolContext) -> dict[str, bool]:
+        seen["tool_call_id"] = ctx.tool_call_id
+        seen["params"] = {"x": x}
         seen["cwd"] = ctx.cwd
-        return AgentToolResult(
-            content=[TextPart(type="text", text="ok")], details={"ok": True}
-        )
+        return {"ok": True}
 
     runner = ExtensionRunner(
         [
             LoadedExtension(
                 name="demo",
                 source_path=Path("/tmp/extensions/demo.py"),
-                tool_definitions=[
-                    ToolDefinition(
-                        name="demo_tool",
-                        label="Demo Tool",
-                        description="Tool from loaded extension",
-                        parameters={},
-                        execute=_execute,
-                    )
-                ],
+                tool_definitions=[direct_tool(demo_tool)],
             )
         ]
     )
 
-    result = asyncio.run(
-        runner.list_tool_definitions()[0].execute("tc1", {"x": 1}, None, None)
-    )
+    runtime_tool = wrap_tool_definition(runner.list_tool_definitions()[0])
+    result = asyncio.run(runtime_tool.execute("tc1", {"x": 1}))
 
     assert result.details == {"ok": True}
     assert seen == {"tool_call_id": "tc1", "params": {"x": 1}, "cwd": "/tmp/extensions"}
 
 
-def test_extension_runner_keeps_legacy_four_argument_extension_tools() -> None:
+def test_extension_runner_keeps_explicit_four_argument_direct_binding() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     seen: dict[str, object] = {}
 
@@ -192,16 +184,15 @@ def test_extension_runner_keeps_legacy_four_argument_extension_tools() -> None:
                         label="Demo Tool",
                         description="Tool from loaded extension",
                         parameters={},
-                        execute=_execute,
+                        execution=direct_execution(_execute),
                     )
                 ],
             )
         ]
     )
 
-    result = asyncio.run(
-        runner.list_tool_definitions()[0].execute("tc1", {"x": 1}, None, None)
-    )
+    runtime_tool = wrap_tool_definition(runner.list_tool_definitions()[0])
+    result = asyncio.run(runtime_tool.execute("tc1", {"x": 1}))
 
     assert result.details == {"ok": True}
     assert seen == {"tool_call_id": "tc1", "params": {"x": 1}}

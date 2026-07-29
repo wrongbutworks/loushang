@@ -3,20 +3,21 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 from loushang.agent.types import AgentToolResult, TextPart
-from loushang.harness.approval import ApprovalResolver
+from loushang.harness.tools.execution import (
+    CallableToolActionAdapter,
+    PreparedToolAction,
+)
 from loushang.harness.workspace.operations import LsOperations, resolve_operation
 
 from .authoring import tool
-from .authorization import AuthorizedWorkspaceAction, execute_workspace_tool_action
 from .builtin_renderers import render_find_or_ls_result, render_ls_call
-from .context import ToolContext, context_approval_resolver
-from .normalize import tool_to_definition
+from .context import ToolContext
+from .normalize import authorized_tool
 from .operations import (
     normalize_ls_operations,
     raise_if_operation_aborted,
 )
 from .path_utils import resolve_tool_path
-from .policy import ToolPolicyEvaluator
 from .runtime import coerce_int_parameter, pi_truncation_details, prepare_tool_arguments
 from .truncate import truncate_head, truncation_details
 from .types import PiTruncationDetails, ToolDefinition
@@ -50,25 +51,15 @@ class LsToolDetails(TypedDict, total=False):
 @dataclass(frozen=True)
 class LsToolOptions:
     operations: LsOperations | None = None
-    policy_engine: ToolPolicyEvaluator | None = None
-    approval_resolver: ApprovalResolver | None = None
 
 
 def create_ls_tool_definition(
     *,
     operations: LsOperations | None = None,
-    policy_engine: ToolPolicyEvaluator | None = None,
-    approval_resolver: ApprovalResolver | None = None,
     options: LsToolOptions | None = None,
 ) -> ToolDefinition:
     ops = normalize_ls_operations(
         operations or (options.operations if options is not None else None)
-    )
-    resolved_policy_engine = policy_engine or (
-        options.policy_engine if options is not None else None
-    )
-    resolved_approval_resolver = approval_resolver or (
-        options.approval_resolver if options is not None else None
     )
 
     @tool(
@@ -86,9 +77,7 @@ def create_ls_tool_definition(
         raise_if_operation_aborted(ctx.signal)
         resolved = resolve_tool_path(path or ".", cwd=ctx.cwd)
 
-        async def execute(
-            _action: AuthorizedWorkspaceAction,
-        ) -> AgentToolResult[dict[str, Any]]:
+        async def execute() -> AgentToolResult[dict[str, Any]]:
             directory = await _require_directory(resolved, operations=ops)
             effective_limit = _effective_limit(limit)
             lines, entry_limit_reached = await _list_entries(
@@ -123,27 +112,27 @@ def create_ls_tool_definition(
                 },
             )
 
-        return await execute_workspace_tool_action(
-            resolved_policy_engine,
-            tool_name="ls",
-            arguments={"path": str(resolved)},
-            executor=execute,
-            cwd=ctx.cwd,
-            approval_resolver=context_approval_resolver(
-                ctx,
-                resolved_approval_resolver,
-            ),
-            tool_call_id=ctx.tool_call_id,
-            audit_sink=ctx.event_sink,
-            execution_profile_ceiling=getattr(
-                ctx.exec_service,
-                "execution_profile",
-                None,
-            ),
-        )
+        return await execute()
 
     return replace(
-        tool_to_definition(ls),
+        authorized_tool(
+            ls,
+            action=CallableToolActionAdapter(
+                lambda call, context: PreparedToolAction(
+                    tool_name="ls",
+                    authorization_arguments={
+                        "path": str(
+                            resolve_tool_path(
+                                str(call.arguments.get("path") or "."),
+                                cwd=context.cwd,
+                            )
+                        )
+                    },
+                    execution_arguments=call.arguments,
+                    cwd=context.cwd,
+                )
+            ),
+        ),
         prepare_arguments=lambda value: prepare_tool_arguments(
             value, aliases=(("file_path", "path"),)
         ),

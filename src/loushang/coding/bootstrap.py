@@ -5,7 +5,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from loushang.agent import Agent, AgentTool, StreamFn, ThinkingLevel
+from loushang.agent import Agent, StreamFn, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.coding.control.settings_store import (
@@ -68,6 +68,7 @@ from loushang.harness.session import (
 from loushang.harness.session import (
     prepare_agent_session_services as prepare_standard_agent_session_services,
 )
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
@@ -186,7 +187,7 @@ def _create_agent_session(
     stream_fn: StreamFn | None = None,
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
-    tools: list[AgentTool[Any]] | None = None,
+    tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
@@ -291,6 +292,9 @@ def _create_agent_session(
             package_materializer=resolved_package_materializer,
             exec_service=sandbox_runtime.exec_service,
             approval_resolver=approval_resolver,
+            tool_policy_evaluator=(
+                registry.policy_evaluator if registry is not None else None
+            ),
             capability_runtime=capability_runtime,
             sandbox_runtime=sandbox_runtime,
             delegated_execution_profile=delegated_execution_profile,
@@ -379,7 +383,7 @@ def create_agent_session(
     stream_fn: StreamFn | None = None,
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
-    tools: list[AgentTool[Any]] | None = None,
+    tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
@@ -424,7 +428,7 @@ def create_agent_session_from_services(
     stream_fn: StreamFn | None = None,
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
-    tools: list[AgentTool[Any]] | None = None,
+    tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
@@ -470,7 +474,7 @@ def create_agent_session_result(
     stream_fn: StreamFn | None = None,
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
-    tools: list[AgentTool[Any]] | None = None,
+    tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
@@ -567,7 +571,7 @@ def _create_agent_session_runtime(
     stream_fn: StreamFn | None = None,
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
-    tools: list[AgentTool[Any]] | None = None,
+    tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
@@ -628,7 +632,7 @@ def create_agent_session_runtime(
     stream_fn: StreamFn | None = None,
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
-    tools: list[AgentTool[Any]] | None = None,
+    tools: list[ToolDefinition] | None = None,
     tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
@@ -668,7 +672,7 @@ def _clone_workspace_tool_registry(
 ) -> WorkspaceToolRegistry:
     """Keep session-bound tool closures out of a shared Product registry."""
 
-    cloned = WorkspaceToolRegistry()
+    cloned = WorkspaceToolRegistry(policy_evaluator=registry.policy_evaluator)
     for contribution in registry.list_contributions():
         cloned.register_tool(
             contribution.definition,

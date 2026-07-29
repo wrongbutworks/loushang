@@ -3,21 +3,22 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 from loushang.agent.types import AgentToolResult, TextPart
-from loushang.harness.approval import ApprovalResolver
+from loushang.harness.tools.execution import (
+    CallableToolActionAdapter,
+    PreparedToolAction,
+)
 from loushang.harness.workspace.mutation_queue import with_file_mutation_queue
 from loushang.harness.workspace.operations import WriteOperations, resolve_operation
 
 from .authoring import tool
-from .authorization import execute_workspace_tool_action
 from .builtin_renderers import render_write_call, render_write_result
-from .context import ToolContext, context_approval_resolver
-from .normalize import tool_to_definition
+from .context import ToolContext
+from .normalize import authorized_tool
 from .operations import (
     normalize_write_operations,
     raise_if_operation_aborted,
 )
 from .path_utils import resolve_tool_path
-from .policy import ToolPolicyEvaluator
 from .runtime import prepare_tool_arguments
 from .types import ToolDefinition
 
@@ -37,25 +38,15 @@ class WriteToolDetails(TypedDict, total=False):
 @dataclass(frozen=True)
 class WriteToolOptions:
     operations: WriteOperations | None = None
-    policy_engine: ToolPolicyEvaluator | None = None
-    approval_resolver: ApprovalResolver | None = None
 
 
 def create_write_tool_definition(
     *,
     operations: WriteOperations | None = None,
-    policy_engine: ToolPolicyEvaluator | None = None,
-    approval_resolver: ApprovalResolver | None = None,
     options: WriteToolOptions | None = None,
 ) -> ToolDefinition:
     ops = normalize_write_operations(
         operations or (options.operations if options is not None else None)
-    )
-    resolved_policy_engine = policy_engine or (
-        options.policy_engine if options is not None else None
-    )
-    resolved_approval_resolver = approval_resolver or (
-        options.approval_resolver if options is not None else None
     )
 
     @tool(
@@ -85,24 +76,7 @@ def create_write_tool_definition(
                 bytes_written = len(content.encode("utf-8"))
             return operation, bytes_written
 
-        operation, bytes_written = await execute_workspace_tool_action(
-            resolved_policy_engine,
-            tool_name="write",
-            arguments={"path": str(resolved), "content": content},
-            executor=execute_write,
-            cwd=ctx.cwd,
-            approval_resolver=context_approval_resolver(
-                ctx,
-                resolved_approval_resolver,
-            ),
-            tool_call_id=ctx.tool_call_id,
-            audit_sink=ctx.event_sink,
-            execution_profile_ceiling=getattr(
-                ctx.exec_service,
-                "execution_profile",
-                None,
-            ),
-        )
+        operation, bytes_written = await execute_write(None)
         return AgentToolResult(
             content=[
                 TextPart(
@@ -118,7 +92,25 @@ def create_write_tool_definition(
         )
 
     return replace(
-        tool_to_definition(write),
+        authorized_tool(
+            write,
+            action=CallableToolActionAdapter(
+                lambda call, context: PreparedToolAction(
+                    tool_name="write",
+                    authorization_arguments={
+                        "path": str(
+                            resolve_tool_path(
+                                str(call.arguments["path"]),
+                                cwd=context.cwd,
+                            )
+                        ),
+                        "content": call.arguments["content"],
+                    },
+                    execution_arguments=call.arguments,
+                    cwd=context.cwd,
+                )
+            ),
+        ),
         prepare_arguments=lambda value: prepare_tool_arguments(
             value, aliases=(("file_path", "path"),)
         ),

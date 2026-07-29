@@ -29,6 +29,7 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.multiagent import DelegatedExecutionProfile
+from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
@@ -91,6 +92,7 @@ class AgentSession(AgentProductSession):
         footer_data_provider: FooterDataProvider | None = None,
         exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
+        tool_policy_evaluator: PolicyEvaluator | None = None,
         capability_runtime: CapabilityCompositionRuntime | None = None,
         sandbox_runtime: SandboxExecutionRuntime | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
@@ -139,6 +141,7 @@ class AgentSession(AgentProductSession):
                 else None
             ),
             approval_resolver=approval_resolver,
+            tool_policy_evaluator=tool_policy_evaluator,
         )
 
     def get_sandbox_status(self) -> SandboxStatus:

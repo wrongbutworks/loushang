@@ -184,11 +184,10 @@ def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None
             return ApprovalDecision.allow()
 
     resolver = AllowingResolver()
-    registry = ToolRegistry()
+    registry = ToolRegistry(approval_resolver=resolver)
     register_builtin_tools(
         registry,
         policy_engine=PolicyEngine(ask_tools=["write"]),
-        approval_resolver=resolver,
     )
     runtime_tool = registry.materialize_tool(
         "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
@@ -217,7 +216,6 @@ def test_live_child_context_overrides_the_root_definition_approval_actor(
     from loushang.harness.approval import (
         ActorBoundApprovalResolver,
         ApprovalDecision,
-        HeadlessApprovalResolver,
     )
     from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace import ToolContext
@@ -238,18 +236,16 @@ def test_live_child_context_overrides_the_root_definition_approval_actor(
         resolver=child_exit,
         actor_id="/root/worker@2",
     )
-    registry = ToolRegistry()
+    registry = ToolRegistry(approval_resolver=child_resolver)
     register_builtin_tools(
         registry,
         policy_engine=PolicyEngine(ask_tools=["write"]),
-        approval_resolver=HeadlessApprovalResolver(mode="deny"),
     )
     runtime_tool = registry.materialize_tool(
         "write",
         context_provider=lambda *, tool_call_id: ToolContext(
             tool_call_id=tool_call_id,
             cwd=str(tmp_path),
-            approval_resolver=child_resolver,
         ),
     )
 
@@ -281,11 +277,10 @@ def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
             return ApprovalDecision.allow()
 
     events: list[dict[str, object]] = []
-    registry = ToolRegistry()
+    registry = ToolRegistry(approval_resolver=AllowingResolver())
     register_builtin_tools(
         registry,
         policy_engine=PolicyEngine(ask_tools=["write"]),
-        approval_resolver=AllowingResolver(),
     )
     runtime_tool = registry.materialize_tool(
         "write",
@@ -384,11 +379,10 @@ def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None
         async def resolve(self, request):
             return ApprovalDecision.deny(f"denied {request.tool_name}")
 
-    registry = ToolRegistry()
+    registry = ToolRegistry(approval_resolver=DenyingResolver())
     register_builtin_tools(
         registry,
         policy_engine=PolicyEngine(ask_tools=["write"]),
-        approval_resolver=DenyingResolver(),
     )
     runtime_tool = registry.materialize_tool(
         "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
@@ -446,11 +440,10 @@ def test_interactive_approval_resolver_can_allow_ask_policy_for_write(tmp_path) 
     )
     resolver.set_request_presenter(present_request)
 
-    registry = ToolRegistry()
+    registry = ToolRegistry(approval_resolver=resolver)
     register_builtin_tools(
         registry,
         policy_engine=PolicyEngine(ask_tools=["write"]),
-        approval_resolver=resolver,
     )
     runtime_tool = registry.materialize_tool(
         "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
@@ -498,11 +491,10 @@ def test_interactive_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -
     )
     resolver.set_request_presenter(present_request)
 
-    registry = ToolRegistry()
+    registry = ToolRegistry(approval_resolver=resolver)
     register_builtin_tools(
         registry,
         policy_engine=PolicyEngine(ask_tools=["write"]),
-        approval_resolver=resolver,
     )
     runtime_tool = registry.materialize_tool(
         "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
@@ -545,11 +537,12 @@ def test_headless_approval_resolver_modes_are_stable(tmp_path) -> None:
         WorkspaceToolRegistry as ToolRegistry,
     )
 
-    allow_registry = ToolRegistry()
+    allow_registry = ToolRegistry(
+        approval_resolver=HeadlessApprovalResolver(mode="allow")
+    )
     register_builtin_tools(
         allow_registry,
         policy_engine=PolicyEngine(ask_tools=["write"]),
-        approval_resolver=HeadlessApprovalResolver(mode="allow"),
     )
     allow_tool = allow_registry.materialize_tool(
         "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
@@ -561,11 +554,14 @@ def test_headless_approval_resolver_modes_are_stable(tmp_path) -> None:
         )
     )
 
-    deny_registry = ToolRegistry()
+    deny_registry = ToolRegistry(
+        approval_resolver=HeadlessApprovalResolver(
+            mode="deny", reason="headless deny"
+        )
+    )
     register_builtin_tools(
         deny_registry,
         policy_engine=PolicyEngine(ask_tools=["write"]),
-        approval_resolver=HeadlessApprovalResolver(mode="deny", reason="headless deny"),
     )
     deny_tool = deny_registry.materialize_tool(
         "write", context_provider=_tool_context_provider(cwd=str(tmp_path))

@@ -15,6 +15,7 @@ from loushang.ai.types import (
 )
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
+from loushang.harness.tools.execution import direct_execution
 from loushang.harness.tools.workspace import ToolDefinition
 from loushang.harness.tools.workspace.registry import (
     WorkspaceToolRegistry as ToolRegistry,
@@ -378,7 +379,7 @@ def test_export_session_to_html_uses_tool_renderers(tmp_path) -> None:
                 "properties": {},
                 "additionalProperties": False,
             },
-            execute=execute,
+            execution=direct_execution(execute),
             render_call=render_call,
             render_result=render_result,
         )
@@ -409,7 +410,7 @@ def test_render_tool_sections_falls_back_when_tool_renderer_fails() -> None:
         label="Bash",
         description="Run commands",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_result=render_result,
     )
 
@@ -457,7 +458,7 @@ def test_render_tool_sections_uses_shared_renderer_runtime_state() -> None:
         label="Read",
         description="Read files",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
         render_result=render_result,
     )
@@ -629,7 +630,7 @@ def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(
                 "required": ["path"],
                 "additionalProperties": False,
             },
-            execute=execute_probe,
+            execution=direct_execution(execute_probe),
         )
     )
     agent = Agent(initial_state={"system_prompt": "export prompt", "tools": []})

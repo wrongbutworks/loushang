@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from loushang.agent import Agent
 from loushang.agent.types import AgentToolResult
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session.tool_controller import ToolController
 from loushang.harness.tools.core import tool
-from loushang.harness.tools.workspace import ToolContext, ToolDefinition
+from loushang.harness.tools.execution import direct_execution
+from loushang.harness.tools.workspace import ToolContext, ToolDefinition, direct_tool
 from loushang.harness.tools.workspace.registry import (
     WorkspaceToolRegistry as ToolRegistry,
 )
@@ -39,7 +42,7 @@ def _tool_definition(
             "required": [],
             "additionalProperties": False,
         },
-        execute=_execute_noop,
+        execution=direct_execution(_execute_noop),
         prompt_snippet=prompt_snippet,
     )
 
@@ -53,7 +56,7 @@ def test_tool_controller_materializes_active_registry_tools_and_rebuilds_prompt(
         return ctx.cwd or ""
 
     registry = ToolRegistry()
-    registry.register_tool(show_session_cwd)
+    registry.register_tool(direct_tool(show_session_cwd))
     agent = Agent(initial_state={"system_prompt": "stale prompt", "tools": []})
     diagnostics = DiagnosticsService()
 
@@ -99,7 +102,7 @@ def test_tool_controller_filters_allowed_visible_and_active_tools(tmp_path) -> N
                 "required": [],
                 "additionalProperties": False,
             },
-            execute=_execute,
+            execution=direct_execution(_execute),
         )
     )
     registry.register_tool(
@@ -113,7 +116,7 @@ def test_tool_controller_filters_allowed_visible_and_active_tools(tmp_path) -> N
                 "required": [],
                 "additionalProperties": False,
             },
-            execute=_execute,
+            execution=direct_execution(_execute),
         )
     )
     controller = ToolController(
@@ -135,7 +138,10 @@ def test_tool_controller_filters_allowed_visible_and_active_tools(tmp_path) -> N
     assert [tool.name for tool in controller.agent.tools] == ["read"]
 
 
-def test_tool_controller_reads_runtime_tools_when_registry_is_absent(tmp_path) -> None:
+def test_tool_controller_rejects_raw_runtime_tools_when_registry_is_absent(
+    tmp_path,
+) -> None:
+    del tmp_path
     class RuntimeTool:
         name = "runtime_tool"
         label = "Runtime Tool"
@@ -160,22 +166,17 @@ def test_tool_controller_reads_runtime_tools_when_registry_is_absent(tmp_path) -
             return AgentToolResult(content=[], details={})
 
     agent = Agent(initial_state={"tools": [RuntimeTool()]})
-    controller = ToolController(
-        agent=agent,
-        get_cwd=lambda: "/tmp/project",
-        tool_registry=None,
-        allowed_tool_names=None,
-        initial_active_tool_names=["runtime_tool"],
-        base_prompt="Base prompt.",
-        get_resource_bundle=lambda: None,
-        get_diagnostics_service=lambda: None,
-    )
-
-    assert controller.get_active_tool_names() == ["runtime_tool"]
-    assert [definition.name for definition in controller.get_all_tools()] == [
-        "runtime_tool"
-    ]
-    assert controller.get_tool_definition("runtime_tool").name == "runtime_tool"
+    with pytest.raises(TypeError, match="explicitly bound ToolDefinitions"):
+        ToolController(
+            agent=agent,
+            get_cwd=lambda: "/tmp/project",
+            tool_registry=None,
+            allowed_tool_names=None,
+            initial_active_tool_names=["runtime_tool"],
+            base_prompt="Base prompt.",
+            get_resource_bundle=lambda: None,
+            get_diagnostics_service=lambda: None,
+        )
 
 
 def test_tool_controller_routes_runtime_registration_through_contribution_resolver(

@@ -15,7 +15,8 @@ from loushang.ai.types import (
 )
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.tools.workspace import create_write_tool
+from loushang.harness.tools.workspace import create_write_tool_definition
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.observability import get_problem_store, log_context, reset_observability
 
 
@@ -151,13 +152,15 @@ def test_agent_session_recovers_after_malformed_write_tool_call_history(
         return _stream_with_message(responses.pop(0))
 
     async def scenario() -> None:
+        registry = WorkspaceToolRegistry()
+        registry.register_tool(create_write_tool_definition())
         agent = Agent(
             stream_fn=stream_fn,
             initial_state={
                 "system_prompt": "",
                 "model": _model(),
                 "thinking_level": "off",
-                "tools": [create_write_tool(cwd=str(tmp_path))],
+                "tools": [],
             },
         )
         session = AgentSession(
@@ -165,6 +168,8 @@ def test_agent_session_recovers_after_malformed_write_tool_call_history(
             session_manager=await SessionManager.new(
                 session_dir=tmp_path / ".sessions", cwd=str(tmp_path), persist=False
             ),
+            tool_registry=registry,
+            active_tool_names=["write"],
         )
 
         with log_context(session_id="bmi-session", cwd=str(tmp_path), mode="scenario"):

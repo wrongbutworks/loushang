@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loushang.harness.tools.execution import direct_execution
+
 
 def test_wrap_tool_definition_exposes_agent_tool_contract() -> None:
     import asyncio
@@ -24,7 +26,7 @@ def test_wrap_tool_definition_exposes_agent_tool_contract() -> None:
         description="Demo tool",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
         prepare_arguments=lambda raw: {"normalized": raw},
-        execute=execute,
+        execution=direct_execution(execute),
     )
 
     tool = wrap_tool_definition(definition)
@@ -53,7 +55,7 @@ def test_wrap_tool_definition_exposes_custom_execution_mode() -> None:
         label="Sequential Demo",
         description="Sequential demo tool",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         execution_mode="sequential",
     )
 
@@ -93,7 +95,7 @@ def test_wrap_tool_definition_preserves_tool_renderers() -> None:
         label="Read",
         description="Read files",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
         render_result=render_result,
     )
@@ -130,7 +132,7 @@ def test_pi_style_wrapper_aliases_delegate_to_python_helpers() -> None:
         label="Demo",
         description="Demo tool",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
     )
 
     wrapped = wrapToolDefinition(definition)

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from loushang.agent.types import AgentTool
+from loushang.ai.types import ToolCall
 from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -19,7 +20,15 @@ from loushang.harness.session import (
 )
 from loushang.harness.tools.contribution import resolve_tool_contributions
 from loushang.harness.tools.core import ToolDefinition, project_tool_definition
+from loushang.harness.tools.execution import (
+    ToolCallContext,
+    ToolExecutionHost,
+)
+from loushang.harness.tools.workspace.authorization import (
+    WorkspaceToolAuthorizationGateway,
+)
 from loushang.harness.tools.workspace.context import ToolContext
+from loushang.harness.tools.workspace.policy import ToolPolicyEvaluator
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecService
 
@@ -75,9 +84,38 @@ class SessionToolController:
     )
     get_exec_service: Callable[[], ExecService | None] | None = None
     get_approval_resolver: Callable[[], ApprovalResolver | None] | None = None
+    policy_evaluator: ToolPolicyEvaluator | None = None
     _runtime: SessionToolRuntime = field(init=False, repr=False)
+    _execution_host: ToolExecutionHost = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.tool_registry is None:
+            if self.agent.tools:
+                raise TypeError(
+                    "Harness sessions require explicitly bound ToolDefinitions; "
+                    "raw preinstalled AgentTool values are not admitted"
+                )
+            self.tool_registry = WorkspaceToolRegistry()
+        policy_evaluator = (
+            self.policy_evaluator
+            or getattr(self.tool_registry, "policy_evaluator", None)
+        )
+        if policy_evaluator is None:
+            from loushang.harness.policy_engine import PolicyEngine
+
+            policy_evaluator = PolicyEngine()
+        approval_resolver = (
+            self.get_approval_resolver()
+            if self.get_approval_resolver is not None
+            else None
+        ) or getattr(self.tool_registry, "approval_resolver", None)
+        self._execution_host = ToolExecutionHost(
+            WorkspaceToolAuthorizationGateway(
+                policy_evaluator=policy_evaluator,
+                approval_resolver=approval_resolver,
+            )
+        )
+        self.tool_registry.bind_execution_host(self._execution_host)
         profile = self.activation_profile or ToolActivationProfile(
             preferred_names=_DEFAULT_ACTIVE_TOOL_NAMES,
             builtin_names=_BUILTIN_TOOL_NAMES,
@@ -95,9 +133,7 @@ class SessionToolController:
             allowed_tool_names=self.allowed_tool_names,
             initial_active_tool_names=self.initial_active_tool_names,
             default_active_tool_names=lambda: profile.default_names(
-                self.tool_registry.list_enabled_definitions()
-                if self.tool_registry is not None
-                else [],
+                self.tool_registry.list_enabled_definitions(),
                 self.allowed_tool_names,
             ),
             should_activate_new_tool=profile.should_activate_new,
@@ -151,10 +187,37 @@ class SessionToolController:
                 if self.emit_tool_audit_event is not None
                 else None
             ),
-            approval_resolver=(
-                self.get_approval_resolver()
-                if self.get_approval_resolver is not None
-                else None
+        )
+
+    async def execute_tool_definition(
+        self,
+        definition: ToolDefinition,
+        *,
+        tool_call_id: str,
+        arguments: dict[str, Any],
+        signal: object | None = None,
+        on_update: object | None = None,
+        operation_bindings: Mapping[str, object] | None = None,
+    ) -> object:
+        base = self.build_tool_context(tool_call_id=tool_call_id)
+        return await self._execution_host.dispatch(
+            definition,
+            ToolCall(
+                type="toolCall",
+                id=tool_call_id,
+                name=definition.name,
+                arguments=dict(arguments),
+            ),
+            ToolCallContext(
+                tool_call_id=tool_call_id,
+                cwd=base.cwd,
+                diagnostics=base.diagnostics,
+                signal=signal,
+                model=base.model,
+                event_sink=base.event_sink,
+                exec_service=base.exec_service,
+                on_update=on_update if callable(on_update) else None,
+                operation_bindings=operation_bindings or {},
             ),
         )
 

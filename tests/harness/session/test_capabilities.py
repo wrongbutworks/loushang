@@ -19,6 +19,7 @@ from loushang.harness.session import (
 )
 from loushang.harness.tools.contribution import ToolContribution
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.execution import direct_execution
 from loushang.harness.workspace.exec import ExecOutputChunk
 
 
@@ -43,7 +44,7 @@ def _tool_definition(name: str) -> ToolDefinition:
             "required": [],
             "additionalProperties": False,
         },
-        execute=_noop_execute,
+        execution=direct_execution(_noop_execute),
     )
 
 
@@ -214,12 +215,35 @@ def test_command_execution_runtime_streams_and_commits_one_record() -> None:
         label="Bash",
         description="Run a shell command",
         parameters={},
-        execute=_execute,
+        execution=direct_execution(_execute),
     )
+    from loushang.harness.tools.core import wrap_tool_definition
+
+    runtime_tool = wrap_tool_definition(definition)
+
+    async def _execute_definition(
+        selected_definition,
+        *,
+        tool_call_id,
+        arguments,
+        signal=None,
+        on_update=None,
+        operation_bindings=None,
+    ):
+        del operation_bindings
+        assert selected_definition is definition
+        return await runtime_tool.execute(
+            tool_call_id,
+            arguments,
+            signal=signal,
+            on_update=on_update,
+        )
+
     runtime = SessionCommandExecutionRuntime(
         command_name="Bash",
         get_cwd=lambda: "/project",
         get_definition=lambda: definition,
+        execute_definition=_execute_definition,
         build_execution_params=lambda command, cwd: {
             "command": ["/bin/bash", "-lc", command],
             "cwd": cwd,

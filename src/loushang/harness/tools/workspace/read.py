@@ -6,20 +6,21 @@ from pathlib import Path
 from typing import Any, NotRequired, Protocol, TypedDict
 
 from loushang.agent.types import AgentToolResult, ImagePart, TextPart
-from loushang.harness.approval import ApprovalResolver
+from loushang.harness.tools.execution import (
+    CallableToolActionAdapter,
+    PreparedToolAction,
+)
 from loushang.harness.workspace.operations import ReadOperations, resolve_operation
 
 from .authoring import tool
-from .authorization import execute_workspace_tool_action
 from .builtin_renderers import render_read_call, render_read_result
-from .context import ToolContext, context_approval_resolver
-from .normalize import tool_to_definition
+from .context import ToolContext
+from .normalize import authorized_tool
 from .operations import (
     normalize_read_operations,
     raise_if_operation_aborted,
 )
 from .path_utils import resolve_tool_path
-from .policy import ToolPolicyEvaluator
 from .runtime import (
     MaybeAwaitable,
     coerce_int_parameter,
@@ -99,15 +100,11 @@ class ReadToolOptions:
     auto_resize_images: bool = True
     autoResizeImages: bool | None = None
     image_resizer: ReadImageResizer | None = None
-    policy_engine: ToolPolicyEvaluator | None = None
-    approval_resolver: ApprovalResolver | None = None
 
 
 def create_read_tool_definition(
     *,
     operations: ReadOperations | None = None,
-    policy_engine: ToolPolicyEvaluator | None = None,
-    approval_resolver: ApprovalResolver | None = None,
     options: ReadToolOptions | None = None,
 ) -> ToolDefinition:
     ops = normalize_read_operations(
@@ -115,12 +112,6 @@ def create_read_tool_definition(
     )
     auto_resize_images = _resolve_auto_resize_images(options)
     image_resizer = _resolve_image_resizer(options)
-    resolved_policy_engine = policy_engine or (
-        options.policy_engine if options is not None else None
-    )
-    resolved_approval_resolver = approval_resolver or (
-        options.approval_resolver if options is not None else None
-    )
 
     @tool(
         name="read",
@@ -140,24 +131,7 @@ def create_read_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         raise_if_operation_aborted(ctx.signal)
         resolved = resolve_tool_path(path, cwd=ctx.cwd)
-        payload = await execute_workspace_tool_action(
-            resolved_policy_engine,
-            tool_name="read",
-            arguments={"path": str(resolved)},
-            executor=lambda _action: _read_file_payload(resolved, operations=ops),
-            cwd=ctx.cwd,
-            approval_resolver=context_approval_resolver(
-                ctx,
-                resolved_approval_resolver,
-            ),
-            tool_call_id=ctx.tool_call_id,
-            audit_sink=ctx.event_sink,
-            execution_profile_ceiling=getattr(
-                ctx.exec_service,
-                "execution_profile",
-                None,
-            ),
-        )
+        payload = await _read_file_payload(resolved, operations=ops)
         raise_if_operation_aborted(ctx.signal)
         mime_type = await _detect_supported_image_mime_type(
             resolved, payload, operations=ops
@@ -346,7 +320,24 @@ def create_read_tool_definition(
         )
 
     return replace(
-        tool_to_definition(read),
+        authorized_tool(
+            read,
+            action=CallableToolActionAdapter(
+                lambda call, context: PreparedToolAction(
+                    tool_name="read",
+                    authorization_arguments={
+                        "path": str(
+                            resolve_tool_path(
+                                str(call.arguments["path"]),
+                                cwd=context.cwd,
+                            )
+                        )
+                    },
+                    execution_arguments=call.arguments,
+                    cwd=context.cwd,
+                )
+            ),
+        ),
         prepare_arguments=lambda value: prepare_tool_arguments(
             value, aliases=(("file_path", "path"),)
         ),

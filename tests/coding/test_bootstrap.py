@@ -15,6 +15,7 @@ from loushang.ai.model import (
 )
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
+from loushang.harness.tools.execution import direct_execution
 
 
 def _ai_model_registry(
@@ -588,10 +589,8 @@ def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
 
         session = await runtime.create_session(cwd=str(project))
         collaboration = session.multiagent_runtime
-        spawn = session.get_tool_definition("spawn_agent")
-        wait = session.get_tool_definition("wait_agent")
-        assert spawn is not None
-        assert wait is not None
+        spawn = next(tool for tool in session.agent.tools if tool.name == "spawn_agent")
+        wait = next(tool for tool in session.agent.tools if tool.name == "wait_agent")
         spawned = await spawn.execute(
             "spawn-1",
             {
@@ -739,6 +738,7 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
                 "from loushang.harness.tools.workspace import ToolDefinition",
+                "from loushang.harness.tools.execution import direct_execution",
                 "",
                 "async def _execute(tool_call_id, params, signal=None, on_update=None):",
                 "    return AgentToolResult(content=[TextPart(type='text', text='ok')], details={})",
@@ -751,7 +751,7 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
                 "                label='Dynamic Tool',",
                 "                description='Dynamic extension tool',",
                 "                parameters={'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': False},",
-                "                execute=_execute,",
+                "                execution=direct_execution(_execute),",
                 "                prompt_snippet='Run dynamic behavior',",
                 "            )",
                 "        )",
@@ -831,6 +831,7 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
                 "from loushang.harness.tools.workspace import ToolDefinition",
+                "from loushang.harness.tools.execution import direct_execution",
                 "",
                 "async def _execute(tool_call_id, params, signal=None, on_update=None):",
                 "    return AgentToolResult(content=[TextPart(type='text', text='ok')], details={})",
@@ -843,7 +844,7 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
                 "                label='Dynamic Tool',",
                 "                description='Dynamic extension tool',",
                 "                parameters={'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': False},",
-                "                execute=_execute,",
+                "                execution=direct_execution(_execute),",
                 "                prompt_snippet='Run dynamic behavior',",
                 "            )",
                 "        )",
@@ -1411,7 +1412,7 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
         session_manager=manager,
         services=services,
         model=_model(),
-        tools=registry.list_enabled_tools(),
+        tools=registry.list_enabled_definitions(),
     )
 
     assert session.get_active_tool_names() == [
@@ -1470,7 +1471,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
                 "required": [],
                 "additionalProperties": False,
             },
-            execute=execute_custom_tool,
+            execution=direct_execution(execute_custom_tool),
         )
     )
 
@@ -1831,28 +1832,29 @@ def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> 
 
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.tools.core import ToolDefinition
 
-    class RuntimeTool:
-        name = "runtime_tool"
-        label = "Runtime Tool"
-        description = "runtime tool"
-        parameters = {
+    async def execute_runtime_tool(
+        tool_call_id: str,
+        params: dict[str, object],
+        signal=None,
+        on_update=None,
+    ):
+        del tool_call_id, params, signal, on_update
+        raise RuntimeError("runtime tool exploded")
+
+    runtime_tool = ToolDefinition(
+        name="runtime_tool",
+        label="Runtime Tool",
+        description="runtime tool",
+        parameters={
             "type": "object",
             "properties": {"value": {"type": "integer"}},
             "required": ["value"],
             "additionalProperties": False,
-        }
-        prepare_arguments = None
-
-        async def execute(
-            self,
-            tool_call_id: str,
-            params: dict[str, object],
-            signal=None,
-            on_update=None,
-        ):
-            del tool_call_id, params, signal, on_update
-            raise RuntimeError("runtime tool exploded")
+        },
+        execution=direct_execution(execute_runtime_tool),
+    )
 
     async def stream_fn(model, context, options=None):
         if any(
@@ -1875,7 +1877,7 @@ def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> 
         session_manager=manager,
         model=_model(),
         stream_fn=stream_fn,
-        tools=[RuntimeTool()],
+        tools=[runtime_tool],
     )
 
     async def scenario() -> None:
@@ -2031,7 +2033,7 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
                     label="Extension Tool",
                     description="Tool from extension",
                     parameters={},
-                    execute=_execute_tool,
+                    execution=direct_execution(_execute_tool),
                 )
             ]
 
@@ -2114,6 +2116,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
                 "from loushang.ai.types import TextPart",
                 "from loushang.harness.extensions.agent import ToolCallDecision, ToolResultDecision",
                 "from loushang.harness.tools.workspace import ToolDefinition",
+                "from loushang.harness.tools.execution import direct_execution",
                 "",
                 "async def _ext_execute(tool_name, arguments, context, signal):",
                 "    return AgentToolResult(",
@@ -2146,7 +2149,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
                 "                'required': ['y'],",
                 "                'additionalProperties': False,",
                 "            },",
-                "            execute=_ext_execute,",
+                "            execution=direct_execution(_ext_execute),",
                 "        )",
                 "    )",
             ]
@@ -2206,7 +2209,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
             "required": ["x"],
             "additionalProperties": False,
         },
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
 
     session = create_agent_session(
@@ -2256,6 +2259,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
                 "from loushang.harness.tools.workspace import ToolDefinition",
+                "from loushang.harness.tools.execution import direct_execution",
                 "",
                 "async def _ext_execute(tool_name, arguments, context, signal):",
                 "    return AgentToolResult(",
@@ -2275,7 +2279,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
                 "                'required': ['x'],",
                 "                'additionalProperties': False,",
                 "            },",
-                "            execute=_ext_execute,",
+                "            execution=direct_execution(_ext_execute),",
                 "        )",
                 "    )",
             ]
@@ -2327,7 +2331,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
             "required": ["x"],
             "additionalProperties": False,
         },
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
 
     session = create_agent_session(
@@ -2358,7 +2362,7 @@ def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) 
         label="Review",
         description="Extension review tool",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     extension = LoadedExtension(
         name="review-pack",
@@ -2407,14 +2411,14 @@ def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
         label="Calc",
         description="Base calc",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     extension_tool = ToolDefinition(
         name="calc",
         label="Extension Calc",
         description="Extension calc",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     registry = ToolRegistry()
     registry.register_tool(base_tool, source_info={"source": "base"})
@@ -2478,7 +2482,7 @@ def test_register_extension_tools_registers_resolver_output_only(
         label="Extension Calc",
         description="Extension calc",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     registry = ToolRegistry()
 
@@ -2527,7 +2531,7 @@ def test_register_extension_tools_preserves_resolver_source_info(tmp_path) -> No
         label="Extension Calc",
         description="Extension calc",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     source_info = {"source": "extension", "path": str(tmp_path / "extension.py")}
 

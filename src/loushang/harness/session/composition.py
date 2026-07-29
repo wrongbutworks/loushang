@@ -35,6 +35,7 @@ from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.extensions.provider_config import provider_from_extension_config
 from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
 from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
+from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.runtime.retry import RetryPolicy
@@ -116,6 +117,7 @@ class SessionCompositionPorts:
     exec_service: ExecService
     tool_exec_service: ExecService | None
     approval_resolver: object | None
+    tool_policy_evaluator: PolicyEvaluator | None
     capability_runtime: object
 
     # Product policy and presentation callbacks.
@@ -280,6 +282,7 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         BashExecutionPorts(
             get_cwd=session.get_cwd,
             get_definition=ports.get_bash_definition,
+            execute_definition=tool_controller.execute_tool_definition,
             create_call_id=ports.create_bash_call_id,
             append_record=session.append_message,
             refresh_context=ports.refresh_agent_messages,
@@ -593,6 +596,7 @@ def _build_tool_controller(ports: SessionCompositionPorts, diagnostics: SessionD
             else None
         ),
         get_approval_resolver=lambda: ports.approval_resolver,
+        policy_evaluator=ports.tool_policy_evaluator,
         emit_tool_audit_event=ports.dispatch_event,
         resource_activation_runtime=ports.capability_runtime.resource_runtime,
         prompt_section_composer=ports.capability_runtime.prompt_section_composer,

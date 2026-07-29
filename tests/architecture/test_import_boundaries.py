@@ -162,7 +162,12 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
         harness_root / "extensions": (
             "loushang.ai.api_registry",
             "loushang.ai.model",
+            "loushang.ai.types",
             "loushang.agent",
+        ),
+        harness_root / "tools": (
+            "loushang.ai.types",
+            "loushang.agent.types",
         ),
         harness_root / "config" / "agent": (
             "loushang.ai.model",
@@ -3644,7 +3649,10 @@ def test_core_workspace_effects_only_execute_through_gateway() -> None:
 
     for tool_name in effectful_tools:
         source = (workspace_root / f"{tool_name}.py").read_text(encoding="utf-8")
-        assert "execute_workspace_tool_action(" in source, tool_name
+        assert (
+            "AuthorizedExecution(" in source or "authorized_tool(" in source
+        ), tool_name
+        assert "execute_workspace_tool_action(" not in source, tool_name
         assert "enforce_tool_policy(" not in source, tool_name
 
 

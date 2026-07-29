@@ -46,13 +46,28 @@ def test_bash_runtime_executes_streams_and_records_context(tmp_path) -> None:
                 details={"exit_code": 0},
             )
 
-    class ToolRegistry:
-        def get_definition(self, name: str):
-            assert name == "bash"
-            return BashTool()
-
     def refresh_context() -> None:
         refreshes.append(True)
+
+    bash_tool = BashTool()
+
+    async def execute_definition(
+        definition,
+        *,
+        tool_call_id,
+        arguments,
+        signal=None,
+        on_update=None,
+        operation_bindings=None,
+    ):
+        del operation_bindings
+        assert definition is bash_tool
+        return await definition.execute(
+            tool_call_id,
+            arguments,
+            signal=signal,
+            on_update=on_update,
+        )
 
     async def on_output(chunk: ExecOutputChunk) -> None:
         chunks.append(chunk)
@@ -60,7 +75,8 @@ def test_bash_runtime_executes_streams_and_records_context(tmp_path) -> None:
     runtime = BashExecutionRuntime(
         BashExecutionPorts(
             get_cwd=transcript.get_cwd,
-            get_definition=lambda: ToolRegistry().get_definition("bash"),
+            get_definition=lambda: bash_tool,
+            execute_definition=execute_definition,
             create_call_id=lambda: "bash-test-1",
             append_record=transcript.append_message,
             refresh_context=refresh_context,
@@ -100,10 +116,33 @@ def test_bash_runtime_injects_session_owned_operations() -> None:
                 details={"exit_code": 0},
             )
 
+    bash_tool = BashTool()
+
+    async def execute_definition(
+        definition,
+        *,
+        tool_call_id,
+        arguments,
+        signal=None,
+        on_update=None,
+        operation_bindings=None,
+    ):
+        assert definition is bash_tool
+        assert isinstance(operation_bindings, dict)
+        operation_bindings_seen.append(operation_bindings)
+        return await definition.execute(
+            tool_call_id,
+            arguments,
+            signal=signal,
+            on_update=on_update,
+        )
+
+    operation_bindings_seen: list[dict[str, object]] = []
     runtime = BashExecutionRuntime(
         BashExecutionPorts(
             get_cwd=lambda: "/tmp/project",
-            get_definition=lambda: BashTool(),
+            get_definition=lambda: bash_tool,
+            execute_definition=execute_definition,
             create_call_id=lambda: "bash-session-1",
             append_record=append_record,
             refresh_context=lambda: None,
@@ -113,4 +152,5 @@ def test_bash_runtime_injects_session_owned_operations() -> None:
 
     asyncio.run(runtime.execute("true"))
 
-    assert executed[0]["__operations"] is selected_operations
+    assert "__operations" not in executed[0]
+    assert operation_bindings_seen == [{"bash_operations": selected_operations}]

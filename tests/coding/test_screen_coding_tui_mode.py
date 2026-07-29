@@ -764,11 +764,10 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
         def dismiss_approval(self, action_id: str) -> None:
             del action_id
 
-    registry = WorkspaceToolRegistry()
+    registry = WorkspaceToolRegistry(approval_resolver=resolver)
     register_coding_builtin_tools(
         registry,
         policy_engine=PolicyEngine(ask_tools=["write"]),
-        approval_resolver=resolver,
     )
 
     def context_provider(*, tool_call_id: str) -> ToolContext:

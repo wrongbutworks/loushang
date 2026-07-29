@@ -350,10 +350,7 @@ class ExtensionRuntime:
             self._tool_definitions.append(
                 wrap_registered_tool_definition(
                     registration.definition,
-                    lambda source_info=source_info: self._context_factory(
-                        str(source_info.path.parent),
-                        None,
-                    ),
+                    str(source_info.path.parent),
                 )
             )
 

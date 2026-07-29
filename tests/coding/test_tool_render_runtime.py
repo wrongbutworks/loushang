@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loushang.harness.tools.execution import direct_execution
+
 
 def test_tool_render_runtime_preserves_state_and_last_rendered_per_tool_call() -> None:
     from loushang.agent.types import AgentToolResult
@@ -49,7 +51,7 @@ def test_tool_render_runtime_preserves_state_and_last_rendered_per_tool_call() -
         label="Read",
         description="Read files",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
         render_result=render_result,
     )
@@ -111,7 +113,7 @@ def test_tool_render_runtime_keeps_renderer_state_isolated_by_tool_call_id() -> 
         label="Demo",
         description="Demo",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
     )
     runtime = ToolRenderRuntime()
@@ -169,7 +171,7 @@ def test_tool_render_runtime_renders_tool_execution_events_with_partial_flags() 
         label="Read",
         description="Read files",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
         render_result=render_result,
     )

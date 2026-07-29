@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import MISSING, dataclass, field, fields, is_dataclass
 from inspect import Parameter, signature
 from pathlib import Path
@@ -19,14 +19,16 @@ from typing import (
     runtime_checkable,
 )
 
-from loushang.agent.types import (
-    AgentTool,
-    AgentToolResult,
-    ToolExecutionMode,
-    ensure_agent_tool,
-    is_agent_tool_like,
-)
+from loushang.agent.types import AgentTool, AgentToolResult, ToolExecutionMode
+from loushang.ai.types import ToolCall
 from loushang.harness.presentation import ToolRenderContext, ToolRenderResultOptions
+from loushang.harness.tools.execution import (
+    AuthorizedExecution,
+    DirectExecution,
+    ExecutionBinding,
+    ToolCallContext,
+    ToolExecutionHost,
+)
 
 _TOOL_SPEC_ATTR = "__loushang_tool_spec__"
 
@@ -68,10 +70,7 @@ class ToolDefinition:
     label: str
     description: str
     parameters: dict[str, Any]
-    execute: Callable[
-        [str, dict[str, Any], object | None, object | None],
-        Awaitable[AgentToolResult[Any]],
-    ]
+    execution: ExecutionBinding
     prepare_arguments: Callable[[object], dict[str, Any]] | None = None
     execution_mode: ToolExecutionMode = "parallel"
     prompt_snippet: str | None = None
@@ -97,6 +96,10 @@ class ToolDefinition:
             raise TypeError("render_result must be callable")
         if self.provider_parameters is not None and not isinstance(self.provider_parameters, dict):
             raise TypeError("provider_parameters must be a dict")
+        if not isinstance(self.execution, DirectExecution | AuthorizedExecution):
+            raise TypeError(
+                "execution must be DirectExecution or AuthorizedExecution"
+            )
 
     @property
     def renderCall(self) -> ToolRenderCall | None:
@@ -403,6 +406,8 @@ def _raise_on_unresolved_pydantic_refs(value: object, *, in_properties_map: bool
 @dataclass
 class WrappedToolDefinition:
     definition: ToolDefinition
+    execution_host: ToolExecutionHost
+    context_provider: Callable[..., object] | None = None
 
     @property
     def name(self) -> str:
@@ -418,7 +423,7 @@ class WrappedToolDefinition:
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return self.definition.parameters
+        return self.definition.provider_parameters or self.definition.parameters
 
     @property
     def prepare_arguments(self):
@@ -451,32 +456,88 @@ class WrappedToolDefinition:
         signal: object | None = None,
         on_update: object | None = None,
     ) -> AgentToolResult[Any]:
-        return await self.definition.execute(tool_call_id, params, signal, on_update)
+        context = _build_tool_call_context(
+            tool_call_id=tool_call_id,
+            signal=signal,
+            on_update=on_update,
+            context_provider=self.context_provider,
+        )
+        return await self.execution_host.dispatch(
+            self.definition,
+            ToolCall(
+                type="toolCall",
+                id=tool_call_id,
+                name=self.definition.name,
+                arguments=dict(params),
+            ),
+            context,
+        )
 
 
-def wrap_tool_definition(definition: ToolDefinition) -> AgentTool[Any]:
-    return WrappedToolDefinition(definition=definition)
-
-
-def create_tool_definition_from_tool(tool: AgentTool[Any]) -> ToolDefinition:
-    definition = getattr(tool, "definition", None)
-    if isinstance(definition, ToolDefinition):
-        return definition
-    return ToolDefinition(
-        name=tool.name,
-        label=tool.label,
-        description=tool.description,
-        parameters=tool.parameters,
-        prepare_arguments=tool.prepare_arguments,
-        execution_mode=tool.execution_mode,
-        render_call=getattr(tool, "render_call", getattr(tool, "renderCall", None)),
-        render_result=getattr(tool, "render_result", getattr(tool, "renderResult", None)),
-        execute=tool.execute,
+def _build_tool_call_context(
+    *,
+    tool_call_id: str,
+    signal: object | None,
+    on_update: object | None,
+    context_provider: Callable[..., object] | None,
+) -> ToolCallContext:
+    provided = (
+        context_provider(tool_call_id=tool_call_id)
+        if context_provider is not None
+        else None
+    )
+    if isinstance(provided, ToolCallContext):
+        return ToolCallContext(
+            tool_call_id=tool_call_id,
+            cwd=provided.cwd,
+            diagnostics=provided.diagnostics,
+            signal=signal,
+            model=provided.model,
+            event_sink=provided.event_sink,
+            exec_service=provided.exec_service,
+            on_update=on_update if callable(on_update) else None,
+            operation_bindings=provided.operation_bindings,
+        )
+    return ToolCallContext(
+        tool_call_id=tool_call_id,
+        cwd=getattr(provided, "cwd", None),
+        diagnostics=getattr(provided, "diagnostics", None),
+        signal=signal,
+        model=getattr(provided, "model", None),
+        event_sink=getattr(provided, "event_sink", None),
+        exec_service=getattr(provided, "exec_service", None),
+        on_update=on_update if callable(on_update) else None,
     )
 
 
-def wrap_tool_definitions(definitions: list[ToolDefinition]) -> list[AgentTool[Any]]:
-    return [wrap_tool_definition(definition) for definition in definitions]
+def wrap_tool_definition(
+    definition: ToolDefinition,
+    *,
+    execution_host: ToolExecutionHost | None = None,
+    context_provider: Callable[..., object] | None = None,
+) -> AgentTool[Any]:
+    return WrappedToolDefinition(
+        definition=definition,
+        execution_host=execution_host or ToolExecutionHost(),
+        context_provider=context_provider,
+    )
+
+
+def wrap_tool_definitions(
+    definitions: list[ToolDefinition],
+    *,
+    execution_host: ToolExecutionHost | None = None,
+    context_provider: Callable[..., object] | None = None,
+) -> list[AgentTool[Any]]:
+    host = execution_host or ToolExecutionHost()
+    return [
+        wrap_tool_definition(
+            definition,
+            execution_host=host,
+            context_provider=context_provider,
+        )
+        for definition in definitions
+    ]
 
 
 @dataclass(frozen=True)
@@ -487,26 +548,27 @@ class _RegisteredTool:
 
 
 class ToolRegistry:
-    def __init__(self) -> None:
+    def __init__(self, *, execution_host: ToolExecutionHost | None = None) -> None:
         self._tools: dict[str, _RegisteredTool] = {}
         self._order: list[str] = []
+        self._execution_host = execution_host
+
+    def bind_execution_host(self, host: ToolExecutionHost) -> None:
+        self._execution_host = host
 
     def register_tool(
         self,
-        tool: ToolDefinition | AgentTool[Any] | object,
+        tool: ToolDefinition,
         *,
         enabled: bool = True,
         source_info: object | None = None,
     ) -> ToolDefinition:
-        if isinstance(tool, ToolDefinition):
-            definition = tool
-        elif is_agent_tool_like(tool):
-            definition = create_tool_definition_from_tool(ensure_agent_tool(tool))
-        else:
+        if not isinstance(tool, ToolDefinition):
             raise TypeError(
-                "ToolRegistry.register_tool expects a pre-normalized ToolDefinition "
-                "or AgentTool-like object"
+                "ToolRegistry.register_tool expects an explicitly bound "
+                "ToolDefinition"
             )
+        definition = tool
         if definition.name not in self._tools:
             self._order.append(definition.name)
         self._tools[definition.name] = _RegisteredTool(definition=definition, enabled=enabled, source_info=source_info)
@@ -550,7 +612,19 @@ class ToolRegistry:
         )
 
     def materialize_tool(self, name: str) -> AgentTool[Any]:
-        return wrap_tool_definition(self.get_definition(name))
+        return wrap_tool_definition(
+            self.get_definition(name),
+            execution_host=self._execution_host,
+        )
 
-    def materialize_definitions(self, definitions: list[ToolDefinition]) -> list[AgentTool[Any]]:
-        return [wrap_tool_definition(definition) for definition in definitions]
+    def materialize_definitions(
+        self,
+        definitions: list[ToolDefinition],
+        *,
+        context_provider: Callable[..., object] | None = None,
+    ) -> list[AgentTool[Any]]:
+        return wrap_tool_definitions(
+            definitions,
+            execution_host=self._execution_host,
+            context_provider=context_provider,
+        )

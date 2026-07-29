@@ -15,6 +15,7 @@ from loushang.ai.model import (
 )
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
+from loushang.harness.tools.workspace import direct_tool
 
 
 def _ai_model_registry(
@@ -1083,25 +1084,32 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
         InputEventResult,
         LoadedExtension,
     )
-
-    class FinishingTool:
-        name = "finish"
-        description = "Finish the run"
-        parameters = {"type": "object", "properties": {}}
-        label = "Finish"
-        prepare_arguments = None
-        execution_mode = "sequential"
-
-        async def execute(self, tool_call_id, params, signal=None, on_update=None):
-            del tool_call_id, params, signal, on_update
-            order.append("tool_execute")
-            return AgentToolResult(
-                content=[TextPart(type="text", text="finished")],
-                details={"ok": True},
-                terminate=True,
-            )
+    from loushang.harness.tools.core import ToolDefinition
+    from loushang.harness.tools.execution import direct_execution
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     order: list[str] = []
+
+    async def execute_finish(tool_call_id, params, signal=None, on_update=None):
+        del tool_call_id, params, signal, on_update
+        order.append("tool_execute")
+        return AgentToolResult(
+            content=[TextPart(type="text", text="finished")],
+            details={"ok": True},
+            terminate=True,
+        )
+
+    registry = WorkspaceToolRegistry()
+    registry.register_tool(
+        ToolDefinition(
+            name="finish",
+            description="Finish the run",
+            parameters={"type": "object", "properties": {}},
+            label="Finish",
+            execution=direct_execution(execute_finish),
+            execution_mode="sequential",
+        )
+    )
 
     async def stream_fn(model, context, options=None):
         del model, context
@@ -1157,7 +1165,7 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
                     "system_prompt": "Base system prompt",
                     "model": _model(),
                     "thinking_level": "off",
-                    "tools": [FinishingTool()],
+                    "tools": [],
                 },
             ),
             session_manager=await SessionManager.new(
@@ -1178,6 +1186,8 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
                     )
                 ]
             ),
+            tool_registry=registry,
+            active_tool_names=["finish"],
         )
 
         await session.prompt("hello")
@@ -4056,8 +4066,8 @@ def test_agent_session_set_active_tools_emits_session_refresh(tmp_path) -> None:
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
-    registry.register_tool(read_file)
-    registry.register_tool(grep_file)
+    registry.register_tool(direct_tool(read_file))
+    registry.register_tool(direct_tool(grep_file))
     session = AgentSession(
         agent=Agent(
             initial_state={
@@ -4118,8 +4128,8 @@ def test_agent_session_refresh_does_not_reemit_session_start(tmp_path) -> None:
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
-    registry.register_tool(read_file)
-    registry.register_tool(grep_file)
+    registry.register_tool(direct_tool(read_file))
+    registry.register_tool(direct_tool(grep_file))
     session = AgentSession(
         agent=Agent(
             initial_state={
@@ -4455,8 +4465,8 @@ def test_extension_session_refresh_actions_do_not_recursively_emit_refresh(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
-    registry.register_tool(read_file)
-    registry.register_tool(grep_file)
+    registry.register_tool(direct_tool(read_file))
+    registry.register_tool(direct_tool(grep_file))
     next_model = Model(
         id="next-model",
         name="Next",
@@ -4622,7 +4632,7 @@ def test_agent_session_resource_refresh_rebuilds_prompt_and_tools_without_emitti
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
-    registry.register_tool(read_file)
+    registry.register_tool(direct_tool(read_file))
     session = AgentSession(
         agent=Agent(
             initial_state={

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import inspect
 import json
-from collections.abc import Callable
-from dataclasses import dataclass, replace
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from inspect import signature
 from typing import (
     Annotated,
@@ -16,9 +16,18 @@ from typing import (
 )
 
 from loushang.agent.types import AgentToolResult, TextPart
+from loushang.ai.types import ToolCall
+from loushang.harness.tools.execution import (
+    AuthorizedExecution,
+    AuthorizedToolAction,
+    AuthorizedToolContext,
+    DirectExecution,
+    DirectToolContext,
+    ToolActionAdapter,
+)
 
 from .authoring import _TOOL_SPEC_ATTR, DecoratedTool, DecoratedToolSpec
-from .context import ToolContext, ToolContextProvider
+from .context import ToolContext
 from .schema import apply_schema_overrides, infer_schema_from_signature
 from .types import ToolDefinition
 
@@ -72,68 +81,86 @@ def _normalize_plain_return_value(value: object) -> AgentToolResult[Any]:
 
 
 @dataclass(frozen=True)
-class _DecoratedToolExecute:
+class _DecoratedDirectHandler:
     spec: DecoratedToolSpec
-    context_provider: ToolContextProvider | None = None
     context_parameter_name: str | None = None
-
-    def bind_context_provider(
-        self, context_provider: ToolContextProvider | None
-    ) -> _DecoratedToolExecute:
-        return _DecoratedToolExecute(
-            spec=self.spec,
-            context_provider=context_provider,
-            context_parameter_name=self.context_parameter_name,
-        )
 
     async def __call__(
         self,
-        tool_call_id: str,
-        params: dict[str, Any],
-        signal: object | None = None,
-        on_update: object | None = None,
+        call: ToolCall,
+        context: DirectToolContext,
     ) -> AgentToolResult[Any]:
-        del on_update
-
-        call_params = dict(params)
-        if self.context_parameter_name is not None:
-            call_params[self.context_parameter_name] = self._build_context(
-                tool_call_id=tool_call_id,
-                signal=signal,
-            )
-
-        bound = signature(self.spec.fn).bind_partial(**call_params)
-        result = self.spec.fn(*bound.args, **bound.kwargs)
-        if inspect.isawaitable(result):
-            result = await result
-        return _normalize_plain_return_value(result)
-
-    def _build_context(
-        self, *, tool_call_id: str, signal: object | None
-    ) -> ToolContext:
-        if self.context_provider is None:
-            return ToolContext(tool_call_id=tool_call_id, signal=signal)
-        context = self.context_provider(tool_call_id=tool_call_id)
-        if context.signal is signal:
-            return context
-        return replace(context, signal=signal)
+        tool_context = ToolContext(
+            tool_call_id=context.tool_call_id,
+            cwd=context.cwd,
+            diagnostics=context.diagnostics,
+            signal=context.signal,
+            model=context.model,
+        )
+        return await _invoke_decorated_tool(
+            self.spec,
+            call.arguments,
+            context_parameter_name=self.context_parameter_name,
+            context=tool_context,
+        )
 
 
-def build_decorated_execute(
+@dataclass(frozen=True)
+class _DecoratedAuthorizedHandler:
+    spec: DecoratedToolSpec
+    context_parameter_name: str | None = None
+
+    async def __call__(
+        self,
+        action: AuthorizedToolAction,
+        context: AuthorizedToolContext,
+    ) -> AgentToolResult[Any]:
+        tool_context = ToolContext(
+            tool_call_id=context.tool_call_id,
+            cwd=context.cwd,
+            diagnostics=context.diagnostics,
+            signal=context.signal,
+            model=context.model,
+            event_sink=context.event_sink,
+            exec_service=context.exec_service,
+        )
+        return await _invoke_decorated_tool(
+            self.spec,
+            action.execution_arguments,
+            context_parameter_name=self.context_parameter_name,
+            context=tool_context,
+        )
+
+
+async def _invoke_decorated_tool(
     spec: DecoratedToolSpec,
+    params: Mapping[str, Any],
     *,
-    context_provider: ToolContextProvider | None = None,
-    context_parameter_name: str | None = None,
-) -> _DecoratedToolExecute:
-    return _DecoratedToolExecute(
-        spec=spec,
-        context_provider=context_provider,
-        context_parameter_name=(
-            context_parameter_name
-            if context_parameter_name is not None
-            else _resolve_context_parameter_name(spec.fn)
-        ),
-    )
+    context_parameter_name: str | None,
+    context: ToolContext,
+) -> AgentToolResult[Any]:
+    call_params = {
+        str(name): _thaw_execution_value(value)
+        for name, value in params.items()
+    }
+    if context_parameter_name is not None:
+        call_params[context_parameter_name] = context
+    bound = signature(spec.fn).bind_partial(**call_params)
+    result = spec.fn(*bound.args, **bound.kwargs)
+    if inspect.isawaitable(result):
+        result = await result
+    return _normalize_plain_return_value(result)
+
+
+def _thaw_execution_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(name): _thaw_execution_value(item)
+            for name, item in value.items()
+        }
+    if isinstance(value, tuple):
+        return [_thaw_execution_value(item) for item in value]
+    return value
 
 
 def _resolve_decorated_spec(obj: object) -> DecoratedToolSpec:
@@ -151,11 +178,59 @@ def _resolve_decorated_spec(obj: object) -> DecoratedToolSpec:
 
 
 def tool_to_definition(
-    obj: ToolDefinition | DecoratedToolSpec | DecoratedTool | object,
+    obj: ToolDefinition,
 ) -> ToolDefinition:
     if isinstance(obj, ToolDefinition):
         return obj
-    obj = _resolve_decorated_spec(obj)
+    raise TypeError(
+        "decorated tools require an explicit direct_tool(...) or "
+        "authorized_tool(...) binding"
+    )
+
+
+def direct_tool(
+    obj: DecoratedToolSpec | DecoratedTool | object,
+) -> ToolDefinition:
+    spec = _resolve_decorated_spec(obj)
+    context_parameter_name = _resolve_context_parameter_name(spec.fn)
+    return _build_decorated_definition(
+        spec,
+        execution=DirectExecution(
+            _DecoratedDirectHandler(
+                spec,
+                context_parameter_name=context_parameter_name,
+            )
+        ),
+        context_parameter_name=context_parameter_name,
+    )
+
+
+def authorized_tool(
+    obj: DecoratedToolSpec | DecoratedTool | object,
+    *,
+    action: ToolActionAdapter,
+) -> ToolDefinition:
+    spec = _resolve_decorated_spec(obj)
+    context_parameter_name = _resolve_context_parameter_name(spec.fn)
+    return _build_decorated_definition(
+        spec,
+        execution=AuthorizedExecution(
+            action_adapter=action,
+            handler=_DecoratedAuthorizedHandler(
+                spec,
+                context_parameter_name=context_parameter_name,
+            ),
+        ),
+        context_parameter_name=context_parameter_name,
+    )
+
+
+def _build_decorated_definition(
+    obj: DecoratedToolSpec,
+    *,
+    execution: DirectExecution | AuthorizedExecution,
+    context_parameter_name: str | None,
+) -> ToolDefinition:
 
     name = obj.name if obj.name is not None else obj.fn.__name__
     description = (
@@ -177,9 +252,7 @@ def tool_to_definition(
         label=label,
         description=description,
         parameters=parameters,
-        execute=build_decorated_execute(
-            obj, context_parameter_name=context_parameter_name
-        ),
+        execution=execution,
         prompt_snippet=obj.prompt_snippet,
         prompt_guidelines=obj.prompt_guidelines,
     )
