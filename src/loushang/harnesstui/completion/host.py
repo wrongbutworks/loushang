@@ -27,21 +27,11 @@ CompletionProviderSource = Callable[
 
 
 @dataclass(frozen=True, slots=True)
-class CatalogSlashAlias:
-    """A product-declared alias enabled by another prepared command."""
-
-    trigger_value: str
-    value: str
-    description: str
-
-
-@dataclass(frozen=True, slots=True)
 class CatalogCompletionProfile:
     """Product policy and wording for prepared catalog completion."""
 
     model_command_value: str
     model_argument_group: str
-    slash_aliases: tuple[CatalogSlashAlias, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,17 +88,6 @@ class PreparedCatalogCompletionHost:
             )
             for item in command_provider.items
         ]
-        command_values = {item.value for item in command_provider.items}
-        commands.extend(
-            SlashCommand(
-                name=alias.value.removeprefix("/"),
-                label=alias.value,
-                description=alias.description,
-            )
-            for alias in self.profile.slash_aliases
-            if alias.trigger_value in command_values
-            and alias.value not in command_values
-        )
         return SlashCommandCompletionProvider(tuple(commands))
 
 
@@ -145,7 +124,6 @@ async def _resolve_provider(source: CompletionProviderSource) -> CompletionProvi
 
 __all__ = [
     "CatalogCompletionProfile",
-    "CatalogSlashAlias",
     "CompletionProviderSource",
     "PreparedCatalogCompletionHost",
     "build_session_catalog_completion_host",

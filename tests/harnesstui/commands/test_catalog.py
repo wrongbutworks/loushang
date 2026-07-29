@@ -10,6 +10,7 @@ from loushang.harnesstui.conversation.host import ConversationHostRoute
 from loushang.harnesstui.conversation.intents import (
     FollowUpIntent,
     PromptIntent,
+    QuitIntent,
     SettingsIntent,
 )
 
@@ -99,6 +100,24 @@ def test_preserves_local_command_argument_rules() -> None:
     assert catalog.lookup("/commands model").name == "commands"
     assert catalog.lookup("/config").name == "config"
     assert catalog.lookup("/terminal extra") is None
+
+
+def test_quit_and_exit_are_listed_without_owning_dispatch() -> None:
+    catalog = ConversationCommandCatalog(session_commands=lambda: [])
+
+    by_name = {command.name: command for command in catalog.commands()}
+    assert by_name["quit"].kind is CommandKind.LOCAL_UI
+    assert by_name["exit"].kind is CommandKind.LOCAL_UI
+
+    assert catalog.lookup("/quit").name == "quit"
+    assert catalog.lookup("/exit").name == "exit"
+    assert catalog.lookup("/quit now") is None
+
+    # Dispatch still owns QuitIntent exits; the catalog declares no routes.
+    assert catalog.effect_for_route("quit", QuitIntent()) is None
+    assert (
+        catalog.effect_for_route(ConversationHostRoute.DISPATCH, QuitIntent()) is None
+    )
 
 
 def test_lists_local_and_session_commands_once() -> None:

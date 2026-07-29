@@ -1202,7 +1202,7 @@ def test_shared_completion_host_does_not_own_coding_catalog_or_path_policy() -> 
         "PreparedCatalogCompletionHost",
         'model_command_value="/model"',
         'model_argument_group="Models"',
-        'CatalogSlashAlias("/quit", "/exit", "Quit loushang")',
+        "build_session_catalog_completion_host",
         "coding_completion_host",
         "base_path=base_path",
     ):
