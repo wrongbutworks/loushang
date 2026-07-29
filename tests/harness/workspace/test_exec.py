@@ -207,6 +207,23 @@ def test_exec_service_runs_subprocess_and_preserves_interleaved_chunks(
     ]
 
 
+def test_exec_service_accepts_a_process_that_exits_without_reading_stdin(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        result = await ExecService().execute(
+            ExecRequest(
+                command=["/bin/true"],
+                cwd=str(tmp_path),
+                stdin="ignored\n" * 131_072,
+            )
+        )
+
+        assert result.exit_code == 0
+
+    asyncio.run(scenario())
+
+
 def test_exec_service_builds_tail_preview_and_full_output_artifact(
     tmp_path: Path,
 ) -> None:

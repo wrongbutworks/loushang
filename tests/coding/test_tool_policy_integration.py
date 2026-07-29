@@ -580,3 +580,73 @@ def test_headless_approval_resolver_modes_are_stable(tmp_path) -> None:
         getattr(exc.value, "tool_result_details", None)["approval_decision"] == "deny"
     )
     assert not (tmp_path / "denied-headless.txt").exists()
+
+
+def test_persistent_permission_never_overrides_current_managed_deny(tmp_path) -> None:
+    from loushang.coding.policy import (
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+        PolicyEngine,
+    )
+    from loushang.harness.approval import (
+        ApprovalGrantProposal,
+        ApprovalRequest,
+        InMemoryApprovalPolicyRuleStore,
+        PolicyAmendmentProposal,
+    )
+    from loushang.harness.policy import (
+        build_tool_policy_subject,
+        normalize_command_subject,
+    )
+    from loushang.harness.tools.workspace.policy import (
+        PolicyEnforcementError,
+        enforce_tool_policy,
+    )
+
+    proposal = ApprovalGrantProposal(
+        capability="git.publish_refs",
+        constraints=(
+            ("repository", str(tmp_path)),
+            ("remote", "origin"),
+            ("force", "false"),
+        ),
+        summary="Publish non-force refs to origin from this repository",
+    )
+    amendment = PolicyAmendmentProposal(scope="project", grant=proposal)
+    request = ApprovalRequest(
+        tool_name="bash",
+        arguments={"command": "git push origin main"},
+        cwd=str(tmp_path),
+        action_id="seed-policy-rule",
+        session_grant=proposal,
+        policy_amendments=(amendment,),
+    )
+    store = InMemoryApprovalPolicyRuleStore("project")
+    store.issue(request, amendment)
+    resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny")
+    )
+    resolver.set_policy_stores({"project": store})
+
+    with pytest.raises(PolicyEnforcementError) as error:
+        asyncio.run(
+            enforce_tool_policy(
+                PolicyEngine(blocked_substrings=("git push",)),
+                tool_name="bash",
+                arguments={"command": "git push origin main"},
+                cwd=str(tmp_path),
+                policy_subject=build_tool_policy_subject(
+                    tool_name="bash",
+                    arguments={"command": "git push origin main"},
+                    cwd=str(tmp_path),
+                    command=normalize_command_subject(
+                        ("/bin/sh", "-lc", "git push origin main"),
+                        cwd=str(tmp_path),
+                    ),
+                ),
+                approval_resolver=resolver,
+            )
+        )
+
+    assert error.value.tool_result_details["policy_disposition"] == "deny"
+    assert resolver.permissions_snapshot().project_rules

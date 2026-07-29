@@ -75,6 +75,11 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
                 "model_label",
                 label,
             ),
+            set_permission_profile_label=lambda label: setattr(
+                app.state,
+                "permission_profile",
+                label,
+            ),
             build_settings_content=self._build_settings_content,
             terminal_diagnostics=self._terminal_diagnostics,
             hotkeys=format_hotkeys,

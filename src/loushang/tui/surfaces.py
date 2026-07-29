@@ -382,6 +382,14 @@ class CommandSurface(SelectionSurface):
 
 
 @dataclass(slots=True)
+class ApprovalChoice:
+    value: str
+    label: str
+    shortcut: str
+    tone: Literal["allow", "session", "persistent", "deny"] = "allow"
+
+
+@dataclass(slots=True)
 class ApprovalSurface:
     action: str
     risk: str = ""
@@ -391,6 +399,7 @@ class ApprovalSurface:
     grant_summary: str = ""
     action_id: str | None = None
     allow_session: bool = False
+    options: tuple[ApprovalChoice, ...] = ()
     focused: bool = False
     selected_index: int = 0
     theme: ThemeResolver | None = None
@@ -408,13 +417,10 @@ class ApprovalSurface:
             value = event.key.lower()
         else:
             return None
-        if value == "y":
-            return self._intent("once")
-        if value == "a" and self.allow_session:
-            return self._intent("session")
-        if value == "n":
-            return self._intent("deny")
         choices = self._choices()
+        for choice in choices:
+            if value == choice.shortcut:
+                return self._intent(choice.value)
         if value in {"up", "down"}:
             delta = -1 if value == "up" else 1
             self.selected_index = (self.selected_index + delta) % len(choices)
@@ -426,15 +432,13 @@ class ApprovalSurface:
             self.selected_index = len(choices) - 1
             return InputIntent(kind="consumed", note="approval_selection")
         if value == "enter":
-            return self._intent(choices[self.selected_index][0])
+            return self._intent(choices[self.selected_index].value)
         if value.isdigit():
             choice_index = int(value) - 1
             if 0 <= choice_index < len(choices):
-                return self._intent(choices[choice_index][0])
+                return self._intent(choices[choice_index].value)
         if value in {"esc", "escape"}:
-            # An approval is a live execution gate. Merely hiding it would
-            # leave the guarded execution suspended indefinitely.
-            return self._intent("deny")
+            return self._intent("abort")
         return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
@@ -472,26 +476,26 @@ class ApprovalSurface:
                 )
             )
         raw_lines.append("")
-        for index, (value, label, shortcut, token) in enumerate(
+        for index, choice in enumerate(
             self._choices(),
             start=1,
         ):
             marker = "›" if index - 1 == self.selected_index else " "
             prefix = f"{marker} {index}. "
-            suffix = f" ({shortcut})"
+            suffix = f" ({choice.shortcut})"
             label_width = max(
                 1,
                 autowrap_safe_width(constraints.width)
                 - visible_width(prefix)
                 - visible_width(suffix),
             )
-            choice = (
-                f"{prefix}{truncate_to_width(label, max_width=label_width)}{suffix}"
+            rendered_choice = (
+                f"{prefix}{truncate_to_width(choice.label, max_width=label_width)}{suffix}"
             )
             raw_lines.append(
                 self._styled_choice(
-                    choice.rstrip(),
-                    token,
+                    rendered_choice.rstrip(),
+                    self._choice_token(choice),
                     selected=index - 1 == self.selected_index,
                 )
             )
@@ -499,32 +503,44 @@ class ApprovalSurface:
 
     def _choices(
         self,
-    ) -> tuple[tuple[str, str, str, str], ...]:
-        choices: list[tuple[str, str, str, str]] = [
-            ("once", "Allow this action once", "y", "approval.choice.allow"),
+    ) -> tuple[ApprovalChoice, ...]:
+        if self.options:
+            choices = list(self.options)
+            self.selected_index = max(0, min(self.selected_index, len(choices) - 1))
+            return tuple(choices)
+        choices: list[ApprovalChoice] = [
+            ApprovalChoice("allow_once", "Allow this action once", "y"),
         ]
         if self.allow_session:
             choices.append(
-                (
-                    "session",
+                ApprovalChoice(
+                    "allow_session",
                     self.grant_summary or "Allow matching actions for this session",
                     "a",
-                    "approval.choice.session",
+                    "session",
                 )
             )
-        choices.append(("deny", "Deny", "n", "approval.choice.deny"))
+        choices.append(
+            ApprovalChoice("deny", "Deny and let the agent continue", "n", "deny")
+        )
         self.selected_index = max(0, min(self.selected_index, len(choices) - 1))
         return tuple(choices)
 
     def _intent(self, value: str) -> InputIntent:
-        kind: InputIntentKind
-        if value == "once":
-            kind = "approve"
-        elif value == "session":
-            kind = "approve_session"
-        else:
-            kind = "reject"
-        return InputIntent(kind=kind, note=self.action_id or "")
+        return InputIntent(
+            kind="approval_decision",
+            text=value,
+            note=self.action_id or "",
+        )
+
+    @staticmethod
+    def _choice_token(choice: ApprovalChoice) -> str:
+        return {
+            "allow": "approval.choice.allow",
+            "session": "approval.choice.session",
+            "persistent": "approval.choice.persistent",
+            "deny": "approval.choice.deny",
+        }[choice.tone]
 
     def _styled(self, text: str, token: str) -> str:
         if self.theme is None:

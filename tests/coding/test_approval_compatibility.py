@@ -164,11 +164,9 @@ def test_coding_session_approval_presents_the_policy_bounded_scope() -> None:
         payloads[0]["grant_summary"]
         == "Publish main to origin from this repository"
     )
-    assert payloads[0]["approval_options"] == (
-        "allow_once",
-        "allow_session",
-        "deny",
-    )
+    assert tuple(
+        option["outcome"] for option in payloads[0]["approval_options"]
+    ) == ("allow_once", "allow_session", "deny")
 
 
 def test_coding_approval_action_shows_redacted_command_instead_of_repeating_risk() -> (

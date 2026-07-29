@@ -17,14 +17,15 @@ from loushang.agent import AgentEvent
 from loushang.ai.model import ModelSelection
 from loushang.ai.types import AssistantMessage
 from loushang.harness.approval import (
+    ApprovalOutcome,
     ApprovalPermissionsSnapshot,
-    ApprovalScope,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticPhase
 from loushang.harness.events import (
     CompactionReason,
     PackageProgressChanged,
+    PermissionProfileChanged,
     project_session_runtime_event,
 )
 from loushang.harness.extensions.agent import ExtensionAgentHookRuntime
@@ -34,6 +35,12 @@ from loushang.harness.extensions.context import (
     SessionBeforeTreeEvent,
     SessionShutdownEvent,
     SessionStartEvent,
+)
+from loushang.harness.permissions import (
+    PermissionProfileScope,
+    PermissionProfileSnapshot,
+    permission_profile,
+    permission_profile_snapshot,
 )
 from loushang.harness.resources.packages.materializer import PackageProgressEvent
 from loushang.harness.runtime import copy_file_exclusive
@@ -224,31 +231,98 @@ class AgentSessionAdapterMixin:
         reason = event.get("reason")
         if reason is not None and not isinstance(reason, str):
             reason = None
-        scope = event.get("scope", "once")
-        if scope not in {"once", "session"}:
-            return False
-        return await self._approval_resolver.handle_result(
+        outcome = event.get("outcome")
+        if outcome not in {
+            "allow_once",
+            "allow_session",
+            "allow_project",
+            "allow_user",
+            "deny",
+            "abort",
+        }:
+            scope = event.get("scope", "once")
+            if scope not in {"once", "session"}:
+                return False
+            outcome = (
+                "allow_session"
+                if bool(event.get("approved")) and scope == "session"
+                else "allow_once"
+                if bool(event.get("approved"))
+                else "deny"
+            )
+        accepted = await self._approval_resolver.handle_result(
             action_id=action_id,
-            approved=bool(event.get("approved")),
+            outcome=cast(ApprovalOutcome, outcome),
             reason=reason,
-            scope=cast(ApprovalScope, scope),
         )
+        if accepted and outcome == "abort":
+            self.abort()
+        return accepted
 
     def get_approval_permissions(self) -> ApprovalPermissionsSnapshot:
         if self._approval_resolver is None:
             return ApprovalPermissionsSnapshot()
         return self._approval_resolver.permissions_snapshot()
 
+    def get_permission_profile_snapshot(self) -> PermissionProfileSnapshot:
+        getter = getattr(
+            self._settings_controller,
+            "get_permission_profile_snapshot",
+            None,
+        )
+        if not callable(getter):
+            return permission_profile_snapshot("standard")
+        snapshot = getter()
+        if not isinstance(snapshot, PermissionProfileSnapshot):
+            raise TypeError(
+                "settings permission profile getter must return "
+                "PermissionProfileSnapshot"
+            )
+        return snapshot
+
     async def apply_approval_permission_action(self, action: str) -> bool:
-        if self._approval_resolver is None:
-            return False
         kind, separator, permission_id = action.partition(":")
         if not separator or not permission_id:
+            return False
+        if kind == "set-profile":
+            scope, scope_separator, profile_id = permission_id.partition(":")
+            if (
+                not scope_separator
+                or scope not in {"session", "project", "user"}
+                or not profile_id
+            ):
+                return False
+            setter = getattr(
+                self._settings_controller,
+                "set_permission_profile",
+                None,
+            )
+            if not callable(setter):
+                return False
+            requested = permission_profile(profile_id).profile_id
+            before = self.get_permission_profile_snapshot().effective_profile.profile_id
+            setter(
+                requested,
+                scope=cast(PermissionProfileScope, scope),
+            )
+            after = self.get_permission_profile_snapshot()
+            await self._dispatch_event(
+                PermissionProfileChanged(
+                    previous_profile_id=before,
+                    requested_profile_id=requested,
+                    effective_profile_id=after.effective_profile.profile_id,
+                    scope=cast(PermissionProfileScope, scope),
+                )
+            )
+            return True
+        if self._approval_resolver is None:
             return False
         if kind == "reopen":
             return await self._approval_resolver.represent_request(permission_id)
         if kind == "revoke":
             return self._approval_resolver.revoke_grant(permission_id)
+        if kind == "revoke-policy":
+            return self._approval_resolver.revoke_policy_rule(permission_id)
         return False
 
     def _stage_session_approvals(self) -> None:

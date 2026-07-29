@@ -18,6 +18,7 @@ class StatusLineSettings:
     workspace: bool = True
     branch: bool = True
     session: bool = True
+    permissions: bool = True
     runtime: bool = True
     queue: StatusLineAutoValue = "auto"
     message: StatusLineAutoValue = "auto"
@@ -32,6 +33,7 @@ class StatusLinePreviewSnapshot:
     branch: str | None
     session_label: str | None
     running: bool
+    permission_profile: str | None = None
     pending_followups: int = 0
     pending_steers: int = 0
     status_message: str | None = None
@@ -50,6 +52,14 @@ def status_line_fields(
         fields.append(StatusField(snapshot.branch or "no-branch", priority=80, token="branch"))
     if settings.session:
         fields.append(StatusField(snapshot.session_label or "no-session", priority=70, token="session"))
+    if settings.permissions:
+        fields.append(
+            StatusField(
+                f"perm={snapshot.permission_profile or 'standard'}",
+                priority=35,
+                token="permissions",
+            )
+        )
     if settings.runtime:
         runtime_text = "running" if snapshot.running else "idle"
         runtime_token = "runtime.running" if snapshot.running else "runtime.idle"
@@ -89,6 +99,9 @@ def status_line_settings_from_control(settings: object | None) -> StatusLineSett
         workspace=bool(_setting_value(settings, "workspace", defaults.workspace)),
         branch=bool(_setting_value(settings, "branch", defaults.branch)),
         session=bool(_setting_value(settings, "session", defaults.session)),
+        permissions=bool(
+            _setting_value(settings, "permissions", defaults.permissions)
+        ),
         runtime=bool(_setting_value(settings, "runtime", defaults.runtime)),
         queue=cast(StatusLineAutoValue, _setting_value(settings, "queue", defaults.queue)),
         message=cast(StatusLineAutoValue, _setting_value(settings, "message", defaults.message)),
@@ -104,6 +117,7 @@ def status_line_settings_to_patch(settings: StatusLineSettings) -> dict[str, obj
         "workspace": settings.workspace,
         "branch": settings.branch,
         "session": settings.session,
+        "permissions": settings.permissions,
         "runtime": settings.runtime,
         "queue": settings.queue,
         "message": settings.message,

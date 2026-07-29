@@ -91,6 +91,7 @@ from loushang.harnesstui.surface.workflow import (
     normalize_standard_conversation_surface_command,
     strip_available_models_heading,
 )
+from loushang.tui import ApprovalChoice
 from loushang.tui.transcript import DisplayRecord
 
 Cleanup = Callable[[], None]
@@ -180,6 +181,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
             self.app.state.session_label = session_label(active_session())
             self.app.request_render("product")
 
+        self.app.state.permission_profile = permission_profile_id(active_session())
         status_provider = StatusProvider(
             model_label=self.startup.model_label,
             cwd=self.startup.cwd,
@@ -187,6 +189,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
             session_label=lambda: session_label(active_session()),
             thinking_level=lambda: thinking_level(active_session()),
             running=lambda: self.app.state.running or is_running(active_session()),
+            permission_profile=lambda: permission_profile_id(active_session()),
             statusline_settings=statusline_settings_from_store(settings_manager),
             on_statusline_settings_changed=(
                 statusline_settings_persistence_callback(settings_manager)
@@ -253,6 +256,7 @@ def build_agent_screen_surface_workflow_ports(
     session_provider: Callable[[], object] | None = None,
     select_model: Callable[[str], Awaitable[str]],
     set_model_label: Callable[[str], None],
+    set_permission_profile_label: Callable[[str], None] | None = None,
     build_settings_content: Callable[[], Awaitable[object]],
     terminal_diagnostics: Callable[[], str],
     hotkeys: Callable[[], str],
@@ -308,6 +312,7 @@ def build_agent_screen_surface_workflow_ports(
             event = {
                 "action_id": payload.action_id,
                 "action": payload.action,
+                "outcome": payload.outcome,
                 "approved": payload.approved,
                 "scope": payload.scope,
                 "raw_note": payload.raw_note,
@@ -315,10 +320,15 @@ def build_agent_screen_surface_workflow_ports(
         return await on_approval(event)
 
     def build_permissions_surface() -> ScreenSurfaceView:
-        getter = getattr(active_session(), "get_approval_permissions", None)
+        active = active_session()
+        getter = getattr(active, "get_approval_permissions", None)
+        profile_getter = getattr(active, "get_permission_profile_snapshot", None)
         if not callable(getter):
             raise RuntimeError("Session permissions are not available.")
-        return build_permissions_surface_view(getter())
+        return build_permissions_surface_view(
+            getter(),
+            profile_snapshot=(profile_getter() if callable(profile_getter) else None),
+        )
 
     async def apply_permission_action(action: str) -> bool:
         apply_action = getattr(
@@ -331,7 +341,10 @@ def build_agent_screen_surface_workflow_ports(
         result = apply_action(action)
         if inspect.isawaitable(result):
             result = await result
-        return bool(result)
+        accepted = bool(result)
+        if accepted and set_permission_profile_label is not None:
+            set_permission_profile_label(permission_profile_id(active_session()))
+        return accepted
 
     return ScreenSurfaceWorkflowPorts(
         select_model=select_model,
@@ -385,6 +398,16 @@ def _agent_session_commands_provider(
     return getter if callable(getter) else None
 
 
+def permission_profile_id(session: object) -> str:
+    getter = getattr(session, "get_permission_profile_snapshot", None)
+    if not callable(getter):
+        return "standard"
+    snapshot = getter()
+    effective = getattr(snapshot, "effective_profile", None)
+    profile_id = getattr(effective, "profile_id", None)
+    return profile_id if isinstance(profile_id, str) and profile_id else "standard"
+
+
 class AgentScreenApprovalSurface(Protocol):
     """Approval controls supplied by an Agent conversation screen surface."""
 
@@ -399,6 +422,7 @@ class AgentScreenApprovalSurface(Protocol):
         grant_summary: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
+        options: tuple[ApprovalChoice, ...] = (),
     ) -> None: ...
 
     def dismiss_approval(self, action_id: str) -> None: ...
@@ -443,8 +467,9 @@ def bind_agent_screen_approval_presenter(
         grant_summary = payload.get("grant_summary")
         action_id = payload.get("action_id")
         approval_options = payload.get("approval_options")
-        allow_session = isinstance(approval_options, (list, tuple)) and (
-            "allow_session" in approval_options
+        options = _approval_choices(approval_options)
+        allow_session = any(
+            option.value == "allow_session" for option in options
         )
         surface.open_approval(
             action=action if isinstance(action, str) else default_action,
@@ -457,6 +482,7 @@ def bind_agent_screen_approval_presenter(
             ),
             action_id=action_id if isinstance(action_id, str) else None,
             allow_session=allow_session,
+            options=options,
         )
 
     setter(present, dismisser=surface.dismiss_approval)
@@ -468,6 +494,59 @@ def bind_agent_screen_approval_presenter(
             _unbind_agent_screen_approval_presenter(session)
 
     return unbind
+
+
+def _approval_choices(value: object) -> tuple[ApprovalChoice, ...]:
+    if isinstance(value, str) or not isinstance(value, (list, tuple)):
+        return ()
+    choices: list[ApprovalChoice] = []
+    for raw in value:
+        if raw == "allow_once":
+            choices.append(
+                ApprovalChoice("allow_once", "Allow this action once", "y")
+            )
+            continue
+        if raw == "allow_session":
+            choices.append(
+                ApprovalChoice(
+                    "allow_session",
+                    "Allow matching actions for this session",
+                    "s",
+                    "session",
+                )
+            )
+            continue
+        if raw == "deny":
+            choices.append(
+                ApprovalChoice(
+                    "deny",
+                    "Deny and let the agent continue",
+                    "n",
+                    "deny",
+                )
+            )
+            continue
+        if not isinstance(raw, dict):
+            continue
+        outcome = raw.get("outcome")
+        label = raw.get("label")
+        shortcut = raw.get("shortcut")
+        tone = raw.get("tone", "allow")
+        if (
+            isinstance(outcome, str)
+            and isinstance(label, str)
+            and isinstance(shortcut, str)
+            and tone in {"allow", "session", "persistent", "deny"}
+        ):
+            choices.append(
+                ApprovalChoice(
+                    value=outcome,
+                    label=label,
+                    shortcut=shortcut,
+                    tone=tone,
+                )
+            )
+    return tuple(choices)
 
 
 def current_agent_runtime_session(runtime: object, fallback: object) -> object:
@@ -536,6 +615,7 @@ async def refresh_agent_screen_session(
     app.state.cwd = snapshot.cwd
     app.state.branch = snapshot.branch
     app.state.session_label = snapshot.session_label
+    app.state.permission_profile = permission_profile_id(session)
     app.replace_transcript_window(history, reason="resume")
     app.trim_active_transcript_window()
     event_source.rebind(session)

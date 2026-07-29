@@ -29,6 +29,7 @@ from loushang.harness.config.agent.types import (
     KeybindingValue,
     MarkdownSettings,
     MethodSettings,
+    PermissionSettings,
     QueueMode,
     RetrySettings,
     SandboxSettings,
@@ -41,6 +42,14 @@ from loushang.harness.config.agent.types import (
     ToolSettings,
     TreeFilterMode,
     WarningSettings,
+)
+from loushang.harness.permissions import (
+    PermissionProfileCeiling,
+    PermissionProfileId,
+    PermissionProfileScope,
+    PermissionProfileSnapshot,
+    permission_profile,
+    permission_profile_snapshot,
 )
 from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
@@ -187,6 +196,13 @@ def _deserialize_headless_approval_mode(value: object) -> HeadlessApprovalMode |
     if value not in {"allow", "deny"}:
         raise ValueError("approval_mode must be 'allow', 'deny', or null")
     return value
+
+
+def _deserialize_permission_profile(value: object) -> PermissionProfileId:
+    if not isinstance(value, str):
+        raise TypeError("permissions.profile must be a string")
+    permission_profile(value)
+    return cast(PermissionProfileId, value)
 
 
 def _deserialize_statusline_auto_value(
@@ -350,7 +366,15 @@ def _serialize_statusline_settings(value: object) -> dict[str, Any]:
     normalized: dict[str, Any] = {}
     for key, item in value.items():
         field_name = f"statusline.{key}"
-        if key in {"enabled", "model", "workspace", "branch", "session", "runtime"}:
+        if key in {
+            "enabled",
+            "model",
+            "workspace",
+            "branch",
+            "session",
+            "permissions",
+            "runtime",
+        }:
             normalized[key] = _bool_value(item, field_name)
         elif key in {"queue", "message"}:
             normalized[key] = _deserialize_statusline_auto_value(item, field_name)
@@ -445,6 +469,23 @@ def _apply_statusline_settings_patch(
 ) -> StatusLineControlSettings:
     patch = _serialize_statusline_settings(patch_value)
     return replace(current, **patch)
+
+
+def _apply_permission_settings_patch(
+    current: PermissionSettings,
+    patch_value: object,
+) -> PermissionSettings:
+    if not isinstance(patch_value, Mapping):
+        raise TypeError("permissions must be a JSON object")
+    unknown = set(patch_value) - {"profile"}
+    if unknown:
+        raise ValueError(f"Unknown permission setting: permissions.{sorted(unknown)[0]}")
+    if "profile" not in patch_value:
+        return current
+    return replace(
+        current,
+        profile=_deserialize_permission_profile(patch_value["profile"]),
+    )
 
 
 def _decode_bool(field_name: str):
@@ -621,6 +662,14 @@ _CONTROL_CONFIG_CODEC = SchemaConfigCodec(
             )
         ),
         ConfigFieldSpec(
+            "permissions",
+            decode=lambda raw, current: _apply_permission_settings_patch(
+                cast(PermissionSettings, current), raw
+            ),
+            encode=encode_dataclass_diff,
+            recover_errors=(TypeError, ValueError),
+        ),
+        ConfigFieldSpec(
             "tools",
             decode=lambda raw, current: _apply_tool_settings_patch(
                 cast(ToolSettings, current), raw
@@ -688,6 +737,7 @@ class SettingsManager:
         *,
         global_settings_path: str | Path | None = None,
         project_settings_path: str | Path | None = None,
+        permission_profile_ceiling: PermissionProfileCeiling | None = None,
     ) -> None:
         global_path = (
             Path(global_settings_path) if global_settings_path is not None else None
@@ -696,6 +746,9 @@ class SettingsManager:
             Path(project_settings_path) if project_settings_path is not None else None
         )
         self._adapter_errors: list[SettingsError] = []
+        self._permission_profile_ceiling = (
+            permission_profile_ceiling or PermissionProfileCeiling()
+        )
         self._config = SettingsRuntime(
             ScopedConfigRuntime(
                 LayeredConfig(
@@ -788,6 +841,7 @@ class SettingsManager:
         markdown: MarkdownSettings | object = _UNSET,
         warnings: WarningSettings | object = _UNSET,
         method: MethodSettings | Mapping[str, object] | object = _UNSET,
+        permissions: PermissionSettings | Mapping[str, object] | object = _UNSET,
         tools: ToolSettings | Mapping[str, object] | object = _UNSET,
         sandbox: SandboxSettings | Mapping[str, object] | object = _UNSET,
         statusline: StatusLineControlSettings | Mapping[str, object] | object = _UNSET,
@@ -900,6 +954,8 @@ class SettingsManager:
             patch["warnings"] = _serialize_settings_slice(warnings)
         if method is not _UNSET:
             patch["method"] = _serialize_settings_slice(method)
+        if permissions is not _UNSET:
+            patch["permissions"] = _serialize_settings_slice(permissions)
         if tools is not _UNSET:
             patch["tools"] = _serialize_tool_settings(tools)
         if sandbox is not _UNSET:
@@ -1196,6 +1252,39 @@ class SettingsManager:
         scope: SettingsScope = "global",
     ) -> None:
         self.update_settings(scope=scope, method=settings)
+
+    def get_permission_profile_id(self) -> PermissionProfileId:
+        return self._settings.permissions.profile
+
+    def get_permission_profile_ceiling(self) -> PermissionProfileCeiling:
+        return self._permission_profile_ceiling
+
+    def get_permission_profile_snapshot(self) -> PermissionProfileSnapshot:
+        return permission_profile_snapshot(
+            self.get_permission_profile_id(),
+            self._permission_profile_ceiling,
+        )
+
+    def set_permission_profile(
+        self,
+        profile_id: PermissionProfileId | str,
+        *,
+        scope: PermissionProfileScope = "session",
+    ) -> None:
+        resolved_id = _deserialize_permission_profile(profile_id)
+        if not self._permission_profile_ceiling.allows(resolved_id):
+            raise PermissionError(
+                self._permission_profile_ceiling.reason
+                or (
+                    "Permission profile is disabled by the managed ceiling: "
+                    f"{resolved_id}"
+                )
+            )
+        settings_scope: SettingsScope = (
+            "global" if scope == "user" else cast(SettingsScope, scope)
+        )
+        settings = PermissionSettings(profile=resolved_id)
+        self.update_settings(scope=settings_scope, permissions=settings)
 
     def get_tool_settings(self) -> ToolSettings:
         return self._settings.tools

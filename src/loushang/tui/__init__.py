@@ -143,6 +143,7 @@ from loushang.tui.selection_rendering import (
     highlight_selection_by_columns,
 )
 from loushang.tui.surfaces import (
+    ApprovalChoice,
     ApprovalSurface,
     AutocompleteSurface,
     CommandSurface,
@@ -359,6 +360,7 @@ from loushang.tui.ui_parts import (
 
 __all__ = [
     "ApprovalSurface",
+    "ApprovalChoice",
     "AnimationFrameSource",
     "APPLE_TERMINAL_SHIFT_ENTER_SEQUENCE",
     "AutocompleteSurface",

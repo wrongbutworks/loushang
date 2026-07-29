@@ -4,7 +4,10 @@ import os
 import shlex
 from pathlib import Path
 
-from loushang.harness.approval import ApprovalGrantProposal
+from loushang.harness.approval import (
+    ApprovalGrantProposal,
+    PolicyAmendmentProposal,
+)
 from loushang.harness.policy import ToolPolicySubject
 
 _SHELL_CONTROL = frozenset({";", "&&", "||", "|", "&", "(", ")"})
@@ -70,6 +73,19 @@ def propose_session_approval_grant(
     if not tokens:
         return None
     return _git_push_proposal(tokens, cwd=subject.cwd)
+
+
+def propose_policy_amendments(
+    subject: ToolPolicySubject,
+    *,
+    policy_code: str | None,
+) -> tuple[PolicyAmendmentProposal, ...]:
+    """Offer persistent rules only for understood, repository-bound effects."""
+
+    grant = propose_session_approval_grant(subject, policy_code=policy_code)
+    if grant is None:
+        return ()
+    return (PolicyAmendmentProposal(scope="project", grant=grant),)
 
 
 def _simple_command_tokens(
@@ -191,4 +207,7 @@ def _unsafe_refspec(refspec: str) -> bool:
     return bool(separator) and not source
 
 
-__all__ = ["propose_session_approval_grant"]
+__all__ = [
+    "propose_policy_amendments",
+    "propose_session_approval_grant",
+]

@@ -41,6 +41,7 @@ class ScreenConversationState:
     cwd: str = ""
     branch: str | None = None
     session_label: str | None = None
+    permission_profile: str | None = "standard"
     statusline_visible: bool = True
     statusline_settings: StatusLineSettings = field(default_factory=StatusLineSettings)
     _assistant_draft_buffer: StreamingTextBuffer | None = field(

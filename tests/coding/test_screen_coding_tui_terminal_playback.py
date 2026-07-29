@@ -75,7 +75,7 @@ def test_screen_coding_tui_exit_cleanup_clears_bottom_frame_status() -> None:
     runtime.render_now()
 
     before = tuple(strip_control_sequences(line).rstrip() for line in port.screen.visible_lines)
-    assert "kimi | repo | main | abcd | idle" in before
+    assert "kimi | repo | main | abcd | idle | perm=standard" in before
 
     exit_code = finish_tui_exit(runtime=runtime, stdout=StringIO(), exit_code=0)
 
@@ -200,7 +200,7 @@ def test_screen_coding_tui_completion_close_keeps_footer_height_and_cursor_ancho
     assert collapsed.frame.screen_after.cursor_row == collapsed.diagnostics.hardware_cursor_row
     assert recalled.frame is not None
     assert recalled.frame.screen_after.cursor_row == recalled.diagnostics.hardware_cursor_row
-    assert visible.count("kimi | repo | main | abcd | idle") == 1
+    assert visible.count("kimi | repo | main | abcd | idle | perm=standard") == 1
 
 
 def test_screen_coding_tui_active_window_trim_rewrites_viewport_without_clearing_screen() -> None:

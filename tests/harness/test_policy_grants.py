@@ -9,7 +9,10 @@ from loushang.harness.policy import (
     build_tool_policy_subject,
     normalize_command_subject,
 )
-from loushang.harness.policy_grants import propose_session_approval_grant
+from loushang.harness.policy_grants import (
+    propose_policy_amendments,
+    propose_session_approval_grant,
+)
 
 
 def test_git_push_session_grant_ignores_cosmetic_flags_but_keeps_security_scope(
@@ -83,6 +86,29 @@ def test_session_grant_requires_the_policy_effect_that_admitted_it(
     assert (
         propose_session_approval_grant(subject, policy_code="external_api_mutation")
         is None
+    )
+
+
+def test_policy_offers_project_amendment_only_for_safe_typed_publish_scope(
+    tmp_path: Path,
+) -> None:
+    safe = _subject("git push origin main", cwd=tmp_path)
+    destructive = _subject("rm -rf build", cwd=tmp_path)
+
+    amendments = propose_policy_amendments(
+        safe,
+        policy_code="external_publication",
+    )
+
+    assert len(amendments) == 1
+    assert amendments[0].scope == "project"
+    assert amendments[0].grant.capability == "git.publish_refs"
+    assert (
+        propose_policy_amendments(
+            destructive,
+            policy_code="filesystem_deletion",
+        )
+        == ()
     )
 
 

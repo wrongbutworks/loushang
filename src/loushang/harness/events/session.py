@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
+from loushang.harness.permissions import PermissionProfileId, PermissionProfileScope
+
 CompactionReason: TypeAlias = Literal["manual", "threshold", "overflow"]
 PackageProgressType: TypeAlias = Literal["start", "progress", "complete", "error"]
 PackageProgressAction: TypeAlias = Literal[
@@ -120,6 +122,14 @@ class ToolPolicyAuditEvent:
     details: Mapping[str, object]
 
 
+@dataclass(frozen=True)
+class PermissionProfileChanged:
+    previous_profile_id: PermissionProfileId
+    requested_profile_id: PermissionProfileId
+    effective_profile_id: PermissionProfileId
+    scope: PermissionProfileScope
+
+
 SessionRuntimeEventPayload: TypeAlias = (
     QueueChanged
     | ContextCompactionStarted
@@ -131,6 +141,7 @@ SessionRuntimeEventPayload: TypeAlias = (
     | ConversationMetadataChanged
     | PackageProgressChanged
     | ToolPolicyAuditEvent
+    | PermissionProfileChanged
 )
 
 _EVENT_KINDS: dict[type[object], str] = {
@@ -143,6 +154,7 @@ _EVENT_KINDS: dict[type[object], str] = {
     BranchSummaryCompleted: "session.branch_summary_end",
     ConversationMetadataChanged: "session.session_info_changed",
     PackageProgressChanged: "session.package_progress",
+    PermissionProfileChanged: "session.permission_profile_changed",
 }
 
 
@@ -169,6 +181,7 @@ __all__ = [
     "PackageProgressAction",
     "PackageProgressChanged",
     "PackageProgressType",
+    "PermissionProfileChanged",
     "QueueChanged",
     "QueuedMessageSnapshot",
     "QueueKind",

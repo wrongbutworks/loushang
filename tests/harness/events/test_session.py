@@ -9,6 +9,7 @@ from loushang.harness.events import (
     ContextCompactionStarted,
     ConversationMetadataChanged,
     PackageProgressChanged,
+    PermissionProfileChanged,
     QueueChanged,
     RetryCompleted,
     RetryStarted,
@@ -63,6 +64,15 @@ from loushang.harness.events.session import QueueSnapshot, RetryAttempt, RetryOu
                 {"tool_name": "write", "outcome": "completed"},
             ),
             "session.tool_execution_completed",
+        ),
+        (
+            PermissionProfileChanged(
+                previous_profile_id="standard",
+                requested_profile_id="cautious",
+                effective_profile_id="cautious",
+                scope="project",
+            ),
+            "session.permission_profile_changed",
         ),
     ],
 )

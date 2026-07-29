@@ -2,16 +2,27 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any, Literal, Never, Protocol, TypeAlias, TypeVar
 from uuid import uuid4
 
 T = TypeVar("T")
 MaybeAwaitable: TypeAlias = T | Awaitable[T]
 ApprovalScope = Literal["once", "session"]
+PolicyAmendmentScope = Literal["project", "user"]
+ApprovalOutcome = Literal[
+    "allow_once",
+    "allow_session",
+    "allow_project",
+    "allow_user",
+    "deny",
+    "abort",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +52,30 @@ class ApprovalGrantProposal:
         object.__setattr__(self, "constraints", tuple(sorted(constraints)))
 
 
+@dataclass(frozen=True, slots=True)
+class PolicyAmendmentProposal:
+    """A Policy-authored persistent rule offered for one explicit scope."""
+
+    scope: PolicyAmendmentScope
+    grant: ApprovalGrantProposal
+
+    def __post_init__(self) -> None:
+        if self.scope not in {"project", "user"}:
+            raise ValueError(f"Unsupported policy amendment scope: {self.scope}")
+        if not isinstance(self.grant, ApprovalGrantProposal):
+            raise TypeError("policy amendment grant must be an ApprovalGrantProposal")
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalOption:
+    """One Policy-generated choice rendered by an approval client."""
+
+    outcome: ApprovalOutcome
+    label: str
+    shortcut: str
+    tone: Literal["allow", "session", "persistent", "deny"] = "allow"
+
+
 @dataclass(frozen=True)
 class ApprovalRequest:
     tool_name: str
@@ -53,6 +88,7 @@ class ApprovalRequest:
     action_fingerprint: str | None = None
     actor_id: str = "root"
     session_grant: ApprovalGrantProposal | None = None
+    policy_amendments: tuple[PolicyAmendmentProposal, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.tool_name, str) or not self.tool_name:
@@ -78,6 +114,19 @@ class ApprovalRequest:
             raise TypeError(
                 "ApprovalRequest session_grant must be an ApprovalGrantProposal"
             )
+        amendments = tuple(self.policy_amendments)
+        if any(
+            not isinstance(amendment, PolicyAmendmentProposal)
+            for amendment in amendments
+        ):
+            raise TypeError(
+                "ApprovalRequest policy_amendments must contain "
+                "PolicyAmendmentProposal values"
+            )
+        scopes = [amendment.scope for amendment in amendments]
+        if len(scopes) != len(set(scopes)):
+            raise ValueError("ApprovalRequest policy amendment scopes must be unique")
+        object.__setattr__(self, "policy_amendments", amendments)
         object.__setattr__(
             self,
             "arguments",
@@ -87,13 +136,15 @@ class ApprovalRequest:
 
 @dataclass(frozen=True)
 class ApprovalDecision:
-    disposition: Literal["allow", "deny"]
+    disposition: Literal["allow", "deny", "abort"]
     reason: str | None = None
     scope: ApprovalScope = "once"
     grant_id: str | None = None
+    policy_rule_id: str | None = None
+    policy_scope: PolicyAmendmentScope | None = None
 
     def __post_init__(self) -> None:
-        if self.disposition not in {"allow", "deny"}:
+        if self.disposition not in {"allow", "deny", "abort"}:
             raise ValueError(
                 f"Unsupported approval decision disposition: {self.disposition}"
             )
@@ -101,12 +152,32 @@ class ApprovalDecision:
         if self.scope not in {"once", "session"}:
             raise ValueError(f"Unsupported approval decision scope: {self.scope}")
         _validate_optional_string(self.grant_id, "ApprovalDecision grant_id")
+        _validate_optional_string(
+            self.policy_rule_id,
+            "ApprovalDecision policy_rule_id",
+        )
         if self.grant_id == "":
             raise ValueError("ApprovalDecision grant_id must not be empty")
-        if self.disposition == "deny" and (
-            self.scope != "once" or self.grant_id is not None
+        if self.disposition in {"deny", "abort"} and (
+            self.scope != "once"
+            or self.grant_id is not None
+            or self.policy_rule_id is not None
+            or self.policy_scope is not None
         ):
-            raise ValueError("denied approval decisions cannot carry a grant")
+            raise ValueError(
+                "denied and aborted approval decisions cannot carry authorization"
+            )
+        if self.policy_rule_id is not None:
+            if self.disposition != "allow":
+                raise ValueError("policy authorization requires an allowed decision")
+            if self.policy_scope not in {"project", "user"}:
+                raise ValueError("policy authorization requires its persistent scope")
+            if self.scope != "once" or self.grant_id is not None:
+                raise ValueError(
+                    "policy authorization is distinct from a session approval grant"
+                )
+        elif self.policy_scope is not None:
+            raise ValueError("policy scope requires a policy rule id")
         if self.scope == "session" and self.grant_id is None:
             raise ValueError("session approval decisions require a grant id")
         if self.scope == "once" and self.grant_id is not None:
@@ -124,6 +195,23 @@ class ApprovalDecision:
     @classmethod
     def deny(cls, reason: str | None = None) -> "ApprovalDecision":
         return cls(disposition="deny", reason=reason)
+
+    @classmethod
+    def abort(cls, reason: str | None = None) -> "ApprovalDecision":
+        return cls(disposition="abort", reason=reason)
+
+    @classmethod
+    def allow_by_policy(
+        cls,
+        *,
+        rule_id: str,
+        scope: PolicyAmendmentScope,
+    ) -> "ApprovalDecision":
+        return cls(
+            disposition="allow",
+            policy_rule_id=rule_id,
+            policy_scope=scope,
+        )
 
 
 class ApprovalResolver(Protocol):
@@ -158,10 +246,180 @@ class ApprovalGrant:
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovalPolicyRule:
+    """A persisted Policy amendment, never a replay of raw command text."""
+
+    rule_id: str
+    scope: PolicyAmendmentScope
+    proposal: ApprovalGrantProposal
+    source_action_id: str
+
+
+class ApprovalPolicyRuleStore(Protocol):
+    scope: PolicyAmendmentScope
+
+    def find(self, request: ApprovalRequest) -> ApprovalPolicyRule | None: ...
+
+    def issue(
+        self,
+        request: ApprovalRequest,
+        amendment: PolicyAmendmentProposal,
+    ) -> ApprovalPolicyRule: ...
+
+    def revoke(self, rule_id: str) -> bool: ...
+
+    def rules(self) -> tuple[ApprovalPolicyRule, ...]: ...
+
+
+class InMemoryApprovalPolicyRuleStore:
+    """Typed persistent-rule semantics without filesystem persistence."""
+
+    def __init__(self, scope: PolicyAmendmentScope) -> None:
+        self.scope = scope
+        self._rules: dict[ApprovalGrantProposal, ApprovalPolicyRule] = {}
+
+    def find(self, request: ApprovalRequest) -> ApprovalPolicyRule | None:
+        amendment = _request_amendment(request, self.scope)
+        if amendment is None:
+            return None
+        return self._rules.get(amendment.grant)
+
+    def issue(
+        self,
+        request: ApprovalRequest,
+        amendment: PolicyAmendmentProposal,
+    ) -> ApprovalPolicyRule:
+        if amendment.scope != self.scope:
+            raise ValueError(
+                f"{amendment.scope} amendment cannot be stored in {self.scope}"
+            )
+        action_id = request.action_id
+        if action_id is None:
+            raise ValueError("approval request must have an action id before amending")
+        existing = self._rules.get(amendment.grant)
+        if existing is not None:
+            return existing
+        rule = ApprovalPolicyRule(
+            rule_id=f"policy-{uuid4().hex}",
+            scope=self.scope,
+            proposal=amendment.grant,
+            source_action_id=action_id,
+        )
+        self._rules[amendment.grant] = rule
+        return rule
+
+    def revoke(self, rule_id: str) -> bool:
+        for proposal, rule in tuple(self._rules.items()):
+            if rule.rule_id == rule_id:
+                self._rules.pop(proposal, None)
+                return True
+        return False
+
+    def rules(self) -> tuple[ApprovalPolicyRule, ...]:
+        return tuple(self._rules.values())
+
+
+class JsonApprovalPolicyRuleStore(InMemoryApprovalPolicyRuleStore):
+    """JSON-backed typed Policy amendments for one project or user scope."""
+
+    def __init__(self, scope: PolicyAmendmentScope, path: str | Path) -> None:
+        self.path = Path(path)
+        super().__init__(scope)
+        self._load()
+
+    def issue(
+        self,
+        request: ApprovalRequest,
+        amendment: PolicyAmendmentProposal,
+    ) -> ApprovalPolicyRule:
+        rule = super().issue(request, amendment)
+        self._persist()
+        return rule
+
+    def revoke(self, rule_id: str) -> bool:
+        revoked = super().revoke(rule_id)
+        if revoked:
+            self._persist()
+        return revoked
+
+    def _load(self) -> None:
+        if not self.path.exists():
+            return
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        if not isinstance(payload, Mapping):
+            raise ValueError(
+                f"Approval policy payload must be an object: {self.path}"
+            )
+        raw_rules = payload.get("rules", ())
+        if isinstance(raw_rules, str) or not isinstance(raw_rules, (list, tuple)):
+            raise ValueError(f"Approval policy rules must be a list: {self.path}")
+        for raw in raw_rules:
+            if not isinstance(raw, Mapping):
+                raise ValueError(f"Approval policy rule must be an object: {self.path}")
+            scope = raw.get("scope")
+            if scope != self.scope:
+                continue
+            constraints = raw.get("constraints")
+            if not isinstance(constraints, Mapping):
+                raise ValueError(
+                    f"Approval policy constraints must be an object: {self.path}"
+                )
+            proposal = ApprovalGrantProposal(
+                capability=_required_string(raw.get("capability"), "capability"),
+                constraints=tuple(
+                    (
+                        _required_string(key, "constraint key"),
+                        _required_string(value, "constraint value"),
+                    )
+                    for key, value in constraints.items()
+                ),
+                summary=_required_string(raw.get("summary"), "summary"),
+            )
+            rule = ApprovalPolicyRule(
+                rule_id=_required_string(raw.get("rule_id"), "rule_id"),
+                scope=self.scope,
+                proposal=proposal,
+                source_action_id=_required_string(
+                    raw.get("source_action_id"),
+                    "source_action_id",
+                ),
+            )
+            self._rules[proposal] = rule
+
+    def _persist(self) -> None:
+        payload = {
+                "version": 1,
+                "rules": [
+                    {
+                        "rule_id": rule.rule_id,
+                        "scope": rule.scope,
+                        "capability": rule.proposal.capability,
+                        "constraints": dict(rule.proposal.constraints),
+                        "summary": rule.proposal.summary,
+                        "source_action_id": rule.source_action_id,
+                    }
+                    for rule in self.rules()
+                ],
+            }
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = self.path.with_suffix(self.path.suffix + ".tmp")
+        try:
+            temp_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            temp_path.replace(self.path)
+        except BaseException:
+            with suppress(FileNotFoundError):
+                temp_path.unlink()
+            raise
+
+
+@dataclass(frozen=True, slots=True)
 class ApprovalPermission:
     """Safe read model for one pending request or retained session grant."""
 
-    kind: Literal["pending", "grant"]
+    kind: Literal["pending", "session", "project", "user"]
     permission_id: str
     actor_id: str
     capability: str
@@ -174,6 +432,8 @@ class ApprovalPermissionsSnapshot:
 
     pending: tuple[ApprovalPermission, ...] = ()
     grants: tuple[ApprovalPermission, ...] = ()
+    project_rules: tuple[ApprovalPermission, ...] = ()
+    user_rules: tuple[ApprovalPermission, ...] = ()
 
 
 class InMemoryApprovalGrantStore:
@@ -355,12 +615,19 @@ async def find_approval_grant(
     if result is None:
         return None
     decision = _validate_approval_decision(result)
-    if (
-        decision.disposition != "allow"
-        or decision.scope != "session"
-        or decision.grant_id is None
+    is_session_grant = (
+        decision.scope == "session" and decision.grant_id is not None
+    )
+    is_policy_rule = (
+        decision.policy_rule_id is not None
+        and decision.policy_scope in {"project", "user"}
+    )
+    if decision.disposition != "allow" or not (
+        is_session_grant or is_policy_rule
     ):
-        raise ValueError("preauthorized approval must identify a session grant")
+        raise ValueError(
+            "preauthorized approval must identify a session grant or Policy rule"
+        )
     return decision
 
 
@@ -381,20 +648,72 @@ def approval_request_to_dict(request: ApprovalRequest) -> dict[str, object]:
         projection["action_fingerprint"] = request.action_fingerprint
     if request.actor_id != "root":
         projection["actor_id"] = request.actor_id
+    projection["approval_options"] = tuple(
+        {
+            "outcome": option.outcome,
+            "label": option.label,
+            "shortcut": option.shortcut,
+            "tone": option.tone,
+        }
+        for option in approval_options(request)
+    )
     if request.session_grant is not None:
-        projection["approval_options"] = (
-            "allow_once",
-            "allow_session",
-            "deny",
-        )
         projection["session_grant"] = {
             "capability": request.session_grant.capability,
             "constraints": dict(request.session_grant.constraints),
             "summary": request.session_grant.summary,
         }
-    else:
-        projection["approval_options"] = ("allow_once", "deny")
+    if request.policy_amendments:
+        projection["policy_amendments"] = tuple(
+            {
+                "scope": amendment.scope,
+                "capability": amendment.grant.capability,
+                "constraints": dict(amendment.grant.constraints),
+                "summary": amendment.grant.summary,
+            }
+            for amendment in request.policy_amendments
+        )
     return projection
+
+
+def approval_options(request: ApprovalRequest) -> tuple[ApprovalOption, ...]:
+    """Build the exact menu Policy permits for this action."""
+
+    options: list[ApprovalOption] = [
+        ApprovalOption("allow_once", "Allow this action once", "y"),
+    ]
+    if request.session_grant is not None:
+        options.append(
+            ApprovalOption(
+                "allow_session",
+                request.session_grant.summary,
+                "s",
+                "session",
+            )
+        )
+    for amendment in request.policy_amendments:
+        destination = "this project" if amendment.scope == "project" else "this user"
+        options.append(
+            ApprovalOption(
+                (
+                    "allow_project"
+                    if amendment.scope == "project"
+                    else "allow_user"
+                ),
+                f"Always allow for {destination}: {amendment.grant.summary}",
+                "p" if amendment.scope == "project" else "u",
+                "persistent",
+            )
+        )
+    options.append(
+        ApprovalOption(
+            "deny",
+            "Deny and let the agent continue",
+            "n",
+            "deny",
+        )
+    )
+    return tuple(options)
 
 
 def ensure_approval_action_id(request: ApprovalRequest) -> ApprovalRequest:
@@ -666,6 +985,10 @@ class InteractiveApprovalResolver:
     grant_store: InMemoryApprovalGrantStore = field(
         default_factory=InMemoryApprovalGrantStore
     )
+    policy_stores: Mapping[
+        PolicyAmendmentScope,
+        ApprovalPolicyRuleStore,
+    ] = field(default_factory=dict)
     _broker: ApprovalBroker = field(init=False, repr=False)
     _request_presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None = (
         field(default=None, init=False, repr=False)
@@ -685,6 +1008,11 @@ class InteractiveApprovalResolver:
     ] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        stores = dict(self.policy_stores)
+        for scope, store in stores.items():
+            if scope not in {"project", "user"} or store.scope != scope:
+                raise ValueError("approval Policy store scope does not match its key")
+        self.policy_stores = stores
         self._broker = ApprovalBroker(
             fallback=self.fallback,
             timeout_seconds=self.timeout_seconds,
@@ -709,10 +1037,24 @@ class InteractiveApprovalResolver:
     async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
         if not self._session_open:
             return ApprovalDecision.deny(self._session_close_reason)
+        request = replace(
+            request,
+            policy_amendments=tuple(
+                amendment
+                for amendment in request.policy_amendments
+                if amendment.scope in self.policy_stores
+            ),
+        )
         granted = self.preauthorize(request)
         if granted is not None:
             return granted
-        proposal = request.session_grant
+        proposal = request.session_grant or next(
+            (
+                amendment.grant
+                for amendment in request.policy_amendments
+            ),
+            None,
+        )
         if proposal is None:
             return await self._broker.resolve(request)
         key = (request.actor_id, proposal)
@@ -730,9 +1072,33 @@ class InteractiveApprovalResolver:
 
     def preauthorize(self, request: ApprovalRequest) -> ApprovalDecision | None:
         grant = self.grant_store.find(request)
-        if grant is None:
-            return None
-        return ApprovalDecision.allow(scope="session", grant_id=grant.grant_id)
+        if grant is not None:
+            return ApprovalDecision.allow(scope="session", grant_id=grant.grant_id)
+        for scope in ("project", "user"):
+            store = self.policy_stores.get(scope)
+            if store is None:
+                continue
+            rule = store.find(request)
+            if rule is not None:
+                return ApprovalDecision.allow_by_policy(
+                    rule_id=rule.rule_id,
+                    scope=rule.scope,
+                )
+        return None
+
+    def set_policy_stores(
+        self,
+        stores: Mapping[PolicyAmendmentScope, ApprovalPolicyRuleStore],
+    ) -> None:
+        """Bind persistent Policy storage before presenting approval requests."""
+
+        if self._broker.pending_requests():
+            raise RuntimeError("cannot replace Policy stores while approvals are pending")
+        normalized = dict(stores)
+        for scope, store in normalized.items():
+            if scope not in {"project", "user"} or store.scope != scope:
+                raise ValueError("approval Policy store scope does not match its key")
+        self.policy_stores = normalized
 
     def open_session(self) -> None:
         self._session_open = True
@@ -760,7 +1126,7 @@ class InteractiveApprovalResolver:
         )
         grants = tuple(
             ApprovalPermission(
-                kind="grant",
+                kind="session",
                 permission_id=grant.grant_id,
                 actor_id=grant.actor_id,
                 capability=grant.proposal.capability,
@@ -768,7 +1134,25 @@ class InteractiveApprovalResolver:
             )
             for grant in self.grant_store.grants()
         )
-        return ApprovalPermissionsSnapshot(pending=pending, grants=grants)
+        persistent = {
+            scope: tuple(
+                ApprovalPermission(
+                    kind=scope,
+                    permission_id=rule.rule_id,
+                    actor_id="policy",
+                    capability=rule.proposal.capability,
+                    summary=rule.proposal.summary,
+                )
+                for rule in store.rules()
+            )
+            for scope, store in self.policy_stores.items()
+        }
+        return ApprovalPermissionsSnapshot(
+            pending=pending,
+            grants=grants,
+            project_rules=persistent.get("project", ()),
+            user_rules=persistent.get("user", ()),
+        )
 
     async def represent_request(self, action_id: str) -> bool:
         """Present one still-pending request again after its panel was dismissed."""
@@ -785,6 +1169,9 @@ class InteractiveApprovalResolver:
 
     def revoke_grant(self, grant_id: str) -> bool:
         return self.grant_store.revoke(grant_id)
+
+    def revoke_policy_rule(self, rule_id: str) -> bool:
+        return any(store.revoke(rule_id) for store in self.policy_stores.values())
 
     def cancel_actor(
         self,
@@ -807,31 +1194,69 @@ class InteractiveApprovalResolver:
         self,
         action_id: str,
         *,
-        approved: bool,
+        outcome: ApprovalOutcome | None = None,
+        approved: bool | None = None,
         reason: str | None = None,
         scope: ApprovalScope = "once",
     ) -> bool:
+        if outcome is None:
+            outcome = (
+                "allow_session"
+                if approved and scope == "session"
+                else "allow_once"
+                if approved
+                else "deny"
+            )
+        if outcome not in {
+            "allow_once",
+            "allow_session",
+            "allow_project",
+            "allow_user",
+            "deny",
+            "abort",
+        }:
+            raise ValueError(f"Unsupported approval outcome: {outcome}")
         if scope not in {"once", "session"}:
             raise ValueError(f"Unsupported approval scope: {scope}")
         request = self._broker.pending_request(action_id)
         if request is None:
             return False
         grant = None
-        if approved and scope == "session":
+        policy_rule = None
+        if outcome == "allow_session":
             if request.session_grant is None:
                 return False
             grant = self.grant_store.issue(request)
-        decision = (
-            ApprovalDecision.allow(
-                scope=scope,
+            decision = ApprovalDecision.allow(
+                scope="session",
                 grant_id=grant.grant_id if grant is not None else None,
             )
-            if approved
-            else ApprovalDecision.deny(reason)
-        )
+        elif outcome in {"allow_project", "allow_user"}:
+            amendment_scope: PolicyAmendmentScope = (
+                "project" if outcome == "allow_project" else "user"
+            )
+            amendment = _request_amendment(request, amendment_scope)
+            store = self.policy_stores.get(amendment_scope)
+            if amendment is None or store is None:
+                return False
+            policy_rule = store.issue(request, amendment)
+            decision = ApprovalDecision.allow_by_policy(
+                rule_id=policy_rule.rule_id,
+                scope=policy_rule.scope,
+            )
+        elif outcome == "allow_once":
+            decision = ApprovalDecision.allow()
+        elif outcome == "abort":
+            decision = ApprovalDecision.abort(reason)
+        else:
+            decision = ApprovalDecision.deny(reason)
         accepted = self._broker.resolve_request(action_id, decision)
         if not accepted and grant is not None:
             self.grant_store.revoke(grant.grant_id)
+        if not accepted and policy_rule is not None:
+            store = self.policy_stores.get(policy_rule.scope)
+            if store is not None:
+                store.revoke(policy_rule.rule_id)
         return accepted
 
     def close_session(
@@ -952,6 +1377,26 @@ def _validate_optional_string(value: object, field_name: str) -> None:
         raise TypeError(f"{field_name} must be a string or None")
 
 
+def _required_string(value: object, field_name: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return value
+
+
+def _request_amendment(
+    request: ApprovalRequest,
+    scope: PolicyAmendmentScope,
+) -> PolicyAmendmentProposal | None:
+    return next(
+        (
+            amendment
+            for amendment in request.policy_amendments
+            if amendment.scope == scope
+        ),
+        None,
+    )
+
+
 def _require_string_key(key: object) -> str:
     if not isinstance(key, str):
         raise TypeError("ApprovalRequest argument mapping keys must be strings")
@@ -1024,6 +1469,10 @@ __all__ = [
     "ApprovalDecision",
     "ApprovalGrant",
     "ApprovalGrantProposal",
+    "ApprovalOption",
+    "ApprovalOutcome",
+    "ApprovalPolicyRule",
+    "ApprovalPolicyRuleStore",
     "ApprovalPermission",
     "ApprovalPermissionsSnapshot",
     "ApprovalScope",
@@ -1035,9 +1484,14 @@ __all__ = [
     "DenyApprovalResolver",
     "HeadlessApprovalResolver",
     "InMemoryApprovalGrantStore",
+    "InMemoryApprovalPolicyRuleStore",
     "InteractiveApprovalResolver",
+    "JsonApprovalPolicyRuleStore",
     "MaybeAwaitable",
+    "PolicyAmendmentProposal",
+    "PolicyAmendmentScope",
     "ApprovalPayloadProjector",
+    "approval_options",
     "approval_request_to_dict",
     "ensure_approval_action_id",
     "find_approval_grant",

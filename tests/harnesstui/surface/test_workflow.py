@@ -643,13 +643,17 @@ def test_surface_workflow_adapts_approval_decision_and_product_status_copy() -> 
     workflow, _ = _workflow(state=state)
     workflow.open_approval(action="delete cache", action_id="approval-1")
 
-    asyncio.run(workflow.handle_surface_intent(InputIntent(kind="approve")))
+    asyncio.run(
+        workflow.handle_surface_intent(
+            InputIntent(kind="approval_decision", text="allow_once")
+        )
+    )
 
     assert state.approvals == [
         ApprovalSurfaceDecision(
             action_id="approval-1",
             action="delete cache",
-            approved=True,
+            outcome="allow_once",
             raw_note="approval-1",
         )
     ]

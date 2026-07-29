@@ -29,7 +29,7 @@ from loushang.harnesstui.surface.view import (
     ScreenSurfacePresentation,
     ScreenSurfaceView,
 )
-from loushang.tui import InputIntent, RenderRequestKind
+from loushang.tui import ApprovalChoice, InputIntent, RenderRequestKind
 
 ScreenSurfaceCommandKind = Literal[
     "select_model",
@@ -112,6 +112,7 @@ class ScreenSurfaceWorkflowCopy:
     terminal_title: str
     hotkeys_title: str
     settings_title: str
+    approval_aborted: str = "Turn stopped"
 
 
 STANDARD_SCREEN_SURFACE_WORKFLOW_COPY = ScreenSurfaceWorkflowCopy(
@@ -417,6 +418,7 @@ class ScreenSurfaceWorkflow:
         grant_summary: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
+        options: tuple[ApprovalChoice, ...] = (),
     ) -> None:
         current = self.current
         if isinstance(current, ScreenSurfaceView) and current.purpose != "approval":
@@ -430,6 +432,7 @@ class ScreenSurfaceWorkflow:
             grant_summary=grant_summary,
             action_id=action_id,
             allow_session=allow_session,
+            options=options,
         )
 
     def open_approval(
@@ -443,6 +446,7 @@ class ScreenSurfaceWorkflow:
         grant_summary: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
+        options: tuple[ApprovalChoice, ...] = (),
     ) -> None:
         self.present_approval(
             action=action,
@@ -453,6 +457,7 @@ class ScreenSurfaceWorkflow:
             grant_summary=grant_summary,
             action_id=action_id,
             allow_session=allow_session,
+            options=options,
         )
 
     def clear_approvals(self) -> None:
@@ -678,6 +683,8 @@ class ScreenSurfaceWorkflow:
             self.app.set_status(self.copy.approval_stale)
         elif payload is not None and payload.approved:
             self.app.set_status(self.copy.approval_confirmed(payload.action))
+        elif payload is not None and payload.outcome == "abort":
+            self.app.set_status(self.copy.approval_aborted)
         elif payload is not None:
             self.app.set_status(self.copy.approval_rejected)
 
@@ -695,6 +702,14 @@ class ScreenSurfaceWorkflow:
             self.app.set_status("Permission is no longer active.")
         elif payload.startswith("reopen:"):
             self.app.set_status("Approval reopened.")
+        elif payload.startswith("revoke-policy:"):
+            self.app.set_status("Persistent Policy permission revoked.")
+        elif payload.startswith("set-profile:"):
+            _prefix, scope, profile_id = payload.split(":", 2)
+            self.app.set_status(
+                "Permissions updated to "
+                f"{profile_id.replace('_', ' ').title()} ({scope})."
+            )
         else:
             self.app.set_status("Session permission revoked.")
         if (

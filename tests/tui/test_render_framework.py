@@ -377,7 +377,8 @@ def test_surface_host_can_close_on_call_site_intent_policy() -> None:
     approval = ApprovalSurface(action="Run command")
     host.open_surface(Surface(renderable=approval, focus_target=approval))
     approval_intents = host.route_input(
-        InputEvent(kind="key", key="y"), close_on_intents=("approve", "reject")
+        InputEvent(kind="key", key="y"),
+        close_on_intents=("approval_decision",),
     )
 
     dialog = DialogSurface(title="Confirm")
@@ -391,7 +392,9 @@ def test_surface_host_can_close_on_call_site_intent_policy() -> None:
     assert setting_intents == (
         InputIntent(kind="setting", text="statusline", note="true"),
     )
-    assert approval_intents == (InputIntent(kind="approve"),)
+    assert approval_intents == (
+        InputIntent(kind="approval_decision", text="allow_once"),
+    )
     assert dialog_intents == (InputIntent(kind="dialog_confirm"),)
     assert host.entries == []
     assert composer.focused is True

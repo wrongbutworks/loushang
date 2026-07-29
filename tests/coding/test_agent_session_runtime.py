@@ -186,6 +186,46 @@ async def test_session_normalizes_gateway_audit_sequence_into_runtime_stream(
 
 
 @_async_test
+async def test_session_emits_auditable_permission_profile_changes(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import (
+        create_agent_session_runtime,
+        create_services,
+    )
+    from loushang.harness.config.agent import SettingsManager
+    from loushang.harness.events import PermissionProfileChanged
+
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "settings.json",
+        project_settings_path=tmp_path / "project-settings.json",
+    )
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        services=create_services(settings_manager=settings),
+        persist=False,
+    )
+    session = await runtime.create_session(cwd=str(tmp_path))
+    runtime_events = []
+    session.subscribe_runtime_events(runtime_events.append)
+
+    accepted = await session.apply_approval_permission_action(
+        "set-profile:project:cautious"
+    )
+
+    assert accepted is True
+    assert settings.get_permission_profile_id() == "cautious"
+    assert runtime_events[-1].kind == "session.permission_profile_changed"
+    assert runtime_events[-1].payload == PermissionProfileChanged(
+        previous_profile_id="standard",
+        requested_profile_id="cautious",
+        effective_profile_id="cautious",
+        scope="project",
+    )
+
+
+@_async_test
 async def test_runtime_listener_failure_does_not_duplicate_agent_message(
     tmp_path,
 ) -> None:

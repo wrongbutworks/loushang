@@ -478,28 +478,28 @@ def test_approval_surface_returns_explicit_approval_or_rejection() -> None:
         "  writes files",
         "",
         "› 1. Allow this action once (y)",
-        "  2. Deny (n)",
+        "  2. Deny and let the agent continue (n)",
     )
     assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(
-        kind="approve"
+        kind="approval_decision", text="allow_once"
     )
     assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(
-        kind="reject"
+        kind="approval_decision", text="deny"
     )
     assert surface.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
-        kind="reject"
+        kind="approval_decision", text="abort"
     )
     assert surface.handle_input(InputEvent(kind="text", text="y")) == InputIntent(
-        kind="approve"
+        kind="approval_decision", text="allow_once"
     )
     assert surface.handle_input(InputEvent(kind="text", text="n")) == InputIntent(
-        kind="reject"
+        kind="approval_decision", text="deny"
     )
     assert surface.handle_input(InputEvent(kind="text", text="1")) == InputIntent(
-        kind="approve"
+        kind="approval_decision", text="allow_once"
     )
     assert surface.handle_input(InputEvent(kind="text", text="2")) == InputIntent(
-        kind="reject"
+        kind="approval_decision", text="deny"
     )
 
 
@@ -523,7 +523,7 @@ def test_approval_surface_renders_child_requester_provenance() -> None:
         "  writes remote refs",
         "",
         "› 1. Allow this action once (y)",
-        "  2. Deny (n)",
+        "  2. Deny and let the agent continue (n)",
     )
 
 
@@ -543,23 +543,66 @@ def test_approval_surface_exposes_session_choice_only_when_policy_admits_it() ->
         "",
         "› 1. Allow this action once (y)",
         "  2. Allow non-force pushes to origin (a)",
-        "  3. Deny (n)",
+        "  3. Deny and let the agent continue (n)",
     )
     assert surface.handle_input(InputEvent(kind="key", key="a")) == InputIntent(
-        kind="approve_session",
+        kind="approval_decision",
+        text="allow_session",
         note="git:push",
     )
     assert surface.handle_input(InputEvent(kind="key", key="2")) == InputIntent(
-        kind="approve_session",
+        kind="approval_decision",
+        text="allow_session",
         note="git:push",
     )
     assert surface.handle_input(InputEvent(kind="key", key="3")) == InputIntent(
-        kind="reject",
+        kind="approval_decision",
+        text="deny",
         note="git:push",
     )
     assert ApprovalSurface(action="Delete cache").handle_input(
         InputEvent(kind="key", key="a")
     ) is None
+
+
+def test_approval_surface_renders_policy_generated_persistent_choice() -> None:
+    from loushang.tui import ApprovalChoice
+
+    surface = ApprovalSurface(
+        action="git push origin main",
+        options=(
+            ApprovalChoice("allow_once", "Allow this action once", "y"),
+            ApprovalChoice(
+                "allow_session",
+                "Allow non-force pushes for this session",
+                "s",
+                "session",
+            ),
+            ApprovalChoice(
+                "allow_project",
+                "Always allow non-force pushes in this project",
+                "p",
+                "persistent",
+            ),
+            ApprovalChoice(
+                "deny",
+                "Deny and let the agent continue",
+                "n",
+                "deny",
+            ),
+        ),
+    )
+
+    assert rendered_text(surface, width=72, height=8)[3:] == (
+        "› 1. Allow this action once (y)",
+        "  2. Allow non-force pushes for this session (s)",
+        "  3. Always allow non-force pushes in this project (p)",
+        "  4. Deny and let the agent continue (n)",
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="p")) == InputIntent(
+        kind="approval_decision",
+        text="allow_project",
+    )
 
 
 def test_approval_surface_supports_arrow_selection_and_enter() -> None:
@@ -575,12 +618,14 @@ def test_approval_surface_supports_arrow_selection_and_enter() -> None:
     )
     assert surface.selected_index == 1
     assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
-        kind="approve_session",
+        kind="approval_decision",
+        text="allow_session",
         note="git:push",
     )
     surface.handle_input(InputEvent(kind="key", key="end"))
     assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
-        kind="reject",
+        kind="approval_decision",
+        text="deny",
         note="git:push",
     )
 
@@ -655,13 +700,13 @@ def test_approval_surface_handle_input_carries_action_id() -> None:
     surface = ApprovalSurface(action="Delete cache", action_id="cache:delete")
 
     assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(
-        kind="approve", note="cache:delete"
+        kind="approval_decision", text="allow_once", note="cache:delete"
     )
     assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(
-        kind="reject", note="cache:delete"
+        kind="approval_decision", text="deny", note="cache:delete"
     )
     assert surface.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
-        kind="reject", note="cache:delete"
+        kind="approval_decision", text="abort", note="cache:delete"
     )
 
 
@@ -669,10 +714,13 @@ def test_approval_surface_no_action_id_keeps_empty_note() -> None:
     surface = ApprovalSurface(action="Delete cache")
 
     assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(
-        kind="approve", note=""
+        kind="approval_decision", text="allow_once", note=""
     )
     assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(
-        kind="reject", note=""
+        kind="approval_decision", text="deny", note=""
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
+        kind="approval_decision", text="abort", note=""
     )
 
 

@@ -5,6 +5,7 @@ from typing import Literal, TypedDict
 
 from loushang.agent import ThinkingLevel
 from loushang.ai.model import ModelSelection
+from loushang.harness.permissions import PermissionProfileId, permission_profile
 from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.sandbox import SandboxSettings
 
@@ -95,12 +96,21 @@ class ToolSettings:
 
 
 @dataclass(frozen=True)
+class PermissionSettings:
+    profile: PermissionProfileId = "standard"
+
+    def __post_init__(self) -> None:
+        permission_profile(self.profile)
+
+
+@dataclass(frozen=True)
 class StatusLineControlSettings:
     enabled: bool = True
     model: bool = True
     workspace: bool = True
     branch: bool = True
     session: bool = True
+    permissions: bool = True
     runtime: bool = True
     queue: StatusLineAutoValue = "auto"
     message: StatusLineAutoValue = "auto"
@@ -140,6 +150,7 @@ class ControlConfig:
     markdown: MarkdownSettings = field(default_factory=MarkdownSettings)
     warnings: WarningSettings = field(default_factory=WarningSettings)
     method: MethodSettings = field(default_factory=MethodSettings)
+    permissions: PermissionSettings = field(default_factory=PermissionSettings)
     tools: ToolSettings = field(default_factory=ToolSettings)
     sandbox: SandboxSettings = field(default_factory=SandboxSettings)
     statusline: StatusLineControlSettings = field(
@@ -165,6 +176,7 @@ __all__ = [
     "KeybindingValue",
     "MarkdownSettings",
     "MethodSettings",
+    "PermissionSettings",
     "QueueMode",
     "RetrySettings",
     "SandboxSettings",

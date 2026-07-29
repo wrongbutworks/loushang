@@ -163,6 +163,73 @@ def test_settings_manager_loads_and_persists_sandbox_settings(tmp_path) -> None:
     )
 
 
+def test_settings_manager_applies_permission_profiles_at_each_scope(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    global_settings_path = tmp_path / "global-settings.json"
+    project_settings_path = tmp_path / "project-settings.json"
+    manager = SettingsManager(
+        global_settings_path=global_settings_path,
+        project_settings_path=project_settings_path,
+    )
+
+    manager.set_permission_profile("cautious", scope="user")
+    assert manager.get_permission_profile_id() == "cautious"
+    assert json.loads(global_settings_path.read_text(encoding="utf-8")) == {
+        "permissions": {"profile": "cautious"}
+    }
+
+    manager.set_permission_profile("standard", scope="project")
+    assert manager.get_permission_profile_id() == "standard"
+    assert json.loads(project_settings_path.read_text(encoding="utf-8")) == {
+        "permissions": {"profile": "standard"}
+    }
+
+    manager.set_permission_profile("full_access", scope="session")
+    assert manager.get_permission_profile_id() == "full_access"
+
+    manager.set_permission_profile("cautious", scope="user")
+    assert manager.get_permission_profile_id() == "full_access"
+
+    reloaded = SettingsManager(
+        global_settings_path=global_settings_path,
+        project_settings_path=project_settings_path,
+    )
+    assert reloaded.get_permission_profile_id() == "standard"
+
+
+def test_settings_manager_enforces_the_managed_permission_ceiling(tmp_path) -> None:
+    from loushang.harness.config.agent import SettingsManager
+    from loushang.harness.permissions import PermissionProfileCeiling
+
+    manager = SettingsManager(
+        global_settings_path=tmp_path / "settings.json",
+        permission_profile_ceiling=PermissionProfileCeiling(
+            maximum_profile="standard",
+            reason="Managed sessions cannot enable Full Access.",
+        ),
+    )
+
+    with pytest.raises(
+        PermissionError,
+        match="Managed sessions cannot enable Full Access",
+    ):
+        manager.set_permission_profile("full_access", scope="session")
+
+    snapshot = manager.get_permission_profile_snapshot()
+    full_access = next(
+        option
+        for option in snapshot.options
+        if option.profile.profile_id == "full_access"
+    )
+    assert full_access.enabled is False
+    assert full_access.disabled_reason == (
+        "Managed sessions cannot enable Full Access."
+    )
+
+
 def test_settings_manager_recovers_from_invalid_sandbox_settings(tmp_path) -> None:
     from loushang.harness.config.agent import SandboxSettings, SettingsManager
 
@@ -265,6 +332,7 @@ def test_settings_manager_persists_statusline_settings_updates(tmp_path) -> None
             "workspace": False,
             "branch": True,
             "session": True,
+            "permissions": True,
             "runtime": True,
             "queue": "true",
             "message": "false",
