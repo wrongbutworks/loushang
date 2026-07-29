@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loushang.harness.tools.execution import direct_execution
+
 
 def test_tool_rendering_uses_harness_owned_runtime_contracts() -> None:
     import loushang.harness.presentation as harness_presentation
@@ -64,7 +66,7 @@ def test_coding_render_runtime_uses_harness_fail_soft_behavior() -> None:
         label="Demo",
         description="Demo",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_result=broken_render_result,
     )
     runtime = ToolRenderRuntime()

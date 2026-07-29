@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import get_args
 
 from loushang.agent import AgentEvent
+from loushang.harness.tools.execution import direct_execution
 
 
 def test_agent_session_event_accepts_core_agent_event() -> None:
@@ -376,7 +377,7 @@ def test_project_session_event_can_attach_rendered_tool_payloads() -> None:
         label="Read",
         description="Read files",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
         render_result=render_result,
     )
@@ -489,7 +490,7 @@ def test_project_session_event_marks_rendered_tool_error_status() -> None:
         label="Bash",
         description="Run commands",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_result=render_result,
     )
 
@@ -531,7 +532,7 @@ def test_project_session_event_structures_tool_ui_state_and_bash_artifacts() -> 
         label="Bash",
         description="Run commands",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_result=render_result,
     )
 
@@ -604,7 +605,7 @@ def test_project_session_event_uses_distinct_event_and_presentation_views() -> N
         label="Bash",
         description="Run commands",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_result=render_result,
     )
     result = AgentToolResult(
@@ -679,7 +680,7 @@ def test_project_session_event_omits_rendered_tool_payload_when_renderer_fails()
         label="Read",
         description="Read files",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
     )
 

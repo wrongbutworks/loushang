@@ -5,7 +5,6 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Literal, cast
 
-from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_like
 from loushang.harness.contributions import ExtensionSurfaceDescriptor
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
@@ -19,9 +18,7 @@ from loushang.harness.extensions.types import (
     RegisteredShortcut,
 )
 from loushang.harness.resources.source import SourceInfo
-from loushang.harness.tools.core import DecoratedTool, ToolDefinition
-from loushang.harness.tools.workspace.normalize import tool_to_definition
-from loushang.harness.tools.workspace.wrapper import create_tool_definition_from_tool
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 
@@ -88,17 +85,15 @@ class ExtensionContributionAPI:
 
     def register_tool(
         self,
-        tool_definition: ToolDefinition | DecoratedTool | AgentTool[object],
+        tool_definition: ToolDefinition,
     ) -> None:
-        definition = (
-            tool_definition
-            if isinstance(tool_definition, ToolDefinition)
-            else create_tool_definition_from_tool(ensure_agent_tool(tool_definition))
-            if is_agent_tool_like(tool_definition)
-            else tool_to_definition(tool_definition)
-        )
-        self._tool_definitions.append(definition)
-        self._register_runtime_tool(definition)
+        if not isinstance(tool_definition, ToolDefinition):
+            raise TypeError(
+                "extension tools require direct_tool(...) or "
+                "authorized_tool(...) before registration"
+            )
+        self._tool_definitions.append(tool_definition)
+        self._register_runtime_tool(tool_definition)
 
     def register_policy(
         self,

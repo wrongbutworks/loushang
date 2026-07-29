@@ -4,7 +4,7 @@ import hashlib
 import inspect
 import json
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, TypeVar, cast
@@ -16,6 +16,12 @@ from loushang.harness.authorization import (
     resolve_effective_execution_profile,
 )
 from loushang.harness.policy import ToolPolicySubject
+from loushang.harness.tools.execution import (
+    AuthorizedToolAction,
+    AuthorizedToolContext,
+    AuthorizedToolHandler,
+    PreparedToolAction,
+)
 
 from .audit import (
     build_action_audit_details,
@@ -27,29 +33,50 @@ from .policy import ToolPolicyEvaluator, enforce_tool_policy
 
 T = TypeVar("T")
 WorkspaceActionExecutor = Callable[
-    ["AuthorizedWorkspaceAction"],
+    [AuthorizedToolAction],
     T | Awaitable[T],
 ]
 WorkspaceActionObservation = Callable[
-    ["AuthorizedWorkspaceAction"],
+    [AuthorizedToolAction],
     object | Awaitable[object],
 ]
 
-
 @dataclass(frozen=True, slots=True)
-class AuthorizedWorkspaceAction:
-    tool_name: str
-    arguments: Mapping[str, Any]
-    cwd: str | None
-    fingerprint: str
-    actor_id: str = "root"
-    execution_profile: EffectiveExecutionProfile | None = None
-    policy_code: str | None = None
-    approval_action_id: str | None = None
-    audit_details: Mapping[str, object] = field(
-        default_factory=lambda: MappingProxyType({}),
-        repr=False,
-    )
+class WorkspaceToolAuthorizationGateway:
+    """Session-owned Policy/Approval gateway for protected tool actions."""
+
+    policy_evaluator: ToolPolicyEvaluator
+    approval_resolver: ApprovalResolver | None = None
+    execution_environment: object | None = None
+
+    async def execute(
+        self,
+        prepared: PreparedToolAction,
+        handler: AuthorizedToolHandler,
+        context: AuthorizedToolContext,
+    ) -> Any:
+        return await _execute_authorized_tool_action(
+            self.policy_evaluator,
+            tool_name=prepared.tool_name,
+            arguments=prepared.authorization_arguments,
+            execution_arguments=prepared.execution_arguments,
+            executor=lambda action: handler(action, context),
+            cwd=prepared.cwd,
+            policy_subject=prepared.policy_subject,
+            approval_resolver=self.approval_resolver,
+            tool_call_id=context.tool_call_id,
+            audit_sink=context.event_sink,
+            execution_environment=(
+                prepared.execution_environment
+                if prepared.execution_environment is not None
+                else self.execution_environment
+            ),
+            execution_profile_ceiling=getattr(
+                context.exec_service,
+                "execution_profile",
+                None,
+            ),
+        )
 
 
 async def _authorize_workspace_tool_action(
@@ -57,6 +84,7 @@ async def _authorize_workspace_tool_action(
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
+    execution_arguments: Mapping[str, Any] | None = None,
     cwd: str | None = None,
     policy_subject: ToolPolicySubject | None = None,
     approval_resolver: ApprovalResolver | None = None,
@@ -64,10 +92,13 @@ async def _authorize_workspace_tool_action(
     audit_sink: Any = None,
     execution_environment: object | None = None,
     execution_profile_ceiling: EffectiveExecutionProfile | None = None,
-) -> AuthorizedWorkspaceAction:
+) -> AuthorizedToolAction:
     """Freeze one action before routing it through Policy and Approval."""
 
     frozen_arguments = _freeze_mapping(arguments)
+    frozen_execution_arguments = _freeze_mapping(
+        execution_arguments if execution_arguments is not None else arguments
+    )
     audit_details = _freeze_mapping(
         build_action_audit_details(
             tool_name=tool_name,
@@ -76,9 +107,10 @@ async def _authorize_workspace_tool_action(
             policy_subject=policy_subject,
         )
     )
-    action = AuthorizedWorkspaceAction(
+    action = AuthorizedToolAction(
         tool_name=tool_name,
-        arguments=frozen_arguments,
+        authorization_arguments=frozen_arguments,
+        execution_arguments=frozen_execution_arguments,
         cwd=cwd,
         fingerprint=_fingerprint(tool_name, frozen_arguments, cwd),
         actor_id=approval_actor_id(approval_resolver),
@@ -95,7 +127,7 @@ async def _authorize_workspace_tool_action(
     authorization = await enforce_tool_policy(
         policy_engine,
         tool_name=action.tool_name,
-        arguments=action.arguments,
+        arguments=action.authorization_arguments,
         cwd=action.cwd,
         policy_subject=policy_subject,
         approval_resolver=approval_resolver,
@@ -114,9 +146,10 @@ async def _authorize_workspace_tool_action(
         if execution_profile_ceiling is not None
         else None
     )
-    return AuthorizedWorkspaceAction(
+    return AuthorizedToolAction(
         tool_name=action.tool_name,
-        arguments=action.arguments,
+        authorization_arguments=action.authorization_arguments,
+        execution_arguments=action.execution_arguments,
         cwd=action.cwd,
         fingerprint=action.fingerprint,
         actor_id=action.actor_id,
@@ -127,11 +160,12 @@ async def _authorize_workspace_tool_action(
     )
 
 
-async def execute_workspace_tool_action(
+async def _execute_authorized_tool_action(
     policy_engine: ToolPolicyEvaluator | None,
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
+    execution_arguments: Mapping[str, Any] | None = None,
     executor: WorkspaceActionExecutor[T],
     on_authorized: WorkspaceActionObservation | None = None,
     cwd: str | None = None,
@@ -152,6 +186,7 @@ async def execute_workspace_tool_action(
         policy_engine,
         tool_name=tool_name,
         arguments=arguments,
+        execution_arguments=execution_arguments,
         cwd=cwd,
         policy_subject=policy_subject,
         approval_resolver=approval_resolver,
@@ -231,7 +266,7 @@ async def execute_workspace_tool_action(
 
 
 async def _execute_authorized_workspace_tool_action(
-    action: AuthorizedWorkspaceAction,
+    action: AuthorizedToolAction,
     *,
     executor: WorkspaceActionExecutor[T],
 ) -> T:
@@ -244,10 +279,14 @@ async def _execute_authorized_workspace_tool_action(
     return result
 
 
-def _revalidate_authorized_action(action: AuthorizedWorkspaceAction) -> None:
-    if not isinstance(action, AuthorizedWorkspaceAction):
-        raise TypeError("action must be an AuthorizedWorkspaceAction")
-    fingerprint = _fingerprint(action.tool_name, action.arguments, action.cwd)
+def _revalidate_authorized_action(action: AuthorizedToolAction) -> None:
+    if not isinstance(action, AuthorizedToolAction):
+        raise TypeError("action must be an AuthorizedToolAction")
+    fingerprint = _fingerprint(
+        action.tool_name,
+        action.authorization_arguments,
+        action.cwd,
+    )
     if fingerprint != action.fingerprint:
         raise ExecutionAuthorizationError(
             "authorized action changed before execution"
@@ -255,13 +294,13 @@ def _revalidate_authorized_action(action: AuthorizedWorkspaceAction) -> None:
     if action.execution_profile is not None:
         _validate_path_authority(
             action.tool_name,
-            action.arguments,
+            action.authorization_arguments,
             action.execution_profile,
         )
 
 
 def _action_audit_context(
-    action: AuthorizedWorkspaceAction,
+    action: AuthorizedToolAction,
     *,
     tool_call_id: str | None,
 ) -> dict[str, object]:
@@ -277,7 +316,7 @@ def _action_audit_context(
 
 
 def _execution_audit_details(
-    action: AuthorizedWorkspaceAction,
+    action: AuthorizedToolAction,
     *,
     tool_call_id: str | None,
     outcome: str,
@@ -378,8 +417,5 @@ def _validate_path_authority(
 
 
 __all__ = [
-    "AuthorizedWorkspaceAction",
-    "WorkspaceActionExecutor",
-    "WorkspaceActionObservation",
-    "execute_workspace_tool_action",
+    "WorkspaceToolAuthorizationGateway",
 ]

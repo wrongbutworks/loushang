@@ -20,6 +20,7 @@ from loushang.harness.resources.types import (
     SkillDescriptor,
 )
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.execution import direct_execution
 
 
 def _runtime_footer(cwd: str) -> str:
@@ -64,7 +65,7 @@ def test_standard_assembly_projects_resources_skills_tools_and_runtime() -> None
         label="Catalog Search",
         description="Search a catalog.",
         parameters={"type": "object"},
-        execute=execute,
+        execution=direct_execution(execute),
         prompt_snippet="Search the research catalog",
         prompt_guidelines=("Prefer primary records.",),
     )

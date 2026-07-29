@@ -28,6 +28,8 @@ from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage
 from loushang.coding import create_agent_session_runtime
+from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.execution import direct_execution
 
 
 def print_event(name: str, payload: dict[str, object]) -> None:
@@ -186,6 +188,17 @@ class GitCheckpointTool:
         return AgentToolResult(content=[TextPart(type="text", text=f"unknown action: {action}")], details={"action": action, "error": "unknown"})
 
 
+def _git_checkpoint_definition(tool: GitCheckpointTool) -> ToolDefinition:
+    return ToolDefinition(
+        name=tool.name,
+        label=tool.label,
+        description=tool.description,
+        parameters=tool.parameters,
+        execution=direct_execution(tool.execute),
+        execution_mode="sequential",
+    )
+
+
 # ── Offline mock stream ──
 
 _OFFLINE_USAGE = Usage(
@@ -298,12 +311,13 @@ async def _run_offline(repo_dir: Path) -> dict[str, object]:
         return _stream_with_message(_assistant_text(f"Offline checkpoint flow complete after {len(tool_results)} tool calls."))
 
     tool = GitCheckpointTool(repo_dir)
+    tool_definition = _git_checkpoint_definition(tool)
     runtime = create_agent_session_runtime(
         session_dir=session_dir,
         model=_offline_model(),
         system_prompt="You are a git checkpoint assistant. Use the git_checkpoint tool to create and list checkpoints.",
         stream_fn=_offline_stream_fn,
-        tools=[tool],
+        tools=[tool_definition],
         persist=False,
     )
     session = await runtime.create_session(cwd=str(repo_dir))
@@ -365,6 +379,7 @@ async def _run_live(repo_dir: Path, timeout_seconds: float) -> dict[str, object]
     })
 
     tool = GitCheckpointTool(repo_dir)
+    tool_definition = _git_checkpoint_definition(tool)
     runtime, session = await create_kimi_runtime_session(
         cwd=repo_dir,
         model=model,
@@ -373,7 +388,7 @@ async def _run_live(repo_dir: Path, timeout_seconds: float) -> dict[str, object]
             "Use the git_checkpoint tool to create a checkpoint with label 'loushang/checkpoint/before-cleanup', "
             "then list all checkpoints. Reply with a short summary of what you did."
         ),
-        tools=[tool],
+        tools=[tool_definition],
         persist=False,
     )
     print_event("tool.start", {"name": "session_create", "mode": "live", "tools": [tool.name]})

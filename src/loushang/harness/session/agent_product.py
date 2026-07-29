@@ -27,6 +27,7 @@ from loushang.harness.extensions.context import (
 )
 from loushang.harness.extensions.provider_config import provider_from_extension_config
 from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
+from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.packages.catalog import PackageSummaryProvider
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.session import SessionPackageController
@@ -107,6 +108,7 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         exec_service: ExecService | None = None,
         tool_exec_service: ExecService | None = None,
         approval_resolver: object | None = None,
+        tool_policy_evaluator: PolicyEvaluator | None = None,
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model
@@ -156,6 +158,7 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
             reason="startup"
         )
         self._approval_resolver = approval_resolver
+        self._tool_policy_evaluator = tool_policy_evaluator
         self._approval_session_state = (
             "active" if approval_resolver is not None else "closed"
         )
@@ -330,6 +333,7 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
             exec_service=self._exec_service,
             tool_exec_service=self._tool_exec_service,
             approval_resolver=self._approval_resolver,
+            tool_policy_evaluator=self._tool_policy_evaluator,
             capability_runtime=capability_runtime,
             apply_context=self._apply_agent_transcript_context,
             refresh_agent_transcript_context=self._refresh_agent_transcript_context,

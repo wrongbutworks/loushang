@@ -13,6 +13,7 @@ from loushang.harness.conversation import (
     ConversationJsonlHeaderCodec,
 )
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.tools.execution import direct_execution
 
 _HEADER_CODEC = ConversationJsonlHeaderCodec()
 
@@ -1518,7 +1519,7 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
         label="Bash",
         description="Run commands",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
         render_result=render_result,
     )

@@ -13,7 +13,9 @@ def _tool_context_provider(*, cwd: str, model=None):
     return _provider
 
 
-def test_registry_register_tool_accepts_raw_runtime_agent_tool() -> None:
+def test_registry_rejects_raw_runtime_agent_tool() -> None:
+    import pytest
+
     from loushang.agent.types import AgentToolResult
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -43,14 +45,13 @@ def test_registry_register_tool_accepts_raw_runtime_agent_tool() -> None:
             return AgentToolResult(content=[], details={})
 
     registry = ToolRegistry()
-    registry.register_tool(RuntimeTool())
-
-    assert registry.get_definition("runtime_tool").name == "runtime_tool"
-    assert registry.get_definition("runtime_tool").execution_mode == "sequential"
+    with pytest.raises(TypeError, match="explicitly bound ToolDefinition"):
+        registry.register_tool(RuntimeTool())  # type: ignore[arg-type]
 
 
-def test_registry_register_tool_accepts_decorated_tool() -> None:
+def test_registry_register_tool_accepts_explicitly_bound_decorated_tool() -> None:
     from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace import direct_tool
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     @tool()
@@ -58,7 +59,7 @@ def test_registry_register_tool_accepts_decorated_tool() -> None:
         return f"hi {name}"
 
     registry = WorkspaceToolRegistry()
-    registry.register_tool(greet)
+    registry.register_tool(direct_tool(greet))
 
     assert registry.get_definition("greet").name == "greet"
 
@@ -928,12 +929,12 @@ def test_bash_tool_applies_prefix_shell_path_and_spawn_hook(tmp_path) -> None:
         exec_service = RecordingExecService()
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=policy_engine,
                 exec_service=exec_service,
                 command_prefix="set -e",
                 shell_path="/custom/bash",
                 spawn_hook=spawn_hook,
-            )
+            ),
+            policy_evaluator=policy_engine,
         )
 
         result = await tool.execute(
@@ -992,7 +993,6 @@ def test_bash_tool_can_execute_through_custom_operations(tmp_path) -> None:
         signal = object()
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=FailingExecService(),
                 operations=operations,
             )
@@ -1041,7 +1041,6 @@ def test_bash_tool_requests_rolling_capture_by_default(tmp_path) -> None:
         exec_service = RecordingExecService()
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=exec_service,
             )
         )
@@ -1081,7 +1080,6 @@ def test_bash_tool_accepts_pi_style_request_aliases(tmp_path) -> None:
     async def scenario() -> None:
         exec_service = RecordingExecService()
         tool_definition = create_bash_tool_definition(
-            policy_engine=AllowingPolicyEngine(),
             exec_service=exec_service,
         )
         tool = wrap_tool_definition(tool_definition)
@@ -1134,7 +1132,6 @@ def test_bash_tool_rejects_conflicting_alias_parameters(tmp_path) -> None:
     async def scenario(params, message: str) -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=RecordingExecService(),
             )
         )
@@ -1202,7 +1199,6 @@ def test_bash_tool_rejects_runtime_values_that_do_not_match_schema() -> None:
     async def scenario(params, message: str) -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=RecordingExecService(),
             )
         )
@@ -1263,7 +1259,6 @@ def test_bash_tool_truncates_large_output_with_shared_tail_policy(tmp_path) -> N
         registry = ToolRegistry()
         register_builtin_tools(
             registry,
-            policy_engine=AllowingPolicyEngine(),
             exec_service=LargeOutputExecService(),
         )
 
@@ -1319,7 +1314,6 @@ def test_bash_tool_preserves_interleaved_stdout_and_stderr_output(tmp_path) -> N
     async def scenario() -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=InterleavedExecService(),
             )
         )
@@ -1368,7 +1362,6 @@ def test_bash_tool_error_message_preserves_interleaved_stdout_and_stderr(
     async def scenario() -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=InterleavedFailingExecService(),
             )
         )
@@ -1400,9 +1393,7 @@ def test_bash_tool_rolling_artifact_details_count_full_output(tmp_path) -> None:
     full_output = "".join(f"line-{index:04d}\n" for index in range(3000))
 
     async def scenario() -> None:
-        tool = wrap_tool_definition(
-            create_bash_tool_definition(policy_engine=AllowingPolicyEngine())
-        )
+        tool = wrap_tool_definition(create_bash_tool_definition())
 
         result = await tool.execute(
             "call-bash-artifact-contract",
@@ -1458,7 +1449,6 @@ def test_bash_tool_returns_no_output_placeholder(tmp_path) -> None:
     async def scenario() -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=EmptyExecService(),
             )
         )
@@ -1496,7 +1486,6 @@ def test_bash_tool_raises_for_nonzero_exit_code_with_buffered_output(tmp_path) -
     async def scenario() -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=FailingExecService(),
             )
         )
@@ -1659,7 +1648,6 @@ def test_bash_tool_exec_timeout_does_not_record_runtime_diagnostics(tmp_path) ->
         registry = ToolRegistry()
         register_builtin_tools(
             registry,
-            policy_engine=AllowingPolicyEngine(),
             exec_service=TimeoutExecService(),
             diagnostics_service=diagnostics_service,
         )
@@ -1707,7 +1695,6 @@ def test_bash_tool_timeout_error_includes_buffered_output(tmp_path) -> None:
         diagnostics_service = DiagnosticsService()
         register_coding_builtin_tools(
             registry,
-            policy_engine=AllowingPolicyEngine(),
             exec_service=TimeoutExecService(),
             diagnostics_service=diagnostics_service,
         )
@@ -1755,7 +1742,6 @@ def test_bash_tool_exec_exception_does_not_record_runtime_diagnostics_and_rerais
         registry = WorkspaceToolRegistry()
         register_coding_builtin_tools(
             registry,
-            policy_engine=AllowingPolicyEngine(),
             exec_service=FailingExecService(),
             diagnostics_service=diagnostics_service,
         )

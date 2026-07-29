@@ -42,6 +42,7 @@ from loushang.harness.multiagent import (
 from loushang.harness.runtime import HostInputQueue
 from loushang.harness.session.multiagent import SessionSubagentRequest
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.execution import direct_execution
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import ApplicationMessage
 
@@ -248,7 +249,7 @@ def _tool_registry(*names: str) -> WorkspaceToolRegistry:
                 label=name,
                 description=f"Test {name}",
                 parameters={"type": "object", "properties": {}},
-                execute=unused_execute,
+                execution=direct_execution(unused_execute),
             )
         )
     return registry

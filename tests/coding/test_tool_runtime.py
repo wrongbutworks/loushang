@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loushang.harness.tools.execution import direct_execution
+
 
 def test_emit_tool_update_accepts_sync_and_async_callbacks() -> None:
     import asyncio
@@ -102,7 +104,7 @@ def test_wrapped_tool_rejects_pre_aborted_signal_before_execute() -> None:
                 "properties": {},
                 "additionalProperties": False,
             },
-            execute=execute,
+            execution=direct_execution(execute),
         )
     )
 

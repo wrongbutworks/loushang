@@ -15,6 +15,7 @@ from loushang.harness.permissions import (
     PermissionProfilePolicyEvaluator,
 )
 from loushang.harness.policy_engine import PolicyEngine
+from loushang.harness.tools.execution import ToolExecutionHost
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.operations import (
     EditOperations,
@@ -26,6 +27,7 @@ from loushang.harness.workspace.operations import (
     WriteOperations,
 )
 
+from .authorization import WorkspaceToolAuthorizationGateway
 from .bash import (
     BashOperations,
     BashSpawnHook,
@@ -120,8 +122,6 @@ class ToolsOptions:
     grep_operations: GrepOperations | None = None
     write_operations: WriteOperations | None = None
     edit_operations: EditOperations | None = None
-    policy_engine: ToolPolicyEvaluator | None = None
-    approval_resolver: ApprovalResolver | None = None
     exec_service: ExecService | None = None
     diagnostics_service: DiagnosticsService | None = None
     bash_operations: BashOperations | None = None
@@ -219,60 +219,45 @@ def create_tool_definition(
     tool_name: ToolName, *, options: ToolsOptions | None = None
 ) -> ToolDefinition:
     options = options or ToolsOptions()
-    policy_engine = options.policy_engine
     if tool_name == "read":
         return create_read_tool_definition(
             options=options.read,
             operations=options.read_operations or options.operations,
-            policy_engine=policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "bash":
         return create_bash_tool_definition(
             options=options.bash,
-            policy_engine=policy_engine,
             exec_service=options.exec_service,
             diagnostics_service=options.diagnostics_service,
             operations=options.bash_operations,
             command_prefix=options.command_prefix,
             shell_path=options.shell_path,
             spawn_hook=options.spawn_hook,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "edit":
         return create_edit_tool_definition(
             options=options.edit,
             operations=options.edit_operations or options.operations,
-            policy_engine=policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "write":
         return create_write_tool_definition(
             options=options.write,
             operations=options.write_operations or options.operations,
-            policy_engine=policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "grep":
         return create_grep_tool_definition(
             options=_grep_options(options),
             operations=options.grep_operations or options.operations,
-            policy_engine=policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "find":
         return create_find_tool_definition(
             options=_find_options(options),
             operations=options.find_operations or options.operations,
-            policy_engine=policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "ls":
         return create_ls_tool_definition(
             options=options.ls,
             operations=options.ls_operations or options.operations,
-            policy_engine=policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     raise ValueError(f"Unknown tool name: {tool_name}")
 
@@ -435,6 +420,11 @@ def create_tool(
 ) -> AgentTool[Any]:
     return wrap_tool_definition(
         create_tool_definition(tool_name, options=options),
+        execution_host=ToolExecutionHost(
+            WorkspaceToolAuthorizationGateway(
+                policy_evaluator=PolicyEngine(),
+            )
+        ),
         context_provider=_create_context_provider(
             cwd=cwd,
             options=options,
@@ -752,9 +742,7 @@ def _create_context_provider(
             cwd=cwd,
             diagnostics=diagnostics,
             model=model,
-            approval_resolver=(
-                options.approval_resolver if options is not None else None
-            ),
+            exec_service=options.exec_service if options is not None else None,
         )
 
     return _context_provider

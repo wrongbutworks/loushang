@@ -1,17 +1,23 @@
 import inspect
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any, NotRequired, Protocol, TypedDict
 
 from loushang.agent.types import AgentToolResult, TextPart
-from loushang.harness.approval import ApprovalResolver
-from loushang.harness.authorization import EffectiveExecutionProfile
+from loushang.ai.types import ToolCall
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.policy import (
     build_tool_policy_subject,
     executable_search_path_from_env,
     normalize_command_subject,
+)
+from loushang.harness.tools.execution import (
+    AuthorizedExecution,
+    AuthorizedToolAction,
+    AuthorizedToolContext,
+    PreparedToolAction,
+    ToolCallContext,
 )
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
@@ -21,13 +27,7 @@ from loushang.harness.workspace.exec import (
     materialize_exec_request,
 )
 
-from .authorization import (
-    AuthorizedWorkspaceAction,
-    execute_workspace_tool_action,
-)
 from .builtin_renderers import render_bash_call, render_bash_result
-from .context import ToolContextProvider, context_approval_resolver
-from .policy import ToolPolicyEvaluator
 from .runtime import (
     emit_tool_update,
     pi_truncation_details,
@@ -112,8 +112,6 @@ class BashOperations(Protocol):
 @dataclass(frozen=True)
 class BashToolOptions:
     operations: BashOperations | None = None
-    policy_engine: ToolPolicyEvaluator | None = None
-    approval_resolver: ApprovalResolver | None = None
     exec_service: ExecService | None = None
     diagnostics_service: DiagnosticsService | None = None
     command_prefix: str | None = None
@@ -225,100 +223,83 @@ def _build_exec_request(
 
 
 @dataclass(frozen=True)
-class _BashToolExecute:
-    bash_operations: BashOperations
-    policy_engine: ToolPolicyEvaluator | None
-    approval_resolver: ApprovalResolver | None
+class _BashActionAdapter:
     command_prefix: str | None
     shell_path: str | None
     spawn_hook: BashSpawnHook | None
-    context_provider: ToolContextProvider | None = None
 
-    def bind_context_provider(
-        self, context_provider: ToolContextProvider | None
-    ) -> "_BashToolExecute":
-        return replace(self, context_provider=context_provider)
+    def prepare(
+        self,
+        call: ToolCall,
+        context: ToolCallContext,
+    ) -> PreparedToolAction:
+        arguments = dict(getattr(call, "arguments"))
+        exec_request = materialize_exec_request(
+            _build_exec_request(
+                arguments,
+                default_cwd=context.cwd,
+                command_prefix=self.command_prefix,
+                shell_path=self.shell_path,
+                spawn_hook=self.spawn_hook,
+            )
+        )
+        effective_arguments, policy_subject = _bash_policy_facts(
+            exec_request,
+            arguments=arguments,
+            assume_shell=isinstance(arguments.get("command"), str),
+        )
+        return PreparedToolAction(
+            tool_name="bash",
+            authorization_arguments=effective_arguments,
+            execution_arguments={"request": exec_request},
+            cwd=exec_request.cwd,
+            policy_subject=policy_subject,
+            execution_environment=exec_request.effective_environment,
+        )
+
+
+@dataclass(frozen=True)
+class _BashAuthorizedHandler:
+    bash_operations: BashOperations
 
     async def __call__(
         self,
-        tool_call_id: str,
-        params: dict[str, Any],
-        signal: object | None = None,
-        on_update: object | None = None,
+        action: AuthorizedToolAction,
+        context: AuthorizedToolContext,
     ) -> AgentToolResult[dict[str, Any]]:
-        context = None
-        default_cwd = None
-        if self.context_provider is not None:
-            context = self.context_provider(tool_call_id=tool_call_id)
-            default_cwd = context.cwd
-
-        request_params = dict(params)
-        runtime_operations = request_params.pop("__operations", None)
-        runtime_operations = request_params.pop("_operations", runtime_operations)
-        selected_bash_operations = runtime_operations
-        if selected_bash_operations is None and context is not None:
-            context_exec_service = getattr(context, "exec_service", None)
-            if context_exec_service is not None:
-                selected_bash_operations = ExecServiceBashOperations(
-                    exec_service=context_exec_service
-                )
+        exec_request = action.execution_arguments.get("request")
+        if not isinstance(exec_request, ExecRequest):
+            raise TypeError("authorized Bash action requires an ExecRequest")
+        selected_bash_operations = context.operation_bindings.get("bash_operations")
+        if selected_bash_operations is None and isinstance(
+            context.exec_service, ExecService
+        ):
+            selected_bash_operations = ExecServiceBashOperations(context.exec_service)
         if selected_bash_operations is None:
             selected_bash_operations = self.bash_operations
-        exec_request = _build_exec_request(
-            request_params,
-            default_cwd=default_cwd,
-            command_prefix=self.command_prefix,
-            shell_path=self.shell_path,
-            spawn_hook=self.spawn_hook,
-        )
-        exec_request = materialize_exec_request(exec_request)
         partial_output = _BashPartialOutput()
 
         async def _forward_exec_update(update: ExecOutputChunk) -> None:
             partial_result = partial_output.append(update)
             await emit_tool_update(
-                on_update,
+                context.on_update,
                 partial_result,
             )
 
-        async def on_authorized(_action: AuthorizedWorkspaceAction) -> None:
-            await emit_tool_update(
-                on_update,
-                AgentToolResult(content=[], details=None),
-            )
-
-        def execute(action: AuthorizedWorkspaceAction) -> Awaitable[ExecResult]:
-            authorized_request = exec_request
-            if action.execution_profile is not None:
-                authorized_request = replace(
-                    authorized_request,
-                    execution_profile=action.execution_profile,
-                )
-            return _execute_bash_operations(
-                selected_bash_operations,
-                authorized_request,
-                signal=signal,
-                on_update=_forward_exec_update,
-            )
-
-        result = await _execute_bash_action(
-            self.policy_engine,
-            tool_call_id=tool_call_id,
-            exec_request=exec_request,
-            arguments=request_params,
-            approval_resolver=context_approval_resolver(
-                context,
-                self.approval_resolver,
-            ),
-            executor=execute,
-            on_authorized=on_authorized,
-            audit_sink=getattr(context, "event_sink", None),
-            assume_shell=isinstance(request_params.get("command"), str),
-            execution_profile_ceiling=getattr(
-                getattr(context, "exec_service", None),
-                "execution_profile",
-                None,
-            ),
+        await emit_tool_update(
+            context.on_update,
+            AgentToolResult(content=[], details=None),
+        )
+        authorized_request = (
+            replace(exec_request, execution_profile=action.execution_profile)
+            if action.execution_profile is not None
+            else exec_request
+        )
+        result = await _execute_bash_operations(
+            selected_bash_operations,
+            authorized_request,
+            signal=context.signal,
+            on_update=_forward_exec_update,
         )
         if result.timed_out:
             raise TimeoutError(
@@ -391,26 +372,12 @@ def _shell_command(
     return (shell, "-lc", command)
 
 
-async def _execute_bash_action(
-    policy_engine: ToolPolicyEvaluator | None,
-    *,
-    tool_call_id: str,
+def _bash_policy_facts(
     exec_request: ExecRequest,
+    *,
     arguments: dict[str, Any],
-    approval_resolver: ApprovalResolver | None,
-    executor: Callable[
-        [AuthorizedWorkspaceAction],
-        ExecResult | Awaitable[ExecResult],
-    ],
-    on_authorized: Callable[
-        [AuthorizedWorkspaceAction],
-        object | Awaitable[object],
-    ]
-    | None = None,
-    audit_sink: object | None = None,
     assume_shell: bool = False,
-    execution_profile_ceiling: EffectiveExecutionProfile | None = None,
-) -> ExecResult:
+) -> tuple[dict[str, Any], object]:
     execution_environment = exec_request.effective_environment
     assert execution_environment is not None
     command_subject = normalize_command_subject(
@@ -444,20 +411,7 @@ async def _execute_bash_action(
         cwd=exec_request.cwd,
         command=command_subject,
     )
-    return await execute_workspace_tool_action(
-        policy_engine,
-        tool_name="bash",
-        arguments=effective_arguments,
-        executor=executor,
-        on_authorized=on_authorized,
-        cwd=exec_request.cwd,
-        policy_subject=policy_subject,
-        approval_resolver=approval_resolver,
-        tool_call_id=tool_call_id,
-        audit_sink=audit_sink,
-        execution_environment=execution_environment,
-        execution_profile_ceiling=execution_profile_ceiling,
-    )
+    return effective_arguments, policy_subject
 
 
 def _bash_parameters() -> dict[str, Any]:
@@ -513,8 +467,6 @@ def _bash_provider_parameters() -> dict[str, Any]:
 
 def create_bash_tool_definition(
     *,
-    policy_engine: ToolPolicyEvaluator | None = None,
-    approval_resolver: ApprovalResolver | None = None,
     exec_service: ExecService | None = None,
     diagnostics_service: DiagnosticsService | None = None,
     operations: BashOperations | None = None,
@@ -523,12 +475,6 @@ def create_bash_tool_definition(
     spawn_hook: BashSpawnHook | None = None,
     options: BashToolOptions | None = None,
 ) -> ToolDefinition:
-    resolved_policy_engine = policy_engine or (
-        options.policy_engine if options is not None else None
-    )
-    resolved_approval_resolver = approval_resolver or (
-        options.approval_resolver if options is not None else None
-    )
     resolved_exec_service = (
         exec_service
         or (options.exec_service if options is not None else None)
@@ -553,22 +499,20 @@ def create_bash_tool_definition(
     bash_operations = resolved_operations or ExecServiceBashOperations(
         exec_service=resolved_exec_service
     )
-    execute = _BashToolExecute(
-        bash_operations=bash_operations,
-        policy_engine=resolved_policy_engine,
-        approval_resolver=resolved_approval_resolver,
-        command_prefix=resolved_command_prefix,
-        shell_path=resolved_shell_path,
-        spawn_hook=resolved_spawn_hook,
-    )
-
     return ToolDefinition(
         name="bash",
         label="Bash",
         description="Execute a shell command through the workspace exec service.",
         parameters=_bash_parameters(),
         provider_parameters=_bash_provider_parameters(),
-        execute=execute,
+        execution=AuthorizedExecution(
+            action_adapter=_BashActionAdapter(
+                command_prefix=resolved_command_prefix,
+                shell_path=resolved_shell_path,
+                spawn_hook=resolved_spawn_hook,
+            ),
+            handler=_BashAuthorizedHandler(bash_operations=bash_operations),
+        ),
         prompt_snippet="- bash: Execute shell commands. Prefer a single command string; use cwd for the working directory.",
         prompt_guidelines=(
             "Use bash for shell pipelines, redirects, and commands that are easier to express through the user's shell.",

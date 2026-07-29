@@ -106,8 +106,9 @@ def test_workspace_policy_accepts_product_neutral_evaluator(tmp_path: Path) -> N
 
     (tmp_path / "notes.txt").write_text("content", encoding="utf-8")
     tool = wrap_tool_definition(
-        create_read_tool_definition(policy_engine=_DenyReads()),
+        create_read_tool_definition(),
         context_provider=_context_provider(tmp_path),
+        policy_evaluator=_DenyReads(),
     )
 
     with pytest.raises(PolicyEnforcementError, match="read disabled") as exc_info:

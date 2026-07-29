@@ -29,6 +29,7 @@ class BashExecutionPorts:
 
     get_cwd: Callable[[], str]
     get_definition: CommandDefinitionProvider
+    execute_definition: Callable[..., Awaitable[object]]
     create_call_id: CallIdFactory
     append_record: AppendCommandRecord
     refresh_context: ContextRefresher
@@ -45,6 +46,7 @@ class BashExecutionRuntime:
             command_name="Bash",
             get_cwd=ports.get_cwd,
             get_definition=ports.get_definition,
+            execute_definition=ports.execute_definition,
             build_execution_params=ports.build_execution_params
             or _default_execution_params(shell_path),
             create_call_id=ports.create_call_id,

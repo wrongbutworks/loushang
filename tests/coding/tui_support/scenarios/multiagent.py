@@ -48,7 +48,11 @@ from loushang.harness.session.multiagent import (
     SessionSubagentRequest,
 )
 from loushang.harness.tools.core import ToolDefinition
-from loushang.harness.tools.multiagent import MultiAgentToolPack
+from loushang.harness.tools.execution import direct_execution
+from loushang.harness.tools.multiagent import (
+    MULTIAGENT_TOOL_NAMES,
+    MultiAgentToolPack,
+)
 from loushang.harness.tools.workspace import ToolContext
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecService
@@ -235,7 +239,9 @@ class _Fixture:
                 "agent_type": "explorer",
                 "prompt": "Generate one deterministic playback value.",
             }
-            self.recorder.add("tool", "spawn.started", call_id=f"spawn:{name}", params=params)
+            self.recorder.add(
+                "tool", "spawn.started", call_id=f"spawn:{name}", params=params
+            )
             result = await self.tools["spawn_agent"].execute(
                 f"spawn:{name}",
                 params,
@@ -300,6 +306,14 @@ class _Fixture:
         await self.runtime.dispose()
 
 
+def _materialize_multiagent_tools(
+    pack: MultiAgentToolPack,
+) -> dict[str, Any]:
+    registry = WorkspaceToolRegistry()
+    pack.register(registry)
+    return {name: registry.materialize_tool(name) for name in MULTIAGENT_TOOL_NAMES}
+
+
 def _fixture(
     recorder: _Recorder,
     *,
@@ -353,7 +367,7 @@ def _fixture(
         runtime=runtime,
         root_queue=root_queue,
         factory=factory,
-        tools={definition.name: definition for definition in pack.definitions()},
+        tools=_materialize_multiagent_tools(pack),
     )
 
 
@@ -890,7 +904,7 @@ def _shared_tool_registry(names: tuple[str, ...]) -> WorkspaceToolRegistry:
                 label=name,
                 description=f"Playback {name}",
                 parameters={"type": "object", "properties": {}},
-                execute=unused_execute,
+                execution=direct_execution(unused_execute),
             )
         )
     return registry
@@ -958,14 +972,13 @@ def _shared_workspace_playback() -> MultiAgentPlaybackResult:
                     submit_mailbox=root_queue.append_next_turn,
                 ),
             )
-            tools = {
-                definition.name: definition
-                for definition in MultiAgentToolPack(
+            tools = _materialize_multiagent_tools(
+                MultiAgentToolPack(
                     runtime=runtime,
                     caller=AgentCaller(control.root_ref),
                     default_wait_seconds=1,
-                ).definitions()
-            }
+                )
+            )
             try:
                 await tools["spawn_agent"].execute(
                     "spawn:shared-writer",
@@ -1066,14 +1079,13 @@ def _isolated_artifact_playback() -> MultiAgentPlaybackResult:
                     submit_mailbox=root_queue.append_next_turn,
                 ),
             )
-            tools = {
-                definition.name: definition
-                for definition in MultiAgentToolPack(
+            tools = _materialize_multiagent_tools(
+                MultiAgentToolPack(
                     runtime=runtime,
                     caller=caller,
                     default_wait_seconds=1,
-                ).definitions()
-            }
+                )
+            )
             target = AgentPath.root().child("isolated-writer")
             try:
                 await tools["spawn_agent"].execute(
@@ -1157,9 +1169,9 @@ def _shared_parallel_writers_playback() -> MultiAgentPlaybackResult:
             }
             for target in targets.values():
                 target.write_text("before\n", encoding="utf-8")
-            spec = coding_agent_types(
-                maximum_children=2
-            ).resolve("shared_implementation_worker")
+            spec = coding_agent_types(maximum_children=2).resolve(
+                "shared_implementation_worker"
+            )
             assert spec is not None
             release = asyncio.Event()
             started = {name: asyncio.Event() for name in targets}
@@ -1212,17 +1224,14 @@ def _shared_parallel_writers_playback() -> MultiAgentPlaybackResult:
                     submit_mailbox=root_queue.append_next_turn,
                 ),
             )
-            tools = {
-                definition.name: definition
-                for definition in MultiAgentToolPack(
+            tools = _materialize_multiagent_tools(
+                MultiAgentToolPack(
                     runtime=runtime,
                     caller=caller,
                     default_wait_seconds=1,
-                ).definitions()
-            }
-            paths = tuple(
-                AgentPath.root().child(name) for name in targets
+                )
             )
+            paths = tuple(AgentPath.root().child(name) for name in targets)
             try:
                 await asyncio.gather(
                     *(
@@ -1254,9 +1263,7 @@ def _shared_parallel_writers_playback() -> MultiAgentPlaybackResult:
                     "topology",
                     "shared_parallel.running",
                     agents=running,
-                    ownership={
-                        name: [target.name] for name, target in targets.items()
-                    },
+                    ownership={name: [target.name] for name, target in targets.items()},
                     maximum_children=spec.maximum_children,
                 )
                 assert running == {
@@ -1280,17 +1287,12 @@ def _shared_parallel_writers_playback() -> MultiAgentPlaybackResult:
                 recorder.add(
                     "topology",
                     "shared_parallel.completed",
-                    cwd=[
-                        child_runtime.create_cwds
-                        for child_runtime in child_runtimes
-                    ],
+                    cwd=[child_runtime.create_cwds for child_runtime in child_runtimes],
                     files={
                         target.name: target.read_text(encoding="utf-8")
                         for target in targets.values()
                     },
-                    notice_paths=[
-                        str(notice.sender_ref.path) for notice in notices
-                    ],
+                    notice_paths=[str(notice.sender_ref.path) for notice in notices],
                     mailbox=[message.text for message in mailbox],
                 )
 
@@ -1311,9 +1313,7 @@ def _shared_parallel_writers_playback() -> MultiAgentPlaybackResult:
             finally:
                 release.set()
                 await runtime.dispose()
-                assert all(
-                    child_runtime.disposed for child_runtime in child_runtimes
-                )
+                assert all(child_runtime.disposed for child_runtime in child_runtimes)
 
     return asyncio.run(scenario())
 
@@ -1364,9 +1364,7 @@ def _recipe_playback(recipe_id: str) -> MultiAgentPlaybackResult:
                 RecipeRunRequest(
                     prompt=f"Deterministic {recipe_id} playback.",
                     replicas=(
-                        {"reviewer": 3}
-                        if recipe_id == "parallel-review"
-                        else {}
+                        {"reviewer": 3} if recipe_id == "parallel-review" else {}
                     ),
                     timeout=1,
                 ),
@@ -1379,9 +1377,7 @@ def _recipe_playback(recipe_id: str) -> MultiAgentPlaybackResult:
                 recipe_id=recipe_id,
                 agents=names,
                 final_message=result.final_message,
-                mailbox=[
-                    message.text for message in root_queue.drain_next_turn()
-                ],
+                mailbox=[message.text for message in root_queue.drain_next_turn()],
             )
             expected = (
                 ["reviewer-1", "reviewer-2", "reviewer-3", "synthesizer"]
@@ -1413,8 +1409,7 @@ def _messaging_playback() -> MultiAgentPlaybackResult:
         try:
             await fixture.spawn_three()
             waits = [
-                await fixture.complete_and_wait(name)
-                for name in _COMPLETION_ORDER
+                await fixture.complete_and_wait(name) for name in _COMPLETION_ORDER
             ]
             notices = fixture.control.notices()
             followups = fixture.root_queue.texts("follow_up")
@@ -1614,10 +1609,7 @@ def _render_playback() -> MultiAgentPlaybackResult:
                 assistant(f"{name} 完成，结果是 {_RESULTS[name]}。")
                 render(f"wait.{name}.completed")
 
-            assistant(
-                "汇总：95、51、35；平均值为 "
-                f"{(95 + 51 + 35) / 3:.2f}。"
-            )
+            assistant(f"汇总：95、51、35；平均值为 {(95 + 51 + 35) / 3:.2f}。")
             screen.app.complete_run(elapsed_seconds=1.23)
             render("run.completed")
 
@@ -1716,7 +1708,6 @@ class _ApprovalPlaybackSession:
                 tool_call_id=tool_call_id,
                 cwd=self._cwd,
                 exec_service=self._exec_service,
-                approval_resolver=self._approval_resolver,
                 event_sink=emit_event,
             ),
         )
@@ -1799,11 +1790,10 @@ def _child_approval_playback() -> object:
             executed.append((request.cwd or "", command))
             return ExecResult(exit_code=0, stdout="published\n")
 
-        root_registry = WorkspaceToolRegistry()
+        root_registry = WorkspaceToolRegistry(approval_resolver=resolver)
         register_coding_builtin_tools(
             root_registry,
             policy_engine=PolicyEngine(),
-            approval_resolver=resolver,
             exec_service=ExecService(backend=exec_backend),
         )
 
@@ -1820,10 +1810,16 @@ def _child_approval_playback() -> object:
                 backend=exec_backend,
                 execution_profile=getattr(profile, "execution_profile_ceiling"),
             )
+            child_registry = kwargs["tool_registry"]
+            assert isinstance(child_registry, WorkspaceToolRegistry)
+            child_registry.bind_workspace_authorization(
+                policy_evaluator=PolicyEngine(),
+                approval_resolver=kwargs["approval_resolver"],  # type: ignore[arg-type]
+            )
             session = _ApprovalPlaybackSession(
                 cwd=str(cwd),
                 commands=commands,
-                registry=kwargs["tool_registry"],
+                registry=child_registry,
                 approval_resolver=kwargs["approval_resolver"],
                 exec_service=exec_service,
                 audit_events=audit_events,
@@ -1866,16 +1862,20 @@ def _child_approval_playback() -> object:
         def present(payload: dict[str, object]) -> None:
             approval_payloads.append(dict(payload))
             options = payload.get("approval_options")
-            choices = tuple(
-                ApprovalChoice(
-                    value=str(option["outcome"]),
-                    label=str(option["label"]),
-                    shortcut=str(option["shortcut"]),
-                    tone=str(option["tone"]),
+            choices = (
+                tuple(
+                    ApprovalChoice(
+                        value=str(option["outcome"]),
+                        label=str(option["label"]),
+                        shortcut=str(option["shortcut"]),
+                        tone=str(option["tone"]),
+                    )
+                    for option in options
+                    if isinstance(option, dict)
                 )
-                for option in options
-                if isinstance(option, dict)
-            ) if isinstance(options, (tuple, list)) else ()
+                if isinstance(options, (tuple, list))
+                else ()
+            )
             manager.open_approval(
                 action=str(payload.get("action") or "Approve child tool call"),
                 risk=str(payload.get("risk") or ""),
@@ -1944,8 +1944,7 @@ def _child_approval_playback() -> object:
             ]
             assert set(profiles) == {reusable_actor, sibling_actor}
             assert {
-                getattr(profile, "approval_actor_id")
-                for profile in profiles.values()
+                getattr(profile, "approval_actor_id") for profile in profiles.values()
             } == {reusable_actor, sibling_actor}
             grants = resolver.permissions_snapshot().grants
             assert [(grant.actor_id, grant.capability) for grant in grants] == [

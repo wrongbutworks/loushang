@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Protocol, cast
 
 from loushang.agent.types import AgentToolResult, TextPart
+from loushang.ai.types import ToolCall
 from loushang.harness.multiagent import (
     AgentCaller,
     AgentPath,
@@ -16,6 +17,7 @@ from loushang.harness.multiagent import (
 from loushang.harness.multiagent.types import AgentMessageKind
 from loushang.harness.tools.contribution import ToolPackDefinition
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.execution import DirectExecution, DirectToolContext
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 MULTIAGENT_TOOL_NAMES = (
@@ -383,6 +385,23 @@ ToolExecute = Callable[
 ]
 
 
+@dataclass(frozen=True, slots=True)
+class _MultiAgentDirectHandler:
+    execute: ToolExecute
+
+    async def __call__(
+        self,
+        call: ToolCall,
+        context: DirectToolContext,
+    ) -> AgentToolResult[Any]:
+        return await self.execute(
+            call.id,
+            dict(call.arguments),
+            context.signal,
+            context.on_update,
+        )
+
+
 def _definition(
     *,
     name: str,
@@ -402,7 +421,7 @@ def _definition(
             "required": list(required),
             "additionalProperties": False,
         },
-        execute=execute,
+        execution=DirectExecution(_MultiAgentDirectHandler(execute)),
         execution_mode="sequential",
     )
 

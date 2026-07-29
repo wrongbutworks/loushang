@@ -1,9 +1,3 @@
-from .authorization import (
-    AuthorizedWorkspaceAction,
-    WorkspaceActionExecutor,
-    WorkspaceActionObservation,
-    execute_workspace_tool_action,
-)
 from .bash import (
     BashOperations,
     BashSpawnContext,
@@ -83,6 +77,7 @@ from .grep import (
     create_grep_tool_definition,
 )
 from .ls import LsToolDetails, LsToolInput, LsToolOptions, create_ls_tool_definition
+from .normalize import authorized_tool, direct_tool, tool_to_definition
 from .operations import (
     LOCAL_TOOL_OPERATIONS,
     EditOperations,
@@ -124,7 +119,11 @@ from .runtime import (
     resolve_maybe_awaitable,
 )
 from .types import ToolDefinition, ToolTruncationDetails
-from .wrapper import wrap_tool_definition, wrap_tool_definitions
+from .wrapper import (
+    create_workspace_tool_execution_host,
+    wrap_tool_definition,
+    wrap_tool_definitions,
+)
 from .write import (
     WriteToolDetails,
     WriteToolInput,
@@ -142,7 +141,6 @@ __all__ = [
     "BashToolDetails",
     "BashToolInput",
     "BashToolOptions",
-    "AuthorizedWorkspaceAction",
     "DownloadingExternalToolResolver",
     "ExternalToolDownloadTransport",
     "EditEntry",
@@ -195,8 +193,6 @@ __all__ = [
     "WorkspaceToolRegistry",
     "WorkspaceToolProfile",
     "WorkspaceToolRuntimeSettings",
-    "WorkspaceActionExecutor",
-    "WorkspaceActionObservation",
     "WriteOperations",
     "EditOperations",
     "FindOperations",
@@ -204,6 +200,7 @@ __all__ = [
     "LsOperations",
     "UrllibExternalToolDownloadTransport",
     "apply_text_edits",
+    "authorized_tool",
     "build_unified_diff",
     "create_all_tool_definitions",
     "create_all_tools",
@@ -231,11 +228,12 @@ __all__ = [
     "create_tool_definition",
     "create_write_tool",
     "create_write_tool_definition",
+    "create_workspace_tool_execution_host",
     "default_external_tools_dir",
+    "direct_tool",
     "emit_tool_update",
     "enforce_tool_policy",
     "ensure_external_tool",
-    "execute_workspace_tool_action",
     "get_managed_external_tool_install",
     "get_tool_text_output",
     "is_tool_aborted",
@@ -249,4 +247,5 @@ __all__ = [
     "wrap_tool_definition",
     "wrap_tool_definitions",
     "workspace_tool_runtime_settings",
+    "tool_to_definition",
 ]

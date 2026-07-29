@@ -18,6 +18,7 @@ from loushang.harness.extensions.types import (
 )
 from loushang.harness.resources.types import ExtensionDescriptor, ResourceBundle
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.execution import direct_execution
 
 
 def test_extension_runtime_composes_standard_contributions(tmp_path: Path) -> None:
@@ -215,7 +216,7 @@ def test_loaded_extension_preserves_legacy_positional_field_order() -> None:
         label="Lookup",
         description="Lookup",
         parameters={},
-        execute=execute,  # type: ignore[arg-type]
+        execution=direct_execution(execute),  # type: ignore[arg-type]
     )
 
     def hook(event: object, context: object) -> None:
@@ -328,7 +329,7 @@ def test_registry_resolves_contributions_and_preserves_first_wins() -> None:
                 label="Lookup",
                 description="Lookup data",
                 parameters={},
-                execute=execute,  # type: ignore[arg-type]
+                execution=direct_execution(execute),  # type: ignore[arg-type]
             )
         ],
     )
@@ -393,7 +394,7 @@ def test_registry_excludes_every_surface_from_inactive_extensions() -> None:
                 label="Deploy",
                 description="Deploy",
                 parameters={},
-                execute=execute,  # type: ignore[arg-type]
+                execution=direct_execution(execute),  # type: ignore[arg-type]
             )
         ],
         policy=ExtensionPolicyDecision(enabled=False),

@@ -170,7 +170,6 @@ def build_builtin_tool_registry(
     approval_resolver: ApprovalResolver | None = None,
     runtime_settings: WorkspaceToolRuntimeSettings | None = None,
 ) -> WorkspaceToolRegistry:
-    registry = WorkspaceToolRegistry()
     resolved_runtime_settings = runtime_settings or workspace_tool_runtime_settings(
         settings_manager, policy_factory=PolicyEngine
     )
@@ -178,6 +177,10 @@ def build_builtin_tool_registry(
         approval_resolver
         if approval_resolver is not None
         else resolved_runtime_settings.approval_resolver
+    )
+    registry = WorkspaceToolRegistry(
+        policy_evaluator=resolved_runtime_settings.policy_engine,
+        approval_resolver=resolved_approval_resolver,
     )
     configure_persistent_approval_policy(
         resolved_approval_resolver,
@@ -193,7 +196,6 @@ def build_builtin_tool_registry(
         if callable(get_external_tool_policy)
         else None,
         policy_engine=resolved_runtime_settings.policy_engine,
-        approval_resolver=resolved_approval_resolver,
     )
     return registry
 

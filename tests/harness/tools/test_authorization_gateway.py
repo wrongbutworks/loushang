@@ -24,7 +24,7 @@ from loushang.harness.policy import (
 )
 from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.tools.workspace.authorization import (
-    execute_workspace_tool_action,
+    _execute_authorized_tool_action as execute_workspace_tool_action,
 )
 
 
@@ -51,9 +51,11 @@ def test_workspace_authorization_gateway_freezes_and_fingerprints_actions() -> N
     )
 
     assert first.fingerprint == second.fingerprint
-    assert first.arguments["edits"] == ({"old": "a", "new": "b"},)
+    assert first.authorization_arguments["edits"] == (
+        {"old": "a", "new": "b"},
+    )
     with pytest.raises(TypeError):
-        first.arguments["path"] = "/other"  # type: ignore[index]
+        first.authorization_arguments["path"] = "/other"  # type: ignore[index]
 
 
 @pytest.mark.parametrize("tool_name", ("read", "grep", "find", "ls"))

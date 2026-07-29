@@ -64,17 +64,25 @@ def _completed_stream(message: AssistantMessage) -> AssistantMessageEventStream:
 def test_agent_side_question_uses_committed_context_without_persisting(
     tmp_path,
 ) -> None:
-    class _NeverRunTool:
-        name = "dangerous"
-        description = "Must stay advertised for cache compatibility."
-        parameters: dict[str, object] = {"type": "object", "properties": {}}
-        label = "Dangerous"
+    async def scenario() -> None:
+        from loushang.harness.tools.core import ToolDefinition
+        from loushang.harness.tools.execution import direct_execution
+        from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
-        async def execute(self, *args, **kwargs):
+        async def never_run(*args, **kwargs):
             del args, kwargs
             raise AssertionError("side-question tools must be blocked")
 
-    async def scenario() -> None:
+        registry = WorkspaceToolRegistry()
+        registry.register_tool(
+            ToolDefinition(
+                name="dangerous",
+                label="Dangerous",
+                description="Must stay advertised for cache compatibility.",
+                parameters={"type": "object", "properties": {}},
+                execution=direct_execution(never_run),
+            )
+        )
         captured_contexts: list[object] = []
 
         async def stream_fn(model, context, options=None):
@@ -97,11 +105,16 @@ def test_agent_side_question_uses_committed_context_without_persisting(
         parent = Agent(
             initial_state={
                 "system_prompt": "Stable parent prompt",
-                "tools": [_NeverRunTool()],
+                "tools": [],
             },
             stream_fn=stream_fn,
         )
-        session = AgentSession(agent=parent, session_manager=manager)
+        session = AgentSession(
+            agent=parent,
+            session_manager=manager,
+            tool_registry=registry,
+            active_tool_names=["dangerous"],
+        )
         entries_before = list(manager.get_entries())
         parent_messages_before = list(parent.state.messages)
         updates: list[str] = []

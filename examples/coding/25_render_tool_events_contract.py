@@ -8,6 +8,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from loushang.harness.tools.execution import direct_execution
+
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -67,7 +69,7 @@ TOOL_DEFINITION = ToolDefinition(
         "required": ["command"],
         "additionalProperties": False,
     },
-    execute=_execute,
+    execution=direct_execution(_execute),
     render_call=_render_call,
     render_result=_render_result,
 )

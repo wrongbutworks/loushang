@@ -36,6 +36,7 @@ from loushang.harness.resources.types import (
 from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.runtime.types import RunState
 from loushang.harness.session.inspection import AgentSessionState
+from loushang.harness.tools.execution import direct_execution
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
     CompactionResult,
@@ -1020,7 +1021,7 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
         label="Bash",
         description="Run commands",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
         render_result=render_result,
     )

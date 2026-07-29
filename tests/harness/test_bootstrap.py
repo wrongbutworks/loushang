@@ -14,6 +14,7 @@ from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.execution import direct_execution
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 
@@ -251,7 +252,7 @@ def test_extension_tool_registration_is_product_neutral(tmp_path) -> None:
         label="Review",
         description="Review changes",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=execute,
+        execution=direct_execution(execute),
     )
 
     class ExtensionRuntime:
@@ -292,7 +293,7 @@ def test_resource_extension_tool_registration_uses_shared_bundle_types(
         label="Review",
         description="Review changes",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=execute,
+        execution=direct_execution(execute),
     )
 
     class ExtensionRuntime:

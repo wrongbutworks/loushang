@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Generic, Protocol, TypeVar
 
 from loushang.agent import AbortController
-from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_like
+from loushang.agent.types import AgentTool
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
     CapabilityPackComposer,
@@ -44,8 +44,6 @@ from loushang.harness.tools.contribution import (
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.context import ToolContextProvider
-from loushang.harness.tools.workspace.normalize import tool_to_definition
-from loushang.harness.tools.workspace.wrapper import create_tool_definition_from_tool
 from loushang.harness.workspace.exec import ExecOutputChunk
 
 
@@ -81,7 +79,7 @@ class ToolRegistryPort(Protocol):
 
     def register_tool(
         self,
-        tool: ToolDefinition | object,
+        tool: ToolDefinition,
         *,
         enabled: bool = True,
         source_info: object | None = None,
@@ -164,7 +162,7 @@ class SessionToolRuntime:
     """Apply the Product-selected tool capability set to one live Agent."""
 
     agent: AgentToolPort
-    tool_registry: ToolRegistryPort | None
+    tool_registry: ToolRegistryPort
     allowed_tool_names: set[str] | None
     initial_active_tool_names: Iterable[str]
     default_active_tool_names: ToolDefaultSelection
@@ -194,15 +192,10 @@ class SessionToolRuntime:
     def get_tool_definition(self, name: str) -> ToolDefinition | None:
         if not self.is_tool_allowed(name):
             return None
-        if self.tool_registry is not None:
-            try:
-                return self.tool_registry.get_definition(name)
-            except KeyError:
-                return None
-        for definition in self.get_all_tools():
-            if definition.name == name:
-                return definition
-        return None
+        try:
+            return self.tool_registry.get_definition(name)
+        except KeyError:
+            return None
 
     def apply_active_tools(self, tool_names: Iterable[str]) -> None:
         self._require_registry()
@@ -229,16 +222,12 @@ class SessionToolRuntime:
         return list(self._activation.filter_items(definitions))
 
     def tool_source_info(self, name: str) -> object | None:
-        if self.tool_registry is None:
-            return None
         try:
             return self.tool_registry.get_source_info(name)
         except KeyError:
             return None
 
     def default_active_names(self) -> list[str]:
-        if self.tool_registry is None:
-            return []
         return self.filter_allowed_tool_names(self.default_active_tool_names())
 
     def set_tool_registry(self, registry: ToolRegistryPort) -> None:
@@ -273,20 +262,12 @@ class SessionToolRuntime:
 
     def rebuild_prompt_and_tools_view(self) -> None:
         active_definitions: list[ToolDefinition] | None = None
-        if self.tool_registry is not None:
-            self._sync_available(activate_new=False, rebind=False)
-            active_definitions = list(self._activation.active_items())
+        self._sync_available(activate_new=False, rebind=False)
+        active_definitions = list(self._activation.active_items())
         self.rebuild_prompt(active_definitions)
 
     def _available_definitions(self) -> list[ToolDefinition]:
-        if self.tool_registry is not None:
-            return self.tool_registry.list_definitions()
-        return [
-            create_tool_definition_from_tool(tool)
-            if isinstance(tool, AgentTool)
-            else tool_to_definition(tool)
-            for tool in self.agent.tools
-        ]
+        return self.tool_registry.list_definitions()
 
     def _sync_available(self, *, activate_new: bool, rebind: bool) -> None:
         self._activation.refresh(
@@ -299,16 +280,13 @@ class SessionToolRuntime:
         self,
         change: ToolActivationChange[ToolDefinition],
     ) -> None:
-        if self.tool_registry is not None:
-            self.agent.tools = self.tool_registry.materialize_definitions(
-                list(change.active_items),
-                context_provider=self.build_tool_context,
-            )
+        self.agent.tools = self.tool_registry.materialize_definitions(
+            list(change.active_items),
+            context_provider=self.build_tool_context,
+        )
         self.rebuild_prompt(list(change.active_items))
 
     def _require_registry(self) -> ToolRegistryPort:
-        if self.tool_registry is None:
-            raise RuntimeError("Active tool selection requires a tool registry")
         return self.tool_registry
 
 
@@ -381,6 +359,7 @@ ContextRefresher = Callable[[], None]
 CommandDefinitionProvider = Callable[[], ToolDefinition | None]
 CommandCallIdFactory = Callable[[], str]
 CommandParametersBuilder = Callable[[str, str], Mapping[str, object]]
+CommandToolExecutor = Callable[..., Awaitable[object]]
 
 
 @dataclass(frozen=True)
@@ -407,6 +386,7 @@ class SessionCommandExecutionRuntime:
     get_definition: CommandDefinitionProvider
     build_execution_params: CommandParametersBuilder
     create_call_id: CommandCallIdFactory
+    execute_definition: CommandToolExecutor
     append_record: AppendCommandRecord
     refresh_context: ContextRefresher
     before_execute: CommandHook | None = None
@@ -491,15 +471,18 @@ class SessionCommandExecutionRuntime:
             params["timeout_seconds"] = timeout_seconds
         if stdin is not None:
             params["stdin"] = stdin
-        if selected_operations is not None:
-            params["__operations"] = selected_operations
-
         try:
-            tool_result = await definition.execute(
-                self.create_call_id(),
-                params,
-                controller.signal,
-                forward_update,
+            tool_result = await self.execute_definition(
+                definition,
+                tool_call_id=self.create_call_id(),
+                arguments=params,
+                signal=controller.signal,
+                on_update=forward_update,
+                operation_bindings=(
+                    {"bash_operations": selected_operations}
+                    if selected_operations is not None
+                    else None
+                ),
             )
             result = command_result_from_tool_result(tool_result)
         except RuntimeError as exc:
@@ -595,9 +578,9 @@ def _runtime_tool_contribution(
 def _runtime_tool_definition(tool: object) -> ToolDefinition:
     if isinstance(tool, ToolDefinition):
         return tool
-    if is_agent_tool_like(tool):
-        return create_tool_definition_from_tool(ensure_agent_tool(tool))
-    return tool_to_definition(tool)
+    raise TypeError(
+        "runtime tools require an explicitly bound ToolDefinition"
+    )
 
 
 def _runtime_tool_registration_contribution(

@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from loushang.agent.types import AgentTool, is_agent_tool_like
+from loushang.agent.types import AgentTool
+from loushang.harness.approval import ApprovalResolver
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolPackDefinition,
     ToolResolutionResult,
     resolve_tool_contributions,
 )
-from loushang.harness.tools.core import DecoratedTool, ToolDefinition
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.core import ToolRegistry as CoreToolRegistry
+from loushang.harness.tools.execution import ToolExecutionHost
 
 from .context import ToolContextProvider
 from .factory import (
@@ -20,24 +22,54 @@ from .factory import (
     WorkspaceToolProfile,
     create_profiled_workspace_tool_definitions,
 )
-from .normalize import tool_to_definition
-from .wrapper import wrap_tool_definition
+from .policy import ToolPolicyEvaluator
+from .wrapper import create_workspace_tool_execution_host
 
 
 class WorkspaceToolRegistry(CoreToolRegistry):
-    """A generic registry for workspace definitions and decorated tools."""
+    """A generic registry for explicitly bound workspace definitions."""
+
+    def __init__(
+        self,
+        *,
+        execution_host: ToolExecutionHost | None = None,
+        policy_evaluator: ToolPolicyEvaluator | None = None,
+        approval_resolver: ApprovalResolver | None = None,
+    ) -> None:
+        super().__init__(execution_host=execution_host)
+        self.policy_evaluator = policy_evaluator
+        self.approval_resolver = approval_resolver
+
+    def bind_workspace_authorization(
+        self,
+        *,
+        policy_evaluator: ToolPolicyEvaluator | None = None,
+        approval_resolver: ApprovalResolver | None = None,
+    ) -> None:
+        """Bind a standalone Workspace host; sessions may replace it later."""
+
+        self.policy_evaluator = policy_evaluator or self.policy_evaluator
+        self.approval_resolver = approval_resolver or self.approval_resolver
+        self.bind_execution_host(
+            create_workspace_tool_execution_host(
+                policy_evaluator=self.policy_evaluator,
+                approval_resolver=self.approval_resolver,
+            )
+        )
+
+    def _ensure_execution_host(self) -> None:
+        if self._execution_host is None:
+            self.bind_workspace_authorization()
 
     def register_tool(
         self,
-        tool: ToolDefinition | DecoratedTool | AgentTool[Any] | object,
+        tool: ToolDefinition,
         *,
         enabled: bool = True,
         source_info: object | None = None,
     ) -> ToolDefinition:
-        if isinstance(tool, ToolDefinition) or is_agent_tool_like(tool):
-            return super().register_tool(tool, enabled=enabled, source_info=source_info)
         return super().register_tool(
-            tool_to_definition(tool),
+            tool,
             enabled=enabled,
             source_info=source_info,
         )
@@ -48,9 +80,11 @@ class WorkspaceToolRegistry(CoreToolRegistry):
         *,
         context_provider: ToolContextProvider | None = None,
     ) -> AgentTool[Any]:
-        return wrap_tool_definition(
-            self.get_definition(name), context_provider=context_provider
-        )
+        self._ensure_execution_host()
+        return self.materialize_definitions(
+            [self.get_definition(name)],
+            context_provider=context_provider,
+        )[0]
 
     def materialize_definitions(
         self,
@@ -58,10 +92,11 @@ class WorkspaceToolRegistry(CoreToolRegistry):
         *,
         context_provider: ToolContextProvider | None = None,
     ) -> list[AgentTool[Any]]:
-        return [
-            wrap_tool_definition(definition, context_provider=context_provider)
-            for definition in definitions
-        ]
+        self._ensure_execution_host()
+        return super().materialize_definitions(
+            definitions,
+            context_provider=context_provider,
+        )
 
     def list_contributions(self) -> tuple[ToolContribution, ...]:
         enabled_names = {

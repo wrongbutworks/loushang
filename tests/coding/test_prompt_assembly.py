@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 
+from loushang.harness.tools.execution import direct_execution
+
 
 def _runtime_footer(cwd: str) -> str:
     return f"Current date: {date.today().isoformat()}\nCurrent working directory: {cwd}"
@@ -244,7 +246,7 @@ def test_assemble_prompt_uses_tool_prompt_snippets_and_hides_tools_without_snipp
                 label="Visible Tool",
                 description="visible description should not be used",
                 parameters={"type": "object"},
-                execute=execute,
+                execution=direct_execution(execute),
                 prompt_snippet="Run visible behavior",
                 prompt_guidelines=("Use visible_tool when asked.",),
             ),
@@ -253,7 +255,7 @@ def test_assemble_prompt_uses_tool_prompt_snippets_and_hides_tools_without_snipp
                 label="Formatted Tool",
                 description="formatted description should not be used",
                 parameters={"type": "object"},
-                execute=execute,
+                execution=direct_execution(execute),
                 prompt_snippet="- formatted_tool: Keep formatted snippet",
             ),
             ToolDefinition(
@@ -261,7 +263,7 @@ def test_assemble_prompt_uses_tool_prompt_snippets_and_hides_tools_without_snipp
                 label="Hidden Tool",
                 description="hidden description should not appear",
                 parameters={"type": "object"},
-                execute=execute,
+                execution=direct_execution(execute),
             ),
         ],
     )
@@ -296,7 +298,7 @@ def test_tuple_backed_inputs_snapshot_mutable_constructors() -> None:
         label="Tool",
         description="Tool description",
         parameters={"type": "object"},
-        execute=execute,
+        execution=direct_execution(execute),
         prompt_guidelines=prompt_guidelines,
     )
     prompt_assembly = PromptAssembly(
@@ -339,7 +341,7 @@ def test_tuple_backed_constructors_reject_bare_strings() -> None:
             label="Tool",
             description="Tool description",
             parameters={"type": "object"},
-            execute=execute,
+            execution=direct_execution(execute),
             prompt_guidelines="keep edits narrow",
         )
     except TypeError as exc:
@@ -387,7 +389,7 @@ def test_tool_definition_prompt_guidelines_reject_non_strings() -> None:
                 label="Tool",
                 description="Tool description",
                 parameters={"type": "object"},
-                execute=execute,
+                execution=direct_execution(execute),
                 prompt_guidelines=bad_prompt_guidelines,
             )
         except TypeError as exc:

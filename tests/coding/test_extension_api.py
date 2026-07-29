@@ -5,17 +5,20 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.tools.execution import direct_execution
 
-def test_extension_api_register_tool_accepts_decorated_tool() -> None:
+
+def test_extension_api_register_tool_accepts_explicit_direct_tool() -> None:
     from loushang.harness.extensions.agent.api import ExtensionAPI
     from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace import direct_tool
 
     @tool()
     async def greet(name: str) -> str:
         return f"hi {name}"
 
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo"))
-    api.register_tool(greet)
+    api.register_tool(direct_tool(greet))
     loaded = api.build_loaded_extension()
 
     assert loaded.tool_definitions[0].name == "greet"
@@ -298,7 +301,7 @@ def test_extension_api_v1_core_types_are_available() -> None:
         label="Demo Tool",
         description="Tool from loaded extension",
         parameters={},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     diagnostic = DiagnosticDraft(
         code="demo", message="demo diagnostic", source_path=Path("/tmp/demo")
@@ -366,7 +369,7 @@ def test_extension_api_registers_hooks_and_tools() -> None:
         label="Demo Tool",
         description="Tool from api",
         parameters={},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     api = ExtensionAPI(
         name="demo_extension",

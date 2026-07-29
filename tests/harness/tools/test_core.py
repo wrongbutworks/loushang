@@ -5,6 +5,8 @@ from typing import NotRequired, TypedDict
 
 import pytest
 
+from loushang.harness.tools.execution import direct_execution
+
 
 class SearchArgs(TypedDict):
     pattern: str
@@ -39,7 +41,7 @@ def test_tool_definition_validates_prompt_guidelines_sequence() -> None:
         label="Demo",
         description="demo",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=execute,
+        execution=direct_execution(execute),
         prompt_guidelines=["one", "two"],
     )
 
@@ -51,7 +53,7 @@ def test_tool_definition_validates_prompt_guidelines_sequence() -> None:
             label="Bad",
             description="bad",
             parameters={"type": "object", "properties": {}, "required": []},
-            execute=execute,
+            execution=direct_execution(execute),
             prompt_guidelines="bad",  # type: ignore[arg-type]
         )
 
@@ -70,7 +72,7 @@ def test_project_tool_definition_uses_neutral_source_info() -> None:
         label="Read",
         description="Read files",
         parameters={"type": "object"},
-        execute=execute,
+        execution=direct_execution(execute),
     )
 
     assert project_tool_definition(
@@ -131,14 +133,14 @@ def test_registry_accepts_neutral_definitions_and_preserves_order_and_source_inf
         label="First",
         description="first",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=execute,
+        execution=direct_execution(execute),
     )
     second = ToolDefinition(
         name="second",
         label="Second",
         description="second",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=execute,
+        execution=direct_execution(execute),
     )
 
     registry = ToolRegistry()
@@ -164,7 +166,7 @@ def test_registry_rejects_decorated_plain_return_tools() -> None:
 
     registry = ToolRegistry()
 
-    with pytest.raises(TypeError, match="pre-normalized ToolDefinition"):
+    with pytest.raises(TypeError, match="explicitly bound ToolDefinition"):
         registry.register_tool(greet)
 
 
@@ -192,12 +194,12 @@ def test_wrap_tool_definition_uses_neutral_schema_and_executes() -> None:
         description="demo",
         parameters={"type": "object", "properties": {"value": {"type": "string"}}},
         provider_parameters={"type": "object", "properties": {"provider": {"type": "string"}}},
-        execute=execute,
+        execution=direct_execution(execute),
     )
     runtime_tool = wrap_tool_definition(definition)
 
     result = asyncio.run(runtime_tool.execute("call-1", {"value": "x"}))
 
     assert runtime_tool.name == "demo"
-    assert runtime_tool.parameters == definition.parameters
+    assert runtime_tool.parameters == definition.provider_parameters
     assert result.details == {"tool_call_id": "call-1", "params": {"value": "x"}}

@@ -12,6 +12,7 @@ from loushang.ai import (
     Usage,
     UserMessage,
 )
+from loushang.harness.tools.execution import direct_execution
 
 
 def _usage() -> Usage:
@@ -509,7 +510,7 @@ def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None
         label="Bash",
         description="Run a command",
         parameters={},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
         render_result=render_result,
     )

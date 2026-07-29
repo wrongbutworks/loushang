@@ -16,7 +16,7 @@ def test_decorated_tool_context_receives_abort_signal() -> None:
     import asyncio
 
     from loushang.harness.tools.core import tool
-    from loushang.harness.tools.workspace.normalize import tool_to_definition
+    from loushang.harness.tools.workspace import direct_tool
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     @tool()
@@ -24,7 +24,7 @@ def test_decorated_tool_context_receives_abort_signal() -> None:
         return {"signal_seen": ctx.signal is signal}
 
     signal = object()
-    runtime_tool = wrap_tool_definition(tool_to_definition(probe))
+    runtime_tool = wrap_tool_definition(direct_tool(probe))
 
     result = asyncio.run(runtime_tool.execute("call-probe", {}, signal=signal))
 

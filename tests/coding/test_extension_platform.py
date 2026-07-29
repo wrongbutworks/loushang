@@ -262,6 +262,7 @@ def test_extension_loader_attaches_manifest_policy_and_surface_snapshot(
     extension_file = extension_dir / "extension.py"
     extension_file.write_text(
         """
+from loushang.harness.tools.execution import direct_execution
 from loushang.harness.tools.workspace import ToolDefinition
 
 
@@ -277,7 +278,7 @@ def register(api):
             label="Runtime Lookup",
             description="runtime tool",
             parameters={},
-            execute=_execute_tool,
+            execution=direct_execution(_execute_tool),
         )
     )
         """.strip()

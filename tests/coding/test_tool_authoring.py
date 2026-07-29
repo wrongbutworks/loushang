@@ -7,7 +7,8 @@ from typing import Any
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
 from loushang.harness.tools.core import ToolDefinition, tool
-from loushang.harness.tools.workspace import ToolContext
+from loushang.harness.tools.execution import direct_execution
+from loushang.harness.tools.workspace import ToolContext, direct_tool
 from loushang.harness.tools.workspace.normalize import tool_to_definition
 from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
@@ -83,20 +84,20 @@ def test_tool_to_definition_accepts_tool_definition_passthrough() -> None:
             "required": [],
             "additionalProperties": False,
         },
-        execute=_dummy_execute,
+        execution=direct_execution(_dummy_execute),
     )
     assert tool_to_definition(definition) is definition
 
 
-def test_tool_to_definition_compiles_decorated_tool_metadata() -> None:
-    definition = tool_to_definition(greet)
+def test_direct_tool_compiles_decorated_tool_metadata() -> None:
+    definition = direct_tool(greet)
     assert definition.name == "greet"
     assert definition.description == "Say hello."
     assert definition.label == "Greet"
 
 
-def test_tool_to_definition_preserves_explicit_decorated_metadata() -> None:
-    definition = tool_to_definition(salute)
+def test_direct_tool_preserves_explicit_decorated_metadata() -> None:
+    definition = direct_tool(salute)
     spec = getattr(salute, "__loushang_tool_spec__")
     assert definition.name == "salute"
     assert definition.label == "Salute"
@@ -148,7 +149,7 @@ def test_decorated_tool_spec_remains_callable() -> None:
 
 
 def test_decorated_tool_receives_tool_context_from_provider() -> None:
-    definition = tool_to_definition(show_context)
+    definition = direct_tool(show_context)
     tool = wrap_tool_definition(definition, context_provider=_provider)
 
     result = asyncio.run(tool.execute("call-1", {"path": "README.md"}))
@@ -159,7 +160,7 @@ def test_decorated_tool_receives_tool_context_from_provider() -> None:
 
 
 def test_decorated_tool_passes_through_explicit_agent_tool_result() -> None:
-    definition = tool_to_definition(explicit_result)
+    definition = direct_tool(explicit_result)
     tool = wrap_tool_definition(definition, context_provider=_provider)
 
     result = asyncio.run(tool.execute("call-2", {"name": "Ada"}))
@@ -169,7 +170,7 @@ def test_decorated_tool_passes_through_explicit_agent_tool_result() -> None:
 
 
 def test_decorated_tool_normalizes_plain_return_values() -> None:
-    definition = tool_to_definition(plain_value)
+    definition = direct_tool(plain_value)
     tool = wrap_tool_definition(definition, context_provider=_provider)
 
     result = asyncio.run(tool.execute("call-3", {"name": "Ada"}))
@@ -179,7 +180,7 @@ def test_decorated_tool_normalizes_plain_return_values() -> None:
 
 
 def test_decorated_tool_rejects_unsupported_plain_return_values() -> None:
-    definition = tool_to_definition(unsupported_value)
+    definition = direct_tool(unsupported_value)
     tool = wrap_tool_definition(definition, context_provider=_provider)
 
     try:
@@ -193,7 +194,7 @@ def test_decorated_tool_rejects_unsupported_plain_return_values() -> None:
 
 
 def test_decorated_tool_exceptions_propagate_to_agent_loop_boundary() -> None:
-    definition = tool_to_definition(fail_loudly)
+    definition = direct_tool(fail_loudly)
     tool = wrap_tool_definition(definition, context_provider=_provider)
 
     try:
