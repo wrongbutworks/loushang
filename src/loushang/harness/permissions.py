@@ -179,7 +179,10 @@ class PermissionProfilePolicyEvaluator:
         )
         if profile.approval_behavior == "allow_optional":
             return (
-                PolicyDecision.allow()
+                PolicyDecision(
+                    disposition="allow",
+                    code=managed.code,
+                )
                 if managed.disposition == "ask"
                 else managed
             )

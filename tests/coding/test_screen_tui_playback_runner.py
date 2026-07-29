@@ -27,6 +27,7 @@ from tests.coding.tui_support.scenarios.command import COMMAND_ROUTING_SCENARIOS
 from tests.coding.tui_support.scenarios.composer import COMPOSER_SCENARIOS
 from tests.coding.tui_support.scenarios.lifecycle import LIFECYCLE_SCENARIOS
 from tests.coding.tui_support.scenarios.multiagent import MULTIAGENT_SCENARIOS
+from tests.coding.tui_support.scenarios.permissions import PERMISSION_SCENARIOS
 from tests.coding.tui_support.scenarios.product import PRODUCT_SCENARIOS
 from tests.coding.tui_support.scenarios.surface import SURFACE_SCENARIOS
 from tests.coding.tui_support.scenarios.terminal import TERMINAL_SCENARIOS
@@ -145,6 +146,39 @@ def test_screen_tui_playback_multiagent_scenarios_are_layered() -> None:
         "multiagent-child-approval",
         "multiagent-render",
     ]
+
+
+def test_screen_tui_playback_permission_scenarios_are_layered() -> None:
+    assert [scenario.name for scenario in PERMISSION_SCENARIOS] == [
+        "permission-behavior-matrix",
+    ]
+
+
+def test_screen_tui_playback_runs_permission_behavior_matrix(tmp_path) -> None:
+    results = run_playback_scenarios(
+        ["permission-behavior-matrix"],
+        artifacts_dir=tmp_path,
+    )
+
+    assert [result.ok for result in results] == [True]
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "permission-behavior-matrix-events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        row["layer"] == "behavior"
+        and row["data"]["name"] == "child-delegated-ceiling"
+        and row["data"]["outcome"] == "contained"
+        for row in rows
+    )
+    assert any(
+        row["layer"] == "gateway"
+        and row["event"] == "tool_execution_failed"
+        and row["data"]["phase"] == "pre_execution"
+        for row in rows
+    )
 
 
 def test_screen_tui_playback_runs_multiagent_topology_matrix(tmp_path) -> None:

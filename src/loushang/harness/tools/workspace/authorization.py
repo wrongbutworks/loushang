@@ -114,8 +114,6 @@ async def _authorize_workspace_tool_action(
         if execution_profile_ceiling is not None
         else None
     )
-    if effective is not None:
-        _validate_path_authority(tool_name, frozen_arguments, effective)
     return AuthorizedWorkspaceAction(
         tool_name=action.tool_name,
         arguments=action.arguments,

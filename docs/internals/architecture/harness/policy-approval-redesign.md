@@ -1358,6 +1358,28 @@ effective mode appears in the status line, changes emit a typed session audit
 event, and playback covers scoped mode selection, Full Access confirmation,
 pending-request reopening, and retained-permission revocation.
 
+Behavior checkpoint (2026-07-29): `permission-behavior-matrix` now executes
+real Coding read/write/Bash definitions through the live
+Policy → Approval → Gateway path. It proves that Standard allows routine
+workspace work, tests, Git inspection, public HTTP reads, and harmless unknown
+commands while asking for deletion, publication, privilege, secrets, and
+remote mutation; Cautious additionally asks for direct writes; Full Access
+skips only those discretionary prompts. The same playback proves that an
+explicit managed deny still wins, a managed Standard ceiling keeps a requested
+Full Access session at Standard, and a Full Access child cannot widen its
+read-only delegated execution profile. Execution-profile rejection is recorded
+as `tool_execution_failed` with `phase=pre_execution` and never invokes the
+executor. When Full Access suppresses a prompt, the allowed decision retains
+the original Policy code for audit classification while
+`approval_required=false` makes the absence of a prompt explicit. The playback
+writes a compact outcome table plus the redacted Gateway JSONL:
+
+```console
+uv run python scripts/run_tui_playback.py \
+  permission-behavior-matrix \
+  --artifacts /tmp/loushang-permission-playback
+```
+
 Exit gate:
 
 - local/remote/timeout/cancel races accept one result;
@@ -1432,6 +1454,8 @@ At minimum, cover:
 - MCP server/tool/schema identity;
 - extension evaluator failure;
 - audit event ordering and structural redaction;
+- Standard/Cautious/Full Access behavior through real Product tools, including
+  managed deny, profile ceiling, and child execution containment;
 - TUI playback for queued approvals and navigation between common surfaces.
 
 ## 19. Non-goals For The First Three Batches

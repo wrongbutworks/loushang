@@ -60,6 +60,7 @@ def test_workspace_gateway_enforces_file_roots_from_execution_profile() -> None:
     profile = EffectiveExecutionProfile(
         readable_roots=(Path("/workspace"),),
     )
+    events: list[dict[str, object]] = []
 
     with pytest.raises(ExecutionAuthorizationError, match="outside"):
         asyncio.run(
@@ -69,9 +70,18 @@ def test_workspace_gateway_enforces_file_roots_from_execution_profile() -> None:
                 arguments={"path": "/outside/secret"},
                 cwd="/workspace",
                 execution_profile_ceiling=profile,
+                audit_sink=events.append,
                 executor=lambda _action: pytest.fail("executor must not run"),
             )
         )
+
+    assert [event["type"] for event in events] == [
+        "tool_action_frozen",
+        "tool_policy_evaluated",
+        "tool_execution_failed",
+    ]
+    assert events[-1]["phase"] == "pre_execution"
+    assert events[-1]["outcome"] == "denied"
 
 
 def test_workspace_gateway_binds_policy_and_approval_to_execution_profile(

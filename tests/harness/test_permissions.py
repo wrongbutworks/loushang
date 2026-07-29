@@ -74,7 +74,7 @@ def test_full_access_skips_optional_approval_but_never_managed_deny() -> None:
     assert _evaluate(
         profile="full_access",
         decision=PolicyDecision.ask("Delete files", code="delete"),
-    ) == PolicyDecision.allow()
+    ) == PolicyDecision(disposition="allow", code="delete")
 
     deny = PolicyDecision.deny("Managed deny", code="managed_deny")
     assert _evaluate(profile="full_access", decision=deny) == deny
