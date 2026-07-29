@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +39,7 @@ from .audit import (
 from .policy import ToolPolicyEvaluator, enforce_tool_policy
 
 T = TypeVar("T")
+_LOGGER = logging.getLogger(__name__)
 WorkspaceActionExecutor = Callable[
     [AuthorizedToolAction],
     T | Awaitable[T],
@@ -285,18 +287,26 @@ async def _execute_authorized_tool_action(
         except BaseException as audit_error:
             error.add_note(f"terminal audit emission failed: {audit_error}")
         raise
-    await _emit_audit_event(
-        audit_sink,
-        {
-            "type": "tool_execution_completed",
-            **_execution_audit_details(
-                action,
-                tool_call_id=tool_call_id,
-                outcome="completed",
-                phase="execution",
-            ),
-        },
-    )
+    try:
+        await _emit_audit_event(
+            audit_sink,
+            {
+                "type": "tool_execution_completed",
+                **_execution_audit_details(
+                    action,
+                    tool_call_id=tool_call_id,
+                    outcome="completed",
+                    phase="execution",
+                ),
+            },
+        )
+    except Exception:
+        # The protected effect has already committed. Turning a terminal audit
+        # transport failure into a tool failure would invite an unsafe retry
+        # of a delete, publication, or other non-idempotent operation.
+        _LOGGER.exception(
+            "terminal tool audit emission failed after successful execution",
+        )
     return result
 
 

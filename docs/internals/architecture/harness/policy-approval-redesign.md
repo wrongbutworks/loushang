@@ -1,15 +1,35 @@
 # Policy And Approval Redesign
 
-Status: proposed replacement architecture
+Status: implemented local/session baseline; durable Work/daemon and MCP
+integration remain deferred
 
 Owner: `loushang.harness`
 
-Compatibility: no compatibility guarantee for the current Policy/Approval API
+Compatibility: the implemented public tool-authoring, Policy, Approval,
+execution-profile, and Gateway contracts identified by the checkpoints below
+are the current baseline. Illustrative durable target types are not public
+APIs and carry no compatibility guarantee.
+
+Implementation checkpoint (2026-07-29):
+
+- Product-neutral tools select exactly one explicit `direct_tool` or
+  `authorized_tool` execution route.
+- Authorized actions declare typed effects, freeze one fingerprint, and pass
+  through the session-owned Gateway for Policy, Approval, execution-profile
+  revalidation, execution, and structurally redacted audit.
+- Coding supplies the experience-first Standard/Cautious/Full Access profiles
+  and is the first Product adapter. Extensions and child Agents use the same
+  live Gateway rather than Product-local permission code.
+- The interactive approval broker is complete-once and actor/incarnation
+  scoped. Session and persistent grants, presenter detach/rebind, stale-result
+  rejection, and child lifecycle cleanup have acceptance coverage.
+- Durable pending approval across process restart, authenticated remote
+  reviewers, Work/daemon recovery, and MCP adapters are explicitly deferred.
 
 ## 1. Decision
 
-Replace the current tool-shaped Policy/Approval implementation with a
-product-neutral **authorization runtime**:
+Use a product-neutral **authorization runtime** instead of Product-local,
+tool-shaped Policy/Approval implementations:
 
 ```text
 Action proposal
@@ -22,13 +42,18 @@ Action proposal
   -> audit events
 ```
 
-The new owner is:
+The runtime is a composition of focused Harness modules, not a requirement to
+place every concern in one package:
 
 ```text
-loushang.harness.authorization
+loushang.harness.tools             explicit authoring and execution bindings
+loushang.harness.policy            decisions, subjects, normalization, traces
+loushang.harness.approval          consent lifecycle and bounded grants
+loushang.harness.authorization     effective execution-profile intersection
+loushang.harness.tools.workspace   live Gateway and common action adapters
 ```
 
-`Policy` remains the decision mechanism inside this package. `Approval` is a
+`Policy` remains the decision mechanism inside this composition. `Approval` is a
 separate consent lifecycle. A sandbox or another executor is the enforcement
 mechanism. These three concepts must not be collapsed:
 
@@ -38,10 +63,15 @@ mechanism. These three concepts must not be collapsed:
 | Approval | Who may grant a bounded exception, and for how long? | approval coordinator |
 | Enforcement | What can the process actually read, write, execute, or reach? | executor/sandbox using the authorized profile |
 
-This design is intentionally not a compatibility extension of
-`PolicyDecision(allow|deny|ask)` and `ApprovalDecision(allow|deny)`. Those
-types are too small to represent rule provenance, delegated authority,
-session grants, durable pending approval, or execution-time validation.
+`PolicyDecision(allow|deny|ask)` intentionally remains a narrow verdict.
+Action fingerprints, typed effects, actor provenance, grants, approval
+options, and execution profiles are separate immutable values around that
+verdict; they are not optional fields accumulated on one decision object.
+`ApprovalDecision` distinguishes allow, deny, abort, and scoped retention
+metadata for the local/session lifecycle. Timeout, cancellation, and stale
+responses are coordinator transitions that resolve to or reject those bounded
+decisions. Durable ownership and rehydration will add stores and records
+without widening a decision into a runtime container.
 
 ## 2. Scope
 
@@ -78,18 +108,18 @@ It does **not** replace:
 Those domains may call the authorization runtime before an effect, but they
 retain their own domain models.
 
-## 3. Why The Current Design Should Be Replaced
+## 3. Why The Previous Product-Local Design Was Replaced
 
-The current implementation has useful foundations—immutable requests,
+The previous implementation had useful foundations—immutable requests,
 command normalization, evaluator composition, pending request correlation,
 TUI presentation, and Work event projection—but its central model is not
 strong enough.
 
-### 3.1 Policy is tool-shaped and under-specified
+### 3.1 Policy was tool-shaped and under-specified
 
-Current policy subjects are primarily tool, command, and path values. The
-default engine relies heavily on string and substring matching and falls back
-to allow. It does not model:
+Previous Product-local policy subjects were primarily tool, command, and path
+values. The default engine relied heavily on string and substring matching
+and fell back to allow. It did not model:
 
 - the caller identity and delegation chain;
 - requested effects and resources;
@@ -99,10 +129,10 @@ to allow. It does not model:
 - a stable action fingerprint;
 - whether an approval can legally widen the current authority.
 
-### 3.2 Approval is only a boolean
+### 3.2 Approval was only a boolean
 
-The current request carries a tool name, arguments, and a reason. The result is
-only allow or deny. It cannot express:
+The previous request carried a tool name, arguments, and a reason. The result
+was only allow or deny. It could not express:
 
 - allow once versus allow for this session;
 - a safely scoped persistent rule;
@@ -112,10 +142,11 @@ only allow or deny. It cannot express:
 - an expiry or revocation;
 - a durable pending request across daemon restart.
 
-### 3.3 Presentation owns too much lifecycle
+### 3.3 Presentation owned too much lifecycle
 
-The current interactive broker is bound to one event loop and one live
-presenter. That is adequate for a single interactive session, but not for:
+The previous interactive broker treated one event loop and one live presenter
+as the lifecycle boundary. That was adequate for a single interactive
+session, but not for:
 
 - a TUI detaching and reattaching;
 - multiple authenticated review channels;
@@ -126,10 +157,10 @@ presenter. That is adequate for a single interactive session, but not for:
 The presenter must be a projection of pending state, not the owner of pending
 state.
 
-### 3.4 Enforcement is scattered
+### 3.4 Enforcement was scattered
 
-Workspace tools call `enforce_tool_policy()` individually. This makes it
-difficult to guarantee that every effectful path performs:
+Workspace tools previously called `enforce_tool_policy()` individually. That
+made it difficult to guarantee that every effectful path performed:
 
 1. the same canonicalization;
 2. the same policy evaluation;
@@ -390,7 +421,7 @@ arguments.
 
 The implementation must enforce these invariants:
 
-1. **Every effectful execution has one canonical `ActionRequest`.**
+1. **Every effectful execution has one canonical action snapshot.**
 2. **Hard and managed denies cannot be overridden by approval.**
 3. **A child cannot gain more authority than its delegated envelope.**
 4. **A grant is bounded by actor, action matcher, resource scope, lifetime, and
@@ -409,7 +440,13 @@ The implementation must enforce these invariants:
 
 ## 7. Core Domain Model
 
-The examples below define the intended shape, not final Python syntax.
+The examples below define the durable target shape, not current public Python
+syntax. The local/session implementation uses `PreparedToolAction`,
+`AuthorizedToolAction`, `ToolPolicySubject`, `PolicyDecision`,
+`ApprovalRequest`, `ApprovalDecision`, and `EffectiveExecutionProfile`.
+Names such as `ActorRef`, `ActionRequest`, `PolicyVerdict`, and the durable
+stores below remain design vocabulary until Work/daemon provides their second
+runtime consumer.
 
 ### 7.1 Actor
 
@@ -793,8 +830,10 @@ configured ceiling; high-risk actions may require a user reviewer.
 ### 10.4 Presentation is a projection
 
 Closing the TUI surface does not mutate authorization state unless the user
-explicitly selects deny or abort. Detaching a client leaves a durable request
-pending until expiry or another policy-defined terminal transition.
+explicitly selects deny or abort. In the implemented session baseline,
+detaching a presenter leaves the request in the live coordinator. A future
+Work/daemon owner may persist that request until expiry or another
+policy-defined terminal transition.
 
 The presentation model includes:
 
@@ -878,7 +917,18 @@ started. A pre-execution revalidation or observation-hook failure publishes
 `phase=execution`. All events for one attempt carry the same action
 fingerprint.
 
+Audit transport failure before `tool_execution_started` is fail-closed and the
+effect is not invoked. After a successful non-idempotent effect, failure to
+publish `tool_execution_completed` is logged but does not turn the committed
+effect into a retryable tool failure. If the executor itself fails, that
+original failure remains primary and a terminal-audit failure is attached as
+diagnostic context.
+
 ## 12. Runtime Components And Ports
+
+This is the conceptual durable composition. The implemented local/session
+composition is the focused module layout in section 15; it deliberately does
+not publish a monolithic `AuthorizationRuntime` object or durable store ports.
 
 ```text
 AuthorizationRuntime
@@ -1180,63 +1230,61 @@ Products may choose aliases, but they operate on the shared runtime.
 
 ## 15. Physical Module Layout
 
-Keep the first implementation compact:
+The implemented layout keeps each mechanism focused:
 
 ```text
-src/loushang/harness/authorization/
-  __init__.py
-  types.py          # actor, action, claims, profiles, verdicts, grants
-  policy.py         # modes, rule sources, evaluation and trace
-  approval.py       # request/resolution state and coordinator
-  store.py          # in-memory ports and persistence contracts
-  enforcement.py    # mandatory gateway and revalidation
+src/loushang/harness/
+  effects.py                         # typed protected-resource effects
+  policy.py                          # subjects, decisions, normalization
+  policy_engine.py                   # default Product-injected rule engine
+  approval.py                        # broker, options, grants, rule stores
+  authorization/
+    execution_profile.py             # non-widening effective authority
+  tools/
+    authoring.py                     # direct/authorized tool bindings
+    execution.py                     # prepared/authorized action contracts
+    workspace/
+      authorization.py               # mandatory live Gateway
+      policy.py                      # Policy/Approval enforcement adapter
+      audit.py                       # redacted action/execution projection
 ```
 
-Product adapters remain outside:
+Product adapters remain thin and outside these modules:
 
 ```text
-src/loushang/coding/authorization.py
-src/loushang/harnesstui/...approval...
-src/loushang/work/...authorization projection...
+src/loushang/coding/                 # profile, wording, composition
+src/loushang/harnesstui/approval/    # common interactive projection
+src/loushang/work/                   # event projection; durability deferred
 ```
 
-After cutover, remove:
+`harness.policy`, `harness.approval`, and `harness.authorization` are
+cooperating public boundaries. Merging them into one physical package would
+not improve enforcement and would needlessly invalidate the implemented
+surface. Product packages must not reimplement or re-export these mechanisms.
 
-```text
-src/loushang/harness/policy.py
-src/loushang/harness/policy_engine.py
-src/loushang/harness/approval.py
-src/loushang/coding/policy/
-```
+## 16. Implemented Owner Ledger
 
-Command normalization code that remains generally useful should move into the
-process action adapter rather than being discarded.
+The local/session cutover is complete:
 
-## 16. Current-to-target Cutover Ledger
-
-There must be one cutover, not a permanent legacy bridge:
-
-| Current owner | Target |
+| Concern | Implemented owner |
 |---|---|
-| `harness/policy.py` value types and evaluator chain | replace with `authorization/types.py` and `authorization/policy.py` |
-| command normalization inside `harness/policy.py` | retain behind Coding/process `ActionAdapter` |
-| `harness/policy_engine.py` default string rules | delete; replace with Product profile plus typed rules |
-| `harness/approval.py` resolver/broker | replace with `authorization/approval.py` coordinator and stores |
-| `harness/tools/workspace/policy.py` | replace with the common enforcement gateway |
-| per-tool `policy_engine` / `approval_resolver` arguments | replace with one bound `AuthorizationRuntime` |
-| `harness/tools/workspace/factory.py` policy/approval assembly | compose the Product authorization profile and runtime |
-| `coding/policy/` | delete after Coding action adapters/profile are active |
-| `harness/session/agent_adapter.py` presenter binding | bind/unbind a review channel; pending state stays in the coordinator |
-| `harnesstui` boolean approval surface | select typed `ApprovalOption` values |
-| `harness/multiagent/context.py` approval resolver | replace with actor/delegation context and root coordinator reference |
-| `work/agent_projection.py` tool-specific approval events | project common authorization events |
-| `WorkStepRun.approval_ref` | retain as a reference to the common approval record |
-| extension `register_approval()` replacement slot | remove; add bounded rule/reviewer/detail contributions |
-| extension routing machinery | retain; it is outside the authorization replacement |
+| Policy values, subjects, normalization, evaluation | `harness.policy` and `harness.policy_engine` |
+| Approval request, broker, grants, retained rules | `harness.approval` |
+| Effective sandbox/executor authority | `harness.authorization` |
+| Tool route and immutable action contracts | `harness.tools.authoring` and `harness.tools.execution` |
+| Mandatory Policy → Approval → execution boundary | `harness.tools.workspace.authorization` |
+| Common action adapters and typed effects | `harness.tools.authoring` and `harness.effects` |
+| Session binding and audit event projection | `harness.session` |
+| Interactive approval and permission presentation | `harnesstui.approval` |
+| Coding profile, defaults, and Product wording | `loushang.coding` |
+| Child actor/delegation provenance | `harness.multiagent` plus the Product child factory |
 
-Temporary adapters may exist only inside an implementation branch while a
-batch is being migrated. They are not public compatibility contracts and must
-be removed before the batch exit gate.
+Still deferred:
+
+- durable pending approval and grants across daemon restart;
+- Work waiting/checkpoint/rehydration semantics;
+- authenticated remote reviewer channels;
+- MCP connect/invoke action adapters.
 
 ## 17. Delivery Plan
 
@@ -1489,15 +1537,20 @@ reuse.
 
 ## 20. Acceptance Summary
 
-The redesign is complete only when:
+The implemented local/session baseline satisfies:
 
 1. the same action model drives Policy, Approval, enforcement, and audit;
 2. a user can distinguish allow once, bounded grant, deny, and abort;
 3. a changed action cannot reuse an old approval;
-4. child and durable executions use the same authorization semantics;
-5. TUI/CLI/daemon are review channels rather than lifecycle owners;
+4. root, extension, and child execution use the same Gateway semantics;
+5. TUI presentation is a review channel rather than the approval lifecycle
+   owner;
 6. no approval can exceed managed, Product, delegated, or sandbox ceilings;
-7. the old tool-shaped Policy/Approval stack is deleted.
+7. Product-local tool-shaped Policy/Approval implementations are removed.
+
+The durable extension is complete only when Work and daemon execution can
+persist, rehydrate, review, cancel, and revoke the same bounded actions without
+weakening those invariants.
 
 ## 21. Reference Implementation Evidence
 

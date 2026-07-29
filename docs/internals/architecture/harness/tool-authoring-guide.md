@@ -22,6 +22,16 @@ and run without a model or network connection:
 uv run python examples/harness/tool_authoring.py
 ```
 
+[`examples/harness/document_product.py`](../../../../../examples/harness/document_product.py)
+is a minimal executable non-Coding Product. It owns a word-count/export tool
+set and Product-specific approval wording while reusing Harness authoring,
+Policy, Approval, Gateway, and audit. The adapter defaults to headless deny;
+the deterministic example runner explicitly injects an allow reviewer:
+
+```bash
+uv run python examples/harness/document_product.py
+```
+
 ## Pure In-Process Tool
 
 Use `direct_tool` when the handler consumes no common protected resource:

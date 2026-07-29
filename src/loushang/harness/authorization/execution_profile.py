@@ -51,7 +51,7 @@ def resolve_effective_execution_profile(
     approval: ApprovalDecision | None = None,
     approval_action_id: str | None = None,
 ) -> EffectiveExecutionProfile:
-    """Resolve legacy Policy/Approval into a non-widening execution profile."""
+    """Resolve Policy/Approval into a non-widening execution profile."""
 
     if decision.disposition == "deny":
         raise ExecutionAuthorizationError(decision.reason or "execution denied by policy")

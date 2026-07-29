@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from itertools import product
@@ -8,10 +9,8 @@ from random import Random
 
 from loushang.harness.approval import (
     ActorBoundApprovalResolver,
-    ApprovalRequest,
     HeadlessApprovalResolver,
     InteractiveApprovalResolver,
-    resolve_approval,
 )
 from loushang.harness.multiagent import (
     AgentInputMessage,
@@ -24,12 +23,31 @@ from loushang.harness.multiagent import (
     SubagentRoundResult,
 )
 from loushang.harness.multiagent.run_handle import RoundMode
+from loushang.harness.policy import PolicyDecision
 from loushang.harness.session.multiagent import (
     SessionMultiAgentRuntime,
     SessionSubagentRequest,
 )
+from loushang.harness.tools import (
+    FilesystemActionAdapter,
+    ToolContext,
+    ToolRegistry,
+    authorized_tool,
+    tool,
+)
+from loushang.harness.tools.workspace.authorization import (
+    create_workspace_tool_execution_host,
+)
 
 HOST = HostCaller()
+
+
+class _AskForStressEffect:
+    def evaluate(self, _subject: object) -> PolicyDecision:
+        return PolicyDecision.ask(
+            "Confirm the protected stress effect",
+            code="stress_effect",
+        )
 
 
 class _ApprovalStressDriver:
@@ -48,8 +66,40 @@ class _ApprovalStressDriver:
         )
         self._effect_calls = effect_calls
         self._cycle = cycle
+        self.audit_events: list[dict[str, object]] = []
         self.messages: list[AgentInputMessage] = []
         self.dispose_calls = 0
+
+        @tool(name="delete_stress_target")
+        async def delete_stress_target(
+            path: str,
+            context: ToolContext,
+        ) -> str:
+            del context
+            # Leave one scheduling boundary after authorization so lifecycle
+            # operations can race the admitted effect.
+            await asyncio.sleep(0)
+            self._effect_calls[self.ref] += 1
+            return path
+
+        definition = authorized_tool(
+            delete_stress_target,
+            action=FilesystemActionAdapter("delete"),
+        )
+        registry = ToolRegistry(
+            execution_host=create_workspace_tool_execution_host(
+                policy_evaluator=_AskForStressEffect(),
+                approval_resolver=self._approval,
+            )
+        )
+        registry.register_tool(definition)
+        self._tool = registry.materialize_definitions(
+            [definition],
+            context_provider=lambda *, tool_call_id: ToolContext(
+                tool_call_id=tool_call_id,
+                event_sink=self.audit_events.append,
+            ),
+        )[0]
 
     def deliver(self, message: AgentInputMessage) -> None:
         self.messages.append(message)
@@ -62,29 +112,17 @@ class _ApprovalStressDriver:
     ) -> SubagentRoundResult:
         del mode
         self._approval.open_session()
-        decision = await resolve_approval(
-            self._approval,
-            ApprovalRequest(
-                tool_name="bash",
-                arguments={
-                    "command": f"rm -r stress-target-{self._cycle}-{self.ref.path.name}"
-                },
-                action_id=f"stress-{self._cycle}-{self.ref}-round-{round_id}",
-                reason="Filesystem content would be deleted",
-            ),
+        result = await self._tool.execute(
+            f"stress-{self._cycle}-{self.ref}-round-{round_id}",
+            {
+                "path": (
+                    f"/tmp/stress-target-{self._cycle}-{self.ref.path.name}"
+                )
+            },
         )
-        if decision.disposition == "allow":
-            # Widen the window in which close/interrupt can race an accepted
-            # decision without letting the protected effect run twice.
-            await asyncio.sleep(0)
-            self._effect_calls[self.ref] += 1
-            return SubagentRoundResult(
-                status="completed",
-                final_message="Protected effect completed.",
-            )
         return SubagentRoundResult(
-            status="failed",
-            final_message=decision.reason or decision.disposition,
+            status="completed",
+            final_message=str(result.details),
         )
 
     def abort(self) -> None:
@@ -261,11 +299,35 @@ def test_concurrent_child_approval_races_preserve_lifecycle_invariants() -> None
             assert effect_calls[first.ref] == int(
                 first_accepted and first_outcome == "allow_once"
             )
-            assert effect_calls[second.ref] == int(
-                second_accepted and second_outcome == "allow_once"
-            )
+            if not second_accepted or second_outcome != "allow_once":
+                assert effect_calls[second.ref] == 0
             assert effect_calls[first.ref] <= 1
             assert effect_calls[second.ref] <= 1
+            for ref in (first.ref, second.ref):
+                events = factory.drivers[ref].audit_events
+                event_types = [str(event["type"]) for event in events]
+                assert event_types[:3] == [
+                    "tool_action_frozen",
+                    "tool_policy_evaluated",
+                    "tool_approval_requested",
+                ]
+                assert event_types.count("tool_execution_started") <= 1
+                terminal_audit_count = sum(
+                    event_type
+                    in {"tool_execution_completed", "tool_execution_failed"}
+                    for event_type in event_types
+                )
+                assert terminal_audit_count == event_types.count(
+                    "tool_execution_started"
+                )
+                assert len(
+                    {
+                        event["action_fingerprint"]
+                        for event in events
+                        if "action_fingerprint" in event
+                    }
+                ) == 1
+                assert "stress-target" not in json.dumps(events)
             assert resolver.permissions_snapshot().pending == ()
             assert not await resolver.handle_result(
                 first_action,
@@ -308,6 +370,13 @@ def test_concurrent_child_approval_races_preserve_lifecycle_invariants() -> None
             )
             assert reincarnated_terminal.status == "completed"
             assert effect_calls[reincarnated.ref] == 1
+            reincarnated_events = factory.drivers[
+                reincarnated.ref
+            ].audit_events
+            assert [event["type"] for event in reincarnated_events][-2:] == [
+                "tool_execution_started",
+                "tool_execution_completed",
+            ]
 
             await runtime.close_agent(caller=HOST, target=reincarnated.path)
             await runtime.dispose()
