@@ -619,6 +619,160 @@ def test_agent_session_extension_registers_explicit_tool_routes_live(
     assert "runtime_save" in session.agent.system_prompt
 
 
+def test_live_extension_authorized_tool_runs_through_session_gateway(
+    tmp_path,
+) -> None:
+    import json
+    from pathlib import Path
+
+    from loushang.agent import Agent
+    from loushang.coding import SessionManager
+    from loushang.coding.session import AgentSession
+    from loushang.harness.approval import (
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools import (
+        FilesystemActionAdapter,
+        authorized_tool,
+        tool,
+    )
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    class AskForRuntimeWrite:
+        def evaluate(self, _subject: object) -> PolicyDecision:
+            return PolicyDecision.ask(
+                "Confirm the runtime extension write",
+                code="runtime_extension_write",
+            )
+
+    handler_calls = 0
+
+    @tool(prompt_snippet="- extension_save: Save one approved extension note")
+    async def extension_save(
+        path: str,
+        content: str,
+        context: ToolContext,
+    ) -> str:
+        nonlocal handler_calls
+        handler_calls += 1
+        target = Path(context.cwd or ".") / path
+        target.write_text(content, encoding="utf-8")
+        return str(target.resolve())
+
+    def _session_start(event, ctx) -> None:
+        del event
+        ctx.register_tool(
+            authorized_tool(
+                extension_save,
+                action=FilesystemActionAdapter(
+                    "write",
+                    authorization_fields=("content",),
+                ),
+            )
+        )
+
+    resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny")
+    )
+    presented = asyncio.Event()
+    approval_payloads: list[dict[str, object]] = []
+
+    def present(payload: dict[str, object]) -> None:
+        approval_payloads.append(dict(payload))
+        presented.set()
+
+    session = AgentSession(
+        agent=Agent(initial_state={"system_prompt": "Base prompt.", "tools": []}),
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path,
+                cwd=str(tmp_path),
+                persist=False,
+            )
+        ),
+        tool_registry=WorkspaceToolRegistry(),
+        extension_runner=ExtensionRunner(
+            [
+                LoadedExtension(
+                    name="authorized-runtime",
+                    source_path=tmp_path / "extension.py",
+                    source="inline",
+                    hooks={"session_start": [_session_start]},
+                )
+            ]
+        ),
+        approval_resolver=resolver,
+        tool_policy_evaluator=AskForRuntimeWrite(),
+        base_prompt="Base prompt.",
+    )
+    session.set_approval_presenter(present)
+    product_events: list[dict[str, object]] = []
+    session.subscribe(product_events.append)
+
+    async def scenario() -> object:
+        await session.reload_extension_runtime()
+        tool = next(
+            item for item in session.agent.tools if item.name == "extension_save"
+        )
+        pending = asyncio.create_task(
+            tool.execute(
+                "runtime-extension-call",
+                {
+                    "path": "runtime-note.txt",
+                    "content": "private-runtime-content",
+                },
+            )
+        )
+        await presented.wait()
+        assert handler_calls == 0
+        assert not (tmp_path / "runtime-note.txt").exists()
+        action_id = approval_payloads[0]["action_id"]
+        assert isinstance(action_id, str)
+        assert await session.handle_screen_approval(
+            {
+                "action_id": action_id,
+                "outcome": "allow_once",
+            }
+        )
+        return await pending
+
+    result = asyncio.run(scenario())
+    audit_events = [
+        event
+        for event in product_events
+        if str(event.get("type", "")).startswith("tool_")
+    ]
+
+    assert result.details == str((tmp_path / "runtime-note.txt").resolve())
+    assert handler_calls == 1
+    assert (tmp_path / "runtime-note.txt").read_text(encoding="utf-8") == (
+        "private-runtime-content"
+    )
+    assert [event["type"] for event in audit_events] == [
+        "tool_action_frozen",
+        "tool_policy_evaluated",
+        "tool_approval_requested",
+        "tool_approval_resolved",
+        "tool_execution_started",
+        "tool_execution_completed",
+    ]
+    assert {event["tool_call_id"] for event in audit_events} == {
+        "runtime-extension-call"
+    }
+    assert len({event["action_fingerprint"] for event in audit_events}) == 1
+    assert audit_events[1]["policy_code"] == "runtime_extension_write"
+    action_id = audit_events[2]["action_id"]
+    assert audit_events[3]["action_id"] == action_id
+    assert audit_events[4]["approval_action_id"] == action_id
+    assert audit_events[5]["approval_action_id"] == action_id
+    serialized = json.dumps(audit_events)
+    assert "private-runtime-content" not in serialized
+    assert str(tmp_path / "runtime-note.txt") not in serialized
+
+
 def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_session_tools(
     tmp_path,
 ) -> None:
