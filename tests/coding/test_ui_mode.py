@@ -34,8 +34,11 @@ class _Session:
         ]
         self.set_model_calls: list[object] = []
         self.prompts: list[str] = []
+        self.follow_ups: list[str] = []
+        self.steers: list[str] = []
         self.listeners: list[object] = []
         self.unsubscribed = False
+        self.session_control = self
 
     def get_tool_definition(self, _tool_name: str) -> None:
         return None
@@ -77,8 +80,26 @@ class _Session:
 
         return unsubscribe
 
-    async def prompt(self, text: str) -> None:
+    async def prompt(
+        self,
+        text: str,
+        *,
+        streaming_behavior: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        del streaming_behavior, source
         self.prompts.append(text)
+
+    def steer(self, text: str, *, images=None) -> None:
+        del images
+        self.steers.append(text)
+
+    def follow_up(self, text: str, *, images=None) -> None:
+        del images
+        self.follow_ups.append(text)
+
+    async def wait_for_idle(self) -> None:
+        return None
 
     def clear_queue(self) -> None:
         return None

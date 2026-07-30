@@ -22,15 +22,27 @@ def test_build_plain_coding_tui_app_wires_prompt_handler_without_legacy_status_a
         def __init__(self) -> None:
             self.prompts: list[str] = []
             self.follow_ups: list[str] = []
+            self.session_control = self
 
-        async def prompt(self, text: str) -> None:
+        async def prompt(
+            self,
+            text: str,
+            *,
+            streaming_behavior: str | None = None,
+            source: str | None = None,
+        ) -> None:
+            del streaming_behavior, source
             self.prompts.append(text)
             if text == "cancel":
                 app.lifecycle.mark_abort_requested()
                 raise asyncio.CancelledError
 
-        async def follow_up(self, text: str) -> None:
+        def follow_up(self, text: str, *, images=None) -> None:
+            del images
             self.follow_ups.append(text)
+
+        async def wait_for_idle(self) -> None:
+            return None
 
         def get_thinking_level(self) -> str:
             return "high"
