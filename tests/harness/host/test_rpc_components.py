@@ -13,7 +13,14 @@ from loushang.harness.host.rpc.arguments import (
     optional_number,
     require_string,
 )
+from loushang.harness.host.rpc.commands import (
+    RpcDiagnosticsCommands,
+    RpcPackageCommands,
+)
 from loushang.harness.host.rpc.output import RpcOutput
+from loushang.harness.host.rpc.projections import (
+    STANDARD_RPC_DIAGNOSTICS_PROJECTION,
+)
 from loushang.harness.host.rpc.routing import legacy_rpc_routes
 
 
@@ -91,3 +98,61 @@ def test_legacy_rpc_routes_adapt_sync_and_async_handlers_without_name_lookup() -
         ("sync", "one", {"value": "a"}),
         ("async", "two", {"value": "b"}),
     ]
+
+
+def test_rpc_command_groups_declare_their_complete_legacy_bindings() -> None:
+    output = RpcOutput(StringIO())
+    diagnostics = RpcDiagnosticsCommands(
+        runtime=object(),
+        get_session=object,
+        output=output,
+        projection=STANDARD_RPC_DIAGNOSTICS_PROJECTION,
+    )
+    packages = RpcPackageCommands(
+        runtime=object(),
+        get_session=object,
+        output=output,
+    )
+
+    assert tuple(command for command, _handler in diagnostics.bindings()) == (
+        "get_diagnostics",
+        "get_session_diagnostics",
+        "get_diagnostics_summary",
+        "get_session_diagnostics_summary",
+        "get_last_error_report",
+    )
+    assert {command for command, _handler in packages.bindings()} == {
+        "get_packages",
+        "materialize_package",
+        "install_package",
+        "update_package",
+        "update_packages",
+        "check_package_updates",
+        "remove_package",
+        "uninstall_package",
+    }
+
+
+def test_rpc_package_commands_resolve_the_current_rebound_session() -> None:
+    class _Session:
+        def __init__(self, package_name: str) -> None:
+            self._package_name = package_name
+
+        def get_packages(self, *, catalog_path: str | None) -> list[dict[str, object]]:
+            assert catalog_path is None
+            return [{"name": self._package_name}]
+
+    stdout = StringIO()
+    current = [_Session("before")]
+    commands = RpcPackageCommands(
+        runtime=object(),
+        get_session=lambda: current[0],
+        output=RpcOutput(stdout),
+    )
+    current[0] = _Session("after")
+
+    commands.get_packages("packages", {})
+
+    assert json.loads(stdout.getvalue())["data"] == {
+        "packages": [{"name": "after"}]
+    }

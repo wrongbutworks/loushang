@@ -70,7 +70,10 @@ host module:
 ```text
 loushang.harness.host.rpc
   __init__.py       stable `RpcHost` / `run_rpc_host` imports
-  runtime.py        lifecycle, session binding, and command handlers
+  runtime.py        lifecycle, session binding, and command-group composition
+  commands/
+    diagnostics.py  diagnostic queries and wire projection
+    packages.py     package inventory and lifecycle commands
   routing.py        explicit command-to-handler adaptation
   arguments.py      strict command argument readers
   output.py         strict JSONL response projection and safe fallback
@@ -84,6 +87,10 @@ Leaf modules do not import `runtime.py` or the package root. `runtime.py`
 composes them, while `__init__.py` preserves the stable
 `loushang.harness.host.rpc` entrypoint. Coding supplies its Product session and
 projection bindings; it does not own a second RPC loop or command router.
+Command groups receive only the runtime/session capabilities, output adapter,
+and projection ports they use. They publish explicit command bindings; they do
+not discover handlers by naming convention or retain a stale session across
+session rebinding.
 
 No legacy RPC client needs to change for this extraction. New products should
 prefer the standard `ChannelHost` when their public operations fit

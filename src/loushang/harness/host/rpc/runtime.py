@@ -11,7 +11,6 @@ from typing import Any, TextIO, cast
 
 from loushang.ai.model import ModelSelection
 from loushang.harness.commands import complete_slash_commands
-from loushang.harness.diagnostics.types import DiagnosticsQuery
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.host.jsonl_command_host import (
     JsonlCommand,
@@ -35,6 +34,10 @@ from loushang.harness.host.rpc.arguments import (
     optional_string,
     require_mode,
     require_string,
+)
+from loushang.harness.host.rpc.commands import (
+    RpcDiagnosticsCommands,
+    RpcPackageCommands,
 )
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.projections import (
@@ -100,7 +103,6 @@ class RpcHost(ModeAdapter):
         self.stderr = sys.stderr if stderr is None else stderr
         self.event_view = event_view
         self._event_projection = event_projection
-        self._diagnostics_projection = diagnostics_projection
         self.event_select = tuple(event_projection.normalize_select(event_select))
         self.render_tool_events = render_tool_events
         self._host_runtime = ProductHostRuntime(stdin=stdin)
@@ -119,6 +121,17 @@ class RpcHost(ModeAdapter):
         self._active_bash_task: asyncio.Task[None] | None = None
         self.extension_ui_context = RpcExtensionUIContext(self._write_json_line)
         self._bind_extension_ui_context(self.session)
+        self._diagnostics_commands = RpcDiagnosticsCommands(
+            runtime=runtime,
+            get_session=lambda: self.session,
+            output=self._rpc_output,
+            projection=diagnostics_projection,
+        )
+        self._package_commands = RpcPackageCommands(
+            runtime=runtime,
+            get_session=lambda: self.session,
+            output=self._rpc_output,
+        )
         self._command_router = JsonlCommandRouter(
             routes=self._command_routes(),
             on_unsupported=self._handle_unsupported_jsonl_command,
@@ -268,37 +281,8 @@ class RpcHost(ModeAdapter):
                         "get_command_completions",
                         self._handle_get_command_completions_command,
                     ),
-                    ("get_diagnostics", self._handle_get_diagnostics_command),
-                    (
-                        "get_session_diagnostics",
-                        self._handle_get_session_diagnostics_command,
-                    ),
-                    (
-                        "get_diagnostics_summary",
-                        self._handle_get_diagnostics_summary_command,
-                    ),
-                    (
-                        "get_session_diagnostics_summary",
-                        self._handle_get_session_diagnostics_summary_command,
-                    ),
-                    (
-                        "get_last_error_report",
-                        self._handle_get_last_error_report_command,
-                    ),
-                    ("get_packages", self._handle_get_packages_command),
-                    (
-                        "materialize_package",
-                        self._handle_materialize_package_command,
-                    ),
-                    ("install_package", self._handle_install_package_command),
-                    ("update_package", self._handle_update_package_command),
-                    ("update_packages", self._handle_update_packages_command),
-                    (
-                        "check_package_updates",
-                        self._handle_check_package_updates_command,
-                    ),
-                    ("remove_package", self._handle_remove_package_command),
-                    ("uninstall_package", self._handle_uninstall_package_command),
+                    *self._diagnostics_commands.bindings(),
+                    *self._package_commands.bindings(),
                     ("bash", self._handle_bash_command),
                     ("abort_bash", self._handle_abort_bash_command),
                     ("compact", self._handle_compact_command),
@@ -1190,469 +1174,6 @@ class RpcHost(ModeAdapter):
             data={"completions": completions},
         )
 
-    def _handle_get_diagnostics_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        self._handle_diagnostics_query_command(
-            command_id=command_id,
-            payload=payload,
-            command="get_diagnostics",
-            runtime_method="get_diagnostics",
-            session_method="get_diagnostics",
-            fallback_to_last=True,
-        )
-
-    def _handle_get_session_diagnostics_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        self._handle_diagnostics_query_command(
-            command_id=command_id,
-            payload=payload,
-            command="get_session_diagnostics",
-            runtime_method="get_session_diagnostics",
-            session_method="get_session_diagnostics",
-            fallback_to_last=False,
-        )
-
-    def _handle_get_diagnostics_summary_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        self._handle_diagnostics_summary_command(
-            command_id=command_id,
-            payload=payload,
-            command="get_diagnostics_summary",
-            runtime_method="get_diagnostics_summary",
-            session_method="get_diagnostics_summary",
-        )
-
-    def _handle_get_session_diagnostics_summary_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        self._handle_diagnostics_summary_command(
-            command_id=command_id,
-            payload=payload,
-            command="get_session_diagnostics_summary",
-            runtime_method="get_session_diagnostics_summary",
-            session_method="get_session_diagnostics_summary",
-        )
-
-    def _handle_diagnostics_query_command(
-        self,
-        *,
-        command_id: str | None,
-        payload: dict[str, Any],
-        command: str,
-        runtime_method: str,
-        session_method: str,
-        fallback_to_last: bool,
-    ) -> None:
-        raw_limit = payload.get("limit", 50)
-        if not isinstance(raw_limit, int) or raw_limit <= 0:
-            self._write_response_error(
-                id=command_id,
-                command=command,
-                error="Diagnostic limit must be a positive integer.",
-            )
-            return
-
-        query = self._diagnostics_query_from_payload(payload, default_limit=raw_limit)
-        getter = getattr(self.runtime, runtime_method, None)
-        if callable(getter):
-
-            def get_diagnostics():
-                return getter(query=query)
-        else:
-            getter = getattr(self.session, session_method, None)
-            if callable(getter):
-
-                def get_diagnostics():
-                    return getter(query=query)
-            else:
-                getter = (
-                    getattr(self.session, "get_last_diagnostics", None)
-                    if fallback_to_last
-                    else None
-                )
-                if callable(getter):
-
-                    def get_diagnostics():
-                        return getter(limit=raw_limit)
-
-        if not callable(getter):
-            self._write_response_error(
-                id=command_id,
-                command=command,
-                error="Diagnostics are not available.",
-            )
-            return
-        try:
-            raw_diagnostics = get_diagnostics()
-        except Exception as error:
-            self._write_response_error(
-                id=command_id,
-                command=command,
-                error=f"Failed to query diagnostics: {error}",
-            )
-            return
-        if not isinstance(raw_diagnostics, list):
-            self._write_response_error(
-                id=command_id,
-                command=command,
-                error="Diagnostics returned an invalid response.",
-            )
-            return
-
-        diagnostics = []
-        for record in raw_diagnostics:
-            try:
-                diagnostics.append(
-                    self._diagnostics_projection.serialize_diagnostic(record)
-                )
-            except Exception:
-                continue
-        self._write_response_success(
-            id=command_id,
-            command=command,
-            data={"diagnostics": diagnostics},
-        )
-
-    def _handle_diagnostics_summary_command(
-        self,
-        *,
-        command_id: str | None,
-        payload: dict[str, Any],
-        command: str,
-        runtime_method: str,
-        session_method: str,
-    ) -> None:
-        try:
-            query = self._diagnostics_query_from_payload(payload, default_limit=None)
-        except ValueError as error:
-            self._write_response_error(id=command_id, command=command, error=str(error))
-            return
-        getter = getattr(self.runtime, runtime_method, None)
-        if callable(getter):
-
-            def get_summary():
-                return getter(query=query)
-        else:
-            getter = getattr(self.session, session_method, None)
-            if callable(getter):
-
-                def get_summary():
-                    return getter(query=query)
-
-        if not callable(getter):
-            self._write_response_error(
-                id=command_id, command=command, error="Diagnostics are not available."
-            )
-            return
-        try:
-            summary = self._diagnostics_projection.serialize_diagnostic_summary(
-                get_summary()
-            )
-        except Exception as error:
-            self._write_response_error(
-                id=command_id,
-                command=command,
-                error=f"Failed to query diagnostics: {error}",
-            )
-            return
-        self._write_response_success(
-            id=command_id, command=command, data={"summary": summary}
-        )
-
-    def _diagnostics_query_from_payload(
-        self, payload: dict[str, Any], *, default_limit: int | None
-    ) -> DiagnosticsQuery:
-        raw_limit = payload.get("limit", default_limit)
-        if raw_limit is not None and (not isinstance(raw_limit, int) or raw_limit <= 0):
-            raise ValueError("Diagnostic limit must be a positive integer.")
-        return DiagnosticsQuery(
-            phase=optional_string(payload, "phase"),  # type: ignore[arg-type]
-            source=optional_string(payload, "source"),  # type: ignore[arg-type]
-            level=optional_string(
-                payload, "level", "diagnosticType", "diagnostic_type"
-            ),  # type: ignore[arg-type]
-            session_id=optional_string(payload, "sessionId", "session_id"),
-            entry_id=optional_string(payload, "entryId", "entry_id"),
-            tool_call_id=optional_string(payload, "toolCallId", "tool_call_id"),
-            code=optional_string(payload, "code"),
-            limit=raw_limit,
-        )
-
-    def _handle_get_last_error_report_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        del payload
-        getter = getattr(self.session, "get_last_error_report", None)
-        if not callable(getter):
-            self._write_response_error(
-                id=command_id,
-                command="get_last_error_report",
-                error="Diagnostics are not available.",
-            )
-            return
-        try:
-            report = self._diagnostics_projection.serialize_error_report(getter())
-        except Exception as error:
-            self._write_response_error(
-                id=command_id,
-                command="get_last_error_report",
-                error=f"Failed to query last error report: {error}",
-            )
-            return
-        self._write_response_success(
-            id=command_id,
-            command="get_last_error_report",
-            data={"report": report},
-        )
-
-    def _handle_get_packages_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        catalog_path = optional_string(payload, "catalogPath", "catalog_path")
-        getter = getattr(self.runtime, "get_packages", None)
-        if callable(getter):
-            get_packages = getter
-        else:
-            getter = getattr(self.session, "get_packages", None)
-            if not callable(getter):
-                self._write_response_error(
-                    id=command_id,
-                    command="get_packages",
-                    error="Package listing is not available.",
-                )
-                return
-            get_packages = getter
-        try:
-            packages = get_packages(catalog_path=catalog_path)
-        except Exception as error:
-            self._write_response_error(
-                id=command_id,
-                command="get_packages",
-                error=f"Failed to query packages: {error}",
-                code="package_query_failed",
-            )
-            return
-        if not isinstance(packages, list):
-            self._write_response_error(
-                id=command_id,
-                command="get_packages",
-                error="Package listing returned an invalid response.",
-                code="invalid_package_query_response",
-            )
-            return
-        self._write_response_success(
-            id=command_id, command="get_packages", data={"packages": packages}
-        )
-
-    async def _handle_materialize_package_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        await self._handle_package_lifecycle_command(
-            command_id=command_id,
-            payload=payload,
-            command="materialize_package",
-            method_name="materialize_package",
-            unavailable_message="Package materialization is not available.",
-            failure_message="Failed to materialize package",
-            invalid_message="Package materialization returned an invalid response.",
-            failure_code="package_materialization_failed",
-            invalid_code="invalid_package_materialization_response",
-        )
-
-    async def _handle_install_package_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        await self._handle_package_lifecycle_command(
-            command_id=command_id,
-            payload=payload,
-            command="install_package",
-            method_name="install_package",
-            unavailable_message="Package installation is not available.",
-            failure_message="Failed to install package",
-            invalid_message="Package installation returned an invalid response.",
-            failure_code="package_installation_failed",
-            invalid_code="invalid_package_installation_response",
-        )
-
-    async def _handle_update_package_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        await self._handle_package_lifecycle_command(
-            command_id=command_id,
-            payload=payload,
-            command="update_package",
-            method_name="update_package",
-            unavailable_message="Package update is not available.",
-            failure_message="Failed to update package",
-            invalid_message="Package update returned an invalid response.",
-            failure_code="package_update_failed",
-            invalid_code="invalid_package_update_response",
-        )
-
-    async def _handle_update_packages_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        await self._handle_package_collection_command(
-            command_id=command_id,
-            command="update_packages",
-            method_name="update_packages",
-            data_key="records",
-            unavailable_message="Package update is not available.",
-            failure_message="Failed to update packages",
-            invalid_message="Package update returned an invalid response.",
-            failure_code="package_update_failed",
-            invalid_code="invalid_package_update_response",
-        )
-
-    async def _handle_check_package_updates_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        await self._handle_package_collection_command(
-            command_id=command_id,
-            command="check_package_updates",
-            method_name="check_package_updates",
-            data_key="updates",
-            unavailable_message="Package update check is not available.",
-            failure_message="Failed to check package updates",
-            invalid_message="Package update check returned an invalid response.",
-            failure_code="package_update_check_failed",
-            invalid_code="invalid_package_update_check_response",
-        )
-
-    async def _handle_remove_package_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        await self._handle_package_lifecycle_command(
-            command_id=command_id,
-            payload=payload,
-            command="remove_package",
-            method_name="remove_package",
-            unavailable_message="Package removal is not available.",
-            failure_message="Failed to remove package",
-            invalid_message="Package removal returned an invalid response.",
-            failure_code="package_removal_failed",
-            invalid_code="invalid_package_removal_response",
-        )
-
-    async def _handle_uninstall_package_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        await self._handle_package_lifecycle_command(
-            command_id=command_id,
-            payload=payload,
-            command="uninstall_package",
-            method_name="uninstall_package",
-            unavailable_message="Package uninstallation is not available.",
-            failure_message="Failed to uninstall package",
-            invalid_message="Package uninstallation returned an invalid response.",
-            failure_code="package_uninstallation_failed",
-            invalid_code="invalid_package_uninstallation_response",
-        )
-
-    async def _handle_package_collection_command(
-        self,
-        *,
-        command_id: str | None,
-        command: str,
-        method_name: str,
-        data_key: str,
-        unavailable_message: str,
-        failure_message: str,
-        invalid_message: str,
-        failure_code: str,
-        invalid_code: str,
-    ) -> None:
-        method = getattr(self.runtime, method_name, None)
-        if not callable(method):
-            method = getattr(self.session, method_name, None)
-        if not callable(method):
-            self._write_response_error(
-                id=command_id, command=command, error=unavailable_message
-            )
-            return
-        try:
-            result = method()
-            if inspect.isawaitable(result):
-                result = await result
-        except Exception as error:
-            self._write_response_error(
-                id=command_id,
-                command=command,
-                error=f"{failure_message}: {error}",
-                code=failure_code,
-            )
-            return
-        if not isinstance(result, list):
-            self._write_response_error(
-                id=command_id, command=command, error=invalid_message, code=invalid_code
-            )
-            return
-        self._write_response_success(
-            id=command_id, command=command, data={data_key: result}
-        )
-
-    async def _handle_package_lifecycle_command(
-        self,
-        *,
-        command_id: str | None,
-        payload: dict[str, Any],
-        command: str,
-        method_name: str,
-        unavailable_message: str,
-        failure_message: str,
-        invalid_message: str,
-        failure_code: str,
-        invalid_code: str,
-    ) -> None:
-        source = require_string(payload, "source")
-        getter = getattr(self.runtime, method_name, None)
-        if callable(getter):
-            lifecycle_method = getter
-        else:
-            getter = getattr(self.session, method_name, None)
-            if not callable(getter):
-                self._write_response_error(
-                    id=command_id,
-                    command=command,
-                    error=unavailable_message,
-                )
-                return
-            lifecycle_method = getter
-        try:
-            record = lifecycle_method(source)
-            if inspect.isawaitable(record):
-                record = await record
-        except Exception as error:
-            self._write_response_error(
-                id=command_id,
-                command=command,
-                error=f"{failure_message}: {error}",
-                code=failure_code,
-            )
-            return
-        if not isinstance(record, dict):
-            self._write_response_error(
-                id=command_id,
-                command=command,
-                error=invalid_message,
-                code=invalid_code,
-            )
-            return
-        if failure := _package_lifecycle_failure(record):
-            self._write_response_error(
-                id=command_id,
-                command=command,
-                error=f"{failure_message}: {failure}",
-                code=failure_code,
-            )
-            return
-        self._write_response_success(
-            id=command_id, command=command, data={"record": record}
-        )
-
     async def _handle_bash_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
@@ -2018,17 +1539,6 @@ def _tool_definition_resolver(session: Any) -> ToolDefinitionResolver | None:
             return None
 
     return resolve
-
-
-def _package_lifecycle_failure(record: dict[str, Any]) -> str | None:
-    if record.get("lifecycle") != "failed":
-        return None
-    message = record.get("errorMessage", record.get("error_message"))
-    return (
-        str(message)
-        if isinstance(message, str) and message
-        else "Package lifecycle failed."
-    )
 
 
 __all__ = ["RpcHost", "run_rpc_host"]

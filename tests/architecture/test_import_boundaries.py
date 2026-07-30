@@ -933,6 +933,17 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
         assert "loushang.harness.host.rpc" not in imports
         assert "loushang.harness.host.rpc.runtime" not in imports
 
+    command_root = rpc_root / "commands"
+    assert {path.name for path in command_root.glob("*.py")} == {
+        "__init__.py",
+        "diagnostics.py",
+        "packages.py",
+    }
+    for command_module in command_root.glob("*.py"):
+        imports = set(_absolute_imports(command_module))
+        assert "loushang.harness.host.rpc" not in imports
+        assert "loushang.harness.host.rpc.runtime" not in imports
+
 
 def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:
     prompt_input_source = Path("src/loushang/harness/host/prompt_input.py").read_text(
