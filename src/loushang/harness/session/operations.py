@@ -15,7 +15,12 @@ from typing import Any
 
 from loushang.ai.types import ImagePart
 from loushang.harness.runtime import SessionOperationResult
-from loushang.harness.session.facade import SessionControlPort
+from loushang.harness.session.facade import (
+    SessionControlPort,
+    require_active_session_control,
+)
+
+SessionOperationResolver = Callable[[], "SessionOperationRuntime"]
 
 
 class SessionOperationCapability(str, Enum):
@@ -204,9 +209,20 @@ class SessionOperationRuntime:
         self._require(SessionOperationCapability.LIFECYCLE)
         await self._control.continue_run()
 
-    def abort(self) -> bool:
+    def abort_turn(self) -> bool:
+        """Abort only the active Agent turn.
+
+        Queue clearing and command-execution cancellation are host composites,
+        not implicit effects of this shared Session primitive.
+        """
+
         self._require(SessionOperationCapability.LIFECYCLE)
         return self._control.abort()
+
+    def abort(self) -> bool:
+        """Compatibility alias for the explicitly named turn-only primitive."""
+
+        return self.abort_turn()
 
     async def wait_for_idle(self) -> None:
         self._require(SessionOperationCapability.LIFECYCLE)
@@ -281,11 +297,47 @@ class SessionOperationRuntime:
             )
 
 
+def current_session_operation_resolver(
+    runtime: object,
+    *,
+    lifecycle: SessionLifecycleOperationPorts | None = None,
+    availability: SessionOperationAvailability | None = None,
+) -> SessionOperationResolver:
+    """Build a resolver that never retains a control from a replaced Session."""
+
+    return session_operation_resolver(
+        lambda: require_active_session_control(runtime),
+        lifecycle=lifecycle,
+        availability=availability,
+    )
+
+
+def session_operation_resolver(
+    get_control: Callable[[], SessionControlPort],
+    *,
+    lifecycle: SessionLifecycleOperationPorts | None = None,
+    availability: SessionOperationAvailability | None = None,
+) -> SessionOperationResolver:
+    """Build a resolver from a Product-owned current-control callback."""
+
+    def resolve() -> SessionOperationRuntime:
+        return SessionOperationRuntime(
+            get_control(),
+            availability=availability,
+            lifecycle=lifecycle,
+        )
+
+    return resolve
+
+
 __all__ = [
+    "SessionOperationResolver",
     "SessionOperationAvailability",
     "SessionOperationCapability",
     "SessionOperationRuntime",
     "SessionOperationUnavailableError",
     "SessionLifecycleOperationPorts",
     "SessionPromptRequest",
+    "current_session_operation_resolver",
+    "session_operation_resolver",
 ]

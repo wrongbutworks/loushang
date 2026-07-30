@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar, cast
 
 from loushang.ai.types import ImagePart
+from loushang.harness.approval import (
+    ApprovalOutcome,
+    ApprovalPermissionsSnapshot,
+)
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
     DiagnosticsQuery,
@@ -21,6 +25,7 @@ from loushang.harness.diagnostics.types import (
     ErrorReport,
 )
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.permissions import PermissionProfileSnapshot
 from loushang.harness.session.runtime import SessionRuntime
 from loushang.harness.workspace.exec import ExecOutputChunk
 
@@ -37,6 +42,44 @@ RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 SessionEventListener = Callable[[EventT], Awaitable[None] | None]
 SessionEventProjector = Callable[[RuntimeEvent[object]], EventT | None]
 OutputCallback = Callable[[ExecOutputChunk], Awaitable[None] | None]
+ApprovalRequestPresenter = Callable[
+    [dict[str, object]], Awaitable[None] | None
+]
+ApprovalRequestDismisser = Callable[[str], Awaitable[None] | None]
+
+
+class ApprovalPresentationLease(Protocol):
+    """One generation-safe binding to a Session approval presenter."""
+
+    def close(
+        self,
+        reason: str = "Approval presenter closed before approval was resolved",
+    ) -> None: ...
+
+
+class SessionApprovalInteractionPort(Protocol):
+    """Optional presentation/response port over the authoritative resolver."""
+
+    def bind_presenter(
+        self,
+        presenter: ApprovalRequestPresenter,
+        *,
+        dismisser: ApprovalRequestDismisser | None = None,
+    ) -> ApprovalPresentationLease: ...
+
+    async def respond(
+        self,
+        action_id: str,
+        *,
+        outcome: ApprovalOutcome,
+        reason: str | None = None,
+    ) -> bool: ...
+
+    def permissions_snapshot(self) -> ApprovalPermissionsSnapshot: ...
+
+    def permission_profile_snapshot(self) -> PermissionProfileSnapshot: ...
+
+    async def apply_permission_action(self, action: str) -> bool: ...
 
 
 class SessionTranscriptPort(Protocol[ContextT, RecordT]):
@@ -430,6 +473,7 @@ class SessionFacadePorts(
     extensions: SessionExtensionPort | None = None
     settings: SessionSettingsPort | None = None
     application_input: SessionApplicationInputPort | None = None
+    approval_interaction: SessionApprovalInteractionPort | None = None
 
 
 @dataclass
@@ -468,6 +512,7 @@ class SessionFacade(
     extensions: SessionExtensionPort | None = None
     settings: SessionSettingsPort | None = None
     application_input: SessionApplicationInputPort | None = None
+    approval_interaction: SessionApprovalInteractionPort | None = None
 
     @classmethod
     def from_ports(
@@ -503,6 +548,7 @@ class SessionFacade(
             extensions=ports.extensions,
             settings=ports.settings,
             application_input=ports.application_input,
+            approval_interaction=ports.approval_interaction,
         )
 
     @property
@@ -1008,9 +1054,13 @@ class SessionFacade(
 
 
 __all__ = [
+    "ApprovalPresentationLease",
+    "ApprovalRequestDismisser",
+    "ApprovalRequestPresenter",
     "OutputCallback",
     "RuntimeEventListener",
     "SessionControlPort",
+    "SessionApprovalInteractionPort",
     "SessionCommandExecutionPort",
     "SessionCommandsPort",
     "SessionEventListener",

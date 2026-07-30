@@ -850,6 +850,37 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     assert "must not import Harness" in boundary
 
 
+def test_phase_zero_hosts_share_current_session_operations_and_explicit_approval() -> (
+    None
+):
+    operations_source = Path(
+        "src/loushang/harness/session/operations.py"
+    ).read_text(encoding="utf-8")
+    rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
+    controller_source = Path(
+        "src/loushang/harnesstui/conversation/controller.py"
+    ).read_text(encoding="utf-8")
+    application_source = Path(
+        "src/loushang/harnesstui/conversation/agent_application.py"
+    ).read_text(encoding="utf-8")
+
+    assert "current_session_operation_resolver" in operations_source
+    assert "current_session_operation_resolver" in rpc_source
+    assert "_session_operations =" not in rpc_source
+    assert "SessionOperationResolver" in controller_source
+    assert "abort_turn" in controller_source
+    assert "stop_active_interaction" in controller_source
+    assert "SessionApprovalInteractionPort" in application_source
+    for legacy_method in (
+        "set_approval_presenter",
+        "handle_screen_approval",
+        "get_approval_permissions",
+        "get_permission_profile_snapshot",
+        "apply_approval_permission_action",
+    ):
+        assert legacy_method not in application_source
+
+
 def test_jsonl_command_router_is_neutral_and_rpc_uses_explicit_routes() -> None:
     router_source = Path(
         "src/loushang/harness/host/jsonl_command_router.py"

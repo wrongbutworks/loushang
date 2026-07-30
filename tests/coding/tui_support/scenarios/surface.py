@@ -14,6 +14,7 @@ from loushang.harness.permissions import (
     PermissionProfileId,
     permission_profile_snapshot,
 )
+from loushang.harness.session import SessionApprovalInteractionPort
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.harnesstui.testing.scenarios.surface import surface_scenarios
@@ -327,7 +328,7 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
     manager: ScreenSurfaceManager
 
     class Session:
-        def get_approval_permissions(self) -> ApprovalPermissionsSnapshot:
+        def permissions_snapshot(self) -> ApprovalPermissionsSnapshot:
             return ApprovalPermissionsSnapshot(
                 pending=(
                     ApprovalPermission(
@@ -353,7 +354,10 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
                 else (),
             )
 
-        async def apply_approval_permission_action(self, action: str) -> bool:
+        def permission_profile_snapshot(self):
+            return permission_profile_snapshot("standard")
+
+        async def apply_permission_action(self, action: str) -> bool:
             nonlocal granted
             permission_actions.append(action)
             if action == "reopen:delete-build" and pending:
@@ -432,13 +436,13 @@ class _PermissionProfilePlaybackSession:
         self.current: PermissionProfileId = "standard"
         self.actions: list[str] = []
 
-    def get_approval_permissions(self) -> ApprovalPermissionsSnapshot:
+    def permissions_snapshot(self) -> ApprovalPermissionsSnapshot:
         return ApprovalPermissionsSnapshot()
 
-    def get_permission_profile_snapshot(self):
+    def permission_profile_snapshot(self):
         return permission_profile_snapshot(self.current)
 
-    async def apply_approval_permission_action(self, action: str) -> bool:
+    async def apply_permission_action(self, action: str) -> bool:
         prefix, scope, profile_id = action.split(":", 2)
         if (
             prefix != "set-profile"
@@ -609,11 +613,17 @@ def _surface_manager(
     session: object | None = None,
     on_approval: Callable[[dict[str, Any]], Awaitable[bool | None]] | None = None,
 ) -> ScreenSurfaceManager:
+    bound_session = object() if session is None else session
     return ScreenSurfaceManager(
         app=app,
-        session=object() if session is None else session,
+        session=bound_session,
         status_provider=_status_provider(app),
         on_approval=on_approval,
+        approval_interaction_provider=(
+            (lambda: cast(SessionApprovalInteractionPort, bound_session))
+            if session is not None
+            else None
+        ),
     )
 
 

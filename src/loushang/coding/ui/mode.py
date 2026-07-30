@@ -119,6 +119,13 @@ async def _run_screen_interactive_tui(
     event_source = RebindableEventSource(session)
     surface_manager: ScreenSurfaceManager | None = None
 
+    def current_approval_interaction():
+        return getattr(
+            current_agent_runtime_session(runtime, session),
+            "approval_interaction",
+            None,
+        )
+
     def no_rebound_presenter() -> None:
         return None
 
@@ -132,9 +139,10 @@ async def _run_screen_interactive_tui(
             runtime=runtime,
             status_provider=status_provider,
             on_approval=lambda event: handle_agent_screen_approval(
-                current_agent_runtime_session(runtime, session),
+                current_approval_interaction(),
                 event,
             ),
+            approval_interaction_provider=current_approval_interaction,
         )
         return surface_manager
 
@@ -145,6 +153,11 @@ async def _run_screen_interactive_tui(
                 runtime=runtime,
                 app=app,
                 session=next_session,
+                approval_interaction=getattr(
+                    next_session,
+                    "approval_interaction",
+                    None,
+                ),
                 event_source=event_source,
             )
         except Exception as refresh_error:
@@ -194,7 +207,7 @@ async def _run_screen_interactive_tui(
             )
             rebound_presenter_cleanup()
             rebound_presenter_cleanup = bind_agent_screen_approval_presenter(
-                next_session,
+                getattr(next_session, "approval_interaction", None),
                 surface_manager,
             )
         except Exception as error:
@@ -212,9 +225,8 @@ async def _run_screen_interactive_tui(
 
     def bind_screen_presenter(surface):
         initial_cleanup = bind_agent_screen_approval_presenter(
-            session,
+            getattr(session, "approval_interaction", None),
             surface,
-            session_provider=lambda: current_agent_runtime_session(runtime, session),
         )
 
         def cleanup() -> None:
@@ -249,6 +261,8 @@ async def _run_screen_interactive_tui(
         ),
         resume_command_prefix=("loushang", "--resume"),
         session_provider=lambda: current_agent_runtime_session(runtime, session),
+        get_operations=controller.get_operations,
+        approval_interaction_provider=current_approval_interaction,
         event_source=event_source,
     ).prepare()
     return await run_prepared_screen_conversation(

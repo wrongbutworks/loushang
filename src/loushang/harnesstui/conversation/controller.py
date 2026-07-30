@@ -5,12 +5,16 @@ from __future__ import annotations
 import asyncio
 import inspect
 import traceback
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
-from loushang.harness.commands import CommandEffectKind
 from loushang.harness.host.types import HostActionResult
+from loushang.harness.session import (
+    SessionOperationResolver,
+    SessionOperationUnavailableError,
+    SessionPromptRequest,
+)
 from loushang.harnesstui.conversation.intents import (
     AbortIntent,
     BashIntent,
@@ -19,8 +23,12 @@ from loushang.harnesstui.conversation.intents import (
     QuitIntent,
 )
 
-CommandCatalogFactory = Callable[[Any], Any]
 ImageParts = tuple[object, ...] | list[object] | None
+SessionCommandDispatcher = Callable[
+    [object], Awaitable[HostActionResult | None]
+]
+BashExecutor = Callable[[str], Awaitable[None]]
+CommandAbort = Callable[[], None | Awaitable[None]]
 
 
 class _TextIntent(Protocol):
@@ -35,19 +43,18 @@ class _BashIntent(Protocol):
 
 @dataclass
 class ConversationUiController:
-    """Coordinate conversation actions against an injected session surface.
+    """Coordinate conversation actions against explicit, current-session ports.
 
-    The controller owns action sequencing and failure conversion only. Products
-    may inject a command-catalog factory to bind their local command profile;
-    command definitions and command result wording remain outside this module.
+    The controller owns action sequencing and failure conversion only. Product
+    composition resolves the current Session and supplies command/Bash ports;
+    Harnesstui never discovers concrete Session methods.
     """
 
-    session: Any
-    runtime: Any | None = None
+    get_operations: SessionOperationResolver
+    dispatch_session_command: SessionCommandDispatcher | None = None
+    execute_bash: BashExecutor | None = None
+    abort_command: CommandAbort | None = None
     verbose: bool = False
-    command_catalog_factory: CommandCatalogFactory | None = None
-    command_route: str = "dispatch"
-    command_sources: frozenset[str] = frozenset({"builtin", "extension"})
     prompt_intent_type: type[object] | None = None
     bash_intent_type: type[object] | None = None
     follow_up_intent_type: type[object] | None = None
@@ -55,9 +62,6 @@ class ConversationUiController:
     quit_intent_type: type[object] | None = None
     problem_code_prefix: str = "conversation_ui"
     problem_logger: Any | None = None
-    bash_options: Callable[[], Mapping[str, object]] = lambda: {
-        "exclude_from_context": True
-    }
 
     async def dispatch(self, intent: object | None) -> HostActionResult:
         if intent is None:
@@ -67,18 +71,30 @@ class ConversationUiController:
                 intent, self.prompt_intent_type
             ):
                 prompt_intent = cast(_TextIntent, intent)
-                command_result = await self._dispatch_session_command(intent)
+                command_result = (
+                    await self.dispatch_session_command(intent)
+                    if self.dispatch_session_command is not None
+                    else None
+                )
                 if command_result is not None:
                     return command_result
-                await self._prompt(
-                    prompt_intent.text,
-                    images=getattr(prompt_intent, "images", None),
+                await self.get_operations().prompt(
+                    SessionPromptRequest(
+                        text=prompt_intent.text,
+                        images=cast(
+                            tuple,
+                            tuple(getattr(prompt_intent, "images", None) or ()),
+                        ),
+                        source="interactive",
+                    )
                 )
                 return HostActionResult()
             if self.bash_intent_type is not None and isinstance(
                 intent, self.bash_intent_type
             ):
-                await self._bash(cast(_BashIntent, intent).command)
+                if self.execute_bash is None:
+                    raise RuntimeError("Session does not support bash execution")
+                await self.execute_bash(cast(_BashIntent, intent).command)
                 return HostActionResult()
             if self.follow_up_intent_type is not None and isinstance(
                 intent, self.follow_up_intent_type
@@ -87,7 +103,7 @@ class ConversationUiController:
             if self.abort_intent_type is not None and isinstance(
                 intent, self.abort_intent_type
             ):
-                await self._abort()
+                await self.stop_active_interaction()
                 return HostActionResult()
             if self.quit_intent_type is not None and isinstance(
                 intent, self.quit_intent_type
@@ -144,7 +160,7 @@ class ConversationUiController:
         )
 
     async def wait_for_idle(self) -> None:
-        await _call_if_available(self._current_session(), "wait_for_idle")
+        await self.get_operations().wait_for_idle()
 
     async def _dispatch_text_action(
         self,
@@ -156,17 +172,20 @@ class ConversationUiController:
         failure_code: str,
     ) -> HostActionResult:
         try:
-            session = self._current_session()
-            method = _streaming_prompt_method(
-                session,
-                streaming_behavior="steer" if action == "steer" else "followUp",
-            )
-            if method is None:
-                method = getattr(session, action, None)
-            if not callable(method):
-                return HostActionResult(error_message=unavailable)
-            await _call_text_method(method, text, images=images)
+            operations = self.get_operations()
+            normalized_images = cast(tuple, tuple(images or ()))
+            if action == "steer":
+                operations.steer(text, images=normalized_images)
+            else:
+                operations.follow_up(text, images=normalized_images)
             return HostActionResult()
+        except (AttributeError, SessionOperationUnavailableError) as error:
+            self._record_problem(
+                f"{self.problem_code_prefix}_{failure_code.removeprefix('conversation_ui_')}",
+                message=str(error),
+                exc=error,
+            )
+            return HostActionResult(error_message=unavailable)
         except Exception as error:
             self._record_problem(
                 f"{self.problem_code_prefix}_{failure_code.removeprefix('conversation_ui_')}",
@@ -178,67 +197,18 @@ class ConversationUiController:
                 traceback_text=traceback.format_exc() if self.verbose else None,
             )
 
-    async def _prompt(
-        self,
-        text: str,
-        *,
-        images: ImageParts,
-    ) -> None:
-        method = getattr(self._current_session(), "prompt", None)
-        if not callable(method):
-            raise RuntimeError("Session does not support prompts")
-        await _call_text_method(method, text, images=images)
+    async def stop_active_interaction(self) -> None:
+        """Preserve TUI Esc: abort turn, clear queues, then abort command."""
 
-    async def _dispatch_session_command(
-        self, intent: object
-    ) -> HostActionResult | None:
-        if getattr(intent, "images", None):
-            return None
-        session = self._current_session()
-        executor = getattr(session, "execute_command_async", None)
-        if self.command_catalog_factory is None or not callable(executor):
-            return None
-        catalog = self.command_catalog_factory(session)
-        effect = catalog.effect_for_route(self.command_route, intent)
-        if effect is None or effect.kind is not CommandEffectKind.SESSION:
-            return None
-        if effect.command.source not in self.command_sources:
-            return None
-        invocation_name = effect.payload.get("invocation_name")
-        args = effect.payload.get("args", "")
-        if not isinstance(invocation_name, str) or not isinstance(args, str):
-            return None
-        execution = await _maybe_await(executor(invocation_name, args))
-        return _controller_result_from_command_execution(
-            execution,
-            invocation_name=invocation_name,
-        )
-
-    async def _bash(self, command: str) -> None:
-        method = getattr(self._current_session(), "execute_bash", None)
-        if not callable(method):
-            raise RuntimeError("Session does not support bash execution")
-        await _maybe_await(method(command, **dict(self.bash_options())))
-
-    async def _abort(self) -> None:
-        session = self._current_session()
+        operations = self.get_operations()
         try:
-            await _call_if_available(session, "abort")
+            operations.abort_turn()
         finally:
-            await _call_if_available(session, "clear_queue")
-            await _call_if_available(session, "abort_bash")
-
-    def _current_session(self) -> Any:
-        if self.runtime is not None:
-            getter = getattr(self.runtime, "get_current_session", None)
-            if callable(getter):
-                current = getter()
-                if current is not None:
-                    return current
-            current = getattr(self.runtime, "current_session", None)
-            if current is not None:
-                return current
-        return self.session
+            try:
+                operations.clear_queue()
+            finally:
+                if self.abort_command is not None:
+                    await _maybe_await(self.abort_command())
 
     def _record_problem(self, code: str, **details: object) -> None:
         if self.problem_logger is None:
@@ -255,20 +225,22 @@ class ConversationUiController:
 
 def build_standard_conversation_ui_controller(
     *,
-    session: Any,
-    runtime: Any | None = None,
+    get_operations: SessionOperationResolver,
+    dispatch_session_command: SessionCommandDispatcher | None = None,
+    execute_bash: BashExecutor | None = None,
+    abort_command: CommandAbort | None = None,
     verbose: bool = False,
-    command_catalog_factory: CommandCatalogFactory | None = None,
     problem_code_prefix: str = "conversation_ui",
     problem_logger: Any | None = None,
 ) -> ConversationUiController:
     """Bind the standard conversation intents to the shared controller."""
 
     return ConversationUiController(
-        session=session,
-        runtime=runtime,
+        get_operations=get_operations,
+        dispatch_session_command=dispatch_session_command,
+        execute_bash=execute_bash,
+        abort_command=abort_command,
         verbose=verbose,
-        command_catalog_factory=command_catalog_factory,
         prompt_intent_type=PromptIntent,
         bash_intent_type=BashIntent,
         follow_up_intent_type=FollowUpIntent,
@@ -279,74 +251,6 @@ def build_standard_conversation_ui_controller(
     )
 
 
-async def _call_if_available(target: Any, method_name: str) -> None:
-    method = getattr(target, method_name, None)
-    if callable(method):
-        await _maybe_await(method())
-
-
-def _streaming_prompt_method(session: Any, *, streaming_behavior: str):
-    prompt = getattr(session, "prompt", None)
-    if not callable(prompt) or not _supports_keyword(prompt, "streaming_behavior"):
-        return None
-
-    async def _call(
-        text: str,
-        images: ImageParts = None,
-    ) -> Any:
-        kwargs: dict[str, object] = {"streaming_behavior": streaming_behavior}
-        if _supports_keyword(prompt, "source"):
-            kwargs["source"] = "interactive"
-        if images is not None and _supports_keyword(prompt, "images"):
-            kwargs["images"] = list(images)
-        return await _maybe_await(prompt(text, **kwargs))
-
-    return _call
-
-
-async def _call_text_method(
-    method: Any,
-    text: str,
-    *,
-    images: ImageParts = None,
-) -> Any:
-    if images is not None and _supports_keyword(method, "images"):
-        return await _maybe_await(method(text, images=list(images)))
-    return await _maybe_await(method(text))
-
-
-def _supports_keyword(method: Any, keyword: str) -> bool:
-    try:
-        signature = inspect.signature(method)
-    except (TypeError, ValueError):
-        return False
-    parameters = signature.parameters.values()
-    return any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD or parameter.name == keyword
-        for parameter in parameters
-    )
-
-
-def _controller_result_from_command_execution(
-    execution: object,
-    *,
-    invocation_name: str,
-) -> HostActionResult:
-    result = getattr(execution, "result", None)
-    if result is None and not hasattr(execution, "result"):
-        result = execution
-    if isinstance(result, dict):
-        display = result.get("display")
-        if isinstance(display, str) and display:
-            return HostActionResult(status_message=display)
-        message = result.get("message")
-        if isinstance(message, str) and message:
-            if result.get("status") == "error":
-                return HostActionResult(error_message=message)
-            return HostActionResult(status_message=message)
-    return HostActionResult(status_message=f"Command /{invocation_name} completed.")
-
-
 async def _maybe_await(value: Any) -> Any:
     if inspect.isawaitable(value):
         return await value
@@ -354,8 +258,10 @@ async def _maybe_await(value: Any) -> Any:
 
 
 __all__ = [
-    "CommandCatalogFactory",
+    "BashExecutor",
+    "CommandAbort",
     "ConversationUiController",
     "ImageParts",
+    "SessionCommandDispatcher",
     "build_standard_conversation_ui_controller",
 ]

@@ -7,7 +7,7 @@ import inspect
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, TextIO, cast
+from typing import Any, TextIO
 
 from loushang.ai.model import ModelSelection
 from loushang.harness.commands import complete_slash_commands
@@ -62,9 +62,11 @@ from loushang.harness.host.rpc.wire import (
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.session import (
     SessionLifecycleOperationPorts,
+    SessionOperationResolver,
     SessionOperationRuntime,
     SessionPromptRequest,
     SessionRpcOperationBinding,
+    current_session_operation_resolver,
 )
 from loushang.harness.transcript import (
     SessionQuery,
@@ -107,7 +109,7 @@ class RpcHost(ModeAdapter):
         self.render_tool_events = render_tool_events
         self._host_runtime = ProductHostRuntime(stdin=stdin)
         self.session = self._require_current_session()
-        self._session_operations = self._find_session_operations(self.session)
+        self._session_operation_resolver = self._build_session_operation_resolver()
         self._rpc_operations = SessionRpcOperationBinding(
             get_operations=self._require_session_operations,
             bind_session=self._bind_session,
@@ -1334,7 +1336,6 @@ class RpcHost(ModeAdapter):
     def _bind_session(self, session: Any) -> None:
         self._unsubscribe()
         self.session = session
-        self._session_operations = self._find_session_operations(session)
         self._configure_tool_rendering(session)
         self._unsubscribe = self._subscribe_to_events(session)
         self._bind_extension_ui_context(session)
@@ -1414,17 +1415,16 @@ class RpcHost(ModeAdapter):
             raise RuntimeError("RPC mode requires an active session")
         return session
 
-    def _find_session_operations(self, session: Any) -> SessionOperationRuntime | None:
-        control = getattr(session, "session_control", None)
-        if control is None:
-            return None
+    def _build_session_operation_resolver(self) -> SessionOperationResolver:
         runtime = self.runtime
         clone_operation = getattr(runtime, "clone_session_operation", None)
         if not callable(clone_operation):
+
             async def clone_operation():
                 return await runtime.fork_session_operation(None, position="at")
-        return SessionOperationRuntime(
-            cast(Any, control),
+
+        return current_session_operation_resolver(
+            runtime,
             lifecycle=SessionLifecycleOperationPorts(
                 new_session=lambda cwd, parent: runtime.new_session_operation(
                     cwd=cwd, parent_session=parent
@@ -1440,9 +1440,7 @@ class RpcHost(ModeAdapter):
         )
 
     def _require_session_operations(self) -> SessionOperationRuntime:
-        if self._session_operations is None:
-            raise TypeError("RPC mode session must expose Harness session_control")
-        return self._session_operations
+        return self._session_operation_resolver()
 
     def _get_session_messages(self, session: Any) -> list[object]:
         """Narrow test seam for validating malformed upstream message logs."""

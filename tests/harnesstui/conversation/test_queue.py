@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+from loushang.harness.session import SessionOperationRuntime
 from loushang.harnesstui.conversation.queue import (
     cleared_queue_messages,
     pending_queue_view,
@@ -23,7 +24,7 @@ class _Session:
 
 
 def test_pending_queue_view_maps_session_queues_to_generic_tui_sections() -> None:
-    view = pending_queue_view(_Session())
+    view = pending_queue_view(SessionOperationRuntime(_Session()))
 
     assert [(section.label, tuple(section.items), section.hint) for section in view.sections] == [
         (
@@ -42,13 +43,17 @@ def test_cleared_queue_messages_supports_aliases_and_stringifies_values() -> Non
 
 
 def test_session_pending_messages_is_defensive() -> None:
-    assert session_pending_messages(object(), "missing") == []
-
     class Broken:
-        def messages(self):
+        def get_steering_messages(self):
             raise RuntimeError("boom")
 
-    assert session_pending_messages(Broken(), "messages") == []
+    assert (
+        session_pending_messages(
+            SessionOperationRuntime(Broken()),
+            "steering",
+        )
+        == []
+    )
 
 
 def test_restore_queued_messages_merges_queue_and_current_text() -> None:
@@ -56,21 +61,23 @@ def test_restore_queued_messages_merges_queue_and_current_text() -> None:
         def clear_queue(self):
             return {"steering": ["steer one"], "follow_up": ["follow one"]}
 
-    restored = asyncio.run(restore_queued_messages(Session(), "draft"))
+    restored = asyncio.run(
+        restore_queued_messages(SessionOperationRuntime(Session()), "draft")
+    )
 
     assert restored == "steer one\n\nfollow one\n\ndraft"
 
 
-def test_restore_queued_messages_supports_awaitable_clear_queue_and_traces() -> None:
+def test_restore_queued_messages_traces_typed_queue_clear() -> None:
     traces: list[tuple[str, dict[str, object]]] = []
 
     class Session:
-        async def clear_queue(self):
+        def clear_queue(self):
             return {"steering": ["steer"]}
 
     restored = asyncio.run(
         restore_queued_messages(
-            Session(),
+            SessionOperationRuntime(Session()),
             "   ",
             trace=lambda name, **data: traces.append((name, data)),
         )
@@ -86,7 +93,7 @@ def test_restore_queued_messages_returns_none_when_unavailable_or_empty() -> Non
     assert (
         asyncio.run(
             restore_queued_messages(
-                object(),
+                SessionOperationRuntime(object()),
                 "",
                 trace=lambda name, **_data: traces.append(name),
             )
@@ -101,7 +108,7 @@ def test_restore_queued_messages_returns_none_when_unavailable_or_empty() -> Non
     assert (
         asyncio.run(
             restore_queued_messages(
-                EmptySession(),
+                SessionOperationRuntime(EmptySession()),
                 "",
                 trace=lambda name, **_data: traces.append(name),
             )

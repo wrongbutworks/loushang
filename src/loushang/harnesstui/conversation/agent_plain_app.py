@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Protocol, TextIO
 
 from loushang.harness.commands import CommandDef, CommandEffect
+from loushang.harness.session import SessionOperationResolver
 from loushang.harnesstui.commands.catalog import (
     ConversationCommandCatalog,
     SessionCommandsProvider,
@@ -111,6 +112,7 @@ class AgentPlainConversationPorts:
     trace: TraceFn
     now: Callable[[], float]
     controller: PlainConversationController[ConversationIntent]
+    get_operations: SessionOperationResolver
     command_effect: Callable[
         [str, ConversationIntent],
         CommandEffect | None,
@@ -141,6 +143,7 @@ def build_agent_plain_conversation_ports(
     trace: TraceFn,
     now: Callable[[], float],
     controller: PlainConversationController[ConversationIntent],
+    get_operations: SessionOperationResolver,
     select_model: Callable[[str, ModelInteractionChooser | None], Awaitable[str]],
     hotkeys: Callable[[], str],
     debug_status: Callable[[Path, tuple[str, ...]], str],
@@ -176,6 +179,7 @@ def build_agent_plain_conversation_ports(
         trace=trace,
         now=now,
         controller=controller,
+        get_operations=get_operations,
         command_effect=catalog.effect_for_route,
         snapshot_commands=snapshot_commands,
         select_model=select_model,
@@ -391,11 +395,11 @@ def build_agent_plain_conversation_app(
             session_running=lambda: is_running(session),
             last_error_message=lambda: ports.event_renderer.last_error_message,
             restore_queue=lambda text: restore_queued_messages(
-                session,
+                ports.get_operations(),
                 text,
                 trace=ports.trace,
             ),
-            pending_messages=lambda: pending_queue_view(session),
+            pending_messages=lambda: pending_queue_view(ports.get_operations()),
             render_info_panel=getattr(ports.renderer, "render_info_panel", None),
             present_info_panel=ports.info_panel_presenter,
             completion_provider=ports.completion_provider,

@@ -13,7 +13,7 @@ class _Session:
         self.aborted = False
         self.bash_aborted = False
 
-    async def prompt(self, text: str) -> None:
+    async def prompt(self, text: str, **_kwargs: object) -> None:
         self.prompts.append(text)
 
     async def execute_bash(self, command: str, **kwargs: object) -> None:
@@ -25,10 +25,18 @@ class _Session:
     def abort_bash(self) -> None:
         self.bash_aborted = True
 
-    async def steer(self, text: str) -> None:
+    def clear_queue(self) -> dict[str, list[str]]:
+        return {"steering": [], "follow_up": []}
+
+    async def wait_for_idle(self) -> None:
+        return None
+
+    def steer(self, text: str, images=None) -> None:
+        del images
         self.steers.append(text)
 
-    async def follow_up(self, text: str) -> None:
+    def follow_up(self, text: str, images=None) -> None:
+        del images
         self.follow_ups.append(text)
 
 
@@ -302,8 +310,17 @@ def test_controller_dispatches_prompt_images_to_session_prompt() -> None:
         def __init__(self) -> None:
             self.calls: list[tuple[str, list[ImagePart] | None]] = []
 
-        async def prompt(self, text: str, *, images: list[ImagePart] | None = None) -> None:
+        async def prompt(
+            self,
+            text: str,
+            *,
+            images: list[ImagePart] | None = None,
+            **_kwargs: object,
+        ) -> None:
             self.calls.append((text, images))
+
+        async def wait_for_idle(self) -> None:
+            return None
 
     image = ImagePart(type="image", data="abc", mime_type="image/png")
     session = ImageSession()
@@ -354,32 +371,24 @@ def test_controller_sends_steering_when_session_supports_it() -> None:
     assert session.steers == ["use a smaller diff"]
 
 
-def test_controller_prefers_session_prompt_streaming_behavior_for_steering() -> None:
+def test_controller_uses_shared_session_steering_primitive() -> None:
     from loushang.coding.ui.product_binding import build_coding_ui_controller
 
-    class StreamingPromptSession:
+    class SteeringSession:
         def __init__(self) -> None:
-            self.calls: list[tuple[str, str | None, str | None]] = []
+            self.calls: list[str] = []
 
-        async def prompt(
-            self,
-            text: str,
-            *,
-            streaming_behavior: str | None = None,
-            source: str | None = None,
-        ) -> None:
-            self.calls.append((text, streaming_behavior, source))
+        def steer(self, text: str, images=None) -> None:
+            del images
+            self.calls.append(text)
 
-        async def steer(self, _text: str) -> None:
-            raise AssertionError("steer fallback should not be used")
-
-    session = StreamingPromptSession()
+    session = SteeringSession()
     controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.steer("use a smaller diff"))
 
     assert result.error_message is None
-    assert session.calls == [("use a smaller diff", "steer", "interactive")]
+    assert session.calls == ["use a smaller diff"]
 
 
 def test_controller_reports_when_steering_is_unavailable() -> None:
@@ -406,32 +415,24 @@ def test_controller_sends_follow_up_when_session_supports_it() -> None:
     assert session.steers == []
 
 
-def test_controller_prefers_session_prompt_streaming_behavior_for_follow_up() -> None:
+def test_controller_uses_shared_session_follow_up_primitive() -> None:
     from loushang.coding.ui.product_binding import build_coding_ui_controller
 
-    class StreamingPromptSession:
+    class FollowUpSession:
         def __init__(self) -> None:
-            self.calls: list[tuple[str, str | None, str | None]] = []
+            self.calls: list[str] = []
 
-        async def prompt(
-            self,
-            text: str,
-            *,
-            streaming_behavior: str | None = None,
-            source: str | None = None,
-        ) -> None:
-            self.calls.append((text, streaming_behavior, source))
+        def follow_up(self, text: str, images=None) -> None:
+            del images
+            self.calls.append(text)
 
-        async def follow_up(self, _text: str) -> None:
-            raise AssertionError("follow_up fallback should not be used")
-
-    session = StreamingPromptSession()
+    session = FollowUpSession()
     controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.follow_up("continue after this turn"))
 
     assert result.error_message is None
-    assert session.calls == [("continue after this turn", "followUp", "interactive")]
+    assert session.calls == ["continue after this turn"]
 
 
 def test_controller_returns_error_result_without_verbose_traceback() -> None:
@@ -439,7 +440,7 @@ def test_controller_returns_error_result_without_verbose_traceback() -> None:
     from loushang.harnesstui.conversation.intents import PromptIntent
 
     class FailingSession(_Session):
-        async def prompt(self, text: str) -> None:
+        async def prompt(self, text: str, **_kwargs: object) -> None:
             raise RuntimeError(f"failed: {text}")
 
     result = asyncio.run(build_coding_ui_controller(session=FailingSession()).dispatch(PromptIntent(text="hello")))
@@ -458,7 +459,7 @@ def test_controller_records_problem_for_dispatch_failure() -> None:
     )
 
     class FailingSession(_Session):
-        async def prompt(self, text: str) -> None:
+        async def prompt(self, text: str, **_kwargs: object) -> None:
             raise RuntimeError(f"failed: {text}")
 
     reset_observability()
@@ -488,7 +489,7 @@ def test_controller_records_problem_for_cancelled_prompt() -> None:
     from loushang.observability import get_problem_store, reset_observability
 
     class CancelledSession(_Session):
-        async def prompt(self, text: str) -> None:
+        async def prompt(self, text: str, **_kwargs: object) -> None:
             raise asyncio.CancelledError
 
     reset_observability()

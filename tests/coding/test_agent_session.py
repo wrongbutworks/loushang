@@ -3508,6 +3508,65 @@ def test_agent_session_presenter_rebind_reopens_active_approval_generation(
     asyncio.run(run())
 
 
+def test_agent_session_approval_interaction_lease_is_generation_safe(
+    tmp_path,
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+
+    async def run() -> None:
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+        session = AgentSession(
+            agent=Agent(
+                initial_state={
+                    "system_prompt": "",
+                    "model": _model(),
+                    "thinking_level": "off",
+                }
+            ),
+            session_manager=await SessionManager.new(
+                session_dir=tmp_path,
+                cwd="/tmp/project",
+                persist=False,
+            ),
+            approval_resolver=resolver,
+        )
+        interaction = session.approval_interaction
+        assert interaction is not None
+        first = interaction.bind_presenter(lambda _payload: None)
+        presented = asyncio.Event()
+        second = interaction.bind_presenter(lambda _payload: presented.set())
+
+        first.close()
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="write",
+                    arguments={},
+                    action_id="explicit-interaction",
+                )
+            )
+        )
+        await asyncio.wait_for(presented.wait(), timeout=0.5)
+        assert await interaction.respond(
+            "explicit-interaction",
+            outcome="allow_once",
+        )
+        assert (await pending).disposition == "allow"
+        second.close()
+        await session.dispose()
+
+    asyncio.run(run())
+
+
 def test_agent_session_disposal_finalizes_when_host_dispose_fails(tmp_path) -> None:
     import pytest
 

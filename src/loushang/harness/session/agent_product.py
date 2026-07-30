@@ -162,6 +162,8 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         self._approval_session_state = (
             "active" if approval_resolver is not None else "closed"
         )
+        self._approval_presenter_generation = 0
+        self._approval_presenter_lease = None
         self._package_controller = SessionPackageController(
             get_session_id=lambda: self.session_manager.get_session_record().session_id,
             get_cwd=self.session_manager.get_cwd,

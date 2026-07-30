@@ -23,7 +23,7 @@ class _Operations:
         del images
         self.follow_ups.append(text)
 
-    def abort(self) -> bool:
+    def abort_turn(self) -> bool:
         self.aborts += 1
         return True
 

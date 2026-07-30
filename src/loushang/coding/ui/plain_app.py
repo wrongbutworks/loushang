@@ -62,6 +62,7 @@ def build_plain_coding_tui_app(
             trace=trace,
             now=now,
             controller=controller,
+            get_operations=controller.get_operations,
             select_model=lambda query, chooser: select_available_model(
                 session,
                 query=query,

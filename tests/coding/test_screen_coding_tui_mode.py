@@ -20,6 +20,7 @@ from loushang.ai import (
 from loushang.ai.model import ModelSelection
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harness.conversation import ConversationRecord
+from loushang.harness.permissions import permission_profile_snapshot
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
@@ -126,7 +127,7 @@ class _Session:
 
         return unsubscribe
 
-    async def prompt(self, text: str) -> None:
+    async def prompt(self, text: str, **_kwargs: object) -> None:
         self.prompts.append(text)
         await self._emit(
             {
@@ -164,10 +165,15 @@ class _Session:
             if inspect.isawaitable(result):
                 await result
 
-    async def steer(self, text: str) -> None:
+    async def wait_for_idle(self) -> None:
+        return None
+
+    def steer(self, text: str, images=None) -> None:
+        del images
         self.steers.append(text)
 
-    async def follow_up(self, text: str) -> None:
+    def follow_up(self, text: str, images=None) -> None:
+        del images
         self.follow_ups.append(text)
 
     def get_steering_messages(self) -> list[str]:
@@ -179,11 +185,66 @@ class _Session:
     def abort(self) -> None:
         return None
 
-    def clear_queue(self) -> None:
-        return None
+    def clear_queue(self) -> dict[str, list[str]]:
+        return {"steering": [], "follow_up": []}
 
     def abort_bash(self) -> None:
         return None
+
+
+class _ApprovalLease:
+    def __init__(self, close: Callable[[str], None]) -> None:
+        self._close = close
+        self._closed = False
+
+    def close(self, reason: str = "Approval presenter closed") -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._close(reason)
+
+
+class _ResolverApprovalInteraction:
+    def __init__(self, resolver, *, on_present: Callable[[], None] | None = None):
+        self._resolver = resolver
+        self._on_present = on_present
+
+    def bind_presenter(self, presenter, *, dismisser=None) -> _ApprovalLease:
+        def present(payload: dict[str, object]) -> object:
+            if self._on_present is not None:
+                self._on_present()
+            return presenter(payload)
+
+        self._resolver.set_request_presenter(present, dismisser=dismisser)
+        self._resolver.open_session()
+
+        def close(reason: str) -> None:
+            self._resolver.close_session(reason)
+            self._resolver.set_request_presenter(None)
+
+        return _ApprovalLease(close)
+
+    async def respond(
+        self,
+        action_id: str,
+        *,
+        outcome: str,
+        reason: str | None = None,
+    ) -> bool:
+        return await self._resolver.handle_result(
+            action_id,
+            outcome=outcome,
+            reason=reason,
+        )
+
+    def permissions_snapshot(self):
+        return self._resolver.permissions_snapshot()
+
+    def permission_profile_snapshot(self):
+        return permission_profile_snapshot("standard")
+
+    async def apply_permission_action(self, _action: str) -> bool:
+        return False
 
 
 def test_run_coding_tui_interactive_uses_screen_loop(monkeypatch) -> None:
@@ -744,18 +805,6 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
     presented: list[dict[str, object]] = []
     opened = asyncio.Event()
 
-    class ApprovalSession:
-        def set_approval_presenter(self, presenter, *, dismisser=None) -> None:
-            resolver.set_request_presenter(presenter, dismisser=dismisser)
-
-        async def handle_screen_approval(self, event: dict[str, object]) -> bool:
-            action_id = event.get("action_id")
-            assert isinstance(action_id, str)
-            return await resolver.handle_result(
-                action_id,
-                approved=bool(event.get("approved")),
-            )
-
     class ApprovalSurfaceManager:
         def open_approval(self, **payload: object) -> None:
             presented.append(dict(payload))
@@ -785,9 +834,9 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
         "write",
         context_provider=context_provider,
     )
-    session = ApprovalSession()
+    interaction = _ResolverApprovalInteraction(resolver)
     unbind = tui_policy.bind_agent_screen_approval_presenter(
-        session,
+        interaction,
         ApprovalSurfaceManager(),  # type: ignore[arg-type]
     )
 
@@ -801,8 +850,9 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
         await opened.wait()
         allow_action_id = presented[-1]["action_id"]
         assert isinstance(allow_action_id, str)
-        await session.handle_screen_approval(
-            {"action_id": allow_action_id, "approved": True}
+        await interaction.respond(
+            allow_action_id,
+            outcome="allow_once",
         )
         await allow_task
 
@@ -816,8 +866,9 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
         await opened.wait()
         deny_action_id = presented[-1]["action_id"]
         assert isinstance(deny_action_id, str)
-        await session.handle_screen_approval(
-            {"action_id": deny_action_id, "approved": False}
+        await interaction.respond(
+            deny_action_id,
+            outcome="deny",
         )
         with pytest.raises(PermissionError):
             await deny_task
@@ -832,7 +883,7 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
     assert resolver._broker.pending_requests() == ()
 
 
-def test_screen_approval_unbind_targets_runtime_current_session() -> None:
+def test_screen_approval_unbind_closes_captured_presentation_lease() -> None:
     from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
@@ -844,26 +895,6 @@ def test_screen_approval_unbind_targets_runtime_current_session() -> None:
     )
     shown = asyncio.Event()
 
-    class ApprovalSession:
-        def __init__(self) -> None:
-            self.active = True
-
-        def set_approval_presenter(self, presenter, *, dismisser=None) -> None:
-            if presenter is None:
-                if self.active:
-                    resolver.close_session(
-                        "Approval presenter closed before approval was resolved"
-                    )
-                    self.active = False
-                resolver.set_request_presenter(None)
-                return
-
-            def present(payload: dict[str, object]) -> object:
-                shown.set()
-                return presenter(payload)
-
-            resolver.set_request_presenter(present, dismisser=dismisser)
-
     class ApprovalSurfaceManager:
         def open_approval(self, **payload: object) -> None:
             del payload
@@ -871,17 +902,11 @@ def test_screen_approval_unbind_targets_runtime_current_session() -> None:
         def dismiss_approval(self, action_id: str) -> None:
             del action_id
 
-    old_session = ApprovalSession()
-    new_session = ApprovalSession()
-    current_session = old_session
+    interaction = _ResolverApprovalInteraction(resolver, on_present=shown.set)
     unbind = tui_policy.bind_agent_screen_approval_presenter(
-        old_session,
+        interaction,
         ApprovalSurfaceManager(),  # type: ignore[arg-type]
-        session_provider=lambda: current_session,
     )
-    old_session.active = False
-    new_session.active = True
-    current_session = new_session
 
     async def run() -> object:
         pending = asyncio.create_task(
@@ -904,94 +929,6 @@ def test_screen_approval_unbind_targets_runtime_current_session() -> None:
     assert resolver._request_presenter is None
 
 
-def test_screen_approval_unbind_clears_host_presenter_without_current_session() -> None:
-    from loushang.harness.approval import (
-        HeadlessApprovalResolver,
-        InteractiveApprovalResolver,
-    )
-
-    resolver = InteractiveApprovalResolver(
-        fallback=HeadlessApprovalResolver(mode="deny")
-    )
-
-    class ClosedSession:
-        def set_approval_presenter(self, presenter, *, dismisser=None) -> None:
-            if presenter is not None:
-                resolver.set_request_presenter(presenter, dismisser=dismisser)
-
-        def _unbind_approval_presenter_host(self) -> None:
-            resolver.set_request_presenter(None)
-
-    class EmptyRuntime:
-        def get_current_session(self) -> None:
-            return None
-
-    class ApprovalSurfaceManager:
-        def open_approval(self, **payload: object) -> None:
-            del payload
-
-        def dismiss_approval(self, action_id: str) -> None:
-            del action_id
-
-    session = ClosedSession()
-    unbind = tui_policy.bind_agent_screen_approval_presenter(
-        session,
-        ApprovalSurfaceManager(),  # type: ignore[arg-type]
-        session_provider=lambda: tui_policy.current_agent_runtime_session(
-            EmptyRuntime(), session
-        ),
-    )
-    assert resolver._request_presenter is not None
-
-    unbind()
-
-    assert resolver._request_presenter is None
-
-
-def test_screen_approval_unbind_clears_initial_presenter_when_current_has_none() -> (
-    None
-):
-    from loushang.harness.approval import (
-        HeadlessApprovalResolver,
-        InteractiveApprovalResolver,
-    )
-
-    resolver = InteractiveApprovalResolver(
-        fallback=HeadlessApprovalResolver(mode="deny")
-    )
-
-    class InitialSession:
-        def set_approval_presenter(self, presenter, *, dismisser=None) -> None:
-            resolver.set_request_presenter(presenter, dismisser=dismisser)
-
-        def _unbind_approval_presenter_host(self) -> None:
-            resolver.set_request_presenter(None)
-
-    class SessionWithoutApproval:
-        def set_approval_presenter(self, presenter, *, dismisser=None) -> None:
-            del presenter, dismisser
-
-    class ApprovalSurfaceManager:
-        def open_approval(self, **payload: object) -> None:
-            del payload
-
-        def dismiss_approval(self, action_id: str) -> None:
-            del action_id
-
-    initial_session = InitialSession()
-    current_session = SessionWithoutApproval()
-    unbind = tui_policy.bind_agent_screen_approval_presenter(
-        initial_session,
-        ApprovalSurfaceManager(),  # type: ignore[arg-type]
-        session_provider=lambda: current_session,
-    )
-    assert resolver._request_presenter is not None
-
-    unbind()
-
-    assert resolver._request_presenter is None
-
-
 def test_screen_tui_failure_detaches_presenter_and_denies_pending(
     monkeypatch,
 ) -> None:
@@ -1008,19 +945,12 @@ def test_screen_tui_failure_detaches_presenter_and_denies_pending(
     shown = asyncio.Event()
 
     class ApprovalSession(_Session):
-        def set_approval_presenter(self, presenter, *, dismisser=None) -> None:
-            if presenter is None:
-                resolver.close_session(
-                    "Approval presenter closed before approval was resolved"
-                )
-                resolver.set_request_presenter(None)
-                return
-
-            def present(payload: dict[str, object]) -> object:
-                shown.set()
-                return presenter(payload)
-
-            resolver.set_request_presenter(present, dismisser=dismisser)
+        def __init__(self) -> None:
+            super().__init__()
+            self.approval_interaction = _ResolverApprovalInteraction(
+                resolver,
+                on_present=shown.set,
+            )
 
     pending: asyncio.Task[object] | None = None
 
@@ -1077,8 +1007,9 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
     )
 
     class ApprovalSession(_Session):
-        def set_approval_presenter(self, presenter, *, dismisser=None) -> None:
-            resolver.set_request_presenter(presenter, dismisser=dismisser)
+        def __init__(self) -> None:
+            super().__init__()
+            self.approval_interaction = _ResolverApprovalInteraction(resolver)
 
     def fail_projector(*args: object, **kwargs: object) -> None:
         del args, kwargs
@@ -1199,7 +1130,7 @@ def test_screen_event_projection_skips_duplicate_user_messages(monkeypatch) -> N
 
     session = _Session()
 
-    async def prompt_with_user_event(text: str) -> None:
+    async def prompt_with_user_event(text: str, **_kwargs: object) -> None:
         session.prompts.append(text)
         await session._emit(
             {

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import inspect
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
+from loushang.harness.session import SessionOperationRuntime
 from loushang.tui import PendingQueueView, PendingSection
 
 
@@ -12,30 +12,34 @@ class TraceFn(Protocol):
     def __call__(self, name: str, **data: Any) -> None: ...
 
 
-def pending_queue_view(session: Any) -> PendingQueueView:
-    """Project a session-like object's pending messages into a TUI view."""
+def pending_queue_view(operations: SessionOperationRuntime) -> PendingQueueView:
+    """Project a typed Session queue into a TUI view."""
     return PendingQueueView(
         sections=(
             PendingSection(
                 label="Messages to be submitted after next tool call",
-                items=tuple(session_pending_messages(session, "get_steering_messages")),
+                items=tuple(session_pending_messages(operations, "steering")),
                 hint="press esc to interrupt and send immediately",
             ),
             PendingSection(
                 label="Messages to be submitted at end of turn",
-                items=tuple(session_pending_messages(session, "get_follow_up_messages")),
+                items=tuple(session_pending_messages(operations, "follow_up")),
             ),
         )
     )
 
 
-def session_pending_messages(session: Any, method_name: str) -> list[str]:
+def session_pending_messages(
+    operations: SessionOperationRuntime,
+    queue: Literal["steering", "follow_up"],
+) -> list[str]:
     """Read and normalize a pending-message collection defensively."""
-    method = getattr(session, method_name, None)
-    if not callable(method):
-        return []
     try:
-        messages = method()
+        messages = (
+            operations.get_steering_messages()
+            if queue == "steering"
+            else operations.get_follow_up_messages()
+        )
     except Exception:
         return []
     return [str(message) for message in messages]
@@ -53,19 +57,17 @@ def cleared_queue_messages(cleared: Any) -> list[str]:
 
 
 async def restore_queued_messages(
-    session: Any,
+    operations: SessionOperationRuntime,
     current_text: str,
     *,
     trace: TraceFn | None = None,
 ) -> str | None:
-    """Clear a session-like queue and prepend its messages to the current draft."""
-    method = getattr(session, "clear_queue", None)
-    if not callable(method):
+    """Clear a typed Session queue and prepend its messages to the draft."""
+    try:
+        cleared = operations.clear_queue()
+    except Exception:
         _trace(trace, "queue.dequeue.unavailable")
         return None
-    cleared = method()
-    if inspect.isawaitable(cleared):
-        cleared = await cleared
     queued = cleared_queue_messages(cleared)
     if not queued:
         _trace(trace, "queue.dequeue.empty")
