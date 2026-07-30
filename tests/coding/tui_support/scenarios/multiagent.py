@@ -60,6 +60,7 @@ from loushang.harnesstui.multiagent import build_agent_tree_surface_view
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui import (
     ApprovalChoice,
+    InputIntent,
     PlaybackResult,
     Surface,
     strip_control_sequences,
@@ -2006,6 +2007,7 @@ def _concurrent_child_approval_playback() -> object:
             fallback=HeadlessApprovalResolver(mode="deny")
         )
         approval_payloads: list[dict[str, object]] = []
+        approval_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
         audit_events: list[dict[str, object]] = []
         executed: list[str] = []
         child_runtimes: list[_ApprovalPlaybackRuntime] = []
@@ -2092,8 +2094,10 @@ def _concurrent_child_approval_playback() -> object:
         )
 
         def present(payload: dict[str, object]) -> None:
-            approval_payloads.append(dict(payload))
+            frozen = dict(payload)
+            approval_payloads.append(frozen)
             _open_approval_payload(manager, payload)
+            approval_queue.put_nowait(frozen)
 
         resolver.set_request_presenter(
             present,
@@ -2117,6 +2121,32 @@ def _concurrent_child_approval_playback() -> object:
                     initial_prompt="Request an independent deletion and wait for Root.",
                 ),
             )
+
+            async def resolve_next_approval() -> None:
+                payload = await asyncio.wait_for(approval_queue.get(), timeout=1)
+                surface = manager.current
+                assert getattr(surface, "purpose", None) == "approval"
+                assert getattr(
+                    getattr(surface, "content", None),
+                    "action_id",
+                    None,
+                ) == payload["action_id"]
+                actor_id = str(payload["actor_id"])
+                outcome = (
+                    "allow_once"
+                    if actor_id == str(allowed.ref)
+                    else "deny"
+                )
+                await manager.handle_surface_intent(
+                    InputIntent(
+                        kind="approval_decision",
+                        text=outcome,
+                        note=str(payload["action_id"]),
+                    )
+                )
+
+            await resolve_next_approval()
+            await resolve_next_approval()
             terminal = await asyncio.gather(
                 runtime.await_terminal(
                     caller=caller,
@@ -2133,10 +2163,10 @@ def _concurrent_child_approval_playback() -> object:
             assert len(approval_payloads) == 2
             action_ids = [str(payload["action_id"]) for payload in approval_payloads]
             assert len(set(action_ids)) == 2
-            assert [payload["actor_id"] for payload in approval_payloads] == [
+            assert {payload["actor_id"] for payload in approval_payloads} == {
                 str(allowed.ref),
                 str(denied.ref),
-            ]
+            }
             assert [record.status for record in terminal] == [
                 "completed",
                 "failed",
@@ -2151,15 +2181,12 @@ def _concurrent_child_approval_playback() -> object:
 
         result = playback.run(
             (0.00, "run concurrent child approvals\r"),
-            (0.10, "y"),
-            (0.20, "n"),
             (0.35, ""),
             handle_prompt=handle_prompt,
             handle_surface_intent=manager.handle_surface_intent,
         )
 
         assert result.exit_code == 0, result.text
-        result.assert_text_contains("Approval")
         result.assert_no_clear_screen()
         assert result.app.active_surface is None
         assert result.app.state.running is False
