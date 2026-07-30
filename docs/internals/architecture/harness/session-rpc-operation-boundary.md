@@ -58,6 +58,13 @@ The command groups are:
 
 Each group may accept a narrow private Product protocol. It must not receive a
 generic all-capabilities Session dictionary or add a second lifecycle engine.
+Optional Product capability discovery is confined to private dynamic adapters
+at the group boundary; handlers depend on semantic diagnostics, package, and
+transcript protocols rather than performing reflection themselves. The host
+uses the same pattern for session event subscription, extension-UI binding,
+and tool-rendering context. These adapters resolve the current session on each
+invocation or are rebuilt after lifecycle rebinding, so they do not capture a
+stale Session.
 
 ## Prompt And Abort Semantics
 

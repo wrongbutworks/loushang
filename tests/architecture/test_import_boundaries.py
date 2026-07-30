@@ -994,9 +994,11 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
     private_protocols = {
         "bash_maintenance.py": "_BashSession",
         "command_catalog.py": "_CommandCatalogSession",
+        "diagnostics.py": "_DiagnosticsQueries",
         "model_settings.py": "_ModelSettingsSession",
+        "packages.py": "_PackageCapabilities",
         "session_lifecycle.py": "_SessionLifecycleRuntime",
-        "transcript.py": "_TranscriptSession",
+        "transcript.py": "_TranscriptQueries",
     }
     for module_name, protocol_name in private_protocols.items():
         source = (command_root / module_name).read_text(encoding="utf-8")
@@ -1013,6 +1015,7 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
         "docs/internals/architecture/drafts/application-service-refactor.md"
     ).read_text(encoding="utf-8")
     assert "class _RpcHostRuntime(Protocol):" in runtime_source
+    assert "class _RpcSessionBindingPort(Protocol):" in runtime_source
     assert "runtime: Any" not in runtime_source
     assert 'getattr(self.runtime, "get_current_session"' not in runtime_source
     assert 'getattr(self.runtime, "session"' not in runtime_source

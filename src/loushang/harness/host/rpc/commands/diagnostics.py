@@ -3,13 +3,94 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
 
 from loushang.harness.diagnostics.types import DiagnosticsQuery
 from loushang.harness.host.rpc.arguments import optional_string
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.projections import RpcDiagnosticsProjection
 from loushang.harness.host.rpc.routing import LegacyRpcHandler
+
+
+class _DiagnosticsUnavailable(RuntimeError):
+    pass
+
+
+class _DiagnosticsQueries(Protocol):
+    """Semantic diagnostics capabilities consumed by this command group."""
+
+    def get_diagnostics(
+        self, query: DiagnosticsQuery, *, fallback_limit: int
+    ) -> object: ...
+
+    def get_session_diagnostics(
+        self, query: DiagnosticsQuery, *, fallback_limit: int
+    ) -> object: ...
+
+    def get_diagnostics_summary(self, query: DiagnosticsQuery) -> object: ...
+
+    def get_session_diagnostics_summary(
+        self, query: DiagnosticsQuery
+    ) -> object: ...
+
+    def get_last_error_report(self) -> object: ...
+
+
+class _DynamicDiagnosticsQueries:
+    """Resolve optional Product capabilities at the invocation boundary."""
+
+    def __init__(
+        self, *, runtime: object, get_session: Callable[[], object]
+    ) -> None:
+        self._runtime = runtime
+        self._get_session = get_session
+
+    def get_diagnostics(
+        self, query: DiagnosticsQuery, *, fallback_limit: int
+    ) -> object:
+        method = self._resolve("get_diagnostics")
+        if method is not None:
+            return method(query=query)
+        fallback = self._resolve_session("get_last_diagnostics")
+        if fallback is not None:
+            return fallback(limit=fallback_limit)
+        raise _DiagnosticsUnavailable
+
+    def get_session_diagnostics(
+        self, query: DiagnosticsQuery, *, fallback_limit: int
+    ) -> object:
+        del fallback_limit
+        return self._invoke("get_session_diagnostics", query=query)
+
+    def get_diagnostics_summary(self, query: DiagnosticsQuery) -> object:
+        return self._invoke("get_diagnostics_summary", query=query)
+
+    def get_session_diagnostics_summary(
+        self, query: DiagnosticsQuery
+    ) -> object:
+        return self._invoke("get_session_diagnostics_summary", query=query)
+
+    def get_last_error_report(self) -> object:
+        method = self._resolve_session("get_last_error_report")
+        if method is None:
+            raise _DiagnosticsUnavailable
+        return method()
+
+    def _invoke(self, name: str, **kwargs: object) -> object:
+        method = self._resolve(name)
+        if method is None:
+            raise _DiagnosticsUnavailable
+        return method(**kwargs)
+
+    def _resolve(self, name: str) -> Callable[..., object] | None:
+        method = getattr(self._runtime, name, None)
+        if callable(method):
+            return method
+        return self._resolve_session(name)
+
+    def _resolve_session(self, name: str) -> Callable[..., object] | None:
+        method = getattr(self._get_session(), name, None)
+        return method if callable(method) else None
 
 
 class RpcDiagnosticsCommands:
@@ -23,8 +104,10 @@ class RpcDiagnosticsCommands:
         output: RpcOutput,
         projection: RpcDiagnosticsProjection,
     ) -> None:
-        self._runtime = runtime
-        self._get_session = get_session
+        self._queries: _DiagnosticsQueries = _DynamicDiagnosticsQueries(
+            runtime=runtime,
+            get_session=get_session,
+        )
         self._output = output
         self._projection = projection
 
@@ -47,9 +130,7 @@ class RpcDiagnosticsCommands:
             command_id=command_id,
             payload=payload,
             command="get_diagnostics",
-            runtime_method="get_diagnostics",
-            session_method="get_diagnostics",
-            fallback_to_last=True,
+            fetch=self._queries.get_diagnostics,
         )
 
     def get_session_diagnostics(
@@ -59,9 +140,7 @@ class RpcDiagnosticsCommands:
             command_id=command_id,
             payload=payload,
             command="get_session_diagnostics",
-            runtime_method="get_session_diagnostics",
-            session_method="get_session_diagnostics",
-            fallback_to_last=False,
+            fetch=self._queries.get_session_diagnostics,
         )
 
     def get_diagnostics_summary(
@@ -71,8 +150,7 @@ class RpcDiagnosticsCommands:
             command_id=command_id,
             payload=payload,
             command="get_diagnostics_summary",
-            runtime_method="get_diagnostics_summary",
-            session_method="get_diagnostics_summary",
+            fetch=self._queries.get_diagnostics_summary,
         )
 
     def get_session_diagnostics_summary(
@@ -82,16 +160,16 @@ class RpcDiagnosticsCommands:
             command_id=command_id,
             payload=payload,
             command="get_session_diagnostics_summary",
-            runtime_method="get_session_diagnostics_summary",
-            session_method="get_session_diagnostics_summary",
+            fetch=self._queries.get_session_diagnostics_summary,
         )
 
     def get_last_error_report(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         del payload
-        getter = getattr(self._get_session(), "get_last_error_report", None)
-        if not callable(getter):
+        try:
+            report = self._queries.get_last_error_report()
+        except _DiagnosticsUnavailable:
             self._output.error(
                 request_id=command_id,
                 command="get_last_error_report",
@@ -99,7 +177,7 @@ class RpcDiagnosticsCommands:
             )
             return
         try:
-            report = self._projection.serialize_error_report(getter())
+            report = self._projection.serialize_error_report(report)
         except Exception as error:
             self._output.error(
                 request_id=command_id,
@@ -119,9 +197,7 @@ class RpcDiagnosticsCommands:
         command_id: str | None,
         payload: dict[str, Any],
         command: str,
-        runtime_method: str,
-        session_method: str,
-        fallback_to_last: bool,
+        fetch: Callable[..., object],
     ) -> None:
         raw_limit = payload.get("limit", 50)
         if not isinstance(raw_limit, int) or raw_limit <= 0:
@@ -133,40 +209,15 @@ class RpcDiagnosticsCommands:
             return
 
         query = _query_from_payload(payload, default_limit=raw_limit)
-        getter = getattr(self._runtime, runtime_method, None)
-        if callable(getter):
-
-            def query_records():
-                return getter(query=query)
-
-        else:
-            session = self._get_session()
-            getter = getattr(session, session_method, None)
-            if callable(getter):
-
-                def query_records():
-                    return getter(query=query)
-
-            else:
-                getter = (
-                    getattr(session, "get_last_diagnostics", None)
-                    if fallback_to_last
-                    else None
-                )
-                if callable(getter):
-
-                    def query_records():
-                        return getter(limit=raw_limit)
-
-        if not callable(getter):
+        try:
+            raw_diagnostics = fetch(query, fallback_limit=raw_limit)
+        except _DiagnosticsUnavailable:
             self._output.error(
                 request_id=command_id,
                 command=command,
                 error="Diagnostics are not available.",
             )
             return
-        try:
-            raw_diagnostics = query_records()
         except Exception as error:
             self._output.error(
                 request_id=command_id,
@@ -200,8 +251,7 @@ class RpcDiagnosticsCommands:
         command_id: str | None,
         payload: dict[str, Any],
         command: str,
-        runtime_method: str,
-        session_method: str,
+        fetch: Callable[[DiagnosticsQuery], object],
     ) -> None:
         try:
             query = _query_from_payload(payload, default_limit=None)
@@ -210,28 +260,24 @@ class RpcDiagnosticsCommands:
                 request_id=command_id, command=command, error=str(error)
             )
             return
-        getter = getattr(self._runtime, runtime_method, None)
-        if callable(getter):
-
-            def get_summary():
-                return getter(query=query)
-
-        else:
-            getter = getattr(self._get_session(), session_method, None)
-            if callable(getter):
-
-                def get_summary():
-                    return getter(query=query)
-
-        if not callable(getter):
+        try:
+            summary = fetch(query)
+        except _DiagnosticsUnavailable:
             self._output.error(
                 request_id=command_id,
                 command=command,
                 error="Diagnostics are not available.",
             )
             return
+        except Exception as error:
+            self._output.error(
+                request_id=command_id,
+                command=command,
+                error=f"Failed to query diagnostics: {error}",
+            )
+            return
         try:
-            summary = self._projection.serialize_diagnostic_summary(get_summary())
+            summary = self._projection.serialize_diagnostic_summary(summary)
         except Exception as error:
             self._output.error(
                 request_id=command_id,

@@ -15,14 +15,57 @@ from loushang.harness.transcript import create_agent_transcript_message_codec
 _MESSAGE_CODEC = create_agent_transcript_message_codec()
 
 
-class _TranscriptSession(Protocol):
-    """Only the Product transcript capabilities consumed by this group."""
+class _TranscriptCapabilityUnavailable(RuntimeError):
+    pass
 
-    def get_last_assistant_text(self) -> str | None: ...
 
-    def get_user_messages_for_forking(self) -> object: ...
+class _TranscriptQueries(Protocol):
+    """Semantic transcript capabilities consumed by this command group."""
 
-    def export_to_html(self, output_path: str | None = None) -> str | Path: ...
+    def get_messages(self) -> object: ...
+
+    def get_last_assistant_text(self) -> object: ...
+
+    def get_fork_messages(self) -> object: ...
+
+    def export_html(self, output_path: str | None) -> object: ...
+
+
+class _DynamicTranscriptQueries:
+    """Resolve transcript reads against the current Product session."""
+
+    def __init__(
+        self,
+        *,
+        get_session: Callable[[], object],
+        get_messages: Callable[[object], object],
+    ) -> None:
+        self._get_session = get_session
+        self._get_messages = get_messages
+
+    def get_messages(self) -> object:
+        session = self._get_session()
+        return self._get_messages(session)
+
+    def get_last_assistant_text(self) -> object:
+        method = self._resolve("get_last_assistant_text")
+        return method() if method is not None else None
+
+    def get_fork_messages(self) -> object:
+        method = self._resolve("get_user_messages_for_forking")
+        if method is None:
+            raise _TranscriptCapabilityUnavailable
+        return method()
+
+    def export_html(self, output_path: str | None) -> object:
+        method = self._resolve("export_to_html")
+        if method is None:
+            raise _TranscriptCapabilityUnavailable
+        return method(output_path)
+
+    def _resolve(self, name: str) -> Callable[..., object] | None:
+        method = getattr(self._get_session(), name, None)
+        return method if callable(method) else None
 
 
 class RpcTranscriptCommands:
@@ -31,12 +74,14 @@ class RpcTranscriptCommands:
     def __init__(
         self,
         *,
-        get_session: Callable[[], _TranscriptSession],
+        get_session: Callable[[], object],
         get_messages: Callable[[object], object],
         output: RpcOutput,
     ) -> None:
-        self._get_session = get_session
-        self._get_messages = get_messages
+        self._queries: _TranscriptQueries = _DynamicTranscriptQueries(
+            get_session=get_session,
+            get_messages=get_messages,
+        )
         self._output = output
 
     def bindings(self) -> tuple[tuple[str, LegacyRpcHandler], ...]:
@@ -51,7 +96,7 @@ class RpcTranscriptCommands:
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         del payload
-        messages = self._get_messages(self._get_session())
+        messages = self._queries.get_messages()
         if not isinstance(messages, list):
             self._error(
                 command_id,
@@ -75,9 +120,8 @@ class RpcTranscriptCommands:
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         del payload
-        getter = getattr(self._get_session(), "get_last_assistant_text", None)
         try:
-            text = getter() if callable(getter) else None
+            text = self._queries.get_last_assistant_text()
         except Exception as error:
             self._error(
                 command_id,
@@ -95,16 +139,15 @@ class RpcTranscriptCommands:
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         del payload
-        getter = getattr(self._get_session(), "get_user_messages_for_forking", None)
-        if not callable(getter):
+        try:
+            raw_messages = self._queries.get_fork_messages()
+        except _TranscriptCapabilityUnavailable:
             self._error(
                 command_id,
                 "get_fork_messages",
                 "Fork messages are not available.",
             )
             return
-        try:
-            raw_messages = getter()
         except Exception as error:
             self._error(
                 command_id,
@@ -130,7 +173,14 @@ class RpcTranscriptCommands:
     ) -> None:
         output_path = optional_string(payload, "outputPath", "output_path")
         try:
-            path = self._get_session().export_to_html(output_path)
+            path = self._queries.export_html(output_path)
+        except _TranscriptCapabilityUnavailable:
+            self._error(
+                command_id,
+                "export_html",
+                "HTML export is not available.",
+            )
+            return
         except Exception as error:
             self._error(
                 command_id,
