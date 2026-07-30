@@ -40,9 +40,25 @@ mapping, task lifecycle, and error wording.
 Hosts receive a `SessionOperationResolver` rather than retaining one runtime
 bound to a concrete Session. The resolver constructs the operation runtime
 from the Product's current control after new, restore, fork, or clone. Its
-`abort_turn()` operation stops only the active turn. TUI-level
+`prompt()` operation returns after the submitted turn has settled; hosts do
+not append a second `wait_for_idle()` to ordinary prompt dispatch. Explicit
+idle waits remain valid for independently initiated operations such as abort
+settlement and the legacy RPC wait command. Scenario and Work adapters share
+the same settled-prompt contract and do not expose a configurable
+"wait-after-prompt" mode.
+
+The runtime's `abort_turn()` operation stops only the active turn. TUI-level
 `stop_active_interaction` remains an explicit composite that also clears the
 Session queue and aborts selected command execution.
+
+Optional operation groups fail with `SessionOperationUnavailableError`.
+Missing methods and `AttributeError` raised inside a Product implementation are
+programming failures and must not be converted into an "unavailable" result.
+
+Legacy RPC command groups consume narrow private Product protocols for their
+direct model/settings, transcript, Bash, lifecycle-index, and command-catalog
+dependencies. These protocols are local typing boundaries, not a second
+Session facade and not a public all-capabilities RPC interface.
 
 Approval presentation is an optional `SessionApprovalInteractionPort`.
 It delegates presenter binding, responses, permission snapshots, and permission

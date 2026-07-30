@@ -67,9 +67,6 @@ def test_plain_prompt_host_owns_turn_order_and_cleanup() -> None:
     async def submit(prompt: str, turn_index: int, turn_count: int) -> None:
         events.append(f"submit:{turn_index}/{turn_count}:{prompt}")
 
-    async def wait_for_idle() -> None:
-        events.append("wait")
-
     def capture_failure_state() -> int:
         events.append("capture")
         return 0
@@ -89,7 +86,6 @@ def test_plain_prompt_host_owns_turn_order_and_cleanup() -> None:
                     prepare=prepare,
                     subscribe=subscribe,
                     submit=submit,
-                    wait_for_idle=wait_for_idle,
                     capture_failure_state=capture_failure_state,
                     resolve_failure=resolve_failure,
                     render_user=lambda prompt: events.append(f"user:{prompt}"),
@@ -112,13 +108,11 @@ def test_plain_prompt_host_owns_turn_order_and_cleanup() -> None:
         "capture",
         "user:first",
         "submit:0/2:first",
-        "wait",
         "resolve:0",
         "worked:2.0",
         "capture",
         "user:second",
         "submit:1/2:second",
-        "wait",
         "resolve:0",
         "worked:5.0",
         "unsubscribe",
@@ -200,9 +194,6 @@ def test_plain_prompt_host_stops_after_product_reports_failure() -> None:
         if turn_index == 1:
             failure_version += 1
 
-    async def wait_for_idle() -> None:
-        return None
-
     async def dispose() -> None:
         events.append("dispose")
 
@@ -214,7 +205,6 @@ def test_plain_prompt_host_stops_after_product_reports_failure() -> None:
                     prepare=prepare,
                     subscribe=subscribe,
                     submit=submit,
-                    wait_for_idle=wait_for_idle,
                     capture_failure_state=lambda: failure_version,
                     resolve_failure=lambda previous: (
                         "product failure" if previous != failure_version else None
@@ -255,9 +245,6 @@ def test_plain_prompt_host_presents_run_exception_and_verbose_traceback() -> Non
     async def submit(_prompt: str, _turn_index: int, _turn_count: int) -> None:
         raise RuntimeError("prompt failed")
 
-    async def wait_for_idle() -> None:
-        raise AssertionError("wait must not run")
-
     async def dispose() -> None:
         events.append("dispose")
 
@@ -269,7 +256,6 @@ def test_plain_prompt_host_presents_run_exception_and_verbose_traceback() -> Non
                     prepare=prepare,
                     subscribe=subscribe,
                     submit=submit,
-                    wait_for_idle=wait_for_idle,
                     capture_failure_state=lambda: None,
                     resolve_failure=lambda _previous: None,
                     render_user=lambda prompt: events.append(f"user:{prompt}"),
@@ -303,9 +289,6 @@ def test_plain_prompt_host_presents_dispose_failure() -> None:
     async def submit(_prompt: str, _turn_index: int, _turn_count: int) -> None:
         return None
 
-    async def wait_for_idle() -> None:
-        return None
-
     async def dispose() -> None:
         raise RuntimeError("dispose failed")
 
@@ -317,7 +300,6 @@ def test_plain_prompt_host_presents_dispose_failure() -> None:
                     prepare=prepare,
                     subscribe=lambda: lambda: None,
                     submit=submit,
-                    wait_for_idle=wait_for_idle,
                     capture_failure_state=lambda: None,
                     resolve_failure=lambda _previous: None,
                     render_user=lambda _prompt: None,
@@ -350,9 +332,6 @@ def test_plain_prompt_host_preserves_unsubscribe_failure_boundary() -> None:
     async def submit(_prompt: str, _turn_index: int, _turn_count: int) -> None:
         return None
 
-    async def wait_for_idle() -> None:
-        return None
-
     async def dispose() -> None:
         nonlocal dispose_calls
         dispose_calls += 1
@@ -363,7 +342,6 @@ def test_plain_prompt_host_preserves_unsubscribe_failure_boundary() -> None:
             prepare=prepare,
             subscribe=subscribe,
             submit=submit,
-            wait_for_idle=wait_for_idle,
             capture_failure_state=lambda: None,
             resolve_failure=lambda _previous: None,
             render_user=lambda _prompt: None,

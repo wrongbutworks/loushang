@@ -847,7 +847,6 @@ def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer(
     )
 
     assert result.exit_code == 0
-    assert session.wait_for_idle_calls == 3
     assert session.queued_while_streaming == [fresh_prompt]
     assert session.prompt_calls == [
         ("start", None, "interactive"),
@@ -984,7 +983,6 @@ class _AbortSettlingSession:
         self.is_streaming = False
         self.prompt_calls: list[tuple[str, str | None, str | None]] = []
         self.queued_while_streaming: list[str] = []
-        self.wait_for_idle_calls = 0
         self._idle = asyncio.Event()
         self._idle.set()
         self.session_control = self
@@ -1027,7 +1025,6 @@ class _AbortSettlingSession:
         return None
 
     async def wait_for_idle(self) -> None:
-        self.wait_for_idle_calls += 1
         await self._idle.wait()
 
 

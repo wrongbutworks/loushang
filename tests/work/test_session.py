@@ -43,6 +43,9 @@ class _DesignSession:
     async def prompt(self, text: str) -> None:
         self.prompts.append(text)
 
+    async def wait_for_idle(self) -> None:
+        raise AssertionError("settled prompt must not be followed by a second wait")
+
 
 def test_session_work_runtime_accepts_product_vocabulary_as_a_profile() -> None:
     async def scenario() -> None:
@@ -147,3 +150,85 @@ def test_prepared_turn_projection_is_product_neutral() -> None:
             follow_up_messages=("Check contrast",),
         ),
     )
+
+
+def test_session_work_plan_waits_for_each_prompt_before_advancing() -> None:
+    class BlockingPlanSession:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+            self.first_prompt_started = asyncio.Event()
+            self.release_first_prompt = asyncio.Event()
+
+        def subscribe_runtime_events(
+            self,
+            listener: Callable[[object], object],
+        ) -> Callable[[], None]:
+            del listener
+            return lambda: None
+
+        async def prompt(
+            self,
+            text: str,
+            *,
+            images: object = None,
+            streaming_behavior: str | None = None,
+            source: str | None = None,
+        ) -> None:
+            del images, streaming_behavior, source
+            self.prompts.append(text)
+            if len(self.prompts) == 1:
+                self.first_prompt_started.set()
+                await self.release_first_prompt.wait()
+
+        async def wait_for_idle(self) -> None:
+            raise AssertionError("prompt already owns idle settlement")
+
+    async def scenario() -> None:
+        session = BlockingPlanSession()
+        after_turns: list[str] = []
+        runtime = SessionWorkRuntime(
+            session=session,
+            event_log=InMemoryEventLogBackend(),
+            profile=SessionWorkProfile(
+                domain="design",
+                operation_kind="SubmitDesignTurn",
+            ),
+            project_event_facts=lambda _event: (),
+        )
+        turns = (
+            SessionWorkTurn(
+                text="first",
+                plan_id="plan-design",
+                step_id="first",
+                step_index=0,
+            ),
+            SessionWorkTurn(
+                text="second",
+                plan_id="plan-design",
+                step_id="second",
+                step_index=1,
+            ),
+        )
+
+        plan_task = asyncio.create_task(
+            runtime.submit_plan(
+                turns,
+                session_id="design-session",
+                after_turn=lambda turn, _index, _total: after_turns.append(turn.text),
+            )
+        )
+        await session.first_prompt_started.wait()
+        await asyncio.sleep(0)
+
+        assert plan_task.done() is False
+        assert session.prompts == ["first"]
+        assert after_turns == []
+
+        session.release_first_prompt.set()
+
+        run = await plan_task
+        assert run.status == "completed"
+        assert session.prompts == ["first", "second"]
+        assert after_turns == ["first", "second"]
+
+    asyncio.run(scenario())

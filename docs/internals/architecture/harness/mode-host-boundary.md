@@ -23,6 +23,25 @@ The shared RPC host receives `RpcEventProjection` and
 Product's event names, diagnostic wire fields, or Work domain. The shared
 plain host receives equivalent event and Work ports.
 
+`loushang.harness.host.rpc.testing` is the canonical test driver for this
+wire. `play_rpc_wire(...)` covers finite golden traces; `RpcWirePlayback`
+supports staged dispatch, snapshots, and final task settlement for concurrent
+prompt/abort/bash scenarios. Product-specific fake sessions and expected
+payloads remain in Product tests rather than entering the Harness package.
+
+## Abort and settlement
+
+An RPC `abort` response acknowledges that the turn-abort request was accepted;
+it does not claim that the turn is already idle. The prompt task remains the
+single settlement owner and performs exactly one idle wait. RPC host shutdown
+drains tracked prompt/bash tasks before transport teardown.
+
+The screen TUI keeps its established composite intent: abort the active turn,
+clear queued input, and abort the active command. The presented action host
+then waits for idle exactly once. `SessionOperationRuntime.abort_turn()` itself
+does not clear queues, cancel commands, or wait, so other hosts can compose
+their own visible behavior without inheriting TUI policy.
+
 ## Coding surface after cutover
 
 Coding keeps only:
@@ -47,5 +66,6 @@ remain outside the shared host implementation.
 ## Verification
 
 The existing Coding RPC, print, Channel, and JSON projection behavior tests
-remain the regression suite. Architecture tests verify that HarnessTUI does
-not import Coding, and that the moved RPC implementation is neutral.
+remain the regression suite. RPC golden and concurrency playback uses the
+Harness testing API. Architecture tests verify that HarnessTUI does not import
+Coding, and that the moved RPC implementation is neutral.

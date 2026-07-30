@@ -4,7 +4,10 @@ import asyncio
 from types import SimpleNamespace
 
 from loushang.harness.host.types import HostActionResult
-from loushang.harness.session import SessionOperationRuntime
+from loushang.harness.session import (
+    SessionOperationAvailability,
+    SessionOperationRuntime,
+)
 from loushang.harnesstui.conversation.controller import (
     build_standard_conversation_ui_controller,
 )
@@ -40,6 +43,19 @@ def test_conversation_ui_controller_routes_actions_to_runtime_current_session() 
 
     assert prompts == [("current", "hello")]
     assert followups == [("current", "later")]
+
+
+def test_conversation_ui_controller_reports_explicitly_unavailable_input() -> None:
+    controller = build_standard_conversation_ui_controller(
+        get_operations=lambda: SessionOperationRuntime(
+            SimpleNamespace(),
+            availability=SessionOperationAvailability.from_capabilities(()),
+        ),
+    )
+
+    result = asyncio.run(controller.follow_up("later"))
+
+    assert result.error_message == "Follow-up is unavailable for this session."
 
 
 def test_conversation_ui_controller_resolves_session_command_on_current_session() -> (

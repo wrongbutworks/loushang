@@ -841,8 +841,8 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     assert "loushang.channel" not in binding_source
     assert "SessionRpcOperationBinding" in rpc_source
     assert "_rpc_operations.prompt_request" in rpc_source
-    assert "_rpc_operations.new_session" in rpc_source
-    assert "_rpc_operations.compact" in rpc_source
+    assert "await self._operations.new_session" in rpc_source
+    assert "await self._operations.compact" in rpc_source
     assert "SessionOperationAvailability" in operations_source
     assert "SessionOperationRuntime" in rpc_source
     assert "SessionWorkRuntime" in channel_adapter_source
@@ -954,26 +954,57 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
         "remote_ui.py",
         "routing.py",
         "runtime.py",
+        "testing.py",
         "types.py",
         "wire.py",
     }
 
     assert {path.name for path in rpc_root.glob("*.py")} == expected_modules
-    for module_name in expected_modules - {"__init__.py", "runtime.py"}:
+    for module_name in expected_modules - {"__init__.py", "runtime.py", "testing.py"}:
         imports = set(_absolute_imports(rpc_root / module_name))
         assert "loushang.harness.host.rpc" not in imports
         assert "loushang.harness.host.rpc.runtime" not in imports
 
+    testing_imports = set(_absolute_imports(rpc_root / "testing.py"))
+    assert "loushang.harness.host.rpc.runtime" in testing_imports
+    testing_source = (rpc_root / "testing.py").read_text(encoding="utf-8")
+    assert "class RpcWirePlayback:" in testing_source
+    assert "def play_rpc_wire(" in testing_source
+    assert "loushang.coding" not in testing_source
+
     command_root = rpc_root / "commands"
     assert {path.name for path in command_root.glob("*.py")} == {
         "__init__.py",
+        "bash_maintenance.py",
+        "command_catalog.py",
         "diagnostics.py",
+        "model_settings.py",
         "packages.py",
+        "session_lifecycle.py",
+        "transcript.py",
     }
     for command_module in command_root.glob("*.py"):
         imports = set(_absolute_imports(command_module))
         assert "loushang.harness.host.rpc" not in imports
         assert "loushang.harness.host.rpc.runtime" not in imports
+
+    private_protocols = {
+        "bash_maintenance.py": "_BashSession",
+        "command_catalog.py": "_CommandCatalogSession",
+        "model_settings.py": "_ModelSettingsSession",
+        "session_lifecycle.py": "_SessionLifecycleRuntime",
+        "transcript.py": "_TranscriptSession",
+    }
+    for module_name, protocol_name in private_protocols.items():
+        source = (command_root / module_name).read_text(encoding="utf-8")
+        assert f"class {protocol_name}(Protocol):" in source
+
+    runtime_source = (rpc_root / "runtime.py").read_text(encoding="utf-8")
+    assert "class _RpcHostRuntime(Protocol):" in runtime_source
+    assert "runtime: Any" not in runtime_source
+    assert "RpcCommandCatalogCommands" in runtime_source
+    assert "_handle_get_commands_command" not in runtime_source
+    assert "_handle_get_command_completions_command" not in runtime_source
 
 
 def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:

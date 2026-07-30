@@ -67,7 +67,6 @@ class AgentSessionWorkflowAdapter:
         if emit_start:
             await self._emit(WorkflowEvent(type="run.started", text=prompt))
         await self.session.prompt(prompt)
-        await self._wait_for_idle()
         assistant_text = _assistant_text_after(self.session, before_count=before_count)
         if assistant_text and not _has_assistant_message_event(
             self._events[before_event_count:]
@@ -179,13 +178,6 @@ class AgentSessionWorkflowAdapter:
         if inspect.isawaitable(result):
             await result
         await self._emit(WorkflowEvent(type=event_type, text=text))
-
-    async def _wait_for_idle(self) -> None:
-        wait_for_idle = getattr(self.session, "wait_for_idle", None)
-        if callable(wait_for_idle):
-            result = wait_for_idle()
-            if inspect.isawaitable(result):
-                await result
 
     async def _record_session_event(self, event: dict) -> None:
         if event.get("type") != "message_end":

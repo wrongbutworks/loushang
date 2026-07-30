@@ -125,7 +125,6 @@ def test_prompt_plan_command_preserves_transcript_and_uses_one_work_run() -> Non
             self.prompts: list[str] = []
             self.listeners = []
             self.runtime_listeners = []
-            self.wait_calls = 0
 
         def get_model_selection(self):
             return None
@@ -141,9 +140,6 @@ def test_prompt_plan_command_preserves_transcript_and_uses_one_work_run() -> Non
         async def prompt(self, text: str, images=None) -> None:
             del images
             self.prompts.append(text)
-
-        async def wait_for_idle(self) -> None:
-            self.wait_calls += 1
 
     async def scenario() -> None:
         runtime = FakeRuntime()
@@ -170,7 +166,6 @@ def test_prompt_plan_command_preserves_transcript_and_uses_one_work_run() -> Non
 
         assert exit_code == 0
         assert session.prompts == ["inspect", "verify"]
-        assert session.wait_calls == 2
         assert runtime.dispose_calls == 1
         assert "› inspect\n" in stdout.getvalue()
         assert "› verify\n" in stdout.getvalue()
@@ -399,7 +394,6 @@ def test_prompt_command_runs_follow_ups_with_images_only_on_first_turn() -> None
         def __init__(self) -> None:
             self.listeners = []
             self.prompt_calls = []
-            self.wait_calls = 0
 
         def subscribe(self, listener):
             self.listeners.append(listener)
@@ -411,9 +405,6 @@ def test_prompt_command_runs_follow_ups_with_images_only_on_first_turn() -> None
 
         async def prompt(self, user_input: str, images=None) -> None:
             self.prompt_calls.append((user_input, images))
-
-        async def wait_for_idle(self) -> None:
-            self.wait_calls += 1
 
     async def scenario() -> None:
         session = FakeSession()
@@ -435,7 +426,6 @@ def test_prompt_command_runs_follow_ups_with_images_only_on_first_turn() -> None
             ("second", None),
             ("third", None),
         ]
-        assert session.wait_calls == 3
         assert session.listeners == []
         assert stdout.getvalue().count("─ Worked for ") == 3
 
