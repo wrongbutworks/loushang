@@ -5,7 +5,7 @@ fallback (§5.4, §5.5) of
 docs/internals/architecture/harness/policy-approval-redesign.md: inspects
 command and tool subjects (shell payloads, git/GitHub/HTTP operations,
 secret paths and environment) and reports typed effects from
-`loushang.harness.effects`. Consumed by `loushang.harness.policy_engine`;
+`loushang.harness.effects`. Consumed by `loushang.harness.policy.engine`;
 not a stable Product-facing contract.
 """
 
@@ -24,7 +24,7 @@ from loushang.harness.effects import (
     NetworkEffect,
     PublicationEffect,
 )
-from loushang.harness.policy import (
+from loushang.harness.policy.subjects import (
     CommandPolicySubject,
     PolicySubject,
     ToolPolicySubject,

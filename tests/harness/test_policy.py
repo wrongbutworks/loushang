@@ -560,7 +560,7 @@ def test_command_normalization_classifies_busybox_inode_by_invocation_name(
     tmp_path,
     monkeypatch,
 ) -> None:
-    import loushang.harness.policy as policy_module
+    import loushang.harness.policy.subjects as policy_module
     from loushang.harness.policy import normalize_command_subject
 
     multicall = tmp_path / "busybox"

@@ -3355,12 +3355,20 @@ def test_policy_and_approval_have_only_harness_owners() -> None:
 
 
 def test_harness_control_plane_modules_do_not_import_product_layers() -> None:
+    control_plane_roots = (
+        Path("src/loushang/harness/approval"),
+        Path("src/loushang/harness/policy"),
+    )
     control_plane_paths = (
-        Path("src/loushang/harness/approval.py"),
-        Path("src/loushang/harness/policy.py"),
+        *(
+            path
+            for root in control_plane_roots
+            for path in sorted(root.rglob("*.py"))
+        ),
         Path("src/loushang/harness/extensions/control.py"),
         Path("src/loushang/harness/extensions/routing.py"),
     )
+    assert [root.as_posix() for root in control_plane_roots if not root.is_dir()] == []
     assert [path.as_posix() for path in control_plane_paths if not path.exists()] == []
 
     forbidden_prefixes = (

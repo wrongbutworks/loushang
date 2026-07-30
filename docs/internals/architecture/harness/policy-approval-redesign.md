@@ -1232,19 +1232,32 @@ Products may choose aliases, but they operate on the shared runtime.
 
 The implemented layout keeps each mechanism focused. Modules are grouped by
 the domain concept they implement (§7–§12); the concept ownership, not the
-file list, is the stable reference. Helper modules with a single Harness
-consumer (`policy_effects.py`, `policy_grants.py`) are mechanism internals:
-they may be folded into their consumer's package without a compatibility
-guarantee.
+file list, is the stable reference. Single-consumer helper modules are
+mechanism internals and have been folded into their consumer's package
+(`policy/effects_detection.py`, `approval/proposals.py`) without a
+compatibility guarantee; the accepted `loushang.harness.policy_engine`
+import path remains as a compatibility shim over `policy/engine.py` until
+its removal is scheduled.
 
 ```text
 src/loushang/harness/
   effects.py                         # typed protected-resource effects (§7.3)
-  policy.py                          # subjects, verdicts, evaluators, matchers (§7.5, §8)
-  policy_effects.py                  # heuristic effect detection for approval choices (§5.4, §5.5)
-  policy_engine.py                   # default Product-injected rule engine (§12.1)
-  policy_grants.py                   # grant and policy-amendment proposals (§9.1)
-  approval.py                        # broker, options, grants, retained rule stores (§9, §10)
+  policy/                            # policy mechanism package (§7.5, §8)
+    decisions.py                     # verdict values and contract errors
+    subjects.py                      # subjects and command/shell normalization
+    evaluators.py                    # evaluator/matcher protocols, rules, chains
+    matchers.py                      # concrete matchers
+    effects_detection.py             # heuristic effect detection (§5.4, §5.5)
+    engine.py                        # default Product-injected rule engine (§12.1)
+  policy_engine.py                   # compatibility shim over policy/engine.py
+  approval/                          # approval mechanism package (§9, §10)
+    requests.py                      # request/decision/option values, projections
+    ports.py                         # resolver/presenter protocols
+    grants.py                        # session grants, stores, permission snapshots
+    rules.py                         # retained rule stores, store binding
+    resolvers.py                     # headless/deny/actor-bound resolvers
+    broker.py                        # complete-once broker, interactive resolver
+    proposals.py                     # grant and policy-amendment proposals (§9.1)
   permissions.py                     # permission profiles and execution ceilings (§7.4)
   authorization/
     execution_profile.py             # non-widening effective authority (§12.4)
@@ -1265,10 +1278,10 @@ Concept map (§7 domain model to implemented owner):
 | Action (§7.2) | `PreparedToolAction`, `AuthorizedToolAction` | `tools/execution.py`; bindings in `tools/authoring.py` |
 | Resource claims and effects (§7.3) | `FilesystemEffect`, `ProcessEffect`, `NetworkEffect`, `PublicationEffect` | `effects.py` |
 | Permission profile (§7.4) | `PermissionProfile`, ceilings, snapshots | `permissions.py` |
-| Policy verdict (§7.5) | `PolicyDecision`, policy subjects | `policy.py` |
-| Policy model (§8) | `PolicyRule`, matchers, evaluator chains | `policy.py`; default engine in `policy_engine.py` |
-| Grants (§9) | `ApprovalGrant` and stores; grant/amendment proposals | `approval.py`; `policy_grants.py` |
-| Approval lifecycle (§10) | `ApprovalRequest`/`ApprovalDecision`/`ApprovalOption`, broker, resolver/presenter ports, retained rule stores | `approval.py` |
+| Policy verdict (§7.5) | `PolicyDecision`, policy subjects | `policy/decisions.py`, `policy/subjects.py` |
+| Policy model (§8) | `PolicyRule`, matchers, evaluator chains | `policy/evaluators.py`, `policy/matchers.py`; default engine in `policy/engine.py` |
+| Grants (§9) | `ApprovalGrant` and stores; grant/amendment proposals | `approval/grants.py`; `approval/proposals.py` |
+| Approval lifecycle (§10) | `ApprovalRequest`/`ApprovalDecision`/`ApprovalOption`, broker, resolver/presenter ports, retained rule stores | `approval/requests.py`, `approval/ports.py`, `approval/broker.py`, `approval/rules.py` |
 | Enforcement gateway (§11) | mandatory live Gateway | `tools/workspace/authorization.py` |
 | Permission enforcer (§12.4) | `EffectiveExecutionProfile` | `authorization/execution_profile.py` |
 
@@ -1292,7 +1305,7 @@ The local/session cutover is complete:
 
 | Concern | Implemented owner |
 |---|---|
-| Policy values, subjects, normalization, evaluation | `harness.policy` and `harness.policy_engine` |
+| Policy values, subjects, normalization, evaluation | `harness.policy` (default engine in `harness.policy.engine`) |
 | Approval request, broker, grants, retained rules | `harness.approval` |
 | Effective sandbox/executor authority | `harness.authorization` |
 | Tool route and immutable action contracts | `harness.tools.authoring` and `harness.tools.execution` |

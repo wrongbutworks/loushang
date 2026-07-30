@@ -1,38 +1,19 @@
-"""Product-neutral policy subjects, verdicts, evaluators, and matchers.
-
-Implements the policy verdict (§7.5) and policy model (§8) of
-docs/internals/architecture/harness/policy-approval-redesign.md:
-command/path/tool/custom subjects, allow/deny/ask decisions, evaluator and
-matcher protocols with composable chains, and shell/path normalization
-helpers. Risk classification, trust rules, allowlists, and product defaults
-remain with Product adapters.
-"""
+"""Policy subjects, builders, and command/shell normalization mechanics."""
 
 from __future__ import annotations
 
-import inspect
 import os
 import shlex
-from collections.abc import Awaitable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from os.path import abspath, basename, isabs, join, normpath, realpath, samefile
 from pathlib import Path
 from shutil import which
-from types import MappingProxyType
-from typing import Literal, Protocol, TypeAlias, TypeVar, cast
+from typing import Literal, TypeAlias, cast
 
 from loushang.harness.effects import ToolEffect
-
-PolicyDisposition = Literal["allow", "deny", "ask"]
-PolicyChainStrategy = Literal[
-    "first_non_allow",
-    "most_restrictive",
-    "first_decision",
-]
-
-T = TypeVar("T")
-MaybeAwaitable: TypeAlias = T | Awaitable[T]
+from loushang.harness.policy._freeze import _freeze_mapping
 
 _SHELL_ENTRY_BASENAMES = frozenset(
     {
@@ -199,35 +180,6 @@ _SUDO_LONG_OPTIONS = _SUDO_NO_VALUE_LONG_OPTIONS | _SUDO_LONG_VALUE_OPTIONS
 
 
 @dataclass(frozen=True)
-class PolicyDecision:
-    """Product-neutral result from an injected policy evaluator."""
-
-    disposition: PolicyDisposition
-    reason: str | None = None
-    code: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.disposition not in {"allow", "deny", "ask"}:
-            raise ValueError(f"Unsupported policy disposition: {self.disposition}")
-        if self.reason is not None and not isinstance(self.reason, str):
-            raise TypeError("PolicyDecision reason must be a string or None")
-        if self.code is not None and not isinstance(self.code, str):
-            raise TypeError("PolicyDecision code must be a string or None")
-
-    @classmethod
-    def allow(cls) -> PolicyDecision:
-        return cls(disposition="allow")
-
-    @classmethod
-    def deny(cls, reason: str, *, code: str | None = None) -> PolicyDecision:
-        return cls(disposition="deny", reason=reason, code=code)
-
-    @classmethod
-    def ask(cls, reason: str, *, code: str | None = None) -> PolicyDecision:
-        return cls(disposition="ask", reason=reason, code=code)
-
-
-@dataclass(frozen=True)
 class CommandPolicySubject:
     command: tuple[str, ...]
     cwd: str | None
@@ -282,228 +234,6 @@ class CustomPolicySubject:
 PolicySubject: TypeAlias = (
     CommandPolicySubject | PathPolicySubject | ToolPolicySubject | CustomPolicySubject
 )
-
-
-class PolicyEvaluationError(RuntimeError):
-    """Raised when an injected policy evaluator violates its contract."""
-
-
-class PolicyEvaluator(Protocol):
-    def evaluate(
-        self,
-        subject: PolicySubject,
-        /,
-    ) -> MaybeAwaitable[PolicyDecision | None]: ...
-
-
-class PolicyMatcher(Protocol):
-    def matches(self, subject: PolicySubject, /) -> bool: ...
-
-
-@dataclass(frozen=True)
-class PolicyRule:
-    id: str
-    matcher: PolicyMatcher
-    decision: PolicyDecision
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.id, str) or not self.id:
-            raise ValueError("PolicyRule id must be a non-empty string")
-        if not isinstance(self.decision, PolicyDecision):
-            raise TypeError("PolicyRule decision must be a PolicyDecision")
-
-
-@dataclass(frozen=True)
-class RulePolicyEvaluator:
-    rules: tuple[PolicyRule, ...]
-
-    def __post_init__(self) -> None:
-        normalized = tuple(self.rules)
-        ids = [rule.id for rule in normalized]
-        if len(ids) != len(set(ids)):
-            raise ValueError("PolicyRule ids must be unique within an evaluator")
-        object.__setattr__(self, "rules", normalized)
-
-    def evaluate(self, subject: PolicySubject, /) -> PolicyDecision | None:
-        for rule in self.rules:
-            matched = rule.matcher.matches(subject)
-            if not isinstance(matched, bool):
-                raise TypeError(
-                    f"Policy matcher for rule {rule.id!r} returned "
-                    f"{type(matched).__name__}, expected bool"
-                )
-            if matched:
-                return rule.decision
-        return None
-
-
-@dataclass(frozen=True)
-class PolicyEvaluatorChain:
-    evaluators: tuple[PolicyEvaluator, ...]
-    strategy: PolicyChainStrategy = "most_restrictive"
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "evaluators", tuple(self.evaluators))
-        if self.strategy not in {
-            "first_non_allow",
-            "most_restrictive",
-            "first_decision",
-        }:
-            raise ValueError(f"Unsupported policy chain strategy: {self.strategy}")
-
-    async def evaluate(self, subject: PolicySubject, /) -> PolicyDecision | None:
-        if self.strategy == "first_decision":
-            for evaluator in self.evaluators:
-                decision = await evaluate_policy(evaluator, subject)
-                if decision is not None:
-                    return decision
-            return None
-
-        first_allow: PolicyDecision | None = None
-        first_ask: PolicyDecision | None = None
-        first_deny: PolicyDecision | None = None
-        for evaluator in self.evaluators:
-            decision = await evaluate_policy(evaluator, subject)
-            if decision is None:
-                continue
-            if self.strategy == "first_non_allow":
-                if decision.disposition != "allow":
-                    return decision
-                if first_allow is None:
-                    first_allow = decision
-                continue
-            if decision.disposition == "deny" and first_deny is None:
-                first_deny = decision
-            elif decision.disposition == "ask" and first_ask is None:
-                first_ask = decision
-            elif decision.disposition == "allow" and first_allow is None:
-                first_allow = decision
-
-        if self.strategy == "first_non_allow":
-            return first_allow
-        return first_deny or first_ask or first_allow
-
-
-async def evaluate_policy(
-    evaluator: PolicyEvaluator,
-    subject: PolicySubject,
-) -> PolicyDecision | None:
-    try:
-        evaluate = getattr(evaluator, "evaluate", None)
-        if not callable(evaluate):
-            raise PolicyEvaluationError(
-                f"Policy evaluator {type(evaluator).__name__} has no callable evaluate method"
-            )
-        result = evaluate(subject)
-        if inspect.isawaitable(result):
-            result = await result
-    except PolicyEvaluationError:
-        raise
-    except Exception as exc:
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(evaluator).__name__} failed: {exc}"
-        ) from exc
-    if result is not None and not isinstance(result, PolicyDecision):
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(evaluator).__name__} returned "
-            f"{type(result).__name__}, expected PolicyDecision or None"
-        )
-    if result is not None:
-        try:
-            result.__post_init__()
-        except (TypeError, ValueError) as exc:
-            raise PolicyEvaluationError(
-                f"Policy evaluator {type(evaluator).__name__} returned an invalid "
-                f"PolicyDecision: {exc}"
-            ) from exc
-    return result
-
-
-@dataclass(frozen=True)
-class ExactToolNameMatcher:
-    tool_name: str
-
-    def matches(self, subject: PolicySubject, /) -> bool:
-        return (
-            isinstance(subject, ToolPolicySubject)
-            and subject.tool_name == self.tool_name
-        )
-
-
-@dataclass(frozen=True)
-class CommandTokenSequenceMatcher:
-    tokens: tuple[str, ...]
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "tokens", _string_tuple(self.tokens, "tokens"))
-
-    def matches(self, subject: PolicySubject, /) -> bool:
-        command = _command_subject(subject)
-        if command is None or command.shell_payload is not None or not self.tokens:
-            return False
-        return _contains_token_sequence(command.direct_tokens, self.tokens)
-
-
-@dataclass(frozen=True)
-class ShellPayloadSubstringMatcher:
-    substring: str
-
-    def matches(self, subject: PolicySubject, /) -> bool:
-        command = _command_subject(subject)
-        return (
-            command is not None
-            and command.shell_payload is not None
-            and self.substring in command.shell_payload
-        )
-
-
-@dataclass(frozen=True)
-class CommandSubstringMatcher:
-    """Match shell payload text or direct argv token sequences."""
-
-    substring: str
-
-    def matches(self, subject: PolicySubject, /) -> bool:
-        command = _command_subject(subject)
-        if command is None:
-            return False
-        if not command.normalization_complete and self.substring in " ".join(
-            command.command
-        ):
-            return True
-        if command.shell_payload is not None:
-            return self.substring in command.shell_payload
-        tokens = tuple(part for part in self.substring.split() if part)
-        return bool(tokens) and _contains_token_sequence(command.direct_tokens, tokens)
-
-
-@dataclass(frozen=True)
-class IncompleteCommandMatcher:
-    """Match commands whose platform-specific wrapper syntax is unresolved."""
-
-    def matches(self, subject: PolicySubject, /) -> bool:
-        command = _command_subject(subject)
-        return command is not None and not command.normalization_complete
-
-
-@dataclass(frozen=True)
-class PathSubstringMatcher:
-    substring: str
-
-    def matches(self, subject: PolicySubject, /) -> bool:
-        paths = (
-            subject.paths
-            if isinstance(subject, ToolPolicySubject)
-            else (subject,)
-            if isinstance(subject, PathPolicySubject)
-            else ()
-        )
-        return any(
-            self.substring in candidate
-            for path in paths
-            for candidate in (path.raw_path, path.resolved_path)
-            if candidate is not None
-        )
 
 
 def normalize_command_subject(
@@ -1448,38 +1178,3 @@ def _string_tuple(values: Sequence[str], field_name: str) -> tuple[str, ...]:
     if not all(isinstance(value, str) for value in normalized):
         raise TypeError(f"{field_name} must be a sequence of strings")
     return normalized
-
-
-def _freeze_mapping(values: Mapping[str, object]) -> Mapping[str, object]:
-    if not isinstance(values, Mapping):
-        raise TypeError("arguments must be a mapping")
-    return MappingProxyType(
-        {
-            _require_policy_mapping_key(key): _freeze_value(value)
-            for key, value in values.items()
-        }
-    )
-
-
-def _freeze_value(value: object) -> object:
-    if isinstance(value, Mapping):
-        return MappingProxyType(
-            {
-                _require_policy_mapping_key(key): _freeze_value(item)
-                for key, item in value.items()
-            }
-        )
-    if isinstance(value, list | tuple):
-        return tuple(_freeze_value(item) for item in value)
-    if value is None or isinstance(value, str | bool | int | float):
-        return value
-    raise TypeError(
-        "policy argument values must be JSON-compatible mappings, sequences, "
-        "strings, numbers, booleans, or null"
-    )
-
-
-def _require_policy_mapping_key(key: object) -> str:
-    if not isinstance(key, str):
-        raise TypeError("policy argument mapping keys must be strings")
-    return key

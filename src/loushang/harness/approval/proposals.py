@@ -15,11 +15,11 @@ import os
 import shlex
 from pathlib import Path
 
-from loushang.harness.approval import (
+from loushang.harness.approval.requests import (
     ApprovalGrantProposal,
     PolicyAmendmentProposal,
 )
-from loushang.harness.policy import ToolPolicySubject
+from loushang.harness.policy.subjects import ToolPolicySubject
 
 _SHELL_CONTROL = frozenset({";", "&&", "||", "|", "&", "(", ")"})
 _GIT_GLOBAL_VALUE_OPTIONS = frozenset(
