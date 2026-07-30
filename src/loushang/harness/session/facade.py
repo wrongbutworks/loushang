@@ -65,7 +65,9 @@ class SessionApprovalInteractionPort(Protocol):
         presenter: ApprovalRequestPresenter,
         *,
         dismisser: ApprovalRequestDismisser | None = None,
-    ) -> ApprovalPresentationLease: ...
+    ) -> ApprovalPresentationLease:
+        """Atomically replace presentation and replay unresolved requests."""
+        ...
 
     async def respond(
         self,

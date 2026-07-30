@@ -3508,60 +3508,178 @@ def test_agent_session_presenter_rebind_reopens_active_approval_generation(
     asyncio.run(run())
 
 
-def test_agent_session_approval_interaction_lease_is_generation_safe(
-    tmp_path,
-) -> None:
+async def _approval_interaction_session(tmp_path):
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.approval import (
-        ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
 
-    async def run() -> None:
-        resolver = InteractiveApprovalResolver(
-            fallback=HeadlessApprovalResolver(mode="deny")
-        )
-        session = AgentSession(
-            agent=Agent(
-                initial_state={
-                    "system_prompt": "",
-                    "model": _model(),
-                    "thinking_level": "off",
-                }
-            ),
-            session_manager=await SessionManager.new(
-                session_dir=tmp_path,
-                cwd="/tmp/project",
-                persist=False,
-            ),
-            approval_resolver=resolver,
-        )
-        interaction = session.approval_interaction
-        assert interaction is not None
-        first = interaction.bind_presenter(lambda _payload: None)
-        presented = asyncio.Event()
-        second = interaction.bind_presenter(lambda _payload: presented.set())
+    resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny")
+    )
+    session = AgentSession(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
+        session_manager=await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=False,
+        ),
+        approval_resolver=resolver,
+    )
+    interaction = session.approval_interaction
+    assert interaction is not None
+    return session, resolver, interaction
 
-        first.close()
+
+def test_agent_session_approval_presenter_replacement_replays_pending(
+    tmp_path,
+) -> None:
+    from loushang.harness.approval import ApprovalRequest
+
+    async def run() -> None:
+        session, resolver, interaction = await _approval_interaction_session(
+            tmp_path
+        )
+        first_presented = asyncio.Event()
+        first_payloads: list[dict[str, object]] = []
+
+        def present_first(payload: dict[str, object]) -> None:
+            first_payloads.append(payload)
+            first_presented.set()
+
+        interaction.bind_presenter(present_first)
         pending = asyncio.create_task(
             resolver.resolve(
                 ApprovalRequest(
                     tool_name="write",
                     arguments={},
-                    action_id="explicit-interaction",
+                    action_id="replace-presenter",
                 )
             )
         )
-        await asyncio.wait_for(presented.wait(), timeout=0.5)
+        await asyncio.wait_for(first_presented.wait(), timeout=0.5)
+
+        second_presented = asyncio.Event()
+        second_payloads: list[dict[str, object]] = []
+
+        def present_second(payload: dict[str, object]) -> None:
+            second_payloads.append(payload)
+            second_presented.set()
+
+        second = interaction.bind_presenter(present_second)
+        await asyncio.wait_for(second_presented.wait(), timeout=0.5)
+
+        assert not pending.done()
+        assert [payload["action_id"] for payload in first_payloads] == [
+            "replace-presenter"
+        ]
+        assert [payload["action_id"] for payload in second_payloads] == [
+            "replace-presenter"
+        ]
         assert await interaction.respond(
-            "explicit-interaction",
+            "replace-presenter",
             outcome="allow_once",
         )
         assert (await pending).disposition == "allow"
         second.close()
+        await session.dispose()
+
+    asyncio.run(run())
+
+
+def test_agent_session_superseded_approval_lease_cannot_close_replacement(
+    tmp_path,
+) -> None:
+    from loushang.harness.approval import ApprovalRequest
+
+    async def run() -> None:
+        session, resolver, interaction = await _approval_interaction_session(
+            tmp_path
+        )
+        first_presented = asyncio.Event()
+        first = interaction.bind_presenter(
+            lambda _payload: first_presented.set()
+        )
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="write",
+                    arguments={},
+                    action_id="superseded-lease",
+                )
+            )
+        )
+        await asyncio.wait_for(first_presented.wait(), timeout=0.5)
+
+        second_presented = asyncio.Event()
+        second = interaction.bind_presenter(
+            lambda _payload: second_presented.set()
+        )
+        await asyncio.wait_for(second_presented.wait(), timeout=0.5)
+        first.close()
+
+        assert not pending.done()
+        pending_ids = [
+            item.permission_id for item in resolver.permissions_snapshot().pending
+        ]
+        assert pending_ids == [
+            "superseded-lease"
+        ]
+        assert await interaction.respond(
+            "superseded-lease",
+            outcome="allow_once",
+        )
+        assert (await pending).disposition == "allow"
+        second.close()
+        await session.dispose()
+
+    asyncio.run(run())
+
+
+def test_agent_session_current_approval_lease_close_denies_pending(
+    tmp_path,
+) -> None:
+    from loushang.harness.approval import ApprovalRequest
+
+    async def run() -> None:
+        session, resolver, interaction = await _approval_interaction_session(
+            tmp_path
+        )
+        first_presented = asyncio.Event()
+        interaction.bind_presenter(
+            lambda _payload: first_presented.set()
+        )
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="write",
+                    arguments={},
+                    action_id="current-lease-close",
+                )
+            )
+        )
+        await asyncio.wait_for(first_presented.wait(), timeout=0.5)
+
+        second_presented = asyncio.Event()
+        second = interaction.bind_presenter(
+            lambda _payload: second_presented.set()
+        )
+        await asyncio.wait_for(second_presented.wait(), timeout=0.5)
+        second.close("Replacement presenter disconnected")
+
+        decision = await pending
+        assert decision.disposition == "deny"
+        assert decision.reason == "Replacement presenter disconnected"
+        assert resolver.permissions_snapshot().pending == ()
         await session.dispose()
 
     asyncio.run(run())

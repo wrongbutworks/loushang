@@ -48,8 +48,10 @@ Approval presentation is an optional `SessionApprovalInteractionPort`.
 It delegates presenter binding, responses, permission snapshots, and permission
 actions to the Product's existing resolver. `ApprovalBroker` remains the sole
 owner of pending futures, timeouts, fallback, and cancellation. Presenter
-bindings return generation-safe leases; closing the active lease denies all
-pending approvals for that Session, while a stale lease cannot detach a newer
+bindings return generation-safe leases. Binding a replacement atomically
+supersedes the previous lease and replays unresolved requests with their
+existing action IDs and futures. Closing the active lease denies all pending
+approvals for that Session, while a superseded lease cannot detach a newer
 presenter.
 
 `SessionRuntime`, the Agent transcript profile, session capabilities runtime,

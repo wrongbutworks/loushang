@@ -393,7 +393,10 @@ The binding contract preserves the existing presenter lifecycle:
 
 - one Session has at most one active presenter lease;
 - the Agent adapter retains its staged/active/closed approval state;
-- callers close the old lease before rebinding after restore/fork/clone;
+- binding a replacement presenter atomically supersedes the old lease without
+  closing the approval Session;
+- unresolved requests are replayed to the replacement with their existing
+  action IDs and Broker-owned futures;
 - a stale lease cannot unbind a later presenter generation;
 - closing an active lease calls the existing resolver `close_session()` path,
   which denies **all** pending approvals for that Session and clears the
