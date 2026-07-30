@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -26,6 +25,7 @@ from loushang.harness.host.product_host import (
 from loushang.harness.host.rpc.commands import (
     RpcBashMaintenanceCommands,
     RpcCommandCatalogCommands,
+    RpcConversationCommands,
     RpcDiagnosticsCommands,
     RpcModelSettingsCommands,
     RpcPackageCommands,
@@ -51,7 +51,6 @@ from loushang.harness.session import (
     SessionLifecycleOperationPorts,
     SessionOperationResolver,
     SessionOperationRuntime,
-    SessionPromptRequest,
     SessionRpcOperationBinding,
     current_session_operation_resolver,
 )
@@ -143,7 +142,6 @@ class RpcHost(ModeAdapter):
         self._configure_tool_rendering(self.session)
         self._unsubscribe = self._subscribe_to_events(self.session)
         self._task_tracker = ProductHostTaskTracker()
-        self._active_prompt_task: asyncio.Task[None] | None = None
         self.extension_ui_context = RpcExtensionUIContext(self._write_json_line)
         self._bind_extension_ui_context(self.session)
         self._diagnostics_commands = RpcDiagnosticsCommands(
@@ -182,6 +180,13 @@ class RpcHost(ModeAdapter):
         self._command_catalog_commands = RpcCommandCatalogCommands(
             get_session=lambda: self.session,
             output=self._rpc_output,
+        )
+        self._conversation_commands = RpcConversationCommands(
+            get_session=lambda: self.session,
+            get_operations=self._require_session_operations,
+            operations=self._rpc_operations,
+            output=self._rpc_output,
+            task_tracker=self._task_tracker,
         )
         self._command_router = JsonlCommandRouter(
             routes=self._command_routes(),
@@ -246,7 +251,7 @@ class RpcHost(ModeAdapter):
     async def run(self) -> int:
         try:
             return await self._host_runtime.run(
-                self._handle_line,
+                self._command_host.handle_line,
                 handle_failure=self._handle_host_failure,
             )
         finally:
@@ -274,16 +279,6 @@ class RpcHost(ModeAdapter):
     async def _handle_host_failure(self, error: Exception) -> None:
         self.stderr.write(f"Error: {error}\n")
 
-    async def _drain_background_tasks(self) -> None:
-        """Compatibility hook over the Channel-owned task tracker."""
-
-        await self.settle_background_tasks()
-
-    async def _handle_line(self, line: str) -> None:
-        """Test-facing adapter for the Channel-owned JSONL command host."""
-
-        await self._command_host.handle_line(line)
-
     def _command_routes(self) -> tuple[JsonlCommandRoute, ...]:
         """Bind the declared Product RPC surface to the Channel router.
 
@@ -299,11 +294,7 @@ class RpcHost(ModeAdapter):
             ),
             *legacy_rpc_routes(
                 (
-                    ("prompt", self._handle_prompt_command),
-                    ("steer", self._handle_steer_command),
-                    ("follow_up", self._handle_follow_up_command),
-                    ("abort", self._handle_abort_command),
-                    ("get_state", self._handle_get_state_command),
+                    *self._conversation_commands.bindings(),
                     (
                         "get_extension_ui_state",
                         self._handle_get_extension_ui_state_command,
@@ -367,90 +358,6 @@ class RpcHost(ModeAdapter):
             id=error.command_id,
             command=error.command_type or "invalid",
             error=error.message,
-        )
-
-    async def _handle_prompt_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        request = self._rpc_operations.prompt_request(payload)
-        task = asyncio.create_task(
-            self._run_prompt(
-                operations=self._require_session_operations(),
-                command_id=command_id,
-                request=request,
-            )
-        )
-        self._active_prompt_task = task
-        self._task_tracker.track(task)
-
-    async def _run_prompt(
-        self,
-        *,
-        operations: SessionOperationRuntime,
-        command_id: str | None,
-        request: SessionPromptRequest,
-    ) -> None:
-        preflight_succeeded = False
-
-        def on_preflight(did_succeed: bool) -> None:
-            nonlocal preflight_succeeded
-            if did_succeed and not preflight_succeeded:
-                preflight_succeeded = True
-                self._write_response_success(id=command_id, command="prompt")
-
-        try:
-            await operations.prompt(
-                request,
-                on_preflight=on_preflight,
-            )
-        except Exception as exc:
-            if not preflight_succeeded:
-                self._write_response_error(
-                    id=command_id, command="prompt", error=str(exc)
-                )
-        else:
-            if not preflight_succeeded:
-                self._write_response_success(id=command_id, command="prompt")
-        finally:
-            if self._active_prompt_task is asyncio.current_task():
-                self._active_prompt_task = None
-
-    def _handle_steer_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        self._rpc_operations.steer(payload)
-        self._write_response_success(id=command_id, command="steer")
-
-    def _handle_follow_up_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        self._rpc_operations.follow_up(payload)
-        self._write_response_success(id=command_id, command="follow_up")
-
-    def _handle_abort_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        del payload
-        self._rpc_operations.abort()
-        self._write_response_success(id=command_id, command="abort")
-
-    def _handle_get_state_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        del payload
-        try:
-            state = project_session_state(self.session)
-        except Exception:
-            self._write_response_error(
-                id=command_id,
-                command="get_state",
-                error="Failed to serialize session state.",
-            )
-            return
-        self._write_response_success(
-            id=command_id,
-            command="get_state",
-            data=state,
         )
 
     def _handle_get_extension_ui_state_command(
@@ -531,11 +438,7 @@ class RpcHost(ModeAdapter):
 
 
     def _require_current_session(self) -> Any:
-        getter = getattr(self.runtime, "get_current_session", None)
-        if callable(getter):
-            session = getter()
-        else:
-            session = getattr(self.runtime, "session", None)
+        session = self.runtime.get_current_session()
         if session is None:
             raise RuntimeError("RPC mode requires an active session")
         return session

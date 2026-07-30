@@ -122,7 +122,7 @@ def project_available_models(
 
 
 def project_session_stats(stats: Any) -> dict[str, Any]:
-    return camelize(project_json_value(stats))
+    return cast(dict[str, Any], camelize(project_json_value(stats)))
 
 
 def project_session_listing_item(session: Any) -> dict[str, Any]:
@@ -156,7 +156,7 @@ def project_session_listing_item(session: Any) -> dict[str, Any]:
     serialized = project_json_value(raw)
     if not isinstance(serialized, dict):
         raise TypeError("session listing items must serialize to objects")
-    return camelize(serialized)
+    return cast(dict[str, Any], camelize(serialized))
 
 
 def project_command_descriptor(command: object) -> dict[str, Any]:

@@ -560,7 +560,13 @@ Product contract suite. Legacy RPC lifecycle, model/settings, transcript, and
 Bash/maintenance, and command-catalog commands are separate command groups
 while preserving the existing JSONL wire. Each newly extracted group accepts
 a narrow private Product protocol instead of a shared all-capabilities RPC
-Session interface.
+Session interface. The final conversation group owns prompt/control/state and
+prompt-task settlement. Harness supplies structured, staged, and raw JSONL
+playback; Product tests contain no private RpcHost input/task-drain side door.
+The complete RPC package passes mypy.
+
+Phase 0 is closed. Further application-boundary extraction requires a Phase 1
+trigger; file size or the existence of legacy commands is not sufficient.
 
 1. Keep shared primitive input/queue/lifecycle mutations in
    `SessionOperationRuntime`; do not move command execution, Bash, catalogs, or
@@ -591,7 +597,10 @@ Exit criteria:
   Session transition rather than retaining stale controls;
 - Product-specific projection remains outside the session operation core;
 - Harness and Work do not import Channel; and
-- TUI playback and legacy RPC regressions pass.
+- TUI playback and legacy RPC regressions pass;
+- RPC async and framing tests use the public Harness testing API rather than
+  private host methods; and
+- the RPC package passes its focused type check.
 
 ### Phase 1 — Extract One Protocol Slice
 

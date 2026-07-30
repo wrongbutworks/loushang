@@ -840,7 +840,7 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     assert "loushang.coding" not in binding_source
     assert "loushang.channel" not in binding_source
     assert "SessionRpcOperationBinding" in rpc_source
-    assert "_rpc_operations.prompt_request" in rpc_source
+    assert "_operations.prompt_request" in rpc_source
     assert "await self._operations.new_session" in rpc_source
     assert "await self._operations.compact" in rpc_source
     assert "SessionOperationAvailability" in operations_source
@@ -977,6 +977,7 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
         "__init__.py",
         "bash_maintenance.py",
         "command_catalog.py",
+        "conversation.py",
         "diagnostics.py",
         "model_settings.py",
         "packages.py",
@@ -1000,11 +1001,31 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
         assert f"class {protocol_name}(Protocol):" in source
 
     runtime_source = (rpc_root / "runtime.py").read_text(encoding="utf-8")
+    rpc_boundary = Path(
+        "docs/internals/architecture/harness/jsonl-command-host-boundary.md"
+    ).read_text(encoding="utf-8")
+    mode_boundary = Path(
+        "docs/internals/architecture/harness/mode-host-boundary.md"
+    ).read_text(encoding="utf-8")
+    app_refactor = Path(
+        "docs/internals/architecture/drafts/application-service-refactor.md"
+    ).read_text(encoding="utf-8")
     assert "class _RpcHostRuntime(Protocol):" in runtime_source
     assert "runtime: Any" not in runtime_source
+    assert 'getattr(self.runtime, "get_current_session"' not in runtime_source
+    assert 'getattr(self.runtime, "session"' not in runtime_source
+    assert "_drain_background_tasks" not in runtime_source
+    assert "async def _handle_line" not in runtime_source
     assert "RpcCommandCatalogCommands" in runtime_source
+    assert "RpcConversationCommands" in runtime_source
+    assert "_handle_prompt_command" not in runtime_source
+    assert "_handle_get_state_command" not in runtime_source
     assert "_handle_get_commands_command" not in runtime_source
     assert "_handle_get_command_completions_command" not in runtime_source
+    assert "conversation.py" in rpc_boundary
+    assert "testing.py" in rpc_boundary
+    assert "play_rpc_lines" in mode_boundary
+    assert "Phase 0 is closed" in app_refactor
 
 
 def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:

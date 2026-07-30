@@ -1,7 +1,7 @@
 import asyncio
 
 from loushang.harness.host.rpc import RpcWirePlayback, play_rpc_wire
-from tests.coding.test_rpc_mode import (
+from tests.coding.rpc_support import (
     FakeRuntime,
     FakeSession,
     _assistant_message,

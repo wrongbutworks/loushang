@@ -26,8 +26,10 @@ plain host receives equivalent event and Work ports.
 `loushang.harness.host.rpc.testing` is the canonical test driver for this
 wire. `play_rpc_wire(...)` covers finite golden traces; `RpcWirePlayback`
 supports staged dispatch, snapshots, and final task settlement for concurrent
-prompt/abort/bash scenarios. Product-specific fake sessions and expected
-payloads remain in Product tests rather than entering the Harness package.
+prompt/abort/bash scenarios. `play_rpc_lines(...)` preserves raw stdin
+fragments for parser and framing regressions. Product-specific fake sessions
+and expected payloads remain in Product tests rather than entering the Harness
+package.
 
 ## Abort and settlement
 

@@ -15,7 +15,7 @@ class RpcModelCost(TypedDict):
 class RpcModel(TypedDict, total=False):
     provider: Required[str]
     id: Required[str]
-    name: Required[str]
+    name: NotRequired[str]
     endpointId: NotRequired[str]
     api: NotRequired[str]
     baseUrl: NotRequired[str]

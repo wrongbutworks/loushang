@@ -72,8 +72,18 @@ loushang.harness.host.rpc
   __init__.py       stable `RpcHost` / `run_rpc_host` imports
   runtime.py        lifecycle, session binding, and command-group composition
   commands/
+    conversation.py prompt, steer, follow-up, abort, state, prompt task owner
+    session_lifecycle.py
+                    session discovery, replacement, fork, and clone
+    model_settings.py
+                    model, thinking, tool, queue, and session settings
+    transcript.py   transcript queries and export
+    command_catalog.py
+                    command inventory and completion
     diagnostics.py  diagnostic queries and wire projection
     packages.py     package inventory and lifecycle commands
+    bash_maintenance.py
+                    Bash execution and maintenance controls
   routing.py        explicit command-to-handler adaptation
   arguments.py      strict command argument readers
   output.py         strict JSONL response projection and safe fallback
@@ -81,6 +91,7 @@ loushang.harness.host.rpc
   projections.py    Product event and diagnostic projection ports
   remote_ui.py      RPC vocabulary over `RemoteUiContext`
   types.py          stable RPC wire types
+  testing.py        finite, staged, and raw-transcript playback API
 ```
 
 Leaf modules do not import `runtime.py` or the package root. `runtime.py`
@@ -115,3 +126,6 @@ UI widget protocol.
 - RPC regressions assert unchanged parse errors, strict-JSON field
   paths, legacy responses, extension UI request/response behavior, and event
   projection.
+- `RpcWirePlayback` covers staged async settlement; `play_rpc_lines(...)`
+  drives exact stdin fragments for invalid JSON, CRLF, Unicode separators, and
+  final lines without a newline.
