@@ -778,7 +778,7 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     channel_source = Path("src/loushang/coding/domain/work.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
+    rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
     boundary = Path(
         "docs/internals/architecture/harness/session-facade-boundary.md"
     ).read_text(encoding="utf-8")
@@ -826,7 +826,7 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     binding_source = Path("src/loushang/harness/session/rpc_operations.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
+    rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
     channel_adapter_source = Path("src/loushang/coding/domain/work.py").read_text(
         encoding="utf-8"
     )
@@ -850,11 +850,42 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     assert "must not import Harness" in boundary
 
 
+def test_phase_zero_hosts_share_current_session_operations_and_explicit_approval() -> (
+    None
+):
+    operations_source = Path(
+        "src/loushang/harness/session/operations.py"
+    ).read_text(encoding="utf-8")
+    rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
+    controller_source = Path(
+        "src/loushang/harnesstui/conversation/controller.py"
+    ).read_text(encoding="utf-8")
+    application_source = Path(
+        "src/loushang/harnesstui/conversation/agent_application.py"
+    ).read_text(encoding="utf-8")
+
+    assert "current_session_operation_resolver" in operations_source
+    assert "current_session_operation_resolver" in rpc_source
+    assert "_session_operations =" not in rpc_source
+    assert "SessionOperationResolver" in controller_source
+    assert "abort_turn" in controller_source
+    assert "stop_active_interaction" in controller_source
+    assert "SessionApprovalInteractionPort" in application_source
+    for legacy_method in (
+        "set_approval_presenter",
+        "handle_screen_approval",
+        "get_approval_permissions",
+        "get_permission_profile_snapshot",
+        "apply_approval_permission_action",
+    ):
+        assert legacy_method not in application_source
+
+
 def test_jsonl_command_router_is_neutral_and_rpc_uses_explicit_routes() -> None:
     router_source = Path(
         "src/loushang/harness/host/jsonl_command_router.py"
     ).read_text(encoding="utf-8")
-    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
+    rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
     boundary = Path(
         "docs/internals/architecture/harness/session-rpc-operation-boundary.md"
     ).read_text(encoding="utf-8")
@@ -874,7 +905,7 @@ def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
     channel_host_source = Path("src/loushang/channel/host.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
+    rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
     boundary = Path(
         "docs/internals/architecture/harness/product-host-runtime-boundary.md"
     ).read_text(encoding="utf-8")
@@ -890,7 +921,7 @@ def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
 
 
 def test_mode_host_implementation_is_shared_and_coding_is_thin() -> None:
-    rpc_host = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
+    rpc_host = _read_python_package(Path("src/loushang/harness/host/rpc"))
     plain_host = Path("src/loushang/harnesstui/conversation/plain_mode.py").read_text(
         encoding="utf-8"
     )
@@ -911,6 +942,38 @@ def test_mode_host_implementation_is_shared_and_coding_is_thin() -> None:
     assert "run_coding_work_channel" in coding_work
     assert not tuple(Path("src/loushang/coding/mode").glob("*.py"))
     assert "Mode Host Boundary" in boundary
+
+
+def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
+    rpc_root = Path("src/loushang/harness/host/rpc")
+    expected_modules = {
+        "__init__.py",
+        "arguments.py",
+        "output.py",
+        "projections.py",
+        "remote_ui.py",
+        "routing.py",
+        "runtime.py",
+        "types.py",
+        "wire.py",
+    }
+
+    assert {path.name for path in rpc_root.glob("*.py")} == expected_modules
+    for module_name in expected_modules - {"__init__.py", "runtime.py"}:
+        imports = set(_absolute_imports(rpc_root / module_name))
+        assert "loushang.harness.host.rpc" not in imports
+        assert "loushang.harness.host.rpc.runtime" not in imports
+
+    command_root = rpc_root / "commands"
+    assert {path.name for path in command_root.glob("*.py")} == {
+        "__init__.py",
+        "diagnostics.py",
+        "packages.py",
+    }
+    for command_module in command_root.glob("*.py"):
+        imports = set(_absolute_imports(command_module))
+        assert "loushang.harness.host.rpc" not in imports
+        assert "loushang.harness.host.rpc.runtime" not in imports
 
 
 def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:
@@ -4136,7 +4199,7 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
+    rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
     cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
 
     assert "fork_session_with_result" not in runtime_source
@@ -4770,6 +4833,12 @@ def _write_module(path: Path, source: str) -> Path:
     path.parent.mkdir(parents=True)
     path.write_text(source, encoding="utf-8")
     return path
+
+
+def _read_python_package(path: Path) -> str:
+    return "\n".join(
+        module.read_text(encoding="utf-8") for module in sorted(path.rglob("*.py"))
+    )
 
 
 def _find_forbidden_imports(boundary: ImportBoundary) -> list[str]:

@@ -49,6 +49,7 @@ def test_agent_plain_ports_bind_structural_research_session() -> None:
         trace=lambda _name, **_data: None,
         now=lambda: 1.0,
         controller=cast(Any, object()),
+        get_operations=cast(Any, lambda: object()),
         select_model=select_model,  # type: ignore[arg-type]
         hotkeys=lambda: "research hotkeys",
         debug_status=lambda _path, _scopes: "research debug",

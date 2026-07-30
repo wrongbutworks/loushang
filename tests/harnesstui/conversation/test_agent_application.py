@@ -207,20 +207,36 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
     cleared: list[str] = []
     subscriptions: list[object] = []
 
-    class Session:
+    class Lease:
+        def __init__(self, close) -> None:
+            self._close = close
+
+        def close(self, reason: str = "closed") -> None:
+            del reason
+            self._close()
+
+    class Interaction:
         presenter: object | None = None
 
-        def set_approval_presenter(
+        def bind_presenter(
             self,
-            presenter: object | None,
+            presenter: object,
             *,
             dismisser: object | None = None,
-        ) -> None:
+        ) -> Lease:
             self.presenter = presenter
             self.dismisser = dismisser
+            return Lease(lambda: setattr(self, "presenter", None))
 
-        async def handle_screen_approval(self, event: dict[str, object]) -> bool:
-            return event.get("approved") is True
+        async def respond(
+            self,
+            action_id: str,
+            *,
+            outcome: str,
+            reason: str | None = None,
+        ) -> bool:
+            del action_id, reason
+            return outcome == "allow_once"
 
     class Surface:
         def open_approval(self, **payload: object) -> None:
@@ -245,11 +261,12 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
         def set_rebind_session(self, callback: object | None) -> None:
             self.rebind = callback
 
-    session = Session()
+    interaction = Interaction()
+    session = object()
     surface = Surface()
     runtime = Runtime(session)
     unbind_presenter = bind_agent_screen_approval_presenter(
-        session,
+        interaction,
         surface,
         default_action="Approve operation",
     )
@@ -263,8 +280,8 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
         on_rebind=on_rebind,
     )
 
-    assert callable(session.presenter)
-    session.presenter({"action_id": "approval-1"})  # type: ignore[operator]
+    assert callable(interaction.presenter)
+    interaction.presenter({"action_id": "approval-1"})  # type: ignore[operator]
     assert presented == [
         {
             "action": "Approve operation",
@@ -273,12 +290,12 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
             "cwd": "",
             "environment": "",
             "grant_summary": "",
-                "action_id": "approval-1",
-                "allow_session": False,
-                "options": (),
-            }
+            "action_id": "approval-1",
+            "allow_session": False,
+            "options": (),
+        }
     ]
-    session.presenter(  # type: ignore[operator]
+    interaction.presenter(  # type: ignore[operator]
         {
             "action_id": "approval-2",
             "actor_id": "/root/reviewer#1",
@@ -293,7 +310,12 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
     assert presented[-1]["cwd"] == "/repo"
     assert presented[-1]["environment"] == "local"
     assert presented[-1]["grant_summary"] == "Publish non-force refs to origin"
-    assert asyncio.run(handle_agent_screen_approval(session, {"approved": True}))
+    assert asyncio.run(
+        handle_agent_screen_approval(
+            interaction,
+            {"action_id": "approval-2", "approved": True},
+        )
+    )
     assert current_agent_runtime_session(runtime, object()) is session
     assert callable(subscriptions[0])
     assert runtime.rebind is on_rebind
@@ -304,7 +326,7 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
     unbind_presenter()
     assert subscriptions[-1] == "unsubscribed"
     assert runtime.rebind is None
-    assert session.presenter is None
+    assert interaction.presenter is None
 
 
 def test_refresh_agent_screen_session_replaces_history_and_event_source(
@@ -348,6 +370,7 @@ def test_refresh_agent_screen_session_replaces_history_and_event_source(
             runtime=Runtime(),
             app=app,
             session=session,
+            approval_interaction=None,
             event_source=event_source,
         )
     )

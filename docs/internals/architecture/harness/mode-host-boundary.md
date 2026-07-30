@@ -12,7 +12,7 @@ implementation is split by responsibility:
 | Capability | Canonical owner | Product binding |
 | --- | --- | --- |
 | mode lifecycle actions and state-reader contract | `harness.host.mode` | Product host factory |
-| JSONL input validation, routing, task draining and response lifecycle | `harness.host.rpc` + `channel.jsonl_command_host` | RPC event/diagnostic projection |
+| JSONL input validation, routing, task draining and response lifecycle | `harness.host.rpc` + `harness.host.jsonl_command_host` | RPC event/diagnostic projection |
 | plain and JSON output loop, session state observation and tool-line rendering | `harnesstui.conversation.plain_mode` | Work execution binding and event projection |
 | operation grammar, prompt/queue/lifecycle/model/diagnostic handlers | `harness.session` and `harness.host.rpc` | Product ports and protocol profile |
 | Channel framing, correlation, cancellation and delivery | `loushang.channel` | Product operation port |

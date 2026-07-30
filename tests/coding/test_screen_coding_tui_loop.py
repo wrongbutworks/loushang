@@ -847,11 +847,11 @@ def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer(
     )
 
     assert result.exit_code == 0
-    assert session.wait_for_idle_calls == 1
+    assert session.wait_for_idle_calls == 3
     assert session.queued_while_streaming == [fresh_prompt]
     assert session.prompt_calls == [
-        ("start", None, None),
-        (fresh_prompt, None, None),
+        ("start", None, "interactive"),
+        (fresh_prompt, None, "interactive"),
     ]
     assert "Request cancelled" not in result.text
 
@@ -987,6 +987,7 @@ class _AbortSettlingSession:
         self.wait_for_idle_calls = 0
         self._idle = asyncio.Event()
         self._idle.set()
+        self.session_control = self
 
     async def prompt(
         self,
@@ -1005,13 +1006,19 @@ class _AbortSettlingSession:
         self._idle.clear()
         await self._idle.wait()
 
-    def abort(self) -> None:
+    def steer(self, text: str, *, images=None) -> None:
+        del images
+        if self.is_streaming:
+            self.queued_while_streaming.append(text)
+
+    def abort(self) -> bool:
         async def settle() -> None:
             await asyncio.sleep(0.03)
             self.is_streaming = False
             self._idle.set()
 
         asyncio.create_task(settle())
+        return True
 
     def clear_queue(self) -> dict[str, list[str]]:
         return {"steering": [], "follow_up": []}

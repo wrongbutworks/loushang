@@ -1774,12 +1774,9 @@ def test_rpc_mode_get_state_model_omits_partial_unknown_cost() -> None:
 
 @pytest.mark.parametrize("value", [-1.0, float("nan"), float("inf")])
 def test_rpc_mode_model_cost_omits_invalid_numeric_values(value: float) -> None:
-    from loushang.harness.host.rpc import RpcHost as RpcMode
+    from loushang.harness.host.rpc.wire import project_model_cost
 
-    session = FakeSession(session_id="session-a", cwd="/tmp/project")
-    mode = RpcMode(runtime=FakeRuntime(session), stdin=StringIO(), stdout=StringIO())
-
-    cost = mode._serialize_model_cost(
+    cost = project_model_cost(
         SimpleNamespace(input=1.0, output=value, cache_read=0.0, cache_write=0.0)
     )
 
@@ -3882,6 +3879,70 @@ def test_rpc_mode_get_messages_returns_error_when_session_context_is_invalid() -
             "error": "Message log returned an invalid response.",
         },
     ]
+
+
+def test_rpc_mode_command_catalog_preserves_the_complete_legacy_surface() -> None:
+    from loushang.harness.host.rpc import RpcHost as RpcMode
+
+    mode = RpcMode(
+        runtime=FakeRuntime(
+            FakeSession(session_id="session-a", cwd="/tmp/project")
+        ),
+        stdin=StringIO(),
+        stdout=StringIO(),
+    )
+
+    assert mode._command_router.command_types == frozenset(
+        {
+            "abort",
+            "abort_bash",
+            "abort_retry",
+            "bash",
+            "check_package_updates",
+            "clone",
+            "compact",
+            "cycle_model",
+            "cycle_thinking_level",
+            "export_html",
+            "extension_ui_response",
+            "follow_up",
+            "fork",
+            "get_available_models",
+            "get_command_completions",
+            "get_commands",
+            "get_diagnostics",
+            "get_diagnostics_summary",
+            "get_extension_ui_state",
+            "get_fork_messages",
+            "get_last_assistant_text",
+            "get_last_error_report",
+            "get_messages",
+            "get_packages",
+            "get_session_diagnostics",
+            "get_session_diagnostics_summary",
+            "get_session_stats",
+            "get_state",
+            "install_package",
+            "list_sessions",
+            "materialize_package",
+            "new_session",
+            "prompt",
+            "remove_package",
+            "set_active_tools",
+            "set_auto_compaction",
+            "set_auto_retry",
+            "set_follow_up_mode",
+            "set_model",
+            "set_session_name",
+            "set_steering_mode",
+            "set_thinking_level",
+            "steer",
+            "switch_session",
+            "uninstall_package",
+            "update_package",
+            "update_packages",
+        }
+    )
 
 
 def test_rpc_mode_get_state_returns_error_when_state_serialization_fails() -> None:

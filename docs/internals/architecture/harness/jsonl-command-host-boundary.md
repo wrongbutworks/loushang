@@ -62,18 +62,35 @@ methods. This keeps a generic remote interaction mechanism reusable by Coding,
 Research, Design, PPT, OEMs, and trusted plugins without freezing Coding's
 legacy widget or extension API as a Channel contract.
 
-## Coding Adoption
+## RPC Host Composition
 
-`coding.mode.RpcMode` is now a Product adapter over `JsonlCommandHost`:
+The shared legacy RPC profile is a cohesive package rather than one monolithic
+host module:
 
-- Coding retains its legacy command table, session/runtime calls, model and
-  package semantics, event selection, rendered-tool enrichment, and response
-  fields;
-- Coding maps host errors back to its existing `response` JSON shape;
-- Coding's `RpcExtensionUIContext` wraps `RemoteUiContext` and translates the
-  generic emitted request into the existing `extension_ui_request` wire type;
-- Coding-only extension errors and the remaining legacy UI aliases stay in the
-  wrapper, making their eventual API retirement local and explicit.
+```text
+loushang.harness.host.rpc
+  __init__.py       stable `RpcHost` / `run_rpc_host` imports
+  runtime.py        lifecycle, session binding, and command-group composition
+  commands/
+    diagnostics.py  diagnostic queries and wire projection
+    packages.py     package inventory and lifecycle commands
+  routing.py        explicit command-to-handler adaptation
+  arguments.py      strict command argument readers
+  output.py         strict JSONL response projection and safe fallback
+  wire.py           pure session/model/command wire projection
+  projections.py    Product event and diagnostic projection ports
+  remote_ui.py      RPC vocabulary over `RemoteUiContext`
+  types.py          stable RPC wire types
+```
+
+Leaf modules do not import `runtime.py` or the package root. `runtime.py`
+composes them, while `__init__.py` preserves the stable
+`loushang.harness.host.rpc` entrypoint. Coding supplies its Product session and
+projection bindings; it does not own a second RPC loop or command router.
+Command groups receive only the runtime/session capabilities, output adapter,
+and projection ports they use. They publish explicit command bindings; they do
+not discover handlers by naming convention or retain a stale session across
+session rebinding.
 
 No legacy RPC client needs to change for this extraction. New products should
 prefer the standard `ChannelHost` when their public operations fit
@@ -95,6 +112,6 @@ UI widget protocol.
 
 - Harness Host tests cover valid command dispatch, strict JSON failures, handler
   failures, stop behavior, UI state, dialog response, and timeout behavior.
-- Coding RPC regressions assert unchanged parse errors, strict-JSON field
+- RPC regressions assert unchanged parse errors, strict-JSON field
   paths, legacy responses, extension UI request/response behavior, and event
   projection.

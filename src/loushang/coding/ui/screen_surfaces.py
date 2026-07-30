@@ -10,6 +10,7 @@ from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import build_coding_settings_page
 from loushang.harness.continuity import ContinuityTarget
 from loushang.harness.multiagent import HostCaller
+from loushang.harness.session import SessionApprovalInteractionPort
 from loushang.harnesstui.continuity import build_continuity_surface_view
 from loushang.harnesstui.conversation.agent_application import (
     build_agent_screen_surface_workflow_ports,
@@ -55,6 +56,9 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         runtime: Any | None = None,
         status_provider: StatusProvider,
         on_approval: Callable[[dict[str, Any]], Awaitable[bool | None]] | None = None,
+        approval_interaction_provider: (
+            Callable[[], SessionApprovalInteractionPort | None] | None
+        ) = None,
         command_catalog: ScreenSurfaceCommandCatalog | None = None,
     ) -> None:
         self.session = session
@@ -66,6 +70,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         ports = build_agent_screen_surface_workflow_ports(
             session,
             session_provider=self._current_session,
+            approval_interaction_provider=approval_interaction_provider,
             select_model=lambda value: select_available_model(
                 self._current_session(),
                 query=value,

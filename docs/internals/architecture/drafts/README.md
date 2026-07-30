@@ -26,6 +26,7 @@ Current live references:
 
 ## Documents
 
+- [Application Service Refactor](application-service-refactor.md)
 - [Loushang Runtime Architecture](loushang-runtime-architecture.md)
 - [Loushang Work / Method / Channel / Harness Architecture](loushang-work-method-channel-harness-architecture.md)
 - [P3 Fixed MethodPlan Flow Research](p3-fixed-methodplan-flow-research.md)

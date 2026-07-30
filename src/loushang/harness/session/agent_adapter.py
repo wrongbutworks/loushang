@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Generic, TypeVar, cast
 
@@ -58,7 +58,12 @@ from loushang.harness.session.export import (
     export_session_to_html,
     export_session_to_jsonl,
 )
-from loushang.harness.session.facade import SessionFacade
+from loushang.harness.session.facade import (
+    ApprovalPresentationLease,
+    ApprovalRequestDismisser,
+    ApprovalRequestPresenter,
+    SessionFacade,
+)
 from loushang.harness.session.lifecycle import (
     ForkProfile,
     ForkSelection,
@@ -104,6 +109,68 @@ from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecUpdateC
 
 SessionT = TypeVar("SessionT")
 TranscriptT = TypeVar("TranscriptT", bound=ProductTranscriptSession)
+
+
+@dataclass
+class _AgentApprovalPresentationLease:
+    close_callback: Callable[[str], None]
+    closed: bool = False
+
+    def supersede(self) -> None:
+        """Invalidate this lease without closing the shared approval channel."""
+
+        self.closed = True
+
+    def close(
+        self,
+        reason: str = "Approval presenter closed before approval was resolved",
+    ) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self.close_callback(reason)
+
+
+class _AgentSessionApprovalInteraction:
+    """Thin Product adapter over the existing approval resolver authority."""
+
+    def __init__(self, session: AgentSessionAdapterMixin) -> None:
+        self._session = session
+
+    def bind_presenter(
+        self,
+        presenter: ApprovalRequestPresenter,
+        *,
+        dismisser: ApprovalRequestDismisser | None = None,
+    ) -> ApprovalPresentationLease:
+        return self._session._bind_approval_presenter(
+            presenter,
+            dismisser=dismisser,
+        )
+
+    async def respond(
+        self,
+        action_id: str,
+        *,
+        outcome: ApprovalOutcome,
+        reason: str | None = None,
+    ) -> bool:
+        return await self._session.handle_screen_approval(
+            {
+                "action_id": action_id,
+                "outcome": outcome,
+                "reason": reason,
+            }
+        )
+
+    def permissions_snapshot(self) -> ApprovalPermissionsSnapshot:
+        return self._session.get_approval_permissions()
+
+    def permission_profile_snapshot(self) -> PermissionProfileSnapshot:
+        return self._session.get_permission_profile_snapshot()
+
+    async def apply_permission_action(self, action: str) -> bool:
+        return await self._session.apply_approval_permission_action(action)
 
 
 class AgentSessionAdapterMixin:
@@ -222,6 +289,44 @@ class AgentSessionAdapterMixin:
         self._approval_resolver.set_request_presenter(presenter, dismisser=dismisser)
         self._approval_resolver.open_session()
 
+    def _bind_approval_presenter(
+        self,
+        presenter: ApprovalRequestPresenter,
+        *,
+        dismisser: ApprovalRequestDismisser | None = None,
+    ) -> ApprovalPresentationLease:
+        if self._approval_resolver is None or self._approval_session_state != "active":
+            raise RuntimeError("Session approval interaction is not active")
+        previous = self._approval_presenter_lease
+        if previous is not None:
+            previous.supersede()
+        self._approval_presenter_generation += 1
+        generation = self._approval_presenter_generation
+        self._approval_resolver.set_request_presenter(
+            presenter,
+            dismisser=dismisser,
+        )
+        self._approval_resolver.open_session()
+        self._approval_resolver.represent_pending_requests()
+        lease = _AgentApprovalPresentationLease(
+            lambda reason: self._close_approval_presenter_generation(
+                generation,
+                reason,
+            )
+        )
+        self._approval_presenter_lease = lease
+        return lease
+
+    def _close_approval_presenter_generation(
+        self,
+        generation: int,
+        reason: str,
+    ) -> None:
+        if generation != self._approval_presenter_generation:
+            return
+        self._approval_presenter_lease = None
+        self._unbind_approval_presenter_host(reason=reason)
+
     async def handle_screen_approval(self, event: Mapping[str, object]) -> bool:
         if self._approval_resolver is None:
             return False
@@ -328,13 +433,14 @@ class AgentSessionAdapterMixin:
     def _stage_session_approvals(self) -> None:
         self._approval_session_state = "staged"
 
-    def _unbind_approval_presenter_host(self) -> None:
+    def _unbind_approval_presenter_host(
+        self,
+        reason: str = "Approval presenter closed before approval was resolved",
+    ) -> None:
         if self._approval_resolver is None:
             return
         if self._approval_session_state == "active":
-            self._approval_resolver.close_session(
-                "Approval presenter closed before approval was resolved"
-            )
+            self._approval_resolver.close_session(reason)
         self._approval_resolver.set_request_presenter(None)
 
     def _open_session_approvals(self) -> None:
@@ -948,6 +1054,11 @@ def initialize_composed_session(
         extensions=composition.extension_binding,
         settings=settings,
         application_input=composition.extension_message_controller,
+        approval_interaction=(
+            _AgentSessionApprovalInteraction(cast(AgentSessionAdapterMixin, session))
+            if getattr(session, "_approval_resolver", None) is not None
+            else None
+        ),
     )
     apply_context(session_manager.build_session_context())
     if tool_registry is not None:

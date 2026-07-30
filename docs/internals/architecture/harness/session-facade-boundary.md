@@ -37,6 +37,23 @@ and maintenance availability explicit without defining an RPC command schema.
 Products may expose only selected groups and retain their own request/response
 mapping, task lifecycle, and error wording.
 
+Hosts receive a `SessionOperationResolver` rather than retaining one runtime
+bound to a concrete Session. The resolver constructs the operation runtime
+from the Product's current control after new, restore, fork, or clone. Its
+`abort_turn()` operation stops only the active turn. TUI-level
+`stop_active_interaction` remains an explicit composite that also clears the
+Session queue and aborts selected command execution.
+
+Approval presentation is an optional `SessionApprovalInteractionPort`.
+It delegates presenter binding, responses, permission snapshots, and permission
+actions to the Product's existing resolver. `ApprovalBroker` remains the sole
+owner of pending futures, timeouts, fallback, and cancellation. Presenter
+bindings return generation-safe leases. Binding a replacement atomically
+supersedes the previous lease and replays unresolved requests with their
+existing action IDs and futures. Closing the active lease denies all pending
+approvals for that Session, while a superseded lease cannot detach a newer
+presenter.
+
 `SessionRuntime`, the Agent transcript profile, session capabilities runtime,
 and maintenance runtimes remain their own owners. The Facade only makes their
 already-bound operations available through one reusable Product surface.
@@ -105,5 +122,9 @@ policy is passed through the bound ports rather than imported.
 - Channel tests bind an injected Coding Work operation port; RPC tests preserve
   Coding's legacy event projection while its control commands use the shared
   capability groups.
+- Harnesstui controller and queue tests consume `SessionOperationResolver` and
+  `SessionApprovalInteractionPort` without concrete Session method discovery.
+- RPC tests preserve turn-only abort semantics and resolve the active Session
+  control for every shared operation.
 - Architecture tests prohibit Coding imports and Pi protocol names in the
   Facade, and require Coding `AgentSession` to adopt it.

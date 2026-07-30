@@ -12,6 +12,7 @@ from loushang.harness.session import (
     SessionOperationRuntime,
     SessionOperationUnavailableError,
     SessionPromptRequest,
+    current_session_operation_resolver,
 )
 
 
@@ -221,3 +222,37 @@ def test_session_operation_runtime_rejects_unbound_operation_group() -> None:
 def test_session_prompt_request_requires_non_empty_text() -> None:
     with pytest.raises(ValueError, match="non-empty"):
         SessionPromptRequest(text="")
+
+
+def test_current_session_operation_resolver_rebinds_after_session_change() -> None:
+    first = _Control()
+    first.session_id = "first"
+    second = _Control()
+    second.session_id = "second"
+
+    class _Session:
+        def __init__(self, control: _Control) -> None:
+            self.session_control = control
+
+    class _Runtime:
+        def __init__(self) -> None:
+            self.current = _Session(first)
+
+        def get_current_session(self) -> _Session:
+            return self.current
+
+    product = _Runtime()
+    resolve = current_session_operation_resolver(product)
+
+    assert resolve().session_id == "first"
+    product.current = _Session(second)
+    assert resolve().session_id == "second"
+
+
+def test_abort_turn_does_not_clear_queue() -> None:
+    control = _Control()
+    runtime = SessionOperationRuntime(control)
+
+    assert runtime.abort_turn() is True
+    assert control.aborted is True
+    assert control.get_steering_messages() == ["steer"]

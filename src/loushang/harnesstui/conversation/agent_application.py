@@ -5,9 +5,14 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Generic, Protocol, TextIO, TypeVar
+from typing import Generic, Protocol, TextIO, TypeVar, cast
 
+from loushang.harness.approval import ApprovalOutcome
 from loushang.harness.presentation import RenderableToolDefinition
+from loushang.harness.session import (
+    SessionApprovalInteractionPort,
+    SessionOperationResolver,
+)
 from loushang.harness.session.model_selection import (
     get_session_model_identity,
     get_session_model_selection,
@@ -151,6 +156,10 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
     bind_transition: Callable[[SurfaceT], Cleanup] = _ignore_surface
     resume_command_prefix: tuple[str, ...] = ()
     session_provider: Callable[[], object] | None = None
+    get_operations: SessionOperationResolver | None = None
+    approval_interaction_provider: (
+        Callable[[], SessionApprovalInteractionPort | None] | None
+    ) = None
     event_source: object | None = None
 
     def prepare(self) -> PreparedScreenConversationRun:
@@ -173,15 +182,24 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
             resolver = getattr(active_session(), "get_tool_definition", None)
             return resolver(name) if callable(resolver) else None
 
-        def read_pending(method_name: str) -> object:
-            reader = getattr(active_session(), method_name, None)
-            return reader() if callable(reader) else ()
+        def read_pending(queue: str) -> object:
+            if self.get_operations is None:
+                return ()
+            operations = self.get_operations()
+            return (
+                operations.get_steering_messages()
+                if queue == "steering"
+                else operations.get_follow_up_messages()
+            )
 
         def refresh_session_label() -> None:
             self.app.state.session_label = session_label(active_session())
             self.app.request_render("product")
 
-        self.app.state.permission_profile = permission_profile_id(active_session())
+        approval_interaction = self.approval_interaction_provider or (lambda: None)
+        self.app.state.permission_profile = permission_profile_id(
+            approval_interaction()
+        )
         status_provider = StatusProvider(
             model_label=self.startup.model_label,
             cwd=self.startup.cwd,
@@ -189,7 +207,9 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
             session_label=lambda: session_label(active_session()),
             thinking_level=lambda: thinking_level(active_session()),
             running=lambda: self.app.state.running or is_running(active_session()),
-            permission_profile=lambda: permission_profile_id(active_session()),
+            permission_profile=lambda: permission_profile_id(
+                approval_interaction()
+            ),
             statusline_settings=statusline_settings_from_store(settings_manager),
             on_statusline_settings_changed=(
                 statusline_settings_persistence_callback(settings_manager)
@@ -209,10 +229,10 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                     self.app,
                     tool_definition_resolver=resolve_tool,
                     read_pending_steers=stable_string_queue_reader(
-                        lambda: read_pending("get_steering_messages")
+                        lambda: read_pending("steering")
                     ),
                     read_pending_followups=stable_string_queue_reader(
-                        lambda: read_pending("get_follow_up_messages")
+                        lambda: read_pending("follow_up")
                     ),
                     on_session_info_changed=refresh_session_label,
                     now=self.now,
@@ -254,6 +274,9 @@ def build_agent_screen_surface_workflow_ports(
     session: object,
     *,
     session_provider: Callable[[], object] | None = None,
+    approval_interaction_provider: (
+        Callable[[], SessionApprovalInteractionPort | None] | None
+    ) = None,
     select_model: Callable[[str], Awaitable[str]],
     set_model_label: Callable[[str], None],
     set_permission_profile_label: Callable[[str], None] | None = None,
@@ -281,6 +304,7 @@ def build_agent_screen_surface_workflow_ports(
     """Bind a structural Agent session to the existing screen-surface workflow."""
 
     active_session = session_provider or (lambda: session)
+    active_approval = approval_interaction_provider or (lambda: None)
     live_catalog = command_catalog or ConversationCommandCatalog()
 
     async def presentation_command_catalog() -> ScreenSurfaceCommandCatalog:
@@ -320,30 +344,21 @@ def build_agent_screen_surface_workflow_ports(
         return await on_approval(event)
 
     def build_permissions_surface() -> ScreenSurfaceView:
-        active = active_session()
-        getter = getattr(active, "get_approval_permissions", None)
-        profile_getter = getattr(active, "get_permission_profile_snapshot", None)
-        if not callable(getter):
+        interaction = active_approval()
+        if interaction is None:
             raise RuntimeError("Session permissions are not available.")
         return build_permissions_surface_view(
-            getter(),
-            profile_snapshot=(profile_getter() if callable(profile_getter) else None),
+            interaction.permissions_snapshot(),
+            profile_snapshot=interaction.permission_profile_snapshot(),
         )
 
     async def apply_permission_action(action: str) -> bool:
-        apply_action = getattr(
-            active_session(),
-            "apply_approval_permission_action",
-            None,
-        )
-        if not callable(apply_action):
+        interaction = active_approval()
+        if interaction is None:
             return False
-        result = apply_action(action)
-        if inspect.isawaitable(result):
-            result = await result
-        accepted = bool(result)
+        accepted = await interaction.apply_permission_action(action)
         if accepted and set_permission_profile_label is not None:
-            set_permission_profile_label(permission_profile_id(active_session()))
+            set_permission_profile_label(permission_profile_id(interaction))
         return accepted
 
     return ScreenSurfaceWorkflowPorts(
@@ -398,11 +413,12 @@ def _agent_session_commands_provider(
     return getter if callable(getter) else None
 
 
-def permission_profile_id(session: object) -> str:
-    getter = getattr(session, "get_permission_profile_snapshot", None)
-    if not callable(getter):
+def permission_profile_id(
+    interaction: SessionApprovalInteractionPort | None,
+) -> str:
+    if interaction is None:
         return "standard"
-    snapshot = getter()
+    snapshot = interaction.permission_profile_snapshot()
     effective = getattr(snapshot, "effective_profile", None)
     profile_id = getattr(effective, "profile_id", None)
     return profile_id if isinstance(profile_id, str) and profile_id else "standard"
@@ -431,31 +447,50 @@ class AgentScreenApprovalSurface(Protocol):
 
 
 async def handle_agent_screen_approval(
-    session: object,
+    interaction: SessionApprovalInteractionPort | None,
     event: dict[str, object],
 ) -> bool:
-    """Forward a screen approval decision to a supporting Agent session."""
+    """Forward a screen decision through the explicit interaction port."""
 
-    sink = getattr(session, "handle_screen_approval", None)
-    if not callable(sink):
+    if interaction is None:
         return False
-    result = sink(event)
-    if inspect.isawaitable(result):
-        result = await result
-    return bool(result)
+    action_id = event.get("action_id")
+    if not isinstance(action_id, str):
+        return False
+    outcome = event.get("outcome")
+    if outcome not in {
+        "allow_once",
+        "allow_session",
+        "allow_project",
+        "allow_user",
+        "deny",
+        "abort",
+    }:
+        scope = event.get("scope", "once")
+        outcome = (
+            "allow_session"
+            if bool(event.get("approved")) and scope == "session"
+            else "allow_once"
+            if bool(event.get("approved"))
+            else "deny"
+        )
+    reason = event.get("reason")
+    return await interaction.respond(
+        action_id,
+        outcome=cast(ApprovalOutcome, outcome),
+        reason=reason if isinstance(reason, str) else None,
+    )
 
 
 def bind_agent_screen_approval_presenter(
-    session: object,
+    interaction: SessionApprovalInteractionPort | None,
     surface: AgentScreenApprovalSurface,
     *,
-    session_provider: Callable[[], object] | None = None,
     default_action: str = "Approve tool call",
 ) -> Cleanup:
-    """Bind an Agent session approval presenter to an existing screen surface."""
+    """Bind a Session approval port to an existing screen surface."""
 
-    setter = getattr(session, "set_approval_presenter", None)
-    if not callable(setter):
+    if interaction is None:
         return _no_cleanup
 
     def present(payload: dict[str, object]) -> None:
@@ -485,15 +520,11 @@ def bind_agent_screen_approval_presenter(
             options=options,
         )
 
-    setter(present, dismisser=surface.dismiss_approval)
-
-    def unbind() -> None:
-        target = session_provider() if session_provider is not None else session
-        _unbind_agent_screen_approval_presenter(target)
-        if target is not session:
-            _unbind_agent_screen_approval_presenter(session)
-
-    return unbind
+    lease = interaction.bind_presenter(
+        present,
+        dismisser=surface.dismiss_approval,
+    )
+    return lease.close
 
 
 def _approval_choices(value: object) -> tuple[ApprovalChoice, ...]:
@@ -597,6 +628,7 @@ async def refresh_agent_screen_session(
     runtime: object,
     app: ScreenConversationApp,
     session: object,
+    approval_interaction: SessionApprovalInteractionPort | None,
     event_source: RebindableEventSource,
 ) -> None:
     """Install a newly active Agent session into an existing screen app."""
@@ -615,21 +647,11 @@ async def refresh_agent_screen_session(
     app.state.cwd = snapshot.cwd
     app.state.branch = snapshot.branch
     app.state.session_label = snapshot.session_label
-    app.state.permission_profile = permission_profile_id(session)
+    app.state.permission_profile = permission_profile_id(approval_interaction)
     app.replace_transcript_window(history, reason="resume")
     app.trim_active_transcript_window()
     event_source.rebind(session)
     app.request_render("product")
-
-
-def _unbind_agent_screen_approval_presenter(session: object) -> None:
-    host_unbind = getattr(session, "_unbind_approval_presenter_host", None)
-    if callable(host_unbind):
-        host_unbind()
-        return
-    setter = getattr(session, "set_approval_presenter", None)
-    if callable(setter):
-        setter(None)
 
 
 def _clear_agent_screen_surfaces(surface: AgentScreenApprovalSurface) -> None:

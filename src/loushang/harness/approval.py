@@ -1227,6 +1227,25 @@ class InteractiveApprovalResolver:
             await presented
         return True
 
+    def represent_pending_requests(self) -> int:
+        """Replay unresolved requests after the presentation channel is replaced."""
+
+        if not self._session_open or self._request_presenter is None:
+            return 0
+        presented = 0
+        for request in self._broker.pending_requests():
+            try:
+                result = self._request_presenter(
+                    dict(self.payload_projector(request))
+                )
+            except (asyncio.CancelledError, Exception):
+                continue
+            if inspect.isawaitable(result):
+                task = asyncio.ensure_future(result)
+                task.add_done_callback(_consume_detached_result)
+            presented += 1
+        return presented
+
     def revoke_grant(self, grant_id: str) -> bool:
         return self.grant_store.revoke(grant_id)
 
