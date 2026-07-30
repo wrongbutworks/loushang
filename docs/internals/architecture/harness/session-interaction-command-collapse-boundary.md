@@ -56,9 +56,10 @@ from 27,674 to 27,053 lines in this working tree (the extra few lines are
 import-boundary cleanup around the moved owners).
 
 The shared implementation grows in Harness/HarnessTUI; this is an ownership
-transfer, not a deletion of capability. The next high-value slice is the
-Session RPC command cutover: Channel keeps framing/correlation, Harness keeps
-operation execution, and Coding keeps only schema and product projection.
+transfer, not a deletion of capability. Historical note: the subsequent
+Session RPC cutover is complete. Harness Host now owns Product command JSONL
+framing/routing and Harness Session owns operation execution; Channel framing
+is reserved for Channel envelopes, not Product RPC.
 
 ## Gates
 

@@ -34,15 +34,18 @@ Harness owns operation grouping, typed input values, dispatch through
   Product command catalogs;
 - product state, event, diagnostic, or HTML projection.
 
-Channel remains transport-neutral and accepts injected Product operation ports;
-it must not import Harness. Coding maps its established RPC commands onto this
-runtime and preserves its public JSON field names, event views, model
-compatibility payloads, and coding-specific operations.
+Channel remains a separate Work/runtime-view boundary and accepts injected
+operation ports. It may depend on selected Harness Host/event-view contracts,
+but Harness and Work never import Channel. `harness.host.rpc` maps the accepted
+Product RPC vocabulary onto this runtime. Coding supplies its concrete Product
+session plus event and diagnostic projections; it does not retain another RPC
+mapping layer.
 
 ## Verification
 
 - Harness tests use an independent `SessionControlPort` fake to exercise each
   standard group and unavailable-capability behavior.
-- Channel tests remain free of Harness imports.
-- Coding RPC regressions preserve existing wire responses after its adapter
-  begins using the operation runtime.
+- Channel tests preserve their distinct envelope/frame contract and one-way
+  dependency on selected Harness contracts.
+- Coding RPC regressions preserve existing wire responses through the Harness
+  RPC host and public playback API.
