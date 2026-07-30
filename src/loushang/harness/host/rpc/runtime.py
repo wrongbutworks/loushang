@@ -246,7 +246,7 @@ class RpcHost(ModeAdapter):
     async def run(self) -> int:
         try:
             return await self._host_runtime.run(
-                self._handle_line,
+                self._command_host.handle_line,
                 handle_failure=self._handle_host_failure,
             )
         finally:
@@ -273,16 +273,6 @@ class RpcHost(ModeAdapter):
 
     async def _handle_host_failure(self, error: Exception) -> None:
         self.stderr.write(f"Error: {error}\n")
-
-    async def _drain_background_tasks(self) -> None:
-        """Compatibility hook over the Channel-owned task tracker."""
-
-        await self.settle_background_tasks()
-
-    async def _handle_line(self, line: str) -> None:
-        """Test-facing adapter for the Channel-owned JSONL command host."""
-
-        await self._command_host.handle_line(line)
 
     def _command_routes(self) -> tuple[JsonlCommandRoute, ...]:
         """Bind the declared Product RPC surface to the Channel router.
@@ -531,11 +521,7 @@ class RpcHost(ModeAdapter):
 
 
     def _require_current_session(self) -> Any:
-        getter = getattr(self.runtime, "get_current_session", None)
-        if callable(getter):
-            session = getter()
-        else:
-            session = getattr(self.runtime, "session", None)
+        session = self.runtime.get_current_session()
         if session is None:
             raise RuntimeError("RPC mode requires an active session")
         return session

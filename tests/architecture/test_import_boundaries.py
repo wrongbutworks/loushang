@@ -1002,6 +1002,10 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
     runtime_source = (rpc_root / "runtime.py").read_text(encoding="utf-8")
     assert "class _RpcHostRuntime(Protocol):" in runtime_source
     assert "runtime: Any" not in runtime_source
+    assert 'getattr(self.runtime, "get_current_session"' not in runtime_source
+    assert 'getattr(self.runtime, "session"' not in runtime_source
+    assert "_drain_background_tasks" not in runtime_source
+    assert "async def _handle_line" not in runtime_source
     assert "RpcCommandCatalogCommands" in runtime_source
     assert "_handle_get_commands_command" not in runtime_source
     assert "_handle_get_command_completions_command" not in runtime_source
