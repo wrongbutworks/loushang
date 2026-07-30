@@ -1,28 +1,18 @@
+"""Product-neutral JSONL RPC runtime."""
+
 from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import sys
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from math import isfinite
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, NotRequired, Required, TextIO, TypedDict, cast
+from typing import Any, TextIO, cast
 
 from loushang.ai.model import ModelSelection
 from loushang.harness.commands import complete_slash_commands
-from loushang.harness.diagnostics.serialization import (
-    serialize_diagnostic,
-    serialize_diagnostic_summary,
-    serialize_error_report,
-)
 from loushang.harness.diagnostics.types import DiagnosticsQuery
-from loushang.harness.events import (
-    RuntimeEvent,
-    normalize_event_select,
-)
-from loushang.harness.host.json_projection import project_host_value
+from loushang.harness.events import RuntimeEvent
 from loushang.harness.host.jsonl_command_host import (
     JsonlCommand,
     JsonlCommandHost,
@@ -37,143 +27,50 @@ from loushang.harness.host.product_host import (
     ProductHostRuntime,
     ProductHostTaskTracker,
 )
-from loushang.harness.host.remote_ui import RemoteUiContext
+from loushang.harness.host.rpc.arguments import (
+    optional_bool,
+    optional_env_pairs,
+    optional_int,
+    optional_number,
+    optional_string,
+    require_mode,
+    require_string,
+)
+from loushang.harness.host.rpc.output import RpcOutput
+from loushang.harness.host.rpc.projections import (
+    STANDARD_AGENT_RPC_EVENT_PROJECTION,
+    STANDARD_RPC_DIAGNOSTICS_PROJECTION,
+    RpcDiagnosticsProjection,
+    RpcEventProjection,
+)
+from loushang.harness.host.rpc.remote_ui import RpcExtensionUIContext
+from loushang.harness.host.rpc.routing import legacy_rpc_routes
+from loushang.harness.host.rpc.wire import (
+    camelize,
+    project_available_models,
+    project_command_descriptor,
+    project_json_value,
+    project_session_listing_item,
+    project_session_state,
+    project_session_stats,
+    project_state_model,
+    session_messages,
+)
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.session import (
-    SUPPORTED_JSON_EVENT_VIEWS,
     SessionLifecycleOperationPorts,
     SessionOperationRuntime,
     SessionPromptRequest,
     SessionRpcOperationBinding,
-    project_runtime_event_to_json_views,
-    project_session_event,
-    shape_runtime_event_view,
-    shape_stream_event,
-    should_emit_projected_event,
-    should_emit_runtime_event_view,
 )
 from loushang.harness.transcript import (
     SessionQuery,
     create_agent_transcript_message_codec,
 )
 
-_THINKING_LEVEL_ORDER: tuple[str, ...] = (
-    "off",
-    "minimal",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-)
 _MISSING = object()
 _MESSAGE_CODEC = create_agent_transcript_message_codec()
 serialize_agent_message = _MESSAGE_CODEC.serialize
-
-
-class RpcModelCost(TypedDict):
-    input: float | int
-    output: float | int
-    cacheRead: float | int
-    cacheWrite: float | int
-
-
-class RpcModel(TypedDict, total=False):
-    provider: Required[str]
-    id: Required[str]
-    name: Required[str]
-    endpointId: NotRequired[str]
-    api: NotRequired[str]
-    baseUrl: NotRequired[str]
-    input: NotRequired[list[str]]
-    contextWindow: NotRequired[int]
-    maxTokens: NotRequired[int]
-    reasoning: NotRequired[bool]
-    cost: NotRequired[RpcModelCost]
-    compat: NotRequired[dict[str, Any]]
-
-
-class RpcSessionState(TypedDict, total=False):
-    sessionId: Required[str]
-    sessionName: NotRequired[str]
-    sessionFile: NotRequired[str]
-    model: Required[RpcModel | None]
-    thinkingLevel: Required[str]
-    isStreaming: Required[bool]
-    isCompacting: Required[bool]
-    steeringMode: Required[str | None]
-    followUpMode: Required[str | None]
-    autoCompactionEnabled: Required[bool | None]
-    messageCount: Required[int]
-    pendingMessageCount: Required[int]
-
-
-@dataclass(frozen=True)
-class RpcEventProjection:
-    """Product-injected event projection for the shared RPC host.
-
-    Event names and view payloads are deliberately supplied by the Product;
-    the host only subscribes, filters, and writes them to the transport.
-    """
-
-    supported_views: Sequence[str]
-    normalize_select: Callable[[str | Sequence[str] | None], Sequence[str]]
-    project_session_event: Callable[..., Sequence[dict[str, Any]]]
-    should_emit_projected_event: Callable[[dict[str, Any], Sequence[str]], bool]
-    shape_stream_event: Callable[..., dict[str, Any]]
-    project_runtime_event_to_json_views: Callable[..., Sequence[object]]
-    should_emit_runtime_event_view: Callable[[object, Sequence[str]], bool]
-    shape_runtime_event_view: Callable[[object], dict[str, Any]]
-
-
-@dataclass(frozen=True)
-class RpcDiagnosticsProjection:
-    """Product-injected diagnostics wire projection."""
-
-    serialize_diagnostic: Callable[[object], dict[str, object]]
-    serialize_diagnostic_summary: Callable[[object], dict[str, object]]
-    serialize_error_report: Callable[[object], dict[str, object] | None]
-
-
-STANDARD_AGENT_RPC_EVENT_PROJECTION = RpcEventProjection(
-    supported_views=SUPPORTED_JSON_EVENT_VIEWS,
-    normalize_select=normalize_event_select,
-    project_session_event=project_session_event,
-    should_emit_projected_event=should_emit_projected_event,
-    shape_stream_event=shape_stream_event,
-    project_runtime_event_to_json_views=project_runtime_event_to_json_views,
-    should_emit_runtime_event_view=should_emit_runtime_event_view,
-    shape_runtime_event_view=shape_runtime_event_view,
-)
-
-STANDARD_RPC_DIAGNOSTICS_PROJECTION = RpcDiagnosticsProjection(
-    serialize_diagnostic=serialize_diagnostic,
-    serialize_diagnostic_summary=serialize_diagnostic_summary,
-    serialize_error_report=serialize_error_report,
-)
-
-
-class RpcExtensionUIContext(RemoteUiContext):
-    """RPC-backed extension UI context for headless hosts."""
-
-    def __init__(self, output) -> None:
-        self._output = output
-
-        def emit(payload: dict[str, object]) -> None:
-            if payload.get("type") == "remote_ui_request":
-                payload = {**payload, "type": "extension_ui_request"}
-            self._output(payload)
-
-        super().__init__(emit)
-
-    def emit_extension_error(self, error: dict[str, object]) -> None:
-        self._output(
-            {
-                "type": "extension_error",
-                "extensionPath": str(error.get("extensionPath", "")),
-                "event": str(error.get("event", "")),
-                "error": str(error.get("error", "")),
-            }
-        )
 
 
 class RpcHost(ModeAdapter):
@@ -199,6 +96,7 @@ class RpcHost(ModeAdapter):
         self.runtime = runtime
         self.stdin = stdin
         self.stdout = stdout
+        self._rpc_output = RpcOutput(stdout)
         self.stderr = sys.stderr if stderr is None else stderr
         self.event_view = event_view
         self._event_projection = event_projection
@@ -286,7 +184,7 @@ class RpcHost(ModeAdapter):
 
     def get_mode_state(self) -> ModeState:
         try:
-            return self._serialize_session_state(self.session)
+            return project_session_state(self.session)
         except Exception:
             return {
                 "sessionId": "",
@@ -327,128 +225,93 @@ class RpcHost(ModeAdapter):
                 command_type="extension_ui_response",
                 handler=self._handle_extension_ui_response,
             ),
-            self._legacy_command_route("prompt", self._handle_prompt_command),
-            self._legacy_command_route("steer", self._handle_steer_command),
-            self._legacy_command_route("follow_up", self._handle_follow_up_command),
-            self._legacy_command_route("abort", self._handle_abort_command),
-            self._legacy_command_route("get_state", self._handle_get_state_command),
-            self._legacy_command_route(
-                "get_extension_ui_state", self._handle_get_extension_ui_state_command
+            *legacy_rpc_routes(
+                (
+                    ("prompt", self._handle_prompt_command),
+                    ("steer", self._handle_steer_command),
+                    ("follow_up", self._handle_follow_up_command),
+                    ("abort", self._handle_abort_command),
+                    ("get_state", self._handle_get_state_command),
+                    (
+                        "get_extension_ui_state",
+                        self._handle_get_extension_ui_state_command,
+                    ),
+                    ("get_messages", self._handle_get_messages_command),
+                    ("list_sessions", self._handle_list_sessions_command),
+                    ("new_session", self._handle_new_session_command),
+                    ("switch_session", self._handle_switch_session_command),
+                    ("fork", self._handle_fork_command),
+                    ("clone", self._handle_clone_command),
+                    ("set_model", self._handle_set_model_command),
+                    (
+                        "get_available_models",
+                        self._handle_get_available_models_command,
+                    ),
+                    ("cycle_model", self._handle_cycle_model_command),
+                    ("set_active_tools", self._handle_set_active_tools_command),
+                    ("set_thinking_level", self._handle_set_thinking_level_command),
+                    (
+                        "cycle_thinking_level",
+                        self._handle_cycle_thinking_level_command,
+                    ),
+                    ("set_steering_mode", self._handle_set_steering_mode_command),
+                    ("set_follow_up_mode", self._handle_set_follow_up_mode_command),
+                    ("get_session_stats", self._handle_get_session_stats_command),
+                    ("set_session_name", self._handle_set_session_name_command),
+                    (
+                        "get_last_assistant_text",
+                        self._handle_get_last_assistant_text_command,
+                    ),
+                    ("get_fork_messages", self._handle_get_fork_messages_command),
+                    ("get_commands", self._handle_get_commands_command),
+                    (
+                        "get_command_completions",
+                        self._handle_get_command_completions_command,
+                    ),
+                    ("get_diagnostics", self._handle_get_diagnostics_command),
+                    (
+                        "get_session_diagnostics",
+                        self._handle_get_session_diagnostics_command,
+                    ),
+                    (
+                        "get_diagnostics_summary",
+                        self._handle_get_diagnostics_summary_command,
+                    ),
+                    (
+                        "get_session_diagnostics_summary",
+                        self._handle_get_session_diagnostics_summary_command,
+                    ),
+                    (
+                        "get_last_error_report",
+                        self._handle_get_last_error_report_command,
+                    ),
+                    ("get_packages", self._handle_get_packages_command),
+                    (
+                        "materialize_package",
+                        self._handle_materialize_package_command,
+                    ),
+                    ("install_package", self._handle_install_package_command),
+                    ("update_package", self._handle_update_package_command),
+                    ("update_packages", self._handle_update_packages_command),
+                    (
+                        "check_package_updates",
+                        self._handle_check_package_updates_command,
+                    ),
+                    ("remove_package", self._handle_remove_package_command),
+                    ("uninstall_package", self._handle_uninstall_package_command),
+                    ("bash", self._handle_bash_command),
+                    ("abort_bash", self._handle_abort_bash_command),
+                    ("compact", self._handle_compact_command),
+                    ("set_auto_retry", self._handle_set_auto_retry_command),
+                    ("abort_retry", self._handle_abort_retry_command),
+                    (
+                        "set_auto_compaction",
+                        self._handle_set_auto_compaction_command,
+                    ),
+                    ("export_html", self._handle_export_html_command),
+                )
             ),
-            self._legacy_command_route(
-                "get_messages", self._handle_get_messages_command
-            ),
-            self._legacy_command_route(
-                "list_sessions", self._handle_list_sessions_command
-            ),
-            self._legacy_command_route("new_session", self._handle_new_session_command),
-            self._legacy_command_route(
-                "switch_session", self._handle_switch_session_command
-            ),
-            self._legacy_command_route("fork", self._handle_fork_command),
-            self._legacy_command_route("clone", self._handle_clone_command),
-            self._legacy_command_route("set_model", self._handle_set_model_command),
-            self._legacy_command_route(
-                "get_available_models", self._handle_get_available_models_command
-            ),
-            self._legacy_command_route("cycle_model", self._handle_cycle_model_command),
-            self._legacy_command_route(
-                "set_active_tools", self._handle_set_active_tools_command
-            ),
-            self._legacy_command_route(
-                "set_thinking_level", self._handle_set_thinking_level_command
-            ),
-            self._legacy_command_route(
-                "cycle_thinking_level", self._handle_cycle_thinking_level_command
-            ),
-            self._legacy_command_route(
-                "set_steering_mode", self._handle_set_steering_mode_command
-            ),
-            self._legacy_command_route(
-                "set_follow_up_mode", self._handle_set_follow_up_mode_command
-            ),
-            self._legacy_command_route(
-                "get_session_stats", self._handle_get_session_stats_command
-            ),
-            self._legacy_command_route(
-                "set_session_name", self._handle_set_session_name_command
-            ),
-            self._legacy_command_route(
-                "get_last_assistant_text", self._handle_get_last_assistant_text_command
-            ),
-            self._legacy_command_route(
-                "get_fork_messages", self._handle_get_fork_messages_command
-            ),
-            self._legacy_command_route(
-                "get_commands", self._handle_get_commands_command
-            ),
-            self._legacy_command_route(
-                "get_command_completions", self._handle_get_command_completions_command
-            ),
-            self._legacy_command_route(
-                "get_diagnostics", self._handle_get_diagnostics_command
-            ),
-            self._legacy_command_route(
-                "get_session_diagnostics", self._handle_get_session_diagnostics_command
-            ),
-            self._legacy_command_route(
-                "get_diagnostics_summary", self._handle_get_diagnostics_summary_command
-            ),
-            self._legacy_command_route(
-                "get_session_diagnostics_summary",
-                self._handle_get_session_diagnostics_summary_command,
-            ),
-            self._legacy_command_route(
-                "get_last_error_report", self._handle_get_last_error_report_command
-            ),
-            self._legacy_command_route(
-                "get_packages", self._handle_get_packages_command
-            ),
-            self._legacy_command_route(
-                "materialize_package", self._handle_materialize_package_command
-            ),
-            self._legacy_command_route(
-                "install_package", self._handle_install_package_command
-            ),
-            self._legacy_command_route(
-                "update_package", self._handle_update_package_command
-            ),
-            self._legacy_command_route(
-                "update_packages", self._handle_update_packages_command
-            ),
-            self._legacy_command_route(
-                "check_package_updates", self._handle_check_package_updates_command
-            ),
-            self._legacy_command_route(
-                "remove_package", self._handle_remove_package_command
-            ),
-            self._legacy_command_route(
-                "uninstall_package", self._handle_uninstall_package_command
-            ),
-            self._legacy_command_route("bash", self._handle_bash_command),
-            self._legacy_command_route("abort_bash", self._handle_abort_bash_command),
-            self._legacy_command_route("compact", self._handle_compact_command),
-            self._legacy_command_route(
-                "set_auto_retry", self._handle_set_auto_retry_command
-            ),
-            self._legacy_command_route("abort_retry", self._handle_abort_retry_command),
-            self._legacy_command_route(
-                "set_auto_compaction", self._handle_set_auto_compaction_command
-            ),
-            self._legacy_command_route("export_html", self._handle_export_html_command),
         )
-
-    def _legacy_command_route(
-        self,
-        command_type: str,
-        handler: Callable[[str | None, dict[str, Any]], object],
-    ) -> JsonlCommandRoute:
-        async def route(command: JsonlCommand) -> None:
-            result = handler(command.command_id, dict(command.payload))
-            if inspect.isawaitable(result):
-                await result
-
-        return JsonlCommandRoute(command_type=command_type, handler=route)
 
     def _handle_extension_ui_response(self, command: JsonlCommand) -> None:
         self.extension_ui_context.resolve_response(dict(command.payload))
@@ -570,7 +433,7 @@ class RpcHost(ModeAdapter):
     ) -> None:
         del payload
         try:
-            state = self._serialize_session_state(self.session)
+            state = project_session_state(self.session)
         except Exception:
             self._write_response_error(
                 id=command_id,
@@ -730,7 +593,7 @@ class RpcHost(ModeAdapter):
         sessions = []
         for session in raw_sessions:
             try:
-                sessions.append(self._serialize_session_listing_item(session))
+                sessions.append(project_session_listing_item(session))
             except Exception:
                 continue
         self._write_response_success(
@@ -740,17 +603,17 @@ class RpcHost(ModeAdapter):
         )
 
     def _session_query_from_payload(self, payload: dict[str, Any]) -> SessionQuery:
-        limit = self._optional_int(payload, "limit")
+        limit = optional_int(payload, "limit")
         if limit is not None and limit < 0:
             raise ValueError("Session limit must be non-negative.")
         return SessionQuery(
-            cwd=self._optional_string(payload, "cwd"),
-            name=self._optional_string(payload, "name"),
-            parent_session=self._optional_string(
+            cwd=optional_string(payload, "cwd"),
+            name=optional_string(payload, "name"),
+            parent_session=optional_string(
                 payload, "parentSession", "parent_session"
             ),
-            text=self._optional_string(payload, "text", "query"),
-            has_diagnostics=self._optional_bool(
+            text=optional_string(payload, "text", "query"),
+            has_diagnostics=optional_bool(
                 payload, "hasDiagnostics", "has_diagnostics"
             ),
             limit=limit,
@@ -843,8 +706,8 @@ class RpcHost(ModeAdapter):
     async def _handle_set_model_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        provider = self._require_string(payload, "provider")
-        model_id = self._require_string(payload, "modelId", "model_id")
+        provider = require_string(payload, "provider")
+        model_id = require_string(payload, "modelId", "model_id")
         endpoint_id = payload.get("endpointId") or payload.get("endpoint_id")
         selection = ModelSelection(
             provider=provider,
@@ -893,7 +756,7 @@ class RpcHost(ModeAdapter):
         self._write_response_success(
             id=command_id,
             command="set_model",
-            data=self._serialize_state_model(self.session, self.session.get_state()),
+            data=project_state_model(self.session, self.session.get_state()),
         )
 
     def _handle_get_available_models_command(
@@ -925,7 +788,7 @@ class RpcHost(ModeAdapter):
             )
             return
         try:
-            serialized = self._serialize_available_models(self.session, models)
+            serialized = project_available_models(self.session, models)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -974,7 +837,7 @@ class RpcHost(ModeAdapter):
             )
             return
         try:
-            model = self._serialize_state_model(self.session, self.session.get_state())
+            model = project_state_model(self.session, self.session.get_state())
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -1010,7 +873,7 @@ class RpcHost(ModeAdapter):
             )
             return
         try:
-            state = self._serialize_session_state(self.session)
+            state = project_session_state(self.session)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -1027,7 +890,7 @@ class RpcHost(ModeAdapter):
     async def _handle_set_thinking_level_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        level = self._require_string(payload, "level")
+        level = require_string(payload, "level")
         try:
             result = self.session.set_thinking_level(level)
             if inspect.isawaitable(result):
@@ -1064,7 +927,7 @@ class RpcHost(ModeAdapter):
     def _handle_set_steering_mode_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        mode = self._require_mode(payload, "mode")
+        mode = require_mode(payload, "mode")
         try:
             self.session.set_steering_mode(mode)
         except Exception as error:
@@ -1079,7 +942,7 @@ class RpcHost(ModeAdapter):
     def _handle_set_follow_up_mode_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        mode = self._require_mode(payload, "mode")
+        mode = require_mode(payload, "mode")
         try:
             self.session.set_follow_up_mode(mode)
         except Exception as error:
@@ -1113,7 +976,7 @@ class RpcHost(ModeAdapter):
             )
             return
         try:
-            serialized = self._serialize_session_stats(stats)
+            serialized = project_session_stats(stats)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -1137,7 +1000,7 @@ class RpcHost(ModeAdapter):
     async def _handle_set_session_name_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        name = self._require_string(payload, "name").strip()
+        name = require_string(payload, "name").strip()
         if not name:
             self._write_response_error(
                 id=command_id,
@@ -1203,7 +1066,7 @@ class RpcHost(ModeAdapter):
                 error="Fork messages returned an invalid response.",
             )
             return
-        messages = self._camelize(self._serialize_json_value(raw_messages))
+        messages = camelize(project_json_value(raw_messages))
         self._write_response_success(
             id=command_id,
             command="get_fork_messages",
@@ -1241,7 +1104,7 @@ class RpcHost(ModeAdapter):
             return
         for command in raw_commands:
             try:
-                commands.append(self._serialize_command_descriptor(command))
+                commands.append(project_command_descriptor(command))
             except Exception:
                 continue
         self._write_response_success(
@@ -1506,15 +1369,15 @@ class RpcHost(ModeAdapter):
         if raw_limit is not None and (not isinstance(raw_limit, int) or raw_limit <= 0):
             raise ValueError("Diagnostic limit must be a positive integer.")
         return DiagnosticsQuery(
-            phase=self._optional_string(payload, "phase"),  # type: ignore[arg-type]
-            source=self._optional_string(payload, "source"),  # type: ignore[arg-type]
-            level=self._optional_string(
+            phase=optional_string(payload, "phase"),  # type: ignore[arg-type]
+            source=optional_string(payload, "source"),  # type: ignore[arg-type]
+            level=optional_string(
                 payload, "level", "diagnosticType", "diagnostic_type"
             ),  # type: ignore[arg-type]
-            session_id=self._optional_string(payload, "sessionId", "session_id"),
-            entry_id=self._optional_string(payload, "entryId", "entry_id"),
-            tool_call_id=self._optional_string(payload, "toolCallId", "tool_call_id"),
-            code=self._optional_string(payload, "code"),
+            session_id=optional_string(payload, "sessionId", "session_id"),
+            entry_id=optional_string(payload, "entryId", "entry_id"),
+            tool_call_id=optional_string(payload, "toolCallId", "tool_call_id"),
+            code=optional_string(payload, "code"),
             limit=raw_limit,
         )
 
@@ -1548,7 +1411,7 @@ class RpcHost(ModeAdapter):
     def _handle_get_packages_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        catalog_path = self._optional_string(payload, "catalogPath", "catalog_path")
+        catalog_path = optional_string(payload, "catalogPath", "catalog_path")
         getter = getattr(self.runtime, "get_packages", None)
         if callable(getter):
             get_packages = getter
@@ -1744,7 +1607,7 @@ class RpcHost(ModeAdapter):
         failure_code: str,
         invalid_code: str,
     ) -> None:
-        source = self._require_string(payload, "source")
+        source = require_string(payload, "source")
         getter = getattr(self.runtime, method_name, None)
         if callable(getter):
             lifecycle_method = getter
@@ -1794,17 +1657,17 @@ class RpcHost(ModeAdapter):
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         self._ensure_no_active_bash(command="bash")
-        command = self._require_string(payload, "command")
+        command = require_string(payload, "command")
         task = asyncio.create_task(
             self._run_bash(
                 command_id=command_id,
                 command=command,
-                cwd=self._optional_string(payload, "cwd"),
-                env=self._coerce_env(payload.get("env")),
-                timeout_seconds=self._optional_number(
+                cwd=optional_string(payload, "cwd"),
+                env=optional_env_pairs(payload.get("env")),
+                timeout_seconds=optional_number(
                     payload, "timeoutSeconds", "timeout_seconds"
                 ),
-                stdin=self._optional_string(payload, "stdin"),
+                stdin=optional_string(payload, "stdin"),
             )
         )
         self._active_bash_task = task
@@ -1832,7 +1695,7 @@ class RpcHost(ModeAdapter):
             self._write_response_error(id=command_id, command="bash", error=str(exc))
         else:
             try:
-                data = self._camelize(self._serialize_json_value(result))
+                data = camelize(project_json_value(result))
             except Exception as exc:
                 self._write_response_error(
                     id=command_id,
@@ -1869,7 +1732,7 @@ class RpcHost(ModeAdapter):
             )
             return
         try:
-            data = self._camelize(self._serialize_json_value(result))
+            data = camelize(project_json_value(result))
         except Exception as exc:
             self._write_response_error(
                 id=command_id,
@@ -1921,7 +1784,7 @@ class RpcHost(ModeAdapter):
     def _handle_export_html_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        output_path = self._optional_string(payload, "outputPath", "output_path")
+        output_path = optional_string(payload, "outputPath", "output_path")
         try:
             path = self.session.export_to_html(output_path)
         except Exception as error:
@@ -2060,437 +1923,10 @@ class RpcHost(ModeAdapter):
             raise TypeError("RPC mode session must expose Harness session_control")
         return self._session_operations
 
-    def _serialize_session_state(self, session: Any) -> RpcSessionState:
-        """Project the standard session state into the host state contract."""
-
-        state = session.get_state()
-        session_id = self._safe_getattr(session, "session_id", None)
-        if session_id is None:
-            session_id_value = ""
-        elif isinstance(session_id, str):
-            session_id_value = session_id
-        else:
-            session_id_value = self._safe_string(session_id)
-
-        session_name = self._safe_getattr(session, "session_name", None)
-        if session_name is not None and not isinstance(session_name, str):
-            session_name = self._safe_string(session_name)
-
-        session_file = self._safe_getattr(session, "session_file", None)
-        if isinstance(session_file, Path):
-            session_file_value: str | None = str(session_file)
-        elif session_file is None:
-            session_file_value = None
-        else:
-            session_file_value = self._safe_string(session_file)
-        steering = self._list_attr(state, "steering")
-        follow_up = self._list_attr(state, "follow_up")
-        thinking_level = self._safe_getattr(state, "thinking_level", "off")
-        if not isinstance(thinking_level, str):
-            thinking_level = self._safe_string(thinking_level) or "off"
-        if thinking_level not in _THINKING_LEVEL_ORDER:
-            thinking_level = "off"
-        try:
-            model = self._serialize_state_model(session, state)
-        except Exception:
-            model = None
-        payload = {
-            "sessionId": session_id_value,
-            "model": model,
-            "isStreaming": self._run_status(state) == "running",
-            "isCompacting": bool(self._safe_getattr(state, "is_compacting", False)),
-            "steeringMode": self._queue_mode(session, "steering_mode"),
-            "followUpMode": self._queue_mode(session, "follow_up_mode"),
-            "autoCompactionEnabled": bool(
-                self._safe_getattr(session, "auto_compaction_enabled", False)
-            ),
-            "messageCount": len(self._get_session_messages(session)),
-            "pendingMessageCount": len(steering) + len(follow_up),
-            "thinkingLevel": thinking_level,
-        }
-        if isinstance(session_name, str) and session_name:
-            payload["sessionName"] = session_name
-        if session_file_value:
-            payload["sessionFile"] = session_file_value
-        return payload
-
-    def _run_status(self, state: Any) -> str:
-        run = self._safe_getattr(state, "run", None)
-        status = self._safe_getattr(run, "status", None)
-        return status if isinstance(status, str) else "idle"
-
-    def _queue_mode(self, session: Any, attr: str) -> str:
-        value = self._safe_getattr(session, attr, None)
-        if value in {"all", "one-at-a-time"}:
-            return value
-        agent_value = self._safe_getattr(
-            self._safe_getattr(session, "agent", None), attr, None
-        )
-        if agent_value in {"all", "one-at-a-time"}:
-            return agent_value
-        return "one-at-a-time"
-
-    def _list_attr(self, target: Any, attr: str) -> list[object]:
-        value = self._safe_getattr(target, attr, None)
-        return list(value) if isinstance(value, list) else []
-
-    def _serialize_state_model(self, session: Any, state: Any) -> RpcModel | None:
-        """Project the active session model into the RPC wire shape."""
-
-        agent = self._safe_getattr(session, "agent", None)
-        agent_state = self._safe_getattr(agent, "state", None)
-        model = self._safe_getattr(agent_state, "model", None)
-        if model is not None:
-            try:
-                payload = self._serialize_model(session, model)
-                if payload is not None and not _is_unknown_model(payload):
-                    return payload
-            except Exception:
-                pass
-
-        selection = self._safe_getattr(state, "model_selection", None)
-        resolved_model = self._resolve_model_for_rpc(session, selection)
-        if resolved_model is not None:
-            try:
-                payload = self._serialize_model(session, resolved_model)
-                if payload is not None and not _is_unknown_model(payload):
-                    return payload
-            except Exception:
-                pass
-
-        try:
-            payload = self._serialize_model_selection_as_model(selection)
-            if payload is not None and not _is_unknown_model(payload):
-                return payload
-            return self._serialize_default_model(session)
-        except Exception:
-            return None
-
-    def _serialize_default_model(self, session: Any) -> RpcModel | None:
-        """Fallback to first non-placeholder model from session's model list."""
-
-        getter = getattr(session, "get_available_models", None)
-        if not callable(getter):
-            return None
-        try:
-            models = getter()
-        except Exception:
-            return None
-        if not isinstance(models, list):
-            return None
-        for selection in models:
-            payload = None
-            try:
-                payload = self._serialize_model_selection_as_model(selection)
-            except Exception:
-                payload = None
-            if payload is not None and not _is_unknown_model(payload):
-                return payload
-            try:
-                resolved = self._resolve_model_for_rpc(session, selection)
-            except Exception:
-                resolved = None
-            if resolved is None:
-                continue
-            try:
-                payload = self._serialize_model(session, resolved)
-            except Exception:
-                payload = None
-            if payload is not None and not _is_unknown_model(payload):
-                return payload
-        return None
-
-    def _serialize_available_models(
-        self, session: Any, selections: list[Any]
-    ) -> list[RpcModel]:
-        serialized: list[RpcModel] = []
-        for selection in selections:
-            try:
-                resolved_model = self._resolve_model_for_rpc(session, selection)
-                payload = (
-                    self._serialize_model(session, resolved_model)
-                    if resolved_model is not None
-                    else self._serialize_model_selection_as_model(selection)
-                )
-            except Exception:
-                continue
-            if payload is not None:
-                serialized.append(payload)
-        return serialized
-
-    def _resolve_model_for_rpc(self, session: Any, selection: Any) -> object | None:
-        registry = self._safe_getattr(session, "model_registry", None)
-        builder = self._safe_getattr(registry, "build_model", None)
-        if selection is not None and callable(builder):
-            try:
-                return builder(selection)
-            except Exception:
-                return None
-        return None
-
-    def _serialize_session_stats(self, stats: Any) -> dict[str, Any]:
-        return self._camelize(self._serialize_json_value(stats))
-
-    def _serialize_session_listing_item(self, session: Any) -> dict[str, Any]:
-        fields = (
-            "session_id",
-            "cwd",
-            "session_file",
-            "parent_session",
-            "leaf_id",
-            "created_at",
-            "updated_at",
-            "name",
-            "message_count",
-            "entry_count",
-            "first_message",
-            "all_messages_text",
-            "last_message_preview",
-            "model",
-            "has_diagnostics",
-            "diagnostic_count",
-            "last_diagnostic_code",
-            "last_diagnostic_level",
-        )
-        raw = {
-            name: value
-            for name in fields
-            if (value := self._safe_getattr(session, name, _MISSING)) is not _MISSING
-        }
-        if not isinstance(raw.get("session_id"), str):
-            raise TypeError("session listing items require session_id")
-        serialized = self._serialize_json_value(raw)
-        if not isinstance(serialized, dict):
-            raise TypeError("session listing items must serialize to objects")
-        return self._camelize(serialized)
-
-    def _serialize_command_descriptor(self, command: object) -> dict[str, Any]:
-        name = self._safe_getattr(command, "name", None)
-        if not isinstance(name, str) or not name:
-            raise ValueError("command descriptor requires name")
-        description = self._safe_getattr(command, "description", None)
-        source = self._safe_getattr(command, "source", None)
-        payload = {
-            "name": name,
-            "description": description if isinstance(description, str) else None,
-            "source": source if isinstance(source, str) else "",
-            "sourceInfo": self._serialize_command_source_info(
-                self._safe_getattr(command, "source_info", None)
-            ),
-        }
-        invocation_name = self._safe_getattr(command, "invocation_name", None)
-        if isinstance(invocation_name, str) and invocation_name:
-            payload["invocationName"] = invocation_name
-        conflict_group = self._safe_getattr(command, "conflict_group", None)
-        if isinstance(conflict_group, str) and conflict_group:
-            payload["conflictGroup"] = conflict_group
-        argument_hint = self._safe_getattr(command, "argument_hint", None)
-        if isinstance(argument_hint, str) and argument_hint:
-            payload["argumentHint"] = argument_hint
-        return payload
-
-    def _serialize_command_source_info(self, source_info: object) -> dict[str, Any]:
-        path = self._safe_getattr(source_info, "path", "")
-        base_dir = self._safe_getattr(source_info, "base_dir", None)
-        return {
-            "path": self._safe_string(path),
-            "source": self._safe_getattr(source_info, "source", "filesystem"),
-            "scope": self._safe_getattr(source_info, "scope", "project"),
-            "origin": self._safe_getattr(source_info, "origin", "top-level"),
-            "baseDir": self._safe_string(base_dir) if base_dir is not None else None,
-        }
-
     def _get_session_messages(self, session: Any) -> list[object]:
-        context_getter = self._safe_getattr(session, "get_session_context", None)
-        if callable(context_getter):
-            try:
-                context = context_getter()
-            except Exception:
-                context = None
-            else:
-                messages = self._safe_getattr(context, "messages", None)
-                if isinstance(messages, list | tuple):
-                    return list(messages)
-        messages = self._safe_getattr(session, "messages", None)
-        if isinstance(messages, list | tuple):
-            return list(messages)
-        return []
+        """Narrow test seam for validating malformed upstream message logs."""
 
-    def _serialize_model_selection(
-        self, selection: ModelSelection | None
-    ) -> dict[str, str] | None:
-        if selection is None:
-            return None
-        payload = {
-            "provider": selection.provider,
-            "modelId": selection.model_id,
-        }
-        if selection.endpoint_id:
-            payload["endpointId"] = selection.endpoint_id
-        return payload
-
-    def _serialize_model_selection_as_model(
-        self, selection: ModelSelection | None
-    ) -> RpcModel | None:
-        if selection is None:
-            return None
-        provider = self._safe_getattr(selection, "provider", None)
-        model_id = self._safe_getattr(selection, "model_id", None)
-        if not isinstance(provider, str) or not isinstance(model_id, str):
-            provider = self._safe_string(provider) if provider is not None else None
-            model_id = self._safe_string(model_id) if model_id is not None else None
-            if not provider or not model_id:
-                return None
-        payload: RpcModel = {
-            "provider": provider,
-            "id": model_id,
-        }
-        return payload
-
-    def _serialize_model(self, session: Any, model: object) -> RpcModel | None:
-        provider = self._safe_getattr(model, "provider_id", None) or self._safe_getattr(
-            model, "provider", None
-        )
-        model_id = self._safe_getattr(model, "id", None)
-        if not provider or not model_id:
-            return None
-
-        data: RpcModel = {
-            "provider": str(provider),
-            "id": str(model_id),
-        }
-        name = self._safe_getattr(model, "name", None)
-        if isinstance(name, str) and name:
-            data["name"] = name
-        else:
-            data["name"] = str(model_id)
-
-        endpoint = self._resolve_model_endpoint(session, model)
-        if endpoint is not None:
-            api = self._safe_getattr(endpoint, "api", None)
-            if isinstance(api, str) and api:
-                data["api"] = api
-            base_url = self._safe_getattr(endpoint, "base_url", None)
-            if isinstance(base_url, str) and base_url:
-                data["baseUrl"] = base_url
-
-        modalities = self._safe_getattr(model, "input", None)
-        if isinstance(modalities, tuple | list):
-            data["input"] = [str(modality) for modality in modalities]
-
-        context_window = self._safe_getattr(model, "context_window", None)
-        if isinstance(context_window, int):
-            data["contextWindow"] = context_window
-
-        max_tokens = self._safe_getattr(model, "max_tokens", None)
-        if isinstance(max_tokens, int):
-            data["maxTokens"] = max_tokens
-
-        reasoning = self._safe_getattr(model, "reasoning", None)
-        if isinstance(reasoning, bool):
-            data["reasoning"] = reasoning
-
-        pricing = self._safe_getattr(model, "pricing", None)
-        cost = self._serialize_model_cost(pricing)
-        if cost is not None:
-            data["cost"] = cost
-
-        compat = self._safe_getattr(model, "compat", None)
-        serialized_compat = self._serialize_model_compat(compat)
-        if serialized_compat is not None:
-            data["compat"] = serialized_compat
-
-        return data
-
-    def _resolve_model_endpoint(self, session: Any, model: object) -> object | None:
-        provider = self._safe_getattr(model, "provider_id", None) or self._safe_getattr(
-            model, "provider", None
-        )
-        endpoint_id = self._safe_getattr(model, "endpoint_id", None)
-        if not provider or not endpoint_id:
-            return None
-
-        registry = self._safe_getattr(session, "model_registry", None)
-        if registry is None:
-            return None
-
-        ai_registry = self._safe_getattr(registry, "ai_registry", None)
-        getter = self._safe_getattr(ai_registry, "get_endpoint", None)
-        if callable(getter):
-            try:
-                endpoint = getter(provider, endpoint_id)
-            except Exception:
-                endpoint = None
-            if endpoint is not None:
-                return endpoint
-
-        getter = self._safe_getattr(registry, "get_endpoint", None)
-        if callable(getter):
-            try:
-                return getter(provider, endpoint_id)
-            except Exception:
-                return None
-
-        return None
-
-    def _serialize_model_cost(self, pricing: object) -> RpcModelCost | None:
-        if pricing is None:
-            return None
-        input_cost = self._safe_getattr(pricing, "input", None)
-        output_cost = self._safe_getattr(pricing, "output", None)
-        cache_read = self._safe_getattr(pricing, "cache_read", None)
-        cache_write = self._safe_getattr(pricing, "cache_write", None)
-        values = (input_cost, output_cost, cache_read, cache_write)
-        if any(
-            value is None
-            or isinstance(value, bool)
-            or not isinstance(value, int | float)
-            or not isfinite(value)
-            or value < 0
-            for value in values
-        ):
-            return None
-        return {
-            "input": cast(float | int, input_cost),
-            "output": cast(float | int, output_cost),
-            "cacheRead": cast(float | int, cache_read),
-            "cacheWrite": cast(float | int, cache_write),
-        }
-
-    def _serialize_model_compat(self, compat: object) -> dict[str, Any] | None:
-        if compat is None:
-            return None
-        to_raw = self._safe_getattr(compat, "to_raw", None)
-        if callable(to_raw):
-            try:
-                raw = to_raw()
-            except Exception:
-                return None
-            if isinstance(raw, dict) and raw:
-                return raw
-            return None
-        if isinstance(compat, dict) and compat:
-            return compat
-        return None
-
-    def _safe_getattr(self, target: Any, name: str, default: object) -> object:
-        try:
-            return getattr(target, name, default)
-        except Exception:
-            return default
-
-    def _serialize_json_value(self, value: object) -> object:
-        return project_host_value(value, name="rpc_output", surface="RPC")
-
-    def _camelize(self, value: object) -> object:
-        if isinstance(value, dict):
-            return {
-                _snake_to_camel(str(key)): self._camelize(item)
-                for key, item in value.items()
-            }
-        if isinstance(value, list):
-            return [self._camelize(item) for item in value]
-        return value
+        return session_messages(session)
 
     def _extract_last_assistant_text(self) -> str | None:
         getter = getattr(self.session, "get_last_assistant_text", None)
@@ -2504,111 +1940,13 @@ class RpcHost(ModeAdapter):
             return getter(entry_id)
         return None
 
-    def _safe_string(self, value: Any) -> str:
-        if value is None:
-            return ""
-        if isinstance(value, str):
-            return value
-        if isinstance(value, Path):
-            return str(value)
-        if isinstance(value, float) and not isfinite(value):
-            return ""
-        if isinstance(value, bool | int | float):
-            return str(value)
-        return ""
-
-    def _coerce_env(self, env: object) -> list[list[str]] | None:
-        if env is None:
-            return None
-        if isinstance(env, str) or not isinstance(env, list):
-            raise ValueError("env must contain 2-item string pairs")
-        normalized: list[list[str]] = []
-        for pair in env:
-            if (
-                isinstance(pair, str)
-                or not isinstance(pair, list | tuple)
-                or len(pair) != 2
-            ):
-                raise ValueError("env must contain 2-item string pairs")
-            if not all(isinstance(part, str) for part in pair):
-                raise ValueError("env must contain 2-item string pairs")
-            normalized.append([pair[0], pair[1]])
-        return normalized
-
-    def _require_mode(self, payload: dict[str, Any], key: str) -> str:
-        value = payload.get(key)
-        if value in {"all", "one-at-a-time"}:
-            return value
-        raise ValueError(f"{key} must be 'all' or 'one-at-a-time'")
-
-    def _require_string(self, payload: dict[str, Any], *keys: str) -> str:
-        for key in keys:
-            value = payload.get(key)
-            if isinstance(value, str) and value:
-                return value
-        if not keys:
-            raise ValueError("missing required string field")
-        raise ValueError(f"missing required string field: {keys[0]}")
-
-    def _optional_string(self, payload: dict[str, Any], *keys: str) -> str | None:
-        for key in keys:
-            value = payload.get(key)
-            if value is None:
-                continue
-            if isinstance(value, str):
-                return value
-            raise ValueError(f"{key} must be a string")
-        return None
-
-    def _optional_number(self, payload: dict[str, Any], *keys: str) -> float | None:
-        for key in keys:
-            value = payload.get(key)
-            if value is None:
-                continue
-            if isinstance(value, int | float) and not isinstance(value, bool):
-                try:
-                    normalized = float(value)
-                except OverflowError as exc:
-                    raise ValueError(f"{key} must be a finite number") from exc
-                if isfinite(normalized):
-                    return normalized
-                raise ValueError(f"{key} must be a finite number")
-            raise ValueError(f"{key} must be a number")
-        return None
-
-    def _optional_int(self, payload: dict[str, Any], *keys: str) -> int | None:
-        for key in keys:
-            value = payload.get(key)
-            if value is None:
-                continue
-            if isinstance(value, int) and not isinstance(value, bool):
-                return value
-            raise ValueError(f"{key} must be an integer")
-        return None
-
-    def _optional_bool(self, payload: dict[str, Any], *keys: str) -> bool | None:
-        for key in keys:
-            value = payload.get(key)
-            if value is None:
-                continue
-            if isinstance(value, bool):
-                return value
-            raise ValueError(f"{key} must be a boolean")
-        return None
-
     def _write_response_success(
         self, *, command: str, id: str | None = None, data: object = _MISSING
     ) -> None:
-        payload: dict[str, object] = {
-            "type": "response",
-            "command": command,
-            "success": True,
-        }
-        if id is not None:
-            payload["id"] = id
-        if data is not _MISSING:
-            payload["data"] = data
-        self._write_json_line(payload)
+        if data is _MISSING:
+            self._rpc_output.success(command=command, request_id=id)
+        else:
+            self._rpc_output.success(command=command, request_id=id, data=data)
 
     def _write_response_error(
         self,
@@ -2618,71 +1956,15 @@ class RpcHost(ModeAdapter):
         id: str | None = None,
         code: str | None = None,
     ) -> None:
-        payload: dict[str, object] = {
-            "type": "response",
-            "command": command,
-            "success": False,
-            "error": error,
-        }
-        if id is not None:
-            payload["id"] = id
-        if code is not None:
-            payload["errorCode"] = code
-            payload["errorInfo"] = {
-                "code": code,
-                "message": error,
-                "command": command,
-            }
-        self._write_json_line(payload)
+        self._rpc_output.error(
+            command=command,
+            error=error,
+            request_id=id,
+            code=code,
+        )
 
     def _write_json_line(self, payload: object) -> None:
-        def _safe_extract_fallback_fields(
-            item: object,
-        ) -> tuple[str | None, str | None]:
-            if not isinstance(item, dict):
-                return None, None
-            return (
-                _strict_fallback_string(item.get("id")),
-                _strict_fallback_string(item.get("command")),
-            )
-
-        def _strict_fallback_string(value: object) -> str | None:
-            if type(value) is not str:
-                return None
-            try:
-                projected = project_host_value(
-                    value, name="rpc_fallback", surface="RPC"
-                )
-            except Exception:
-                return None
-            return projected if isinstance(projected, str) else None
-
-        try:
-            serialized = self._serialize_json_value(payload)
-            line = json.dumps(serialized, ensure_ascii=False)
-        except Exception:
-            fallback_id, fallback_command = _safe_extract_fallback_fields(payload)
-            fallback_payload: dict[str, object] = {
-                "type": "response",
-                "command": "response",
-                "success": False,
-                "error": "Failed to serialize RPC output.",
-            }
-            if fallback_id is not None:
-                fallback_payload["id"] = fallback_id
-            if fallback_command is not None:
-                fallback_payload["command"] = fallback_command
-            line = json.dumps(
-                project_host_value(
-                    fallback_payload, name="rpc_fallback", surface="RPC"
-                ),
-                ensure_ascii=False,
-                allow_nan=False,
-            )
-        self.stdout.write(line + "\n")
-        flush = getattr(self.stdout, "flush", None)
-        if callable(flush):
-            flush()
+        self._rpc_output.write(payload)
 
 
 async def run_rpc_host(
@@ -2749,30 +2031,4 @@ def _package_lifecycle_failure(record: dict[str, Any]) -> str | None:
     )
 
 
-def _snake_to_camel(value: str) -> str:
-    if "_" not in value:
-        return value
-    head, *tail = value.split("_")
-    return head + "".join(part[:1].upper() + part[1:] for part in tail)
-
-
-def _is_unknown_model(payload: RpcModel | dict[str, object] | None) -> bool:
-    if not isinstance(payload, dict):
-        return False
-    provider = payload.get("provider")
-    model_id = payload.get("id")
-    return provider == "unknown" and model_id == "unknown"
-
-
-__all__ = [
-    "RpcEventProjection",
-    "RpcDiagnosticsProjection",
-    "RpcExtensionUIContext",
-    "RpcHost",
-    "RpcModel",
-    "RpcModelCost",
-    "RpcSessionState",
-    "STANDARD_AGENT_RPC_EVENT_PROJECTION",
-    "STANDARD_RPC_DIAGNOSTICS_PROJECTION",
-    "run_rpc_host",
-]
+__all__ = ["RpcHost", "run_rpc_host"]
