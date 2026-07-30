@@ -7,6 +7,7 @@ from io import StringIO
 import pytest
 
 from loushang.harness.host.jsonl_command_host import JsonlCommand
+from loushang.harness.host.product_host import ProductHostTaskTracker
 from loushang.harness.host.rpc import RpcHost, run_rpc_host
 from loushang.harness.host.rpc.arguments import (
     optional_env_pairs,
@@ -14,8 +15,12 @@ from loushang.harness.host.rpc.arguments import (
     require_string,
 )
 from loushang.harness.host.rpc.commands import (
+    RpcBashMaintenanceCommands,
     RpcDiagnosticsCommands,
+    RpcModelSettingsCommands,
     RpcPackageCommands,
+    RpcSessionLifecycleCommands,
+    RpcTranscriptCommands,
 )
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.projections import (
@@ -113,6 +118,28 @@ def test_rpc_command_groups_declare_their_complete_legacy_bindings() -> None:
         get_session=object,
         output=output,
     )
+    lifecycle = RpcSessionLifecycleCommands(
+        runtime=object(),
+        get_session=object,
+        operations=object(),  # type: ignore[arg-type]
+        output=output,
+    )
+    model_settings = RpcModelSettingsCommands(
+        get_session=object,
+        get_operations=object,  # type: ignore[arg-type]
+        output=output,
+    )
+    transcript = RpcTranscriptCommands(
+        get_session=object,
+        get_messages=lambda _session: [],
+        output=output,
+    )
+    bash_maintenance = RpcBashMaintenanceCommands(
+        get_session=object,
+        operations=object(),  # type: ignore[arg-type]
+        output=output,
+        task_tracker=ProductHostTaskTracker(),
+    )
 
     assert tuple(command for command, _handler in diagnostics.bindings()) == (
         "get_diagnostics",
@@ -131,6 +158,39 @@ def test_rpc_command_groups_declare_their_complete_legacy_bindings() -> None:
         "remove_package",
         "uninstall_package",
     }
+    assert tuple(command for command, _handler in lifecycle.bindings()) == (
+        "list_sessions",
+        "new_session",
+        "switch_session",
+        "fork",
+        "clone",
+    )
+    assert tuple(command for command, _handler in model_settings.bindings()) == (
+        "set_model",
+        "get_available_models",
+        "cycle_model",
+        "set_active_tools",
+        "set_thinking_level",
+        "cycle_thinking_level",
+        "set_steering_mode",
+        "set_follow_up_mode",
+        "get_session_stats",
+        "set_session_name",
+    )
+    assert tuple(command for command, _handler in transcript.bindings()) == (
+        "get_messages",
+        "get_last_assistant_text",
+        "get_fork_messages",
+        "export_html",
+    )
+    assert tuple(command for command, _handler in bash_maintenance.bindings()) == (
+        "bash",
+        "abort_bash",
+        "compact",
+        "set_auto_retry",
+        "abort_retry",
+        "set_auto_compaction",
+    )
 
 
 def test_rpc_package_commands_resolve_the_current_rebound_session() -> None:

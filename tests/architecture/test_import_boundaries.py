@@ -841,8 +841,8 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     assert "loushang.channel" not in binding_source
     assert "SessionRpcOperationBinding" in rpc_source
     assert "_rpc_operations.prompt_request" in rpc_source
-    assert "_rpc_operations.new_session" in rpc_source
-    assert "_rpc_operations.compact" in rpc_source
+    assert "await self._operations.new_session" in rpc_source
+    assert "await self._operations.compact" in rpc_source
     assert "SessionOperationAvailability" in operations_source
     assert "SessionOperationRuntime" in rpc_source
     assert "SessionWorkRuntime" in channel_adapter_source
@@ -967,8 +967,12 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
     command_root = rpc_root / "commands"
     assert {path.name for path in command_root.glob("*.py")} == {
         "__init__.py",
+        "bash_maintenance.py",
         "diagnostics.py",
+        "model_settings.py",
         "packages.py",
+        "session_lifecycle.py",
+        "transcript.py",
     }
     for command_module in command_root.glob("*.py"):
         imports = set(_absolute_imports(command_module))

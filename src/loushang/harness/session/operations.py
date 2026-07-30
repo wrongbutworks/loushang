@@ -105,8 +105,9 @@ class SessionOperationRuntime:
     """Execute admitted session control groups through one explicit port.
 
     The runtime does not own background task scheduling, request validation,
-    error schema, model selection, or output projection.  A host may schedule
-    ``prompt`` itself while preserving the preflight callback contract.
+    error schema, model selection, or output projection. ``prompt`` is the
+    settled turn operation: it submits through the bound control and waits for
+    the Session to become idle. Hosts must not add a second idle wait after it.
     """
 
     def __init__(

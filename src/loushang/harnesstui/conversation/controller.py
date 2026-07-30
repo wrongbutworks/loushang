@@ -179,7 +179,7 @@ class ConversationUiController:
             else:
                 operations.follow_up(text, images=normalized_images)
             return HostActionResult()
-        except (AttributeError, SessionOperationUnavailableError) as error:
+        except SessionOperationUnavailableError as error:
             self._record_problem(
                 f"{self.problem_code_prefix}_{failure_code.removeprefix('conversation_ui_')}",
                 message=str(error),

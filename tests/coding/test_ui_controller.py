@@ -391,15 +391,19 @@ def test_controller_uses_shared_session_steering_primitive() -> None:
     assert session.calls == ["use a smaller diff"]
 
 
-def test_controller_reports_when_steering_is_unavailable() -> None:
+def test_controller_does_not_mask_attribute_error_as_unavailable() -> None:
     from loushang.coding.ui.product_binding import build_coding_ui_controller
 
-    class NoSteerSession:
-        pass
+    class BrokenSteerSession:
+        def steer(self, text: str, images=None) -> None:
+            del text, images
+            raise AttributeError("steering implementation bug")
 
-    result = asyncio.run(build_coding_ui_controller(session=NoSteerSession()).steer("wait"))
+    result = asyncio.run(
+        build_coding_ui_controller(session=BrokenSteerSession()).steer("wait")
+    )
 
-    assert result.error_message == "Steering is unavailable for this session."
+    assert result.error_message == "steering implementation bug"
 
 
 def test_controller_sends_follow_up_when_session_supports_it() -> None:

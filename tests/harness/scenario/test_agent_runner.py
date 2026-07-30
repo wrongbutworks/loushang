@@ -369,3 +369,51 @@ def test_agent_session_adapter_does_not_duplicate_assistant_message_events(
         "assistant.message",
         "run.ended",
     ]
+
+
+def test_agent_session_adapter_reads_assistant_only_after_prompt_settles() -> None:
+    from loushang.harness.scenario import AgentSessionWorkflowAdapter
+
+    class BlockingSession:
+        def __init__(self) -> None:
+            self.messages: list[object] = []
+            self.prompt_started = asyncio.Event()
+            self.release_prompt = asyncio.Event()
+
+        async def prompt(self, text: str) -> None:
+            self.messages.append(SimpleNamespace(role="user", content=text))
+            self.prompt_started.set()
+            await self.release_prompt.wait()
+            self.messages.append(
+                SimpleNamespace(role="assistant", content="settled response")
+            )
+
+        async def wait_for_idle(self) -> None:
+            raise AssertionError("prompt already owns idle settlement")
+
+    async def scenario() -> None:
+        session = BlockingSession()
+        adapter = AgentSessionWorkflowAdapter(session)
+
+        prompt_task = asyncio.create_task(adapter.run_prompt("hello"))
+        await session.prompt_started.wait()
+        await asyncio.sleep(0)
+
+        assert prompt_task.done() is False
+        assert [
+            message.content
+            for message in session.messages
+            if message.role == "assistant"
+        ] == []
+        assert [event.type for event in adapter.events()] == ["run.started"]
+
+        session.release_prompt.set()
+
+        assert await prompt_task == "settled response"
+        assert [event.type for event in adapter.events()] == [
+            "run.started",
+            "assistant.message",
+            "run.ended",
+        ]
+
+    asyncio.run(scenario())

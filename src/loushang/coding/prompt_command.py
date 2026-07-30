@@ -125,7 +125,6 @@ async def run_prompt_plan_command(
             session_id=session_identity(session),
             before_turn=before_turn,
             after_turn=after_turn,
-            wait_for_idle_after_prompt=True,
         )
 
     return await run_agent_plain_prompt_plan(

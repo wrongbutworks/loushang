@@ -105,8 +105,6 @@ class AgentPlainPromptSession(Protocol):
         listener: Callable[[dict[str, Any]], None],
     ) -> Callable[[], None]: ...
 
-    def wait_for_idle(self) -> Awaitable[None]: ...
-
 
 STANDARD_AGENT_HISTORY_DISPOSITIONS: dict[str, HistoryRecordDisposition] = {
     AGENT_MESSAGE_KIND: "render",
@@ -525,7 +523,6 @@ async def run_agent_plain_prompt(
                 prepare=prepare,
                 subscribe=lambda: session.subscribe(event_projection.handle),
                 submit=submit,
-                wait_for_idle=session.wait_for_idle,
                 capture_failure_state=lambda: event_projection.last_error_message,
                 resolve_failure=resolve_failure,
                 render_user=renderer.render_user,

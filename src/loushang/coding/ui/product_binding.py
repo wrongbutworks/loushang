@@ -11,6 +11,8 @@ from loushang.harness.commands import CommandEffectKind
 from loushang.harness.host.types import HostActionResult
 from loushang.harness.session import (
     SessionControlPort,
+    SessionOperationAvailability,
+    SessionOperationResolver,
     session_operation_resolver,
 )
 from loushang.harnesstui.commands.catalog import ConversationCommandCatalog
@@ -36,24 +38,13 @@ def build_coding_ui_controller(
     runtime: Any | None = None,
     verbose: bool = False,
 ) -> ConversationUiController:
-    def current_session() -> Any:
-        if runtime is not None:
-            getter = getattr(runtime, "get_current_session", None)
-            if callable(getter):
-                current = getter()
-                if current is not None:
-                    return current
-            current = getattr(runtime, "current_session", None)
-            if current is not None:
-                return current
-        return session
+    get_operations = build_coding_session_operation_resolver(
+        session=session,
+        runtime=runtime,
+    )
 
-    def current_control() -> SessionControlPort:
-        current = current_session()
-        return cast(
-            SessionControlPort,
-            getattr(current, "session_control", current),
-        )
+    def current_session() -> Any:
+        return _current_coding_session(session=session, runtime=runtime)
 
     async def dispatch_session_command(
         intent: object,
@@ -101,7 +92,7 @@ def build_coding_ui_controller(
             abort()
 
     return build_standard_conversation_ui_controller(
-        get_operations=session_operation_resolver(current_control),
+        get_operations=get_operations,
         dispatch_session_command=dispatch_session_command,
         execute_bash=execute_bash,
         abort_command=abort_command,
@@ -109,6 +100,43 @@ def build_coding_ui_controller(
         problem_code_prefix="coding_ui",
         problem_logger=_LOG,
     )
+
+
+def build_coding_session_operation_resolver(
+    *,
+    session: Any,
+    runtime: Any | None = None,
+    availability: SessionOperationAvailability | None = None,
+) -> SessionOperationResolver:
+    """Bind shared operations to Coding's dynamically current Session."""
+
+    def current_session() -> Any:
+        return _current_coding_session(session=session, runtime=runtime)
+
+    def current_control() -> SessionControlPort:
+        current = current_session()
+        return cast(
+            SessionControlPort,
+            getattr(current, "session_control", current),
+        )
+
+    return session_operation_resolver(
+        current_control,
+        availability=availability,
+    )
+
+
+def _current_coding_session(*, session: Any, runtime: Any | None) -> Any:
+    if runtime is not None:
+        getter = getattr(runtime, "get_current_session", None)
+        if callable(getter):
+            current = getter()
+            if current is not None:
+                return current
+        current = getattr(runtime, "current_session", None)
+        if current is not None:
+            return current
+    return session
 
 
 def _coding_result_from_command_execution(
@@ -168,6 +196,7 @@ def image_parts_from_prompt_attachments(
 
 
 __all__ = [
+    "build_coding_session_operation_resolver",
     "build_coding_ui_controller",
     "build_screen_coding_action_host",
     "image_parts_from_prompt_attachments",

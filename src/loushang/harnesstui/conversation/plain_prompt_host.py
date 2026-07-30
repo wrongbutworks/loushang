@@ -23,13 +23,14 @@ class PlainPromptHostPorts(Generic[FailureStateT]):
     """Prepared product effects consumed by the one-shot prompt host.
 
     Session, model, raw event, work metadata, and failure interpretation stay
-    behind these callbacks. The shared host only owns ordering and exit state.
+    behind these callbacks. ``submit`` returns only after the Product-owned
+    turn operation has settled; the shared host does not independently wait
+    on the Session. The shared host only owns ordering and exit state.
     """
 
     prepare: Callable[[], Awaitable[object]]
     subscribe: Callable[[], Cleanup]
     submit: Callable[[str, int, int], Awaitable[None]]
-    wait_for_idle: Callable[[], Awaitable[None]]
     capture_failure_state: Callable[[], FailureStateT]
     resolve_failure: Callable[[FailureStateT], str | None]
     render_user: Callable[[str], None]
@@ -267,7 +268,6 @@ async def _run_plain_prompt_turn(
     previous_failure = run.ports.capture_failure_state()
     run.ports.render_user(prompt)
     await run.ports.submit(prompt, turn_index, turn_count)
-    await run.ports.wait_for_idle()
     if run.ports.resolve_failure(previous_failure) is not None:
         return 1
     run.ports.render_worked(run.now() - started_at)

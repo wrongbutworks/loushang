@@ -554,7 +554,11 @@ Implementation status (2026-07-30): implemented. TUI and legacy RPC now use
 current-Session operation resolvers; turn-only abort and the TUI stop composite
 are distinct; approval presentation uses the explicit interaction port and a
 generation-safe lease; pending queue projection no longer discovers Session
-methods dynamically.
+methods dynamically. Shared prompt operations have one settled-return
+contract across TUI, Scenario, and Work adapters, verified by a reusable
+Product contract suite. Legacy RPC lifecycle, model/settings, transcript, and
+Bash/maintenance commands are separate command groups while preserving the
+existing JSONL wire.
 
 1. Keep shared primitive input/queue/lifecycle mutations in
    `SessionOperationRuntime`; do not move command execution, Bash, catalogs, or

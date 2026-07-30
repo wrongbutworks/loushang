@@ -27,7 +27,12 @@ SessionIdReader = Callable[[], str]
 
 
 class SessionPromptPort(Protocol):
-    """Session operations required by the reusable Work binding."""
+    """Session operations required by the reusable Work binding.
+
+    ``prompt`` returns after the submitted turn has settled. ``wait_for_idle``
+    exists for independently initiated cancellation settlement, not as a
+    second step after an ordinary prompt.
+    """
 
     def subscribe_runtime_events(
         self,
@@ -196,7 +201,6 @@ class SessionTurnExecutor:
     turns: tuple[SessionWorkTurn, ...] = ()
     before_turn: SessionTurnHook | None = None
     after_turn: SessionTurnHook | None = None
-    wait_for_idle_after_prompt: bool = False
 
     async def execute(
         self,
@@ -229,8 +233,6 @@ class SessionTurnExecutor:
                     len(messages),
                 )
                 await _prompt_turn(self.session, active_turn)
-                if self.wait_for_idle_after_prompt:
-                    await self.session.wait_for_idle()
                 await _call_turn_hook(
                     self.after_turn,
                     active_turn,
@@ -420,7 +422,6 @@ class SessionWorkRuntime:
         run_id: str | None = None,
         before_turn: SessionTurnHook | None = None,
         after_turn: SessionTurnHook | None = None,
-        wait_for_idle_after_prompt: bool = False,
     ) -> WorkRun:
         resolved_turns = tuple(turns)
         if not resolved_turns:
@@ -447,7 +448,6 @@ class SessionWorkRuntime:
             turns=resolved_turns,
             before_turn=before_turn,
             after_turn=after_turn,
-            wait_for_idle_after_prompt=wait_for_idle_after_prompt,
         )
         first_spec = first.to_run_spec(profile=self.profile, run_id=run_id)
         spec = WorkRunSpec(
@@ -477,7 +477,6 @@ class SessionWorkRuntime:
         turns: tuple[SessionWorkTurn, ...] = (),
         before_turn: SessionTurnHook | None = None,
         after_turn: SessionTurnHook | None = None,
-        wait_for_idle_after_prompt: bool = False,
     ) -> SessionTurnExecutor:
         return SessionTurnExecutor(
             session=self.session,
@@ -487,7 +486,6 @@ class SessionWorkRuntime:
             turns=turns,
             before_turn=before_turn,
             after_turn=after_turn,
-            wait_for_idle_after_prompt=wait_for_idle_after_prompt,
         )
 
 
@@ -567,7 +565,6 @@ class SessionWorkHostPort:
             tuple(require_session_work_turn(turn) for turn in turns),
             session_id=session_id,
             after_turn=after_turn,
-            wait_for_idle_after_prompt=True,
         )
 
 
