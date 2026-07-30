@@ -105,9 +105,9 @@ standard Agent-session mapping and JSON projection to
 `harness.session.runtime_event_views`. `harness.events.recording_policy` owns
 the neutral transcript-write decision. There is no Coding event facade;
 Product/work mapping and final presentation remain in their Product owners.
-JSON PrintMode and RpcMode subscribe to `subscribe_runtime_events()` when the
-session offers it. The old `subscribe()` path remains only for text display and
-compatibility session doubles.
+The JSON plain host and Harness RPC host subscribe to
+`subscribe_runtime_events()` when the session offers it. The old `subscribe()`
+path remains only for text display and compatibility session doubles.
 
 ## Exclusions
 

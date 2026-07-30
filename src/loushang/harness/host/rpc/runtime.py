@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Protocol, TextIO, cast
 
@@ -101,6 +101,78 @@ class _RpcHostRuntime(Protocol):
     def find_all_indexed_session_summaries(self, query: SessionQuery) -> object: ...
 
 
+class _RpcSessionBindingPort(Protocol):
+    """Session event and presentation capabilities required by the RPC host."""
+
+    def bind_extension_ui(self, context: RpcExtensionUIContext) -> None: ...
+
+    def subscribe(
+        self,
+        *,
+        runtime_listener: Callable[[RuntimeEvent[object]], None],
+        session_listener: Callable[[object], None],
+    ) -> Callable[[], None]: ...
+
+    def cwd(self) -> str: ...
+
+    def tool_definition_resolver(self) -> ToolDefinitionResolver | None: ...
+
+
+class _DynamicRpcSessionBinding:
+    """Keep compatibility reflection at the Product composition edge."""
+
+    def __init__(self, session: object) -> None:
+        self._session = session
+
+    def bind_extension_ui(self, context: RpcExtensionUIContext) -> None:
+        setter = getattr(self._session, "set_extension_ui_context", None)
+        if callable(setter):
+            setter(context)
+
+    def subscribe(
+        self,
+        *,
+        runtime_listener: Callable[[RuntimeEvent[object]], None],
+        session_listener: Callable[[object], None],
+    ) -> Callable[[], None]:
+        subscribe_runtime_events = getattr(
+            self._session, "subscribe_runtime_events", None
+        )
+        if callable(subscribe_runtime_events):
+            unsubscribe = subscribe_runtime_events(runtime_listener)
+        else:
+            subscribe = getattr(self._session, "subscribe", None)
+            if not callable(subscribe):
+                raise TypeError("RPC session does not expose an event subscription")
+            unsubscribe = subscribe(session_listener)
+        if not callable(unsubscribe):
+            raise TypeError("RPC session subscription did not return an unsubscribe hook")
+        return unsubscribe
+
+    def cwd(self) -> str:
+        session_manager = getattr(self._session, "session_manager", None)
+        get_cwd = getattr(session_manager, "get_cwd", None)
+        if callable(get_cwd):
+            try:
+                return str(get_cwd())
+            except Exception:
+                return ""
+        return ""
+
+    def tool_definition_resolver(self) -> ToolDefinitionResolver | None:
+        getter = getattr(self._session, "get_tool_definition", None)
+        if not callable(getter):
+            return None
+
+        def resolve(name: str):
+            try:
+                return getter(name)
+            except Exception:
+                return None
+
+        return resolve
+
+
 class RpcHost(ModeAdapter):
     """Product-neutral JSONL RPC host for an active Agent session."""
 
@@ -131,7 +203,10 @@ class RpcHost(ModeAdapter):
         self.event_select = tuple(event_projection.normalize_select(event_select))
         self.render_tool_events = render_tool_events
         self._host_runtime = ProductHostRuntime(stdin=stdin)
-        self.session = self._require_current_session()
+        self.session: Any = self._require_current_session()
+        self._session_binding: _RpcSessionBindingPort = _DynamicRpcSessionBinding(
+            self.session
+        )
         self._session_operation_resolver = self._build_session_operation_resolver()
         self._rpc_operations = SessionRpcOperationBinding(
             get_operations=self._require_session_operations,
@@ -139,11 +214,11 @@ class RpcHost(ModeAdapter):
         )
         self._tool_render_runtime: ToolRenderRuntime | None = None
         self._tool_definition_resolver: ToolDefinitionResolver | None = None
-        self._configure_tool_rendering(self.session)
-        self._unsubscribe = self._subscribe_to_events(self.session)
+        self._configure_tool_rendering()
+        self._unsubscribe = self._subscribe_to_events()
         self._task_tracker = ProductHostTaskTracker()
         self.extension_ui_context = RpcExtensionUIContext(self._write_json_line)
-        self._bind_extension_ui_context(self.session)
+        self._bind_extension_ui_context()
         self._diagnostics_commands = RpcDiagnosticsCommands(
             runtime=runtime,
             get_session=lambda: self.session,
@@ -280,7 +355,7 @@ class RpcHost(ModeAdapter):
         self.stderr.write(f"Error: {error}\n")
 
     def _command_routes(self) -> tuple[JsonlCommandRoute, ...]:
-        """Bind the declared Product RPC surface to the Channel router.
+        """Bind the declared Product RPC surface to the Harness JSONL router.
 
         This explicit table replaces the former ``getattr`` convention.  The
         route registry is transport-neutral; response projection is handled by
@@ -371,17 +446,16 @@ class RpcHost(ModeAdapter):
         )
 
 
-    def _bind_session(self, session: Any) -> None:
+    def _bind_session(self, session: object) -> None:
         self._unsubscribe()
         self.session = session
-        self._configure_tool_rendering(session)
-        self._unsubscribe = self._subscribe_to_events(session)
-        self._bind_extension_ui_context(session)
+        self._session_binding = _DynamicRpcSessionBinding(session)
+        self._configure_tool_rendering()
+        self._unsubscribe = self._subscribe_to_events()
+        self._bind_extension_ui_context()
 
-    def _bind_extension_ui_context(self, session: Any) -> None:
-        setter = getattr(session, "set_extension_ui_context", None)
-        if callable(setter):
-            setter(self.extension_ui_context)
+    def _bind_extension_ui_context(self) -> None:
+        self._session_binding.bind_extension_ui(self.extension_ui_context)
 
     def _handle_event(self, event: object) -> None:
         if not isinstance(event, dict):
@@ -401,7 +475,7 @@ class RpcHost(ModeAdapter):
                     )
                 )
 
-    def _subscribe_to_events(self, session: Any):
+    def _subscribe_to_events(self) -> Callable[[], None]:
         """Prefer the common runtime event stream when one is available.
 
         Products may still expose a lower-level session event stream when no
@@ -409,10 +483,10 @@ class RpcHost(ModeAdapter):
         payload vocabulary.
         """
 
-        subscribe_runtime_events = getattr(session, "subscribe_runtime_events", None)
-        if callable(subscribe_runtime_events):
-            return subscribe_runtime_events(self._handle_runtime_event)
-        return session.subscribe(self._handle_event)
+        return self._session_binding.subscribe(
+            runtime_listener=self._handle_runtime_event,
+            session_listener=self._handle_event,
+        )
 
     def _handle_runtime_event(self, event: RuntimeEvent[object]) -> None:
         for projected_event in self._event_projection.project_runtime_event_to_json_views(
@@ -428,16 +502,18 @@ class RpcHost(ModeAdapter):
                     self._event_projection.shape_runtime_event_view(projected_event)
                 )
 
-    def _configure_tool_rendering(self, session: Any) -> None:
+    def _configure_tool_rendering(self) -> None:
         if not self.render_tool_events:
             self._tool_render_runtime = None
             self._tool_definition_resolver = None
             return
-        self._tool_render_runtime = ToolRenderRuntime(cwd=_session_cwd(session))
-        self._tool_definition_resolver = _tool_definition_resolver(session)
+        self._tool_render_runtime = ToolRenderRuntime(cwd=self._session_binding.cwd())
+        self._tool_definition_resolver = (
+            self._session_binding.tool_definition_resolver()
+        )
 
 
-    def _require_current_session(self) -> Any:
+    def _require_current_session(self) -> object:
         session = self.runtime.get_current_session()
         if session is None:
             raise RuntimeError("RPC mode requires an active session")
@@ -470,7 +546,7 @@ class RpcHost(ModeAdapter):
     def _require_session_operations(self) -> SessionOperationRuntime:
         return self._session_operation_resolver()
 
-    def _get_session_messages(self, session: Any) -> list[object]:
+    def _get_session_messages(self, session: object) -> list[object]:
         """Narrow test seam for validating malformed upstream message logs."""
 
         return session_messages(session)
@@ -529,31 +605,5 @@ async def run_rpc_host(
         diagnostics_projection=diagnostics_projection,
     )
     return await mode.run()
-
-
-def _session_cwd(session: Any) -> str:
-    session_manager = getattr(session, "session_manager", None)
-    get_cwd = getattr(session_manager, "get_cwd", None)
-    if callable(get_cwd):
-        try:
-            return str(get_cwd())
-        except Exception:
-            return ""
-    return ""
-
-
-def _tool_definition_resolver(session: Any) -> ToolDefinitionResolver | None:
-    getter = getattr(session, "get_tool_definition", None)
-    if not callable(getter):
-        return None
-
-    def resolve(name: str):
-        try:
-            return getter(name)
-        except Exception:
-            return None
-
-    return resolve
-
 
 __all__ = ["RpcHost", "run_rpc_host"]

@@ -44,23 +44,22 @@ The runtime supplies neither an Agent session protocol nor a generic command
 registry. A Product that needs Agent controls binds its own `SessionControlPort`
 or equivalent outside this package.
 
-## Coding Adoption
+## Current Adoption
 
-Coding preserves `ModeAction`, `ModeAdapter`, and `dispatch_mode_action` as
-compatibility names. Their generic lifecycle semantics delegate to
-`harness.host.product_host`; Coding retains `ModeConfig`, mode selection, Print
-mode construction, work-specific options, and its `ModeState` projection.
+`ModeAction`, `ModeAdapter`, `ModeConfig`, `ModeState`, and
+`dispatch_mode_action` are Harness Host contracts. Coding retains mode
+selection and Product composition but no compatibility definitions.
 
 Coding CLI resolves injected or process stdio through `ProductHostStreams` and
 uses `dispose_product_host(runtime, session)` for the generic shutdown fallback.
 Its `--mode`, `--tui`, `--render-tool-events`, and command flags remain Coding
 grammar: Channel deliberately supplies no universal CLI parser.
 
-`ChannelHost` uses `ProductHostRuntime` for standard Channel JSONL input.
-`RpcMode` uses the same input runtime and task tracker, but remains the owner
-of Pi command names, JSON responses, extension UI, model/tool/Bash/package
-commands, Coding event projection, and rendered-tool payloads. Its private
-background-task drain hook remains as a thin compatibility forwarder.
+`ChannelHost` uses `ProductHostRuntime` for Channel-envelope JSONL input.
+`harness.host.rpc.RpcHost` uses the same input runtime and task tracker for the
+separate Product command wire. RPC event and diagnostic vocabulary remain
+injected Product projections; command routing, response framing, extension UI
+correlation, and background-task draining have no Coding compatibility owner.
 
 ## Dependency Rule
 
@@ -80,8 +79,8 @@ schema.
   task draining.
 - Channel JSONL host tests prove the standard operation protocol still runs
   through the common input lifecycle.
-- Coding RPC, Print mode, and Channel adapter regressions preserve existing
-  commands, Pi projection, and background task behavior.
+- Product RPC, plain-host, and Channel adapter regressions preserve existing
+  commands, projections, and background task behavior.
 - Architecture tests prohibit Product, Channel, Work, or model-runtime imports
   from the runtime and
-  require both ChannelHost and RpcMode to adopt it.
+  require both ChannelHost and RpcHost to adopt it.

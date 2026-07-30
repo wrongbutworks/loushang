@@ -847,7 +847,8 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     assert "SessionOperationRuntime" in rpc_source
     assert "SessionWorkRuntime" in channel_adapter_source
     assert "capability-grouped" in boundary
-    assert "must not import Harness" in boundary
+    assert "Harness and Work never import Channel" in boundary
+    assert "harness.host.rpc" in boundary
 
 
 def test_phase_zero_hosts_share_current_session_operations_and_explicit_approval() -> (
@@ -895,7 +896,8 @@ def test_jsonl_command_router_is_neutral_and_rpc_uses_explicit_routes() -> None:
     assert "loushang.work" not in router_source
     assert "JsonlCommandRouter(" in rpc_source
     assert 'getattr(self, f"_handle_{command.command_type}_command")' not in rpc_source
-    assert "Host command-routing slice" in boundary
+    assert "Product command JSONL" in boundary
+    assert "Current Ownership" in boundary
 
 
 def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
@@ -916,7 +918,7 @@ def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
     assert "ProductHostRuntime" in rpc_source
     assert "ProductHostTaskTracker" in rpc_source
     assert "Product Binding" in boundary
-    assert "Coding Adoption" in boundary
+    assert "Current Adoption" in boundary
     assert "Dependency Rule" in boundary
 
 
@@ -992,9 +994,11 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
     private_protocols = {
         "bash_maintenance.py": "_BashSession",
         "command_catalog.py": "_CommandCatalogSession",
+        "diagnostics.py": "_DiagnosticsQueries",
         "model_settings.py": "_ModelSettingsSession",
+        "packages.py": "_PackageCapabilities",
         "session_lifecycle.py": "_SessionLifecycleRuntime",
-        "transcript.py": "_TranscriptSession",
+        "transcript.py": "_TranscriptQueries",
     }
     for module_name, protocol_name in private_protocols.items():
         source = (command_root / module_name).read_text(encoding="utf-8")
@@ -1011,6 +1015,7 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
         "docs/internals/architecture/drafts/application-service-refactor.md"
     ).read_text(encoding="utf-8")
     assert "class _RpcHostRuntime(Protocol):" in runtime_source
+    assert "class _RpcSessionBindingPort(Protocol):" in runtime_source
     assert "runtime: Any" not in runtime_source
     assert 'getattr(self.runtime, "get_current_session"' not in runtime_source
     assert 'getattr(self.runtime, "session"' not in runtime_source

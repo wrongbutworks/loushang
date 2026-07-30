@@ -168,17 +168,20 @@ planning, work event persistence, or AI provider behavior.
   defines the shared parsing and callback delegation for selected session
   commands while Products retain descriptor order, wording, result projection,
   local commands, and UI/transport behavior.
-- [Session RPC Operation Cutover Boundary](session-rpc-operation-boundary.md)
+- [Session RPC Operation Boundary](session-rpc-operation-boundary.md) records
+  the current Product command wire, command-group, dynamic-session, and
+  Channel-separation ownership.
 - [Session Interaction And Command Collapse Boundary](session-interaction-command-collapse-boundary.md)
-  defines how Channel command routing and Harness session operations replace
-  Coding RPC glue without changing Coding's public JSONL contract.
+  records the historical UI/command composition slice that preceded the final
+  Harness RPC cutover.
 - [Session Facade Boundary](session-facade-boundary.md) defines the common
   Product-facing operation surface over already-bound session runtimes while
   Products retain model/auth, prompts, extension protocols, lifecycle policy,
   and channel projection.
 - [Session RPC Operations Boundary](session-rpc-operations-boundary.md) defines
   typed capability-grouped session operations below transport schemas while
-  Products retain RPC mapping, lifecycle tracking, and output projection.
+  the Harness RPC host owns wire mapping and Products retain runtime and
+  selected event/diagnostic projections.
 - [Mode Host Boundary](mode-host-boundary.md) defines the shared RPC/plain host
   implementation and the remaining Coding Work/event/diagnostic bindings.
 - [Session Product Adapter Collapse](session-product-adapter-collapse.md)
