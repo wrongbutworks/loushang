@@ -1,3 +1,12 @@
+"""Frozen, non-widening effective authority for one execution attempt.
+
+Implements the permission enforcer (§12.4) of
+docs/internals/architecture/harness/policy-approval-redesign.md: resolves
+the effective execution profile (readable/writable/denied roots, network
+access) from policy and approval inputs, and constrains child or delegated
+profiles so derived authority can only narrow, never widen.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace

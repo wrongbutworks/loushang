@@ -1,3 +1,14 @@
+"""Grant and policy-amendment proposals for approved actions.
+
+Implements grant proposals (§9.1) of
+docs/internals/architecture/harness/policy-approval-redesign.md: generalizes
+an approved tool action into a session-scoped approval grant or a
+project/user policy amendment when the action is safely generalizable
+(simple commands, conservative git push forms). Consumed by
+`loushang.harness.tools.workspace.policy`; Products retain wording,
+risk presentation, and amendment destinations.
+"""
+
 from __future__ import annotations
 
 import os

@@ -1,3 +1,14 @@
+"""Product-neutral approval lifecycle: requests, broker, grants, and retained rules.
+
+Implements the grant model (§9) and approval lifecycle (§10) of
+docs/internals/architecture/harness/policy-approval-redesign.md: approval
+request/decision/option values, the complete-once broker, resolver and
+presenter ports, session-scoped grants, retained approval rules with
+in-memory and JSON stores, and approval-time permission snapshots.
+Interactive presenters, product risk wording, and persisted allowlist
+policy remain with Product adapters.
+"""
+
 from __future__ import annotations
 
 import asyncio

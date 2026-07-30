@@ -1,3 +1,13 @@
+"""Product-neutral policy subjects, verdicts, evaluators, and matchers.
+
+Implements the policy verdict (§7.5) and policy model (§8) of
+docs/internals/architecture/harness/policy-approval-redesign.md:
+command/path/tool/custom subjects, allow/deny/ask decisions, evaluator and
+matcher protocols with composable chains, and shell/path normalization
+helpers. Risk classification, trust rules, allowlists, and product defaults
+remain with Product adapters.
+"""
+
 from __future__ import annotations
 
 import inspect

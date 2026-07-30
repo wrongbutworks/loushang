@@ -1,3 +1,12 @@
+"""Default Product-injected rule engine over the harness policy primitives.
+
+Implements the policy runtime (§12.1) of
+docs/internals/architecture/harness/policy-approval-redesign.md: composes
+declarative rule/matcher configuration with heuristic effect detection
+(`loushang.harness.policy_effects`) into a `PolicyEvaluator` that Products
+configure with their own rules, blocked/ask substrings, and defaults.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
