@@ -968,6 +968,7 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
     assert {path.name for path in command_root.glob("*.py")} == {
         "__init__.py",
         "bash_maintenance.py",
+        "command_catalog.py",
         "diagnostics.py",
         "model_settings.py",
         "packages.py",
@@ -978,6 +979,22 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
         imports = set(_absolute_imports(command_module))
         assert "loushang.harness.host.rpc" not in imports
         assert "loushang.harness.host.rpc.runtime" not in imports
+
+    private_protocols = {
+        "bash_maintenance.py": "_BashSession",
+        "command_catalog.py": "_CommandCatalogSession",
+        "model_settings.py": "_ModelSettingsSession",
+        "session_lifecycle.py": "_SessionLifecycleRuntime",
+        "transcript.py": "_TranscriptSession",
+    }
+    for module_name, protocol_name in private_protocols.items():
+        source = (command_root / module_name).read_text(encoding="utf-8")
+        assert f"class {protocol_name}(Protocol):" in source
+
+    runtime_source = (rpc_root / "runtime.py").read_text(encoding="utf-8")
+    assert "RpcCommandCatalogCommands" in runtime_source
+    assert "_handle_get_commands_command" not in runtime_source
+    assert "_handle_get_command_completions_command" not in runtime_source
 
 
 def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:

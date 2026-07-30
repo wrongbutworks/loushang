@@ -55,6 +55,11 @@ Optional operation groups fail with `SessionOperationUnavailableError`.
 Missing methods and `AttributeError` raised inside a Product implementation are
 programming failures and must not be converted into an "unavailable" result.
 
+Legacy RPC command groups consume narrow private Product protocols for their
+direct model/settings, transcript, Bash, lifecycle-index, and command-catalog
+dependencies. These protocols are local typing boundaries, not a second
+Session facade and not a public all-capabilities RPC interface.
+
 Approval presentation is an optional `SessionApprovalInteractionPort`.
 It delegates presenter binding, responses, permission snapshots, and permission
 actions to the Product's existing resolver. `ApprovalBroker` remains the sole

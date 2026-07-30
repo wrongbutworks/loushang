@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
 
 from loushang.harness.host.rpc.arguments import (
     optional_bool,
@@ -17,13 +17,29 @@ from loushang.harness.session import SessionRpcOperationBinding
 from loushang.harness.transcript import SessionQuery
 
 
+class _SessionLifecycleRuntime(Protocol):
+    """Only the standard discovery/index capabilities consumed here."""
+
+    def refresh_session_index(self) -> object: ...
+
+    def refresh_all_session_indexes(self) -> object: ...
+
+    def find_session_summaries(self, query: SessionQuery) -> object: ...
+
+    def find_all_session_summaries(self, query: SessionQuery) -> object: ...
+
+    def find_indexed_session_summaries(self, query: SessionQuery) -> object: ...
+
+    def find_all_indexed_session_summaries(self, query: SessionQuery) -> object: ...
+
+
 class RpcSessionLifecycleCommands:
     """Keep legacy session wire semantics outside the RPC event loop."""
 
     def __init__(
         self,
         *,
-        runtime: object,
+        runtime: _SessionLifecycleRuntime,
         get_session: Callable[[], object],
         operations: SessionRpcOperationBinding,
         output: RpcOutput,

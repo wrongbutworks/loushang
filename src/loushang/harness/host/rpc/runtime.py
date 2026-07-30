@@ -7,7 +7,6 @@ import sys
 from collections.abc import Sequence
 from typing import Any, TextIO
 
-from loushang.harness.commands import complete_slash_commands
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.host.jsonl_command_host import (
     JsonlCommand,
@@ -25,6 +24,7 @@ from loushang.harness.host.product_host import (
 )
 from loushang.harness.host.rpc.commands import (
     RpcBashMaintenanceCommands,
+    RpcCommandCatalogCommands,
     RpcDiagnosticsCommands,
     RpcModelSettingsCommands,
     RpcPackageCommands,
@@ -41,7 +41,6 @@ from loushang.harness.host.rpc.projections import (
 from loushang.harness.host.rpc.remote_ui import RpcExtensionUIContext
 from loushang.harness.host.rpc.routing import legacy_rpc_routes
 from loushang.harness.host.rpc.wire import (
-    project_command_descriptor,
     project_session_state,
     session_messages,
 )
@@ -139,6 +138,10 @@ class RpcHost(ModeAdapter):
             operations=self._rpc_operations,
             output=self._rpc_output,
             task_tracker=self._task_tracker,
+        )
+        self._command_catalog_commands = RpcCommandCatalogCommands(
+            get_session=lambda: self.session,
+            output=self._rpc_output,
         )
         self._command_router = JsonlCommandRouter(
             routes=self._command_routes(),
@@ -260,11 +263,7 @@ class RpcHost(ModeAdapter):
                     *self._session_lifecycle_commands.bindings(),
                     *self._model_settings_commands.bindings(),
                     *self._transcript_commands.bindings(),
-                    ("get_commands", self._handle_get_commands_command),
-                    (
-                        "get_command_completions",
-                        self._handle_get_command_completions_command,
-                    ),
+                    *self._command_catalog_commands.bindings(),
                     *self._diagnostics_commands.bindings(),
                     *self._package_commands.bindings(),
                     *self._bash_maintenance_commands.bindings(),
@@ -414,124 +413,6 @@ class RpcHost(ModeAdapter):
             id=command_id,
             command="get_extension_ui_state",
             data=self.extension_ui_context.get_snapshot(),
-        )
-
-
-    def _handle_get_commands_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        del payload
-        commands = []
-        getter = getattr(self.session, "list_commands", None)
-        if not callable(getter):
-            self._write_response_error(
-                id=command_id,
-                command="get_commands",
-                error="Command registry is not available.",
-            )
-            return
-        try:
-            raw_commands = getter()
-        except Exception as error:
-            self._write_response_error(
-                id=command_id,
-                command="get_commands",
-                error=f"Failed to query commands: {error}",
-            )
-            return
-        if not isinstance(raw_commands, list):
-            self._write_response_error(
-                id=command_id,
-                command="get_commands",
-                error="Command registry returned an invalid response.",
-            )
-            return
-        for command in raw_commands:
-            try:
-                commands.append(project_command_descriptor(command))
-            except Exception:
-                continue
-        self._write_response_success(
-            id=command_id,
-            command="get_commands",
-            data={"commands": commands},
-        )
-
-    async def _handle_get_command_completions_command(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
-        prefix = payload.get("prefix", "")
-        if not isinstance(prefix, str):
-            self._write_response_error(
-                id=command_id,
-                command="get_command_completions",
-                error="Command completion prefix must be a string.",
-                code="invalid_request",
-            )
-            return
-        command_name = payload.get("command")
-        if command_name is not None:
-            if not isinstance(command_name, str) or not command_name:
-                self._write_response_error(
-                    id=command_id,
-                    command="get_command_completions",
-                    error="Command completion command must be a non-empty string.",
-                    code="invalid_request",
-                )
-                return
-            getter = getattr(self.session, "get_command_argument_completions", None)
-            if not callable(getter):
-                self._write_response_success(
-                    id=command_id,
-                    command="get_command_completions",
-                    data={"completions": []},
-                )
-                return
-            try:
-                completions = await getter(command_name, prefix)
-            except Exception as error:
-                self._write_response_error(
-                    id=command_id,
-                    command="get_command_completions",
-                    error=f"Failed to query command completions: {error}",
-                    code="command_completion_failed",
-                )
-                return
-            self._write_response_success(
-                id=command_id,
-                command="get_command_completions",
-                data={
-                    "completions": completions if isinstance(completions, list) else []
-                },
-            )
-            return
-
-        getter = getattr(self.session, "list_commands", None)
-        if not callable(getter):
-            self._write_response_error(
-                id=command_id,
-                command="get_command_completions",
-                error="Command registry is not available.",
-                code="command_registry_unavailable",
-            )
-            return
-        try:
-            raw_commands = getter()
-            if not isinstance(raw_commands, list):
-                raise TypeError("Command registry returned an invalid response.")
-            completions = complete_slash_commands(prefix, raw_commands)
-        except Exception as error:
-            self._write_response_error(
-                id=command_id,
-                command="get_command_completions",
-                error=f"Failed to query command completions: {error}",
-                code="command_completion_failed",
-            )
-            return
-        self._write_response_success(
-            id=command_id,
-            command="get_command_completions",
-            data={"completions": completions},
         )
 
 

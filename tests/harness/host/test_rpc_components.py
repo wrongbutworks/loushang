@@ -16,6 +16,7 @@ from loushang.harness.host.rpc.arguments import (
 )
 from loushang.harness.host.rpc.commands import (
     RpcBashMaintenanceCommands,
+    RpcCommandCatalogCommands,
     RpcDiagnosticsCommands,
     RpcModelSettingsCommands,
     RpcPackageCommands,
@@ -140,6 +141,10 @@ def test_rpc_command_groups_declare_their_complete_legacy_bindings() -> None:
         output=output,
         task_tracker=ProductHostTaskTracker(),
     )
+    command_catalog = RpcCommandCatalogCommands(
+        get_session=object,
+        output=output,
+    )
 
     assert tuple(command for command, _handler in diagnostics.bindings()) == (
         "get_diagnostics",
@@ -190,6 +195,10 @@ def test_rpc_command_groups_declare_their_complete_legacy_bindings() -> None:
         "set_auto_retry",
         "abort_retry",
         "set_auto_compaction",
+    )
+    assert tuple(command for command, _handler in command_catalog.bindings()) == (
+        "get_commands",
+        "get_command_completions",
     )
 
 

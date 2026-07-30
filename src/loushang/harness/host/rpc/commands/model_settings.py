@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Any, Protocol
 
 from loushang.ai.model import ModelSelection
 from loushang.harness.host.rpc.arguments import require_mode, require_string
@@ -19,13 +19,41 @@ from loushang.harness.host.rpc.wire import (
 from loushang.harness.session import SessionOperationRuntime
 
 
+class _ModelSettingsState(Protocol):
+    thinking_level: str
+
+
+class _ModelSettingsSession(Protocol):
+    """Only the Product model/settings capabilities consumed by this group."""
+
+    def get_available_models(self) -> Sequence[ModelSelection]: ...
+
+    def set_model(self, selection: ModelSelection) -> Awaitable[None]: ...
+
+    def cycle_model(self) -> Awaitable[object | None]: ...
+
+    def set_active_tools(self, tool_names: list[str]) -> Awaitable[None]: ...
+
+    def set_thinking_level(self, level: str) -> Awaitable[None] | None: ...
+
+    def cycle_thinking_level(self) -> Awaitable[object | None] | object | None: ...
+
+    def set_steering_mode(self, mode: str) -> None: ...
+
+    def set_follow_up_mode(self, mode: str) -> None: ...
+
+    def get_session_stats(self) -> object: ...
+
+    def get_state(self) -> _ModelSettingsState: ...
+
+
 class RpcModelSettingsCommands:
     """Keep Product model/settings projection out of the RPC event loop."""
 
     def __init__(
         self,
         *,
-        get_session: Callable[[], Any],
+        get_session: Callable[[], _ModelSettingsSession],
         get_operations: Callable[[], SessionOperationRuntime],
         output: RpcOutput,
     ) -> None:

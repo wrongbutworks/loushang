@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from loushang.harness.host.rpc.arguments import optional_string
 from loushang.harness.host.rpc.output import RpcOutput
@@ -15,13 +15,23 @@ from loushang.harness.transcript import create_agent_transcript_message_codec
 _MESSAGE_CODEC = create_agent_transcript_message_codec()
 
 
+class _TranscriptSession(Protocol):
+    """Only the Product transcript capabilities consumed by this group."""
+
+    def get_last_assistant_text(self) -> str | None: ...
+
+    def get_user_messages_for_forking(self) -> object: ...
+
+    def export_to_html(self, output_path: str | None = None) -> str | Path: ...
+
+
 class RpcTranscriptCommands:
     """Project transcript reads without owning Session or wire lifecycle."""
 
     def __init__(
         self,
         *,
-        get_session: Callable[[], Any],
+        get_session: Callable[[], _TranscriptSession],
         get_messages: Callable[[object], object],
         output: RpcOutput,
     ) -> None:

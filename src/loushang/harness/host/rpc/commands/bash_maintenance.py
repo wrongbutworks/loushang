@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol
 
 from loushang.harness.host.product_host import ProductHostTaskTracker
 from loushang.harness.host.rpc.arguments import (
@@ -19,13 +19,29 @@ from loushang.harness.host.rpc.wire import camelize, project_json_value
 from loushang.harness.session import SessionRpcOperationBinding
 
 
+class _BashSession(Protocol):
+    """Only the Product execution capabilities consumed by this group."""
+
+    def execute_bash(
+        self,
+        command: str,
+        *,
+        cwd: str | None,
+        env: list[list[str]] | None,
+        timeout_seconds: float | None,
+        stdin: str | None,
+    ) -> Awaitable[object]: ...
+
+    def abort_bash(self) -> None: ...
+
+
 class RpcBashMaintenanceCommands:
     """Own Bash task state and maintenance wire projection."""
 
     def __init__(
         self,
         *,
-        get_session: Callable[[], Any],
+        get_session: Callable[[], _BashSession],
         operations: SessionRpcOperationBinding,
         output: RpcOutput,
         task_tracker: ProductHostTaskTracker,

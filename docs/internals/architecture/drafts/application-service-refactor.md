@@ -557,8 +557,10 @@ generation-safe lease; pending queue projection no longer discovers Session
 methods dynamically. Shared prompt operations have one settled-return
 contract across TUI, Scenario, and Work adapters, verified by a reusable
 Product contract suite. Legacy RPC lifecycle, model/settings, transcript, and
-Bash/maintenance commands are separate command groups while preserving the
-existing JSONL wire.
+Bash/maintenance, and command-catalog commands are separate command groups
+while preserving the existing JSONL wire. Each newly extracted group accepts
+a narrow private Product protocol instead of a shared all-capabilities RPC
+Session interface.
 
 1. Keep shared primitive input/queue/lifecycle mutations in
    `SessionOperationRuntime`; do not move command execution, Bash, catalogs, or
