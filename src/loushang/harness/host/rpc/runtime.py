@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import sys
 from collections.abc import Sequence
-from typing import Any, TextIO
+from pathlib import Path
+from typing import Any, Protocol, TextIO, cast
 
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.host.jsonl_command_host import (
@@ -45,6 +46,7 @@ from loushang.harness.host.rpc.wire import (
     session_messages,
 )
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.session import (
     SessionLifecycleOperationPorts,
     SessionOperationResolver,
@@ -54,6 +56,7 @@ from loushang.harness.session import (
     current_session_operation_resolver,
 )
 from loushang.harness.transcript import (
+    SessionQuery,
     create_agent_transcript_message_codec,
 )
 
@@ -62,13 +65,50 @@ _MESSAGE_CODEC = create_agent_transcript_message_codec()
 serialize_agent_message = _MESSAGE_CODEC.serialize
 
 
+class _RpcHostRuntime(Protocol):
+    """Required runtime seam; optional RPC groups keep their own leaf ports."""
+
+    def get_current_session(self) -> object | None: ...
+
+    async def new_session_operation(
+        self,
+        *,
+        cwd: str | None = None,
+        parent_session: str | None = None,
+    ) -> SessionOperationResult[Any, Any]: ...
+
+    async def restore_session_operation(
+        self,
+        session_ref: str | Path,
+    ) -> SessionOperationResult[Any, Any]: ...
+
+    async def fork_session_operation(
+        self,
+        entry_id: str | None,
+        *,
+        position: str = "at",
+    ) -> SessionOperationResult[Any, Any]: ...
+
+    def refresh_session_index(self) -> object: ...
+
+    def refresh_all_session_indexes(self) -> object: ...
+
+    def find_session_summaries(self, query: SessionQuery) -> object: ...
+
+    def find_all_session_summaries(self, query: SessionQuery) -> object: ...
+
+    def find_indexed_session_summaries(self, query: SessionQuery) -> object: ...
+
+    def find_all_indexed_session_summaries(self, query: SessionQuery) -> object: ...
+
+
 class RpcHost(ModeAdapter):
     """Product-neutral JSONL RPC host for an active Agent session."""
 
     def __init__(
         self,
         *,
-        runtime: Any,
+        runtime: object,
         stdin: TextIO,
         stdout: TextIO,
         stderr: TextIO | None = None,
@@ -82,7 +122,7 @@ class RpcHost(ModeAdapter):
     ) -> None:
         if event_view not in event_projection.supported_views:
             raise ValueError(f"unsupported json event view: {event_view}")
-        self.runtime = runtime
+        self.runtime = cast(_RpcHostRuntime, runtime)
         self.stdin = stdin
         self.stdout = stdout
         self._rpc_output = RpcOutput(stdout)
@@ -118,7 +158,7 @@ class RpcHost(ModeAdapter):
             output=self._rpc_output,
         )
         self._session_lifecycle_commands = RpcSessionLifecycleCommands(
-            runtime=runtime,
+            runtime=self.runtime,
             get_session=lambda: self.session,
             operations=self._rpc_operations,
             output=self._rpc_output,
@@ -177,6 +217,11 @@ class RpcHost(ModeAdapter):
         await self._require_session_operations().wait_for_idle()
         return 0
 
+    async def settle_background_tasks(self) -> None:
+        """Wait for prompt/bash tasks started by this host."""
+
+        await self._task_tracker.drain()
+
     def rebind_session(self, session: object | None = None) -> int:
         if session is None:
             session = self._require_current_session()
@@ -186,10 +231,13 @@ class RpcHost(ModeAdapter):
     async def dispose(self) -> int:
         self._host_runtime.stop()
         self._command_host.stop()
-        self._unsubscribe()
-        disposer = getattr(self.runtime, "dispose", None)
-        if callable(disposer):
-            await disposer()
+        try:
+            disposer = getattr(self.runtime, "dispose", None)
+            if callable(disposer):
+                await disposer()
+        finally:
+            await self.settle_background_tasks()
+            self._unsubscribe()
         return 0
 
     def render_event(self, event: object) -> None:
@@ -202,13 +250,13 @@ class RpcHost(ModeAdapter):
                 handle_failure=self._handle_host_failure,
             )
         finally:
-            await self._task_tracker.drain()
+            await self.settle_background_tasks()
             self._command_host.stop()
             self._unsubscribe()
 
     def get_mode_state(self) -> ModeState:
         try:
-            return project_session_state(self.session)
+            return cast(ModeState, project_session_state(self.session))
         except Exception:
             return {
                 "sessionId": "",
@@ -229,7 +277,7 @@ class RpcHost(ModeAdapter):
     async def _drain_background_tasks(self) -> None:
         """Compatibility hook over the Channel-owned task tracker."""
 
-        await self._task_tracker.drain()
+        await self.settle_background_tasks()
 
     async def _handle_line(self, line: str) -> None:
         """Test-facing adapter for the Channel-owned JSONL command host."""
@@ -554,7 +602,7 @@ class RpcHost(ModeAdapter):
 
 async def run_rpc_host(
     *,
-    runtime: Any,
+    runtime: object,
     stdin: TextIO,
     stdout: TextIO,
     stderr: TextIO | None = None,

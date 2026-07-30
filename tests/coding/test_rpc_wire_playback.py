@@ -1,10 +1,6 @@
-from __future__ import annotations
-
 import asyncio
-import json
-from io import StringIO
 
-from loushang.harness.host.rpc import RpcHost
+from loushang.harness.host.rpc import RpcWirePlayback, play_rpc_wire
 from tests.coding.test_rpc_mode import (
     FakeRuntime,
     FakeSession,
@@ -16,25 +12,9 @@ def _play_rpc_wire(
     runtime: FakeRuntime,
     *commands: dict[str, object],
 ) -> list[dict[str, object]]:
-    stdin = StringIO(
-        "\n".join(json.dumps(command) for command in commands) + "\n"
-    )
-    stdout = StringIO()
-
-    async def scenario() -> None:
-        exit_code = await RpcHost(
-            runtime=runtime,
-            stdin=stdin,
-            stdout=stdout,
-        ).run()
-        assert exit_code == 0
-
-    asyncio.run(scenario())
-    return [
-        json.loads(line)
-        for line in stdout.getvalue().splitlines()
-        if line.strip()
-    ]
+    result = play_rpc_wire(runtime=runtime, commands=commands)
+    assert result.exit_codes == (0,) * len(commands)
+    return list(result.records)
 
 
 def test_rpc_wire_playback_preserves_cross_group_success_golden() -> None:
@@ -283,3 +263,78 @@ def test_rpc_wire_playback_preserves_validation_error_golden() -> None:
             },
         },
     ]
+
+
+def test_rpc_wire_playback_aborts_immediately_then_settles_prompt_once() -> None:
+    session = FakeSession(session_id="session-a", cwd="/tmp/project")
+    runtime = FakeRuntime(session)
+
+    async def scenario() -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        session._prompt_started = asyncio.Event()
+        session._prompt_release = asyncio.Event()
+        playback = RpcWirePlayback(runtime=runtime)
+
+        assert (
+            await playback.dispatch(
+                {"id": "prompt", "type": "prompt", "message": "keep working"}
+            )
+            == 0
+        )
+        await session._prompt_started.wait()
+        assert list(playback.snapshot().records) == [
+            {
+                "id": "prompt",
+                "type": "response",
+                "command": "prompt",
+                "success": True,
+            }
+        ]
+
+        assert await playback.dispatch({"id": "abort", "type": "abort"}) == 0
+        immediate = list(playback.snapshot().records)
+        finish_task = asyncio.create_task(playback.finish())
+        await asyncio.sleep(0)
+        assert finish_task.done() is False
+
+        session._prompt_release.set()
+        settled = await finish_task
+        return immediate, list(settled.records)
+
+    immediate, settled = asyncio.run(scenario())
+
+    abort_response = {
+        "id": "abort",
+        "type": "response",
+        "command": "abort",
+        "success": True,
+    }
+    assert abort_response in immediate
+    assert settled == immediate
+    assert session.abort_calls == 1
+    assert session.wait_calls == 1
+
+
+def test_rpc_wire_playback_dispose_waits_for_outstanding_prompt() -> None:
+    session = FakeSession(session_id="session-a", cwd="/tmp/project")
+    runtime = FakeRuntime(session)
+
+    async def scenario() -> None:
+        session._prompt_started = asyncio.Event()
+        session._prompt_release = asyncio.Event()
+        playback = RpcWirePlayback(runtime=runtime)
+        await playback.dispatch(
+            {"id": "prompt", "type": "prompt", "message": "finish before close"}
+        )
+        await session._prompt_started.wait()
+
+        dispose_task = asyncio.create_task(playback.dispose())
+        await asyncio.sleep(0)
+        assert dispose_task.done() is False
+
+        session._prompt_release.set()
+        await dispose_task
+
+    asyncio.run(scenario())
+
+    assert session.wait_calls == 1
+    assert session.listeners == []
