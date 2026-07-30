@@ -14,6 +14,8 @@ from .runtime import (
 from .testing import (
     RpcWirePlayback,
     RpcWirePlaybackResult,
+    play_rpc_lines,
+    play_rpc_lines_async,
     play_rpc_wire,
     play_rpc_wire_async,
 )
@@ -31,6 +33,8 @@ __all__ = [
     "RpcWirePlaybackResult",
     "STANDARD_AGENT_RPC_EVENT_PROJECTION",
     "STANDARD_RPC_DIAGNOSTICS_PROJECTION",
+    "play_rpc_lines",
+    "play_rpc_lines_async",
     "play_rpc_wire",
     "play_rpc_wire_async",
     "run_rpc_host",

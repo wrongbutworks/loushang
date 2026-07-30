@@ -55,9 +55,16 @@ class RpcWirePlayback:
     async def dispatch(self, command: Mapping[str, object]) -> int:
         """Submit one strict-JSON command without waiting for background work."""
 
+        wire_line = json.dumps(dict(command), allow_nan=False)
+        return await self.dispatch_line(wire_line)
+
+    async def dispatch_line(self, wire_line: str) -> int:
+        """Submit one raw JSONL line without waiting for background work."""
+
         if self._finished:
             raise RuntimeError("RPC wire playback is already finished")
-        wire_line = json.dumps(dict(command), allow_nan=False)
+        if not isinstance(wire_line, str):
+            raise TypeError("RPC wire playback lines must be strings")
         exit_code = await self._host.submit_input(wire_line)
         self._exit_codes.append(exit_code)
         return exit_code
@@ -65,20 +72,10 @@ class RpcWirePlayback:
     def snapshot(self) -> RpcWirePlaybackResult:
         """Return output emitted so far without changing host lifecycle."""
 
-        stdout = self._stdout.getvalue()
-        records: list[dict[str, object]] = []
-        for line in stdout.splitlines():
-            if not line.strip():
-                continue
-            record = json.loads(line)
-            if not isinstance(record, dict):
-                raise AssertionError("RPC playback emitted a non-object JSON record")
-            records.append(record)
-        return RpcWirePlaybackResult(
-            records=tuple(records),
-            exit_codes=tuple(self._exit_codes),
-            stdout=stdout,
+        return _playback_result(
+            stdout=self._stdout.getvalue(),
             stderr=self._stderr.getvalue(),
+            exit_codes=tuple(self._exit_codes),
         )
 
     async def finish(self) -> RpcWirePlaybackResult:
@@ -149,9 +146,85 @@ def play_rpc_wire(
     )
 
 
+async def play_rpc_lines_async(
+    *,
+    runtime: object,
+    lines: Sequence[str],
+    event_view: str = "full",
+    event_select: str | Sequence[str] | None = None,
+    render_tool_events: bool = False,
+) -> RpcWirePlaybackResult:
+    """Run raw JSONL fragments exactly as one finite stdin transcript."""
+
+    if not all(isinstance(line, str) for line in lines):
+        raise TypeError("RPC wire playback lines must be strings")
+    stdout = StringIO()
+    stderr = StringIO()
+    host = RpcHost(
+        runtime=runtime,
+        stdin=StringIO("".join(lines)),
+        stdout=stdout,
+        stderr=stderr,
+        event_view=event_view,
+        event_select=event_select,
+        render_tool_events=render_tool_events,
+    )
+    exit_code = await host.run()
+    return _playback_result(
+        stdout=stdout.getvalue(),
+        stderr=stderr.getvalue(),
+        exit_codes=(exit_code,),
+    )
+
+
+def play_rpc_lines(
+    *,
+    runtime: object,
+    lines: Sequence[str],
+    event_view: str = "full",
+    event_select: str | Sequence[str] | None = None,
+    render_tool_events: bool = False,
+) -> RpcWirePlaybackResult:
+    """Synchronous raw-transcript wrapper for framing and parser tests."""
+
+    return asyncio.run(
+        play_rpc_lines_async(
+            runtime=runtime,
+            lines=lines,
+            event_view=event_view,
+            event_select=event_select,
+            render_tool_events=render_tool_events,
+        )
+    )
+
+
+def _playback_result(
+    *,
+    stdout: str,
+    stderr: str,
+    exit_codes: tuple[int, ...],
+) -> RpcWirePlaybackResult:
+    records: list[dict[str, object]] = []
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if not isinstance(record, dict):
+            raise AssertionError("RPC playback emitted a non-object JSON record")
+        records.append(record)
+    return RpcWirePlaybackResult(
+        records=tuple(records),
+        exit_codes=exit_codes,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
 __all__ = [
     "RpcWirePlayback",
     "RpcWirePlaybackResult",
+    "play_rpc_lines",
+    "play_rpc_lines_async",
     "play_rpc_wire",
     "play_rpc_wire_async",
 ]

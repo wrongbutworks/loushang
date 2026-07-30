@@ -9,6 +9,7 @@ from loushang.ai.model.domain import (
     Capabilities,
     Model,
 )
+from loushang.harness.host.rpc import play_rpc_lines
 from tests.coding.rpc_support import (
     FakeRuntime,
     FakeSession,
@@ -186,21 +187,17 @@ def test_rpc_mode_get_fork_messages_uses_standard_session_method() -> None:
 
 
 def test_rpc_mode_reports_invalid_json_and_unsupported_commands() -> None:
-    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
-
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
-    stdin = StringIO(
-        "{invalid json}\n" + json.dumps({"id": "oops", "type": "unknown"}) + "\n"
+    result = play_rpc_lines(
+        runtime=runtime,
+        lines=(
+            "{invalid json}\n",
+            json.dumps({"id": "oops", "type": "unknown"}) + "\n",
+        ),
     )
-    stdout = StringIO()
 
-    async def scenario() -> None:
-        exit_code = await run_rpc_mode(runtime=runtime, stdin=stdin, stdout=stdout)
-        assert exit_code == 0
-
-    asyncio.run(scenario())
-
-    invalid, unsupported = _parse_jsonl(stdout)
+    assert result.exit_codes == (0,)
+    invalid, unsupported = result.records
     assert invalid["type"] == "response"
     assert invalid["command"] == "parse"
     assert invalid["success"] is False
@@ -216,31 +213,24 @@ def test_rpc_mode_reports_invalid_json_and_unsupported_commands() -> None:
 
 
 def test_rpc_mode_rejects_non_finite_input_numbers() -> None:
-    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
-
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(
-        "\n".join(
-            [
+    result = play_rpc_lines(
+        runtime=runtime,
+        lines=tuple(
+            line + "\n"
+            for line in (
                 '{"type":"get_state","value":NaN}',
                 '{"type":"get_state","value":Infinity}',
                 '{"type":"get_state","value":-Infinity}',
                 '{"id":"bash","type":"bash","command":"printf hi","timeoutSeconds":1e400}',
                 '{"id":"prompt","type":"prompt","message":"\\ud800"}',
-            ]
-        )
-        + "\n"
+            )
+        ),
     )
-    stdout = StringIO()
 
-    async def scenario() -> None:
-        exit_code = await run_rpc_mode(runtime=runtime, stdin=stdin, stdout=stdout)
-        assert exit_code == 0
-
-    asyncio.run(scenario())
-
-    responses = _parse_jsonl(stdout)
+    assert result.exit_codes == (0,)
+    responses = result.records
     assert session.bash_calls == []
     assert session.prompt_calls == []
     assert [response["command"] for response in responses[:3]] == [
@@ -276,28 +266,22 @@ def test_rpc_mode_rejects_non_finite_input_numbers() -> None:
 
 
 def test_rpc_mode_jsonl_framing_preserves_unicode_line_separators() -> None:
-    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
-
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
     name = "alpha\u2028beta\u2029gamma"
-    stdin = StringIO(
-        json.dumps(
-            {"id": "rename", "type": "set_session_name", "name": name},
-            ensure_ascii=False,
-        )
-        + "\n"
+    result = play_rpc_lines(
+        runtime=runtime,
+        lines=(
+            json.dumps(
+                {"id": "rename", "type": "set_session_name", "name": name},
+                ensure_ascii=False,
+            )
+            + "\n",
+        ),
     )
-    stdout = StringIO()
-
-    async def scenario() -> None:
-        exit_code = await run_rpc_mode(runtime=runtime, stdin=stdin, stdout=stdout)
-        assert exit_code == 0
-
-    asyncio.run(scenario())
 
     assert session.set_session_name_calls == [name]
-    assert _parse_jsonl(stdout) == [
+    assert list(result.records) == [
         {
             "id": "rename",
             "type": "response",
@@ -308,25 +292,19 @@ def test_rpc_mode_jsonl_framing_preserves_unicode_line_separators() -> None:
 
 
 def test_rpc_mode_jsonl_framing_accepts_crlf_and_final_line_without_lf() -> None:
-    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
-
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(
-        json.dumps({"id": "first", "type": "set_session_name", "name": "one"})
-        + "\r\n"
-        + json.dumps({"id": "second", "type": "set_session_name", "name": "two"})
+    result = play_rpc_lines(
+        runtime=runtime,
+        lines=(
+            json.dumps({"id": "first", "type": "set_session_name", "name": "one"})
+            + "\r\n",
+            json.dumps({"id": "second", "type": "set_session_name", "name": "two"}),
+        ),
     )
-    stdout = StringIO()
-
-    async def scenario() -> None:
-        exit_code = await run_rpc_mode(runtime=runtime, stdin=stdin, stdout=stdout)
-        assert exit_code == 0
-
-    asyncio.run(scenario())
 
     assert session.set_session_name_calls == ["one", "two"]
-    assert _parse_jsonl(stdout) == [
+    assert list(result.records) == [
         {
             "id": "first",
             "type": "response",
