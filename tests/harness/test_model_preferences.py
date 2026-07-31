@@ -37,6 +37,31 @@ def test_preferred_model_selection_falls_back_to_matching_model() -> None:
     ) == selection
 
 
+def test_preferred_model_selection_prioritizes_the_configured_endpoint() -> None:
+    other = ModelSelection(
+        provider="preferred", endpoint_id="other", model_id="model"
+    )
+    preferred = ModelSelection(
+        provider="preferred", endpoint_id="endpoint", model_id="model"
+    )
+
+    assert preferred_model_selection(
+        [other, preferred], [PreferredModel("preferred", "endpoint", "model")]
+    ) == preferred
+
+
+def test_preferred_model_details_accepts_mapping_values() -> None:
+    detail = {
+        "provider": "preferred",
+        "endpoint_id": "endpoint",
+        "model_id": "model",
+    }
+
+    assert preferred_model_details(
+        [detail], [PreferredModel("preferred", "endpoint", "model")]
+    ) == [detail]
+
+
 def test_preferred_model_candidates_prefers_details_before_selections() -> None:
     detail = _Detail("preferred", "endpoint", "model")
 

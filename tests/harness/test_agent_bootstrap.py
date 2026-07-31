@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
-import loushang.harness.session.bootstrap as bootstrap_module
+import loushang.harness.session.bootstrap_construction as bootstrap_construction_module
 from loushang.ai.model import ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.harness.bootstrap import BootstrapActivationRuntime
@@ -219,7 +219,7 @@ def test_agent_product_construction_runtime_composes_existing_owners(
         ),
     )
     monkeypatch.setattr(
-        bootstrap_module.StandardAgentSessionConfigurationRuntime,
+        bootstrap_construction_module.StandardAgentSessionConfigurationRuntime,
         "configure",
         lambda _self, _request: StandardAgentSessionConfigurationResult(
             resource_bundle={"resources": []},
@@ -228,22 +228,22 @@ def test_agent_product_construction_runtime_composes_existing_owners(
         ),
     )
     monkeypatch.setattr(
-        bootstrap_module,
+        bootstrap_construction_module,
         "resolve_base_system_prompt",
         lambda **_kwargs: "base prompt",
     )
     monkeypatch.setattr(
-        bootstrap_module,
+        bootstrap_construction_module,
         "assemble_prompt",
         lambda **_kwargs: SimpleNamespace(system_prompt="assembled prompt"),
     )
     monkeypatch.setattr(
-        bootstrap_module,
+        bootstrap_construction_module,
         "resolve_session_model",
         lambda *_args, **_kwargs: "resolved-model",
     )
     monkeypatch.setattr(
-        bootstrap_module,
+        bootstrap_construction_module,
         "register_resource_extension_tools",
         lambda **kwargs: (
             kwargs["resource_bundle"],
@@ -252,7 +252,7 @@ def test_agent_product_construction_runtime_composes_existing_owners(
         ),
     )
     monkeypatch.setattr(
-        bootstrap_module,
+        bootstrap_construction_module,
         "scoped_models_from_patterns",
         lambda patterns, **_kwargs: tuple(patterns),
     )
@@ -331,7 +331,7 @@ def test_agent_product_construction_binding_compiles_research_policy(
     captured: list[AgentProductConstructionRequest] = []
     expected_result = SimpleNamespace(session="research-session")
     monkeypatch.setattr(
-        bootstrap_module.AgentProductConstructionRuntime,
+        bootstrap_construction_module.AgentProductConstructionRuntime,
         "construct",
         lambda _self, request: captured.append(request) or expected_result,
     )

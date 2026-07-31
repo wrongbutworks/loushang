@@ -17,8 +17,13 @@ refresh, tool activation, extension lifecycle, and session disposal.
 
 `loushang.harness.session.composition`,
 `loushang.harness.session.operations_runtime`, and
-`loushang.harness.session.agent_adapter` own the reusable composition and
-runtime coordination.  They accept explicit Product ports for:
+`loushang.harness.session.agent_adapter` own reusable session composition and
+operation coordination. `loushang.harness.session.agent_product_runtime` owns
+the standard lifecycle hooks, transcript runtime ports, and concrete Product
+session runtime. `loushang.harness.session.extension_composition` owns the
+extension input adapter, provider/replacement controllers, runtime binding
+factory, and public extension lifecycle binding. They accept explicit Product
+ports for:
 
 - transcript/session storage and context application;
 - model/thinking selection and persisted settings;
@@ -39,6 +44,22 @@ Coding keeps only its product plan and adapters: preferred model policy,
 resource roots, command wording, Coding compaction/branch-summary prompts,
 provider conversion, footer/diagnostic presentation, and Coding extension API
 behavior.
+
+The physical boundary is intentional: `agent_adapter` contains the composed
+session facade and installation plumbing, while `agent_product_runtime`
+contains replacement lifecycle policy. The runtime module must not import the
+adapter, and the package root exports runtime symbols from their real owner.
+The former direct `agent_adapter` imports remain compatibility aliases only.
+
+Extension assembly receives its own explicit capability record; it does not
+receive `SessionCompositionPorts` and must not import `composition`. This keeps
+the extension-facing dependency surface visible without creating a second
+session composition root.
+
+Composition ports contain Product policy or unavailable pre-assembly state,
+not aliases for already assembled runtimes. Context refresh, resource refresh,
+event projection, and serialization must use their existing runtime owners
+instead of adding pass-through callbacks to `SessionCompositionPorts`.
 
 ## Deletion condition
 

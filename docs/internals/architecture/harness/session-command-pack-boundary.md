@@ -63,9 +63,14 @@ owns Product errors nor creates a second source-ordering policy.
 The former implementation was concentrated in
 `coding.session.builtin_commands` and `coding.session.command_controller`.
 Standard session metadata, parsing, typed execution, and neutral result
-projection now live in `harness.session.command_pack`. Generic local command
-definitions live in `harness.commands.DEFAULT_LOCAL_COMMANDS_PROFILE`.
-Coding retains only the catalog adapter and Product-specific command overlays.
+projection remain exposed through `harness.session.command_pack`. The physical
+implementation is split by responsibility under `harness.session.commands`:
+`catalog.py` owns identifiers, descriptors, and immutable profiles;
+`execution.py` owns typed ports, argument parsing, and dispatch; and
+`projection.py` owns neutral result shaping. The compatibility module contains
+only explicit re-exports. Generic local command definitions live in
+`harness.commands.DEFAULT_LOCAL_COMMANDS_PROFILE`. Coding retains only the
+catalog adapter and Product-specific command overlays.
 
 | Current command capability | Wave 3 owner | Product injection or retained owner |
 | --- | --- | --- |

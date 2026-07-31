@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 from loushang.ai.model import Model, ModelSelection
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.session.bootstrap_utils import split_model_thinking_pattern
 
 ModelBuilder = Callable[[ModelSelection], Model]
 ModelLookup = Callable[[str], ModelSelection | None]
@@ -129,6 +128,19 @@ def classify_model_resolution_failure(
     return "missing"
 
 
+def split_model_thinking_pattern(pattern: str) -> tuple[str, str | None]:
+    """Split a supported thinking suffix from a model reference."""
+
+    name, separator, suffix = pattern.rpartition(":")
+    if (
+        separator
+        and suffix in {"off", "minimal", "low", "medium", "high", "xhigh"}
+        and name
+    ):
+        return name, suffix
+    return pattern, None
+
+
 def scoped_models_from_patterns(
     patterns: Sequence[str] | None,
     *,
@@ -165,4 +177,5 @@ __all__ = [
     "resolve_default_model",
     "resolve_session_model",
     "scoped_models_from_patterns",
+    "split_model_thinking_pattern",
 ]

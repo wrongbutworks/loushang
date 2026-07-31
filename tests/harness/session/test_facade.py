@@ -4,6 +4,11 @@ import asyncio
 from dataclasses import dataclass
 
 from loushang.harness.session import SessionFacade, SessionFacadePorts
+from loushang.harness.session.facade import SessionModelPort as FacadeModelPort
+from loushang.harness.session.facade_optional import (
+    SessionFacadeOptionalOperations,
+    SessionModelPort,
+)
 from loushang.harness.workspace.exec import ExecOutputChunk
 
 
@@ -466,3 +471,11 @@ def test_session_facade_forwards_optional_diagnostics_and_package_ports() -> Non
         "source": "git:one",
         "scope": "global",
     }
+
+
+def test_session_facade_keeps_optional_capability_compatibility_exports() -> None:
+    assert FacadeModelPort is SessionModelPort
+    assert issubclass(SessionFacade, SessionFacadeOptionalOperations)
+    assert SessionFacade.get_model_selection is (
+        SessionFacadeOptionalOperations.get_model_selection
+    )

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Literal
 
+from loushang.harness.session.model_resolution import split_model_thinking_pattern
+
 NoToolsMode = Literal["all", "builtin"]
 
 
@@ -112,17 +114,6 @@ def non_builtin_tool_names(
         for definition in list_enabled_definitions()
         if definition.name not in builtin_names
     ]
-
-
-def split_model_thinking_pattern(pattern: str) -> tuple[str, str | None]:
-    name, separator, suffix = pattern.rpartition(":")
-    if (
-        separator
-        and suffix in {"off", "minimal", "low", "medium", "high", "xhigh"}
-        and name
-    ):
-        return name, suffix
-    return pattern, None
 
 
 __all__ = [

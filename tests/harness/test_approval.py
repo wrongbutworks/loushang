@@ -1445,12 +1445,28 @@ def test_abort_approval_is_distinct_from_deny_and_aborts_active_session() -> Non
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
+    from loushang.harness.permissions import permission_profile_snapshot
     from loushang.harness.session.agent_adapter import AgentSessionAdapterMixin
+    from loushang.harness.session.approval_interaction import (
+        AgentSessionApprovalRuntime,
+    )
 
     class Session(AgentSessionAdapterMixin):
         def __init__(self, resolver: InteractiveApprovalResolver) -> None:
-            self._approval_resolver = resolver
             self.aborted = False
+
+            async def dispatch_event(_event: object) -> None:
+                return None
+
+            self._approval_runtime = AgentSessionApprovalRuntime(
+                resolver=resolver,
+                get_permission_profile_snapshot=lambda: permission_profile_snapshot(
+                    "standard"
+                ),
+                set_permission_profile=lambda _profile_id, *, scope: None,
+                dispatch_event=dispatch_event,
+                abort=self.abort,
+            )
 
         def abort(self) -> None:
             self.aborted = True

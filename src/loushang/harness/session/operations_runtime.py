@@ -83,22 +83,12 @@ class SessionOperations:
             source_record_id=source_record_id,
         )
 
-    async def bind_extension_runtime(self, *, reason: str) -> None:
-        await self.composition.extension_runtime_controller.bind(reason=reason)
-
-    def bind_extension_runtime_bindings(self) -> None:
-        self.composition.extension_runtime_controller.bind_bindings()
-
-    async def refresh_extension_runtime(self, *, reason: str) -> None:
-        await self.composition.extension_runtime_controller.refresh(reason=reason)
-
-    def refresh_extension_runtime_bindings(self) -> None:
-        self.composition.extension_runtime_controller.refresh_bindings()
-
     async def set_active_tools(self, tool_names: list[str], *, emit_refresh: bool) -> None:
         self.composition.tool_controller.apply_active_tools(tool_names)
         if emit_refresh:
-            await self.refresh_extension_runtime(reason="active_tools_changed")
+            await self.composition.extension_bridge.refresh(
+                reason="active_tools_changed"
+            )
 
     def apply_active_tools(self, tool_names: list[str]) -> None:
         self.composition.tool_controller.apply_active_tools(tool_names)
@@ -120,7 +110,9 @@ class SessionOperations:
             endpoint_id=endpoint_id,
         )
         if emit_refresh:
-            await self.refresh_extension_runtime(reason="model_selection_changed")
+            await self.composition.extension_bridge.refresh(
+                reason="model_selection_changed"
+            )
         if self.ports.extension_runner is not None and previous != resolved:
             await self.ports.extension_runner.emit_agent_event(
                 {

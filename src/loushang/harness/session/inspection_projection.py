@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Protocol, cast
 
 from loushang.harness.context import serialize_context_usage_payload
-from loushang.harness.session import AgentSessionInspector
+from loushang.harness.session.inspection import AgentSessionInspector
 from loushang.harness.transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     AgentTranscriptRecord,

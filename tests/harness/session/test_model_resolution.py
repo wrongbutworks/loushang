@@ -6,6 +6,7 @@ from loushang.harness.session.model_resolution import (
     resolve_default_model,
     resolve_session_model,
     scoped_models_from_patterns,
+    split_model_thinking_pattern,
 )
 
 
@@ -101,3 +102,15 @@ def test_scoped_models_from_patterns_is_product_neutral() -> None:
             "thinkingLevel": "high",
         }
     ]
+
+
+def test_thinking_pattern_parsing_is_owned_by_model_resolution() -> None:
+    from loushang.harness.session.bootstrap_utils import (
+        split_model_thinking_pattern as compatibility_split,
+    )
+
+    assert split_model_thinking_pattern("provider/chat:high") == (
+        "provider/chat",
+        "high",
+    )
+    assert compatibility_split is split_model_thinking_pattern

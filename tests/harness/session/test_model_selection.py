@@ -5,9 +5,13 @@ from types import SimpleNamespace
 
 from loushang.ai.model import Model, ModelSelection
 from loushang.harness.session.model_selection import (
+    __all__ as model_selection_exports,
+)
+from loushang.harness.session.model_selection import (
     apply_session_model_selection,
     ensure_usable_session_model,
     format_model_metadata_table,
+    iter_available_model_details,
     model_choice_data_from_details,
     model_identity_data,
     model_listing_matches_query,
@@ -85,6 +89,39 @@ def test_model_listing_normalizes_dedupes_and_formats_shared_values() -> None:
     )
 
 
+def test_model_listing_accepts_mapping_details() -> None:
+    entries = normalize_model_listing(
+        [
+            {
+                "provider": "openai",
+                "model_id": "gpt-5",
+                "context_window": 128_000,
+                "supports_thinking": True,
+            }
+        ],
+        include_metadata=True,
+    )
+
+    assert entries == [
+        {
+            "provider": "openai",
+            "model_id": "gpt-5",
+            "id": "openai/gpt-5",
+            "context_window": 128_000,
+            "max_tokens": None,
+            "supports_thinking": True,
+            "supports_images": False,
+        }
+    ]
+
+
+def test_available_model_details_accepts_one_shot_iterables() -> None:
+    detail = SimpleNamespace(provider="openai", model_id="gpt-5")
+    session = SimpleNamespace(get_available_model_details=lambda: iter([detail]))
+
+    assert asyncio.run(iter_available_model_details(session)) == [detail]
+
+
 def test_model_choice_data_projects_ai_details_without_tui_dependency() -> None:
     detail = Model(
         id="gpt-5",
@@ -102,3 +139,11 @@ def test_model_choice_data_projects_ai_details_without_tui_dependency() -> None:
     assert model_identity_data(
         ModelSelection(provider="openai", endpoint_id="responses", model_id="gpt-5")
     ).value == "openai:responses:gpt-5"
+
+
+def test_model_selection_module_exports_all_public_selection_helpers() -> None:
+    assert {
+        "get_session_model_identity",
+        "iter_available_model_details",
+        "model_choice_data_from_selections",
+    } <= set(model_selection_exports)

@@ -55,6 +55,14 @@ Optional operation groups fail with `SessionOperationUnavailableError`.
 Missing methods and `AttributeError` raised inside a Product implementation are
 programming failures and must not be converted into an "unavailable" result.
 
+The Product-facing facade's independently admitted application-input,
+settings, model, diagnostics, package, and extension groups are organized in
+`harness.session.facade_optional`. `SessionFacade` inherits its stateless
+forwarding surface, so existing methods and constructor ports remain unchanged.
+The optional layer owns only typed delegation and stable missing-capability
+fallbacks; it does not discover Product capabilities or use dynamic attribute
+forwarding for the public operation surface.
+
 Legacy RPC command groups consume narrow private Product protocols for their
 direct model/settings, transcript, Bash, lifecycle-index, and command-catalog
 dependencies. These protocols are local typing boundaries, not a second
@@ -123,16 +131,20 @@ execution and cancellation linkage to the bound session.
 
 ## Dependency Rule
 
-`harness.session.facade` may depend on public Agent/AI message values required
-by `SessionRuntime`, Harness runtime/event/tool contracts, and workspace output
-types. It must not import Coding, a Product store, model/provider/auth runtime,
-extension runner API, Product configuration, or any UI/RPC/HTML type. Product
-policy is passed through the bound ports rather than imported.
+`harness.session.facade` and `harness.session.facade_optional` may depend on
+public Agent/AI message values required by `SessionRuntime`, Harness
+runtime/event/tool contracts, and workspace output types. Neither may import
+Coding, a Product store, model/provider/auth runtime, extension runner API,
+Product configuration, or any UI/RPC/HTML type. Product policy is passed
+through the bound ports rather than imported. The optional layer must not
+import the core Facade; this keeps the dependency direction acyclic.
 
 ## Verification
 
 - Harness contract tests compose the Facade with an independent fake Product
   runtime, transcript, tools, commands, command tool, view, and retry port.
+- Compatibility tests require optional methods to remain ordinary inherited
+  methods and keep the historical `harness.session.facade` protocol exports.
 - Coding session regressions preserve the public `AgentSession` behavior while
   it directly inherits the common `SessionFacade` operations.
 - Channel tests bind an injected Coding Work operation port; RPC tests preserve
