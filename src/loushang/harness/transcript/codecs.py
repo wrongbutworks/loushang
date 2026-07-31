@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import TypeVar, cast
 
 from loushang.agent.json_codec import AgentMessageJsonCodec, CustomMessageJsonCodec
+from loushang.agent.types import CustomAgentMessage
 from loushang.ai.json_codec import (
     deserialize_content_part,
     deserialize_message,
@@ -62,7 +63,9 @@ def create_agent_transcript_payload_registry() -> ConversationPayloadCodecRegist
 def create_agent_transcript_message_codec() -> AgentMessageJsonCodec:
     """Compose AI messages with the standard application-message carrier."""
 
-    def serialize(message: ApplicationMessage) -> dict[str, object]:
+    def serialize(message: CustomAgentMessage) -> dict[str, object]:
+        if not isinstance(message, ApplicationMessage):
+            raise TypeError("application message codec received an invalid message")
         encoded = _encode_application_message(message)
         if not isinstance(encoded, dict):
             raise TypeError("application message codec must emit a JSON object")
@@ -453,7 +456,7 @@ def _decode_metadata_patch(value: JSONValue) -> ConversationMetadataPatch:
         raise TypeError("conversation metadata removedKeys must be strings")
     return ConversationMetadataPatch(
         values=_mapping(payload, "values"),
-        removed_keys=tuple(removed),
+        removed_keys=tuple(cast(list[str], removed)),
     )
 
 

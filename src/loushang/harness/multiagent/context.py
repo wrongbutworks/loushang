@@ -16,6 +16,7 @@ from loushang.harness.approval import (
 from .types import AgentRef
 
 RecordT = TypeVar("RecordT")
+RecordT_co = TypeVar("RecordT_co", covariant=True)
 MessageT = TypeVar("MessageT")
 
 ForkMode = Literal["none", "all", "last"]
@@ -69,10 +70,10 @@ class MappedHistoryMessage(Generic[MessageT]):
     starts_turn: bool = False
 
 
-class TranscriptHistorySource(Protocol[RecordT]):
+class TranscriptHistorySource(Protocol[RecordT_co]):
     """Existing parent-linked transcript read seam used by session forks."""
 
-    def records_to(self, record_id: str) -> tuple[RecordT, ...]: ...
+    def records_to(self, record_id: str) -> tuple[RecordT_co, ...]: ...
 
 
 HistoryMapper = Callable[[RecordT], Iterable[MappedHistoryMessage[MessageT]]]

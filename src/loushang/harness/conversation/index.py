@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Generic, Literal, Protocol, TypeVar
 
@@ -8,6 +8,7 @@ from loushang.harness.conversation.store import ConversationLocator
 
 ProjectionT = TypeVar("ProjectionT")
 QueryT = TypeVar("QueryT")
+QueryT_contra = TypeVar("QueryT_contra", contravariant=True)
 ConversationIndexState = Literal["fresh", "stale", "unavailable", "unknown"]
 
 
@@ -30,7 +31,7 @@ class ConversationIndexSnapshot(Generic[ProjectionT]):
     query_snapshot: str
 
 
-class ConversationIndex(Protocol[ProjectionT, QueryT]):
+class ConversationIndex(Protocol[ProjectionT, QueryT_contra]):
     async def upsert(self, item: IndexedProjection[ProjectionT]) -> bool: ...
 
     async def delete(
@@ -47,12 +48,12 @@ class ConversationIndex(Protocol[ProjectionT, QueryT]):
 
     async def query(
         self,
-        query: QueryT,
+        query: QueryT_contra,
     ) -> Sequence[IndexedProjection[ProjectionT]]: ...
 
     async def query_snapshot(
         self,
-        query: QueryT,
+        query: QueryT_contra,
     ) -> ConversationIndexSnapshot[ProjectionT]: ...
 
     async def replace(
@@ -61,10 +62,14 @@ class ConversationIndex(Protocol[ProjectionT, QueryT]):
     ) -> tuple[IndexedProjection[ProjectionT], ...]: ...
 
 
-IndexQuery = Callable[
-    [QueryT, Sequence[IndexedProjection[ProjectionT]]],
-    Sequence[IndexedProjection[ProjectionT]],
-]
+class IndexQuery(Protocol[QueryT_contra, ProjectionT]):
+    """Filter or order indexed projections for one query."""
+
+    def __call__(
+        self,
+        query: QueryT_contra,
+        items: Sequence[IndexedProjection[ProjectionT]],
+    ) -> Sequence[IndexedProjection[ProjectionT]]: ...
 
 
 class MemoryConversationIndex(Generic[ProjectionT, QueryT]):
@@ -73,7 +78,7 @@ class MemoryConversationIndex(Generic[ProjectionT, QueryT]):
     def __init__(
         self,
         *,
-        query_items: IndexQuery[ProjectionT, QueryT],
+        query_items: IndexQuery[QueryT, ProjectionT],
     ) -> None:
         self._query_items = query_items
         self._items: dict[ConversationLocator, IndexedProjection[ProjectionT]] = {}

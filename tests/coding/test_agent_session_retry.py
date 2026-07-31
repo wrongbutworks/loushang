@@ -112,10 +112,10 @@ def test_agent_session_retryable_error_starts_retry_and_removes_error_message(
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": error_message}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [error_message]}, AbortSignal()
         )
         await asyncio.sleep(0)
@@ -182,17 +182,17 @@ def test_agent_session_retry_success_emits_end_event_and_resolves_waiter(
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": error_message}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [error_message]}, AbortSignal()
         )
         await asyncio.sleep(0)
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": success_message}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [success_message]}, AbortSignal()
         )
         await session.wait_for_retry()
@@ -257,12 +257,12 @@ def test_agent_session_retry_preserves_queued_messages_until_retry_continues(
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": error_message}, AbortSignal()
         )
         session.steer("queued steer")
         session.follow_up("queued follow")
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [error_message]}, AbortSignal()
         )
         await asyncio.sleep(0)
@@ -330,11 +330,11 @@ def test_agent_session_abort_retry_ends_retry_with_failure(
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": error_message}, AbortSignal()
         )
         retry_task = asyncio.create_task(
-            session._handle_agent_event(
+            session._session_runtime.handle_agent_event(
                 {"type": "agent_end", "messages": [error_message]}, AbortSignal()
             )
         )
@@ -403,18 +403,18 @@ def test_agent_session_retry_max_retries_emits_final_failure(
 
     async def scenario() -> None:
         session.agent.state.messages.append(error_message)
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": error_message}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [error_message]}, AbortSignal()
         )
         await asyncio.sleep(0)
         session.agent.state.messages.append(error_message)
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": error_message}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [error_message]}, AbortSignal()
         )
 
@@ -473,10 +473,10 @@ def test_agent_session_records_non_retryable_assistant_error_as_provider_diagnos
     error_message = _assistant_error_message("provider quota exhausted")
 
     async def scenario() -> None:
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": error_message}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [error_message]}, AbortSignal()
         )
 
@@ -540,10 +540,10 @@ def test_agent_session_overflow_routes_to_compaction_instead_of_retry(
 
     async def scenario() -> None:
         session.agent.state.messages.append(overflow_message)
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": overflow_message}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [overflow_message]}, AbortSignal()
         )
 

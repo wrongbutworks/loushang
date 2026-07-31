@@ -482,7 +482,11 @@ async def _search_contents_with_operations(
 
         for line_no, line in enumerate(contents.splitlines(), start=1):
             haystack = line.lower() if literal and ignore_case else line
-            matched = (pattern in haystack) if literal else bool(regex.search(line))
+            if literal:
+                matched = pattern in haystack
+            else:
+                assert regex is not None
+                matched = bool(regex.search(line))
             if not matched:
                 continue
             all_matches.append(

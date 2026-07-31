@@ -2,12 +2,24 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from typing import Any, Protocol, cast
 
 from loushang.harness.permissions import (
     PermissionProfileScope,
     PermissionProfileSnapshot,
     permission_profile_snapshot,
 )
+
+
+class SessionSettingsSnapshotPort(Protocol):
+    @property
+    def compaction(self) -> object: ...
+
+
+class SessionSettingsManagerPort(Protocol):
+    def get_settings(self) -> SessionSettingsSnapshotPort: ...
+
+    def get_retry_settings(self) -> object: ...
 
 
 @dataclass
@@ -19,8 +31,8 @@ class SessionSettingsBinding:
     facade import Product config types.
     """
 
-    settings_manager: object | None = None
-    create_settings_manager: Callable[[], object] | None = None
+    settings_manager: SessionSettingsManagerPort | None = None
+    create_settings_manager: Callable[[], SessionSettingsManagerPort] | None = None
     default_compaction: Callable[[], object] = lambda: _empty_settings(
         "compaction"
     )
@@ -30,7 +42,7 @@ class SessionSettingsBinding:
     get_follow_up_mode_callback: Callable[[], str] | None = None
     set_follow_up_mode_callback: Callable[[str], None] | None = None
 
-    def get_settings_manager(self) -> object | None:
+    def get_settings_manager(self) -> SessionSettingsManagerPort | None:
         return self.settings_manager
 
     def get_compaction_settings(self) -> object:
@@ -76,7 +88,7 @@ class SessionSettingsBinding:
             )
         setter(profile_id, scope=scope)
 
-    def ensure_settings_manager(self) -> object:
+    def ensure_settings_manager(self) -> SessionSettingsManagerPort:
         if self.settings_manager is None:
             if self.create_settings_manager is None:
                 raise RuntimeError("A settings manager factory is not configured.")
@@ -98,7 +110,10 @@ class SessionSettingsBinding:
         manager = self.ensure_settings_manager()
         getattr(manager, "update_settings")(
             scope="session",
-            compaction=replace(self.get_compaction_settings(), enabled=enabled),
+            compaction=replace(
+                cast(Any, self.get_compaction_settings()),
+                enabled=enabled,
+            ),
         )
 
     def persist_queue_mode(self, kind: str, mode: str) -> None:

@@ -21,7 +21,7 @@ from loushang.harness.effects import (
     effect_snapshot,
 )
 from loushang.harness.policy import build_tool_policy_subject
-from loushang.harness.policy_effects import detect_policy_effects
+from loushang.harness.policy.effects_detection import detect_policy_effects
 from loushang.harness.tools import (
     FilesystemActionAdapter,
     NetworkActionAdapter,

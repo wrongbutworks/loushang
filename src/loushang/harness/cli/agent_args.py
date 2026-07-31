@@ -329,7 +329,10 @@ def resolve_agent_session_dir(
 ) -> Path:
     if args.session_dir:
         return Path(args.session_dir).expanduser().resolve()
-    settings = settings_manager.get_settings()
+    get_settings = getattr(settings_manager, "get_settings", None)
+    if not callable(get_settings):
+        raise TypeError("settings manager does not expose get_settings()")
+    settings = get_settings()
     configured = getattr(settings, "session_dir", None)
     if configured:
         return Path(configured).expanduser().resolve()

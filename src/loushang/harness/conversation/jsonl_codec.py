@@ -191,7 +191,7 @@ class ConversationJsonlRecordCodec:
 
     def encode_record(
         self,
-        record: ConversationRecord[object],
+        record: ConversationRecord[PayloadT],
     ) -> Mapping[str, object]:
         return {
             "type": CONVERSATION_RECORD_TYPE,

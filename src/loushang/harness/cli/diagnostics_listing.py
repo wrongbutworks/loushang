@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import cast
 
 from loushang.harness.diagnostics.serialization import serialize_diagnostic
+from loushang.harness.diagnostics.types import DiagnosticRecord
 
 
 class DiagnosticsListingError(RuntimeError):
@@ -18,11 +20,15 @@ class DiagnosticsListingRequest:
     limit: int = 50
 
 
+def _serialize_diagnostic(record: object) -> Mapping[str, object]:
+    return serialize_diagnostic(cast(DiagnosticRecord, record))
+
+
 def list_diagnostic_records(
     session: object,
     request: DiagnosticsListingRequest,
     *,
-    serializer: Callable[[object], Mapping[str, object]] = serialize_diagnostic,
+    serializer: Callable[[object], Mapping[str, object]] = _serialize_diagnostic,
 ) -> list[dict[str, object]]:
     """Collect and safely serialize diagnostics from an injected session."""
 
@@ -47,7 +53,7 @@ def list_diagnostic_records(
 
 
 def format_diagnostic_records(
-    records: list[Mapping[str, object]],
+    records: Sequence[Mapping[str, object]],
     output_format: str,
 ) -> str:
     if output_format == "json":

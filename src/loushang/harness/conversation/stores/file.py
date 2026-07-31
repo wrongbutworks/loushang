@@ -504,7 +504,7 @@ def _exclusive_lock(
     )
 
 
-def _unlocked_durability(journal: JsonlJournal[object, object]):
+def _unlocked_durability(journal: JsonlJournal[HeaderT, RecordT]):
     return replace(journal.durability, locking=False)
 
 

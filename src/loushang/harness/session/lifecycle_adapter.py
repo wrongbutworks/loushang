@@ -1,8 +1,9 @@
 """Product-neutral lifecycle operations for transcript-backed sessions.
 
-The adapter is deliberately a mixin: a Product still supplies transcript
-creation, session construction, lifecycle hooks, and error presentation while
-Harness owns the public operation grammar and callback plumbing.
+The adapter specializes the transcript lifecycle runtime with the public
+Product operation grammar and callback plumbing. Products still supply
+transcript creation, session construction, lifecycle hooks, and error
+presentation.
 """
 
 from __future__ import annotations
@@ -10,17 +11,19 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 from loushang.harness.runtime import (
     SessionOperationResult,
     run_replacement_callbacks,
 )
 from loushang.harness.session.lifecycle import (
+    MissingCwdPolicy,
     MissingSessionCwdError,
     PreparedSessionLifecycleOperation,
 )
 from loushang.harness.session.transcript_lifecycle import (
+    AgentTranscriptSessionRuntime,
     require_session_operation_session,
 )
 
@@ -28,12 +31,15 @@ SessionT = TypeVar("SessionT")
 PayloadT = TypeVar("PayloadT")
 
 
-class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
+class SessionLifecycleOperationAdapter(
+    AgentTranscriptSessionRuntime[SessionT, PayloadT],
+    Generic[SessionT, PayloadT],
+):
     """Shared public lifecycle surface for a Product session runtime.
 
-    The concrete runtime must also inherit a transcript lifecycle runtime and
-    provide ``_resolve_import_cwd`` plus the Product-specific hook methods used
-    by replacement and diagnostics callbacks.
+    A concrete Product runtime provides ``_resolve_import_cwd`` plus the
+    Product-specific hook methods used by replacement and diagnostics
+    callbacks.
     """
 
     async def new_session(
@@ -53,17 +59,30 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         *,
         cwd: str | Path | None = None,
         parent_session: str | None = None,
+        parent_session_ref: str | None = None,
         setup: object | None = None,
         with_session: object | None = None,
-    ) -> SessionOperationResult[SessionT, PayloadT]:
+        metadata: dict[str, object] | None = None,
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
+        if (
+            parent_session is not None
+            and parent_session_ref is not None
+            and parent_session != parent_session_ref
+        ):
+            raise ValueError(
+                "parent_session and parent_session_ref must identify the same session"
+            )
         options = _replacement_callback_options(
             setup=setup,
             with_session=with_session,
         )
         return await self._run_new_session_operation(
             cwd=cwd,
-            parent_session=parent_session,
+            parent_session=(
+                parent_session if parent_session is not None else parent_session_ref
+            ),
             options=options or None,
+            metadata=metadata,
         )
 
     async def _run_new_session_operation(
@@ -72,13 +91,15 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         cwd: str | Path | None = None,
         parent_session: str | None = None,
         options: dict[str, object] | None = None,
-    ) -> SessionOperationResult[SessionT, PayloadT]:
+        metadata: dict[str, object] | None = None,
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
         return await super().new_session_operation(
             cwd=self._resolve_import_cwd(cwd) if cwd is not None else None,
             parent_session_ref=parent_session,
             metadata=self._lifecycle_metadata(
                 operation="new_session",
                 options=options,
+                metadata=metadata,
                 include_setup=True,
             ),
         )
@@ -88,7 +109,7 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         session_id: str | Path,
         *,
         fallback_cwd: str | Path | None = None,
-        missing_cwd: str = "error",
+        missing_cwd: MissingCwdPolicy = "error",
     ) -> SessionT:
         result = await self.restore_session_operation(
             session_id,
@@ -105,15 +126,17 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         session_id: str | Path,
         *,
         fallback_cwd: str | Path | None = None,
-        missing_cwd: str = "error",
+        missing_cwd: MissingCwdPolicy = "error",
         with_session: object | None = None,
-    ) -> SessionOperationResult[SessionT, PayloadT]:
+        metadata: dict[str, object] | None = None,
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
         options = _replacement_callback_options(with_session=with_session)
         return await self._run_restore_session_operation(
             session_id,
             fallback_cwd=fallback_cwd,
             missing_cwd=missing_cwd,
             options=options or None,
+            metadata=metadata,
         )
 
     async def prepare_restore_session_operation(
@@ -121,7 +144,8 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         session_id: str | Path,
         *,
         fallback_cwd: str | Path | None = None,
-        missing_cwd: str = "error",
+        missing_cwd: MissingCwdPolicy = "error",
+        metadata: dict[str, object] | None = None,
     ) -> PreparedSessionLifecycleOperation[SessionT, PayloadT]:
         session_file = self.resolve_session_file(session_id)
         try:
@@ -131,6 +155,7 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
                 missing_cwd=missing_cwd,
                 metadata=self._lifecycle_metadata(
                     operation="restore_session",
+                    metadata=metadata,
                     session_ref=str(session_id),
                     target_session_file=str(session_file),
                     fallback_cwd=(
@@ -147,9 +172,10 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         session_id: str | Path,
         *,
         fallback_cwd: str | Path | None = None,
-        missing_cwd: str = "error",
+        missing_cwd: MissingCwdPolicy = "error",
         options: dict[str, object] | None = None,
-    ) -> SessionOperationResult[SessionT, PayloadT]:
+        metadata: dict[str, object] | None = None,
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
         session_file = self.resolve_session_file(session_id)
         try:
             return await super().restore_session_operation(
@@ -159,6 +185,7 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
                 metadata=self._lifecycle_metadata(
                     operation="restore_session",
                     options=options,
+                    metadata=metadata,
                     session_ref=str(session_id),
                     target_session_file=str(session_file),
                     fallback_cwd=(
@@ -183,29 +210,33 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         self,
         entry_id: str | None,
         *,
-        position: str = "at",
+        position: str | None = "at",
         with_session: object | None = None,
-    ) -> SessionOperationResult[SessionT, PayloadT]:
+        metadata: dict[str, object] | None = None,
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
         options = _replacement_callback_options(with_session=with_session)
         return await self._run_fork_session_operation(
             entry_id,
             position=position,
             options=options or None,
+            metadata=metadata,
         )
 
     async def _run_fork_session_operation(
         self,
         entry_id: str | None,
         *,
-        position: str = "at",
+        position: str | None = "at",
         options: dict[str, object] | None = None,
-    ) -> SessionOperationResult[SessionT, PayloadT]:
+        metadata: dict[str, object] | None = None,
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
         return await super().fork_session_operation(
             entry_id,
             position=position,
             metadata=self._lifecycle_metadata(
                 operation="fork_session",
                 options=options,
+                metadata=metadata,
             ),
         )
 
@@ -215,7 +246,7 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
 
     async def clone_session_operation(
         self,
-    ) -> SessionOperationResult[SessionT, PayloadT]:
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
         return await self._run_fork_session_operation(None)
 
     async def import_from_jsonl(
@@ -234,7 +265,8 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         input_path: str | Path,
         *,
         cwd_override: str | Path | None = None,
-    ) -> SessionOperationResult[SessionT, PayloadT]:
+        metadata: dict[str, object] | None = None,
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
         source = Path(input_path).expanduser().resolve()
         try:
             return await super().import_session_operation(
@@ -242,6 +274,7 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
                 cwd_override=(str(cwd_override) if cwd_override is not None else None),
                 metadata=self._lifecycle_metadata(
                     operation="import_from_jsonl",
+                    metadata=metadata,
                     input_path=str(input_path),
                     source_path=str(source),
                     cwd_override=(
@@ -252,11 +285,17 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         except MissingSessionCwdError as exc:
             raise self._translate_missing_cwd_error(exc) from exc
 
-    async def replace_current_session(self, session: SessionT) -> None:
+    async def replace_current_session(
+        self,
+        session: SessionT,
+        *,
+        metadata: dict[str, object] | None = None,
+    ) -> None:
         await super().replace_current_session(
             session,
             metadata=self._lifecycle_metadata(
                 operation="replace_current_session",
+                metadata=metadata,
                 activate_extensions=False,
                 emit_before_transition=False,
                 schedule_index=False,
@@ -273,11 +312,14 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         return getter(catalog_path=catalog_path)
 
     async def materialize_package(self, source: str) -> dict[str, object]:
-        return await _call_session_operation(
-            self.session,
-            "materialize_package",
-            source,
-            unavailable="Package materializer is not available.",
+        return cast(
+            dict[str, object],
+            await _call_session_operation(
+                self.session,
+                "materialize_package",
+                source,
+                unavailable="Package materializer is not available.",
+            ),
         )
 
     async def install_package(
@@ -286,42 +328,57 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         *,
         scope: str = "project",
     ) -> dict[str, object]:
-        return await _call_session_operation(
-            self.session,
-            "install_package",
-            source,
-            scope=scope,
-            unavailable="Package installation is not available.",
+        return cast(
+            dict[str, object],
+            await _call_session_operation(
+                self.session,
+                "install_package",
+                source,
+                scope=scope,
+                unavailable="Package installation is not available.",
+            ),
         )
 
     async def update_package(self, source: str) -> dict[str, object]:
-        return await _call_session_operation(
-            self.session,
-            "update_package",
-            source,
-            unavailable="Package materializer is not available.",
+        return cast(
+            dict[str, object],
+            await _call_session_operation(
+                self.session,
+                "update_package",
+                source,
+                unavailable="Package materializer is not available.",
+            ),
         )
 
     async def update_packages(self) -> list[dict[str, object]]:
-        return await _call_session_operation(
-            self.session,
-            "update_packages",
-            unavailable="Package update is not available.",
+        return cast(
+            list[dict[str, object]],
+            await _call_session_operation(
+                self.session,
+                "update_packages",
+                unavailable="Package update is not available.",
+            ),
         )
 
     async def check_package_updates(self) -> list[dict[str, object]]:
-        return await _call_session_operation(
-            self.session,
-            "check_package_updates",
-            unavailable="Package update check is not available.",
+        return cast(
+            list[dict[str, object]],
+            await _call_session_operation(
+                self.session,
+                "check_package_updates",
+                unavailable="Package update check is not available.",
+            ),
         )
 
     async def remove_package(self, source: str) -> dict[str, object]:
-        return await _call_session_operation(
-            self.session,
-            "remove_package",
-            source,
-            unavailable="Package materializer is not available.",
+        return cast(
+            dict[str, object],
+            await _call_session_operation(
+                self.session,
+                "remove_package",
+                source,
+                unavailable="Package materializer is not available.",
+            ),
         )
 
     async def uninstall_package(
@@ -330,12 +387,15 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         *,
         scope: str = "project",
     ) -> dict[str, object]:
-        return await _call_session_operation(
-            self.session,
-            "uninstall_package",
-            source,
-            scope=scope,
-            unavailable="Package uninstallation is not available.",
+        return cast(
+            dict[str, object],
+            await _call_session_operation(
+                self.session,
+                "uninstall_package",
+                source,
+                scope=scope,
+                unavailable="Package uninstallation is not available.",
+            ),
         )
 
     async def dispose(self) -> None:
@@ -348,17 +408,37 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         *,
         operation: str,
         options: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None,
         **details: object,
     ) -> dict[str, object]:
-        metadata: dict[str, object] = {"operation": operation, **details}
+        resolved_metadata = dict(metadata or {})
+        resolved_metadata.setdefault("operation", operation)
+        for key, value in details.items():
+            resolved_metadata.setdefault(key, value)
         if options is not None:
-            metadata["options"] = options
-        return metadata
+            resolved_metadata["options"] = options
+        return resolved_metadata
 
     def _translate_missing_cwd_error(self, error: MissingSessionCwdError) -> Exception:
         """Allow a Product to preserve its public error type when required."""
 
         return error
+
+    def _resolve_import_cwd(self, cwd: str | Path) -> str:
+        """Resolve a Product-selected cwd before a lifecycle operation."""
+
+        raise NotImplementedError
+
+    def _record_replacement_callback_failure(
+        self,
+        *,
+        session: SessionT,
+        callback_name: str,
+        exc: Exception,
+    ) -> None:
+        """Record one Product replacement callback failure."""
+
+        raise NotImplementedError
 
     async def _run_replacement_callbacks(
         self,
@@ -385,12 +465,12 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
 
     async def _run_replacement_callbacks_for_result(
         self,
-        result: SessionOperationResult[SessionT, PayloadT],
+        result: SessionOperationResult[SessionT, PayloadT | None],
         transition: object,
     ) -> None:
         del transition
         options = getattr(result, "options", None)
-        if isinstance(options, dict):
+        if isinstance(options, dict) and result.current is not None:
             await self._run_replacement_callbacks(result.current, options)
 
 

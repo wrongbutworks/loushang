@@ -73,19 +73,18 @@ async def get_latest_package_version(
         "accept": "application/json",
     }
     if fetcher is None:
-        payload = await _httpx_fetch_version(
+        payload: object = await _httpx_fetch_version(
             profile.endpoint,
             headers=headers,
             timeout=timeout_seconds,
         )
     else:
-        payload = fetcher(
+        fetched = fetcher(
             profile.endpoint,
             headers=headers,
             timeout=timeout_seconds,
         )
-        if inspect.isawaitable(payload):
-            payload = await payload
+        payload = await fetched if inspect.isawaitable(fetched) else fetched
     if isinstance(payload, str):
         return payload.strip() or None
     if isinstance(payload, Mapping):

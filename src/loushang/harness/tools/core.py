@@ -11,7 +11,7 @@ from typing import (
     NotRequired,
     Protocol,
     Required,
-    TypedDict,
+    cast,
     get_args,
     get_origin,
     get_type_hints,
@@ -38,6 +38,13 @@ ToolRenderResult = Callable[
     [AgentToolResult[Any], ToolRenderResultOptions, Mapping[str, str], ToolRenderContext],
     ToolRenderOutput,
 ]
+
+
+class ToolContextProvider(Protocol):
+    """Build Product-neutral context for one materialized tool call."""
+
+    def __call__(self, *, tool_call_id: str) -> object: ...
+
 
 _SCALAR_TYPES: dict[type[object], str] = {
     str: "string",
@@ -197,13 +204,20 @@ def tool(
     return decorator
 
 
-def _base_object_schema() -> dict[str, object]:
-    return {
+def _base_object_schema() -> tuple[
+    dict[str, object],
+    dict[str, object],
+    list[str],
+]:
+    properties: dict[str, object] = {}
+    required: list[str] = []
+    schema: dict[str, object] = {
         "type": "object",
-        "properties": {},
-        "required": [],
+        "properties": properties,
+        "required": required,
         "additionalProperties": False,
     }
+    return schema, properties, required
 
 
 def _unwrap_annotation(annotation: object) -> object:
@@ -220,8 +234,9 @@ def _unwrap_annotation(annotation: object) -> object:
 def _merge_schema(base: dict[str, object], overrides: dict[str, object]) -> dict[str, object]:
     merged: dict[str, object] = dict(base)
     for key, value in overrides.items():
-        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
-            merged[key] = _merge_schema(merged[key], value)
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _merge_schema(existing, value)
         else:
             merged[key] = value
     return merged
@@ -235,12 +250,14 @@ def apply_schema_overrides(schema: dict[str, object], overrides: dict[str, objec
     return _merge_schema(schema, overrides)
 
 
-def infer_schema_from_signature(fn: object, *, exclude_names: set[str] | frozenset[str] | None = None) -> dict[str, object]:
+def infer_schema_from_signature(
+    fn: Callable[..., object],
+    *,
+    exclude_names: set[str] | frozenset[str] | None = None,
+) -> dict[str, object]:
     sig = signature(fn)
     hints = get_type_hints(fn, include_extras=True)
-    schema = _base_object_schema()
-    properties = schema["properties"]
-    required = schema["required"]
+    schema, properties, required = _base_object_schema()
     excluded = set(exclude_names or ())
 
     for param in sig.parameters.values():
@@ -311,11 +328,9 @@ def infer_schema_from_type(annotation: object) -> dict[str, object]:
 
 def _infer_schema_from_dataclass(cls: type[object]) -> dict[str, object]:
     type_hints = get_type_hints(cls, include_extras=True)
-    schema = _base_object_schema()
-    properties = schema["properties"]
-    required = schema["required"]
+    schema, properties, required = _base_object_schema()
 
-    for dataclass_field in fields(cls):
+    for dataclass_field in fields(cast(Any, cls)):
         annotation = type_hints.get(dataclass_field.name, dataclass_field.type)
         properties[dataclass_field.name] = infer_schema_from_type(annotation)
         if dataclass_field.default is MISSING and dataclass_field.default_factory is MISSING:
@@ -324,14 +339,18 @@ def _infer_schema_from_dataclass(cls: type[object]) -> dict[str, object]:
     return schema
 
 
-def _infer_schema_from_typeddict(cls: type[TypedDict]) -> dict[str, object]:
+def _infer_schema_from_typeddict(cls: type[object]) -> dict[str, object]:
     type_hints = get_type_hints(cls, include_extras=True)
-    schema = _base_object_schema()
-    properties = schema["properties"]
-    required = schema["required"]
+    schema, properties, required = _base_object_schema()
 
-    required_keys = getattr(cls, "__required_keys__", frozenset())
-    optional_keys = getattr(cls, "__optional_keys__", frozenset())
+    required_keys = cast(
+        frozenset[str],
+        getattr(cls, "__required_keys__", frozenset()),
+    )
+    optional_keys = cast(
+        frozenset[str],
+        getattr(cls, "__optional_keys__", frozenset()),
+    )
 
     for name, annotation in type_hints.items():
         properties[name] = infer_schema_from_type(annotation)
@@ -348,7 +367,7 @@ def _infer_schema_from_typeddict(cls: type[TypedDict]) -> dict[str, object]:
 
 
 def _typeddict_key_is_required(
-    cls: type[TypedDict],
+    cls: type[object],
     name: str,
     annotation: object,
     *,
@@ -407,7 +426,7 @@ def _raise_on_unresolved_pydantic_refs(value: object, *, in_properties_map: bool
 class WrappedToolDefinition:
     definition: ToolDefinition
     execution_host: ToolExecutionHost
-    context_provider: Callable[..., object] | None = None
+    context_provider: ToolContextProvider | None = None
 
     @property
     def name(self) -> str:
@@ -479,7 +498,7 @@ def _build_tool_call_context(
     tool_call_id: str,
     signal: object | None,
     on_update: object | None,
-    context_provider: Callable[..., object] | None,
+    context_provider: ToolContextProvider | None,
 ) -> ToolCallContext:
     provided = (
         context_provider(tool_call_id=tool_call_id)
@@ -514,7 +533,7 @@ def wrap_tool_definition(
     definition: ToolDefinition,
     *,
     execution_host: ToolExecutionHost | None = None,
-    context_provider: Callable[..., object] | None = None,
+    context_provider: ToolContextProvider | None = None,
 ) -> AgentTool[Any]:
     return WrappedToolDefinition(
         definition=definition,
@@ -527,7 +546,7 @@ def wrap_tool_definitions(
     definitions: list[ToolDefinition],
     *,
     execution_host: ToolExecutionHost | None = None,
-    context_provider: Callable[..., object] | None = None,
+    context_provider: ToolContextProvider | None = None,
 ) -> list[AgentTool[Any]]:
     host = execution_host or ToolExecutionHost()
     return [
@@ -621,7 +640,7 @@ class ToolRegistry:
         self,
         definitions: list[ToolDefinition],
         *,
-        context_provider: Callable[..., object] | None = None,
+        context_provider: ToolContextProvider | None = None,
     ) -> list[AgentTool[Any]]:
         return wrap_tool_definitions(
             definitions,

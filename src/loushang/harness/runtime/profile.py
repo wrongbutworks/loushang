@@ -13,7 +13,7 @@ import inspect
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, TypeVar, cast
 
 from loushang.harness.runtime.bindings import RuntimeBindingLease, RuntimeBindingState
 from loushang.protocol import JSONValue, dump_json_value, require_json_mapping
@@ -25,13 +25,19 @@ RuntimeCapabilityScope = Literal[
 ]
 RuntimeRefreshBoundary = Literal["sealed", "turn"]
 
-_SOURCES: frozenset[str] = frozenset({"product", "oem", "extension", "session"})
-_SHAPES: frozenset[str] = frozenset({"single", "ordered", "exclusive", "append_only"})
-_SCOPES: frozenset[str] = frozenset(
+_SOURCES: frozenset[RuntimeProfileSource] = frozenset(
+    {"product", "oem", "extension", "session"}
+)
+_SHAPES: frozenset[RuntimeCapabilityShape] = frozenset(
+    {"single", "ordered", "exclusive", "append_only"}
+)
+_SCOPES: frozenset[RuntimeCapabilityScope] = frozenset(
     {"process", "tenant", "workspace", "session", "turn", "channel"}
 )
-_REFRESH_BOUNDARIES: frozenset[str] = frozenset({"sealed", "turn"})
-_SOURCE_RANK: dict[str, int] = {
+_REFRESH_BOUNDARIES: frozenset[RuntimeRefreshBoundary] = frozenset(
+    {"sealed", "turn"}
+)
+_SOURCE_RANK: dict[RuntimeProfileSource, int] = {
     "product": 0,
     "oem": 1,
     "extension": 2,
@@ -53,12 +59,20 @@ def _require_integer(value: object, *, name: str, minimum: int | None = None) ->
     return value
 
 
-def _require_choice(value: object, *, name: str, choices: frozenset[str]) -> str:
+ChoiceT = TypeVar("ChoiceT", bound=str)
+
+
+def _require_choice(
+    value: object,
+    *,
+    name: str,
+    choices: frozenset[ChoiceT],
+) -> ChoiceT:
     value = _require_nonempty_string(value, name=name)
     if value not in choices:
         options = ", ".join(sorted(choices))
         raise ValueError(f"{name} must be one of: {options}")
-    return value
+    return cast(ChoiceT, value)
 
 
 @dataclass(frozen=True)
@@ -377,6 +391,9 @@ class RuntimeProfileAdmissionPolicy:
                     required_permissions - grant.granted_permissions
                 )
                 if missing_permissions:
+                    missing_permissions_json: list[JSONValue] = [
+                        permission for permission in missing_permissions
+                    ]
                     diagnostics.append(
                         RuntimeProfileDiagnostic(
                             code="runtime_slot_permission_denied",
@@ -384,7 +401,9 @@ class RuntimeProfileAdmissionPolicy:
                             slot=selection.slot,
                             source=layer.source,
                             layer_id=layer.layer_id,
-                            details={"missingPermissions": missing_permissions},
+                            details={
+                                "missingPermissions": missing_permissions_json
+                            },
                         )
                     )
                     rejected = True
@@ -714,6 +733,9 @@ class RuntimeProfileResolver:
                     )
                     continue
                 if layer.source not in slot.allowed_sources:
+                    allowed_sources_json: list[JSONValue] = [
+                        source for source in sorted(slot.allowed_sources)
+                    ]
                     diagnostics.append(
                         RuntimeProfileDiagnostic(
                             code="source_not_allowed",
@@ -721,7 +743,7 @@ class RuntimeProfileResolver:
                             slot=slot_key,
                             source=layer.source,
                             layer_id=layer.layer_id,
-                            details={"allowedSources": sorted(slot.allowed_sources)},
+                            details={"allowedSources": allowed_sources_json},
                         )
                     )
                     continue

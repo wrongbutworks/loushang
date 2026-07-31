@@ -1,14 +1,15 @@
 import inspect
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
-from typing import Any, NotRequired, Protocol, TypedDict
+from typing import Any, NotRequired, Protocol, TypedDict, cast
 
 from loushang.agent.types import AgentToolResult, TextPart
 from loushang.ai.types import ToolCall
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.effects import ProcessEffect
 from loushang.harness.policy import (
+    ToolPolicySubject,
     build_tool_policy_subject,
     executable_search_path_from_env,
     normalize_command_subject,
@@ -25,6 +26,7 @@ from loushang.harness.workspace.exec import (
     ExecRequest,
     ExecResult,
     ExecService,
+    ExecUpdateCallback,
     materialize_exec_request,
 )
 
@@ -34,7 +36,12 @@ from .runtime import (
     pi_truncation_details,
     resolve_tool_argument_alias,
 )
-from .truncate import TruncationResult, truncate_tail, truncation_details
+from .truncate import (
+    TruncationKind,
+    TruncationResult,
+    truncate_tail,
+    truncation_details,
+)
 from .types import PiTruncationDetails, ToolDefinition
 
 
@@ -101,13 +108,13 @@ class BashToolDetails(TypedDict, total=False):
 class BashOperations(Protocol):
     """Execute a request using its materialized cwd and environment."""
 
-    async def execute(
+    def execute(
         self,
         request: ExecRequest,
         *,
         signal: object | None = None,
-        on_update: object | None = None,
-    ) -> ExecResult: ...
+        on_update: ExecUpdateCallback | None = None,
+    ) -> Awaitable[ExecResult] | ExecResult: ...
 
 
 @dataclass(frozen=True)
@@ -129,7 +136,7 @@ class ExecServiceBashOperations:
         request: ExecRequest,
         *,
         signal: object | None = None,
-        on_update: object | None = None,
+        on_update: ExecUpdateCallback | None = None,
     ) -> ExecResult:
         return await _execute_exec_service(
             self.exec_service,
@@ -280,6 +287,9 @@ class _BashAuthorizedHandler:
             selected_bash_operations = ExecServiceBashOperations(context.exec_service)
         if selected_bash_operations is None:
             selected_bash_operations = self.bash_operations
+        elif not callable(getattr(selected_bash_operations, "execute", None)):
+            raise TypeError("bash_operations binding must expose execute()")
+        selected_operations = cast(BashOperations, selected_bash_operations)
         partial_output = _BashPartialOutput()
 
         async def _forward_exec_update(update: ExecOutputChunk) -> None:
@@ -299,7 +309,7 @@ class _BashAuthorizedHandler:
             else exec_request
         )
         result = await _execute_bash_operations(
-            selected_bash_operations,
+            selected_operations,
             authorized_request,
             signal=context.signal,
             on_update=_forward_exec_update,
@@ -380,7 +390,7 @@ def _bash_policy_facts(
     *,
     arguments: dict[str, Any],
     assume_shell: bool = False,
-) -> tuple[dict[str, Any], object]:
+) -> tuple[dict[str, Any], ToolPolicySubject]:
     execution_environment = exec_request.effective_environment
     assert execution_environment is not None
     command_subject = normalize_command_subject(
@@ -551,24 +561,33 @@ async def _execute_exec_service(
     exec_request: ExecRequest,
     *,
     signal: object | None,
-    on_update: object | None,
+    on_update: ExecUpdateCallback | None,
 ) -> ExecResult:
-    execute = exec_service.execute
+    execute = cast(Callable[..., object], exec_service.execute)
     try:
         signature = inspect.signature(execute)
     except (TypeError, ValueError):
-        return await execute(exec_request, signal=signal, on_update=on_update)
-
-    accepts_var_kwargs = any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD
-        for parameter in signature.parameters.values()
-    )
-    kwargs: dict[str, object | None] = {}
-    if accepts_var_kwargs or "signal" in signature.parameters:
-        kwargs["signal"] = signal
-    if accepts_var_kwargs or "on_update" in signature.parameters:
-        kwargs["on_update"] = on_update
-    return await execute(exec_request, **kwargs)
+        result = execute(exec_request, signal=signal, on_update=on_update)
+    else:
+        accepts_var_kwargs = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        )
+        accepts_signal = accepts_var_kwargs or "signal" in signature.parameters
+        accepts_update = accepts_var_kwargs or "on_update" in signature.parameters
+        if accepts_signal and accepts_update:
+            result = execute(exec_request, signal=signal, on_update=on_update)
+        elif accepts_signal:
+            result = execute(exec_request, signal=signal)
+        elif accepts_update:
+            result = execute(exec_request, on_update=on_update)
+        else:
+            result = execute(exec_request)
+    if inspect.isawaitable(result):
+        result = await result
+    if not isinstance(result, ExecResult):
+        raise TypeError("exec service must return ExecResult")
+    return result
 
 
 async def _execute_bash_operations(
@@ -576,24 +595,37 @@ async def _execute_bash_operations(
     exec_request: ExecRequest,
     *,
     signal: object | None,
-    on_update: object | None,
+    on_update: ExecUpdateCallback | None,
 ) -> ExecResult:
     execute = operations.execute
     try:
         signature = inspect.signature(execute)
     except (TypeError, ValueError):
-        return await execute(exec_request, signal=signal, on_update=on_update)
+        fallback_result = execute(
+            exec_request,
+            signal=signal,
+            on_update=on_update,
+        )
+        if inspect.isawaitable(fallback_result):
+            fallback_result = await fallback_result
+        if not isinstance(fallback_result, ExecResult):
+            raise TypeError("bash operations must return ExecResult")
+        return fallback_result
 
     accepts_var_kwargs = any(
         parameter.kind is inspect.Parameter.VAR_KEYWORD
         for parameter in signature.parameters.values()
     )
-    kwargs: dict[str, object | None] = {}
-    if accepts_var_kwargs or "signal" in signature.parameters:
-        kwargs["signal"] = signal
-    if accepts_var_kwargs or "on_update" in signature.parameters:
-        kwargs["on_update"] = on_update
-    result = execute(exec_request, **kwargs)
+    accepts_signal = accepts_var_kwargs or "signal" in signature.parameters
+    accepts_update = accepts_var_kwargs or "on_update" in signature.parameters
+    if accepts_signal and accepts_update:
+        result = execute(exec_request, signal=signal, on_update=on_update)
+    elif accepts_signal:
+        result = execute(exec_request, signal=signal)
+    elif accepts_update:
+        result = execute(exec_request, on_update=on_update)
+    else:
+        result = execute(exec_request)
     if inspect.isawaitable(result):
         result = await result
     if not isinstance(result, ExecResult):
@@ -734,7 +766,7 @@ def _resolve_preview(
     raw: str,
     preview: str,
     truncated: bool,
-    truncated_by: str | None,
+    truncated_by: TruncationKind | None,
     total_lines: int | None = None,
     total_bytes: int | None = None,
 ) -> TruncationResult:

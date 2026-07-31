@@ -51,6 +51,12 @@ class AgentToolPort(Protocol):
     """The mutable Agent tool surface required by the session tool runtime."""
 
     @property
+    def system_prompt(self) -> str: ...
+
+    @system_prompt.setter
+    def system_prompt(self, value: str) -> None: ...
+
+    @property
     def tools(self) -> list[AgentTool[Any]]: ...
 
     @tools.setter

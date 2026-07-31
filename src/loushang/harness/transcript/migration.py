@@ -401,7 +401,8 @@ def _convert_message_entry(
                 message,
                 "excludeFromContext",
                 missing=False,
-            ),
+            )
+            is True,
             metadata=_optional_mapping(message, "metadata"),
         )
     if role in {"custom", "application"}:
@@ -453,7 +454,7 @@ def _application_message_from_entry(
         custom_type=_text(value, "customType"),
         content=content,
         timestamp=timestamp,
-        display=_optional_bool(value, "display", missing=True),
+        display=_optional_bool(value, "display", missing=True) is not False,
         details=value.get("details"),
         origin=cast(str, origin),
         delivery_mode=cast(ApplicationDeliveryMode, delivery_mode),

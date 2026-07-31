@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, is_dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -58,7 +58,14 @@ from loushang.harness.resources.packages.source import (
 
 SettingsListener = Callable[[ControlConfig], None]
 SettingsScope = Literal["session", "global", "project"]
-_UNSET = object()
+ThinkingBudgetKey = Literal["minimal", "low", "medium", "high"]
+
+
+class _Unset:
+    __slots__ = ()
+
+
+_UNSET = _Unset()
 _REMOVED_SETTING_MESSAGES = {
     "transport": "transport setting has been removed; use provider/contrib-specific configuration instead",
 }
@@ -72,7 +79,7 @@ class SettingsError:
 
 
 def _normalize_string_sequence(
-    value: Sequence[str], field_name: str
+    value: Iterable[str], field_name: str
 ) -> tuple[str, ...]:
     if isinstance(value, str):
         raise TypeError(f"{field_name} must be a sequence of strings, not a string")
@@ -167,13 +174,13 @@ def _deserialize_model_selection(value: object) -> ModelSelection | None:
 def _deserialize_queue_mode(value: object, field_name: str) -> QueueMode:
     if value not in {"all", "one-at-a-time"}:
         raise ValueError(f"{field_name} must be 'all' or 'one-at-a-time'")
-    return value
+    return cast(QueueMode, value)
 
 
 def _deserialize_double_escape_action(value: object) -> DoubleEscapeAction:
     if value not in {"fork", "tree", "none"}:
         raise ValueError("double_escape_action must be 'fork', 'tree', or 'none'")
-    return value
+    return cast(DoubleEscapeAction, value)
 
 
 def _deserialize_tree_filter_mode(value: object) -> TreeFilterMode:
@@ -181,13 +188,13 @@ def _deserialize_tree_filter_mode(value: object) -> TreeFilterMode:
         raise ValueError(
             "tree_filter_mode must be 'default', 'no-tools', 'user-only', 'labeled-only', or 'all'"
         )
-    return value
+    return cast(TreeFilterMode, value)
 
 
 def _deserialize_external_tool_policy(value: object) -> ExternalToolPolicy:
     if value not in {"never", "auto", "required"}:
         raise ValueError("external_tool_policy must be 'never', 'auto', or 'required'")
-    return value
+    return cast(ExternalToolPolicy, value)
 
 
 def _deserialize_headless_approval_mode(value: object) -> HeadlessApprovalMode | None:
@@ -195,7 +202,7 @@ def _deserialize_headless_approval_mode(value: object) -> HeadlessApprovalMode |
         return None
     if value not in {"allow", "deny"}:
         raise ValueError("approval_mode must be 'allow', 'deny', or null")
-    return value
+    return cast(HeadlessApprovalMode, value)
 
 
 def _deserialize_permission_profile(value: object) -> PermissionProfileId:
@@ -210,7 +217,7 @@ def _deserialize_statusline_auto_value(
 ) -> StatusLineAutoValue:
     if value not in {"auto", "true", "false"}:
         raise ValueError(f"{field_name} must be 'auto', 'true', or 'false'")
-    return value
+    return cast(StatusLineAutoValue, value)
 
 
 def _deserialize_statusline_separator(
@@ -218,13 +225,13 @@ def _deserialize_statusline_separator(
 ) -> StatusLineSeparator:
     if value not in {"pipe", "dot"}:
         raise ValueError(f"{field_name} must be 'pipe' or 'dot'")
-    return value
+    return cast(StatusLineSeparator, value)
 
 
 def _deserialize_statusline_style(value: object, field_name: str) -> StatusLineStyle:
     if value not in {"codex-like", "muted", "plain"}:
         raise ValueError(f"{field_name} must be 'codex-like', 'muted', or 'plain'")
-    return value
+    return cast(StatusLineStyle, value)
 
 
 def _optional_string(value: object, field_name: str) -> str | None:
@@ -305,7 +312,7 @@ def _thinking_budgets(value: object) -> ThinkingBudgetMap | None:
             )
         if not isinstance(item, int):
             raise TypeError("thinking_budgets values must be integers")
-        normalized[key] = item
+        normalized[cast(ThinkingBudgetKey, key)] = item
     return normalized
 
 
@@ -388,7 +395,9 @@ def _serialize_statusline_settings(value: object) -> dict[str, Any]:
 
 
 def _serialize_dataclass_slice(value: object) -> dict[str, Any]:
-    return dict(asdict(value))
+    if not is_dataclass(value) or isinstance(value, type):
+        raise TypeError("settings slice must be a dataclass or mapping")
+    return dict(asdict(cast(Any, value)))
 
 
 def _drop_removed_settings(
@@ -442,10 +451,25 @@ def _apply_tool_settings_patch(
         "ask_path_substrings",
     ):
         if key in patch_value:
-            next_settings = replace(
-                next_settings,
-                **{key: _normalize_string_sequence(patch_value[key], key)},
-            )
+            normalized = _normalize_string_sequence(patch_value[key], key)
+            if key == "blocked_tools":
+                next_settings = replace(next_settings, blocked_tools=normalized)
+            elif key == "ask_tools":
+                next_settings = replace(next_settings, ask_tools=normalized)
+            elif key == "blocked_substrings":
+                next_settings = replace(next_settings, blocked_substrings=normalized)
+            elif key == "ask_substrings":
+                next_settings = replace(next_settings, ask_substrings=normalized)
+            elif key == "blocked_path_substrings":
+                next_settings = replace(
+                    next_settings,
+                    blocked_path_substrings=normalized,
+                )
+            else:
+                next_settings = replace(
+                    next_settings,
+                    ask_path_substrings=normalized,
+                )
     if "approval_mode" in patch_value:
         next_settings = replace(
             next_settings,
@@ -516,7 +540,7 @@ def _decode_dataclass(field_name: str):
 
 def _encode_optional_tuple(current: object, default: object) -> object:
     del default
-    return list(current) if current is not None else None
+    return list(cast(Iterable[object], current)) if current is not None else None
 
 
 def _encode_tuple(current: object, default: object) -> object:
@@ -811,51 +835,51 @@ class SettingsManager:
         self,
         *,
         scope: SettingsScope = "session",
-        default_model: ModelSelection | None | object = _UNSET,
-        thinking_level: ThinkingLevel | object = _UNSET,
-        steering_mode: QueueMode | object = _UNSET,
-        follow_up_mode: QueueMode | object = _UNSET,
-        theme: str | None | object = _UNSET,
-        system_prompt: str | object = _UNSET,
-        hide_thinking_block: bool | object = _UNSET,
-        shell_path: str | None | object = _UNSET,
-        quiet_startup: bool | object = _UNSET,
-        shell_command_prefix: str | None | object = _UNSET,
-        npm_command: Sequence[str] | None | object = _UNSET,
-        collapse_changelog: bool | object = _UNSET,
-        enable_install_telemetry: bool | object = _UNSET,
-        enable_skill_commands: bool | object = _UNSET,
-        enabled_models: Sequence[str] | None | object = _UNSET,
-        double_escape_action: DoubleEscapeAction | object = _UNSET,
-        tree_filter_mode: TreeFilterMode | object = _UNSET,
-        show_hardware_cursor: bool | object = _UNSET,
-        editor_padding_x: float | int | object = _UNSET,
-        autocomplete_max_visible: float | int | object = _UNSET,
-        keybindings: Mapping[str, object] | object = _UNSET,
-        thinking_budgets: ThinkingBudgetMap | None | object = _UNSET,
-        compaction: CompactionSettings | object = _UNSET,
-        branch_summary: BranchSummarySettings | object = _UNSET,
-        retry: RetrySettings | object = _UNSET,
-        images: ImageSettings | object = _UNSET,
-        terminal: TerminalSettings | object = _UNSET,
-        markdown: MarkdownSettings | object = _UNSET,
-        warnings: WarningSettings | object = _UNSET,
-        method: MethodSettings | Mapping[str, object] | object = _UNSET,
-        permissions: PermissionSettings | Mapping[str, object] | object = _UNSET,
-        tools: ToolSettings | Mapping[str, object] | object = _UNSET,
-        sandbox: SandboxSettings | Mapping[str, object] | object = _UNSET,
-        statusline: StatusLineControlSettings | Mapping[str, object] | object = _UNSET,
-        session_dir: str | None | object = _UNSET,
-        resource_roots: Iterable[str] | object = _UNSET,
-        package_roots: Iterable[str] | object = _UNSET,
+        default_model: ModelSelection | None | _Unset = _UNSET,
+        thinking_level: ThinkingLevel | _Unset = _UNSET,
+        steering_mode: QueueMode | _Unset = _UNSET,
+        follow_up_mode: QueueMode | _Unset = _UNSET,
+        theme: str | None | _Unset = _UNSET,
+        system_prompt: str | _Unset = _UNSET,
+        hide_thinking_block: bool | _Unset = _UNSET,
+        shell_path: str | None | _Unset = _UNSET,
+        quiet_startup: bool | _Unset = _UNSET,
+        shell_command_prefix: str | None | _Unset = _UNSET,
+        npm_command: Sequence[str] | None | _Unset = _UNSET,
+        collapse_changelog: bool | _Unset = _UNSET,
+        enable_install_telemetry: bool | _Unset = _UNSET,
+        enable_skill_commands: bool | _Unset = _UNSET,
+        enabled_models: Sequence[str] | None | _Unset = _UNSET,
+        double_escape_action: DoubleEscapeAction | _Unset = _UNSET,
+        tree_filter_mode: TreeFilterMode | _Unset = _UNSET,
+        show_hardware_cursor: bool | _Unset = _UNSET,
+        editor_padding_x: float | int | _Unset = _UNSET,
+        autocomplete_max_visible: float | int | _Unset = _UNSET,
+        keybindings: Mapping[str, object] | _Unset = _UNSET,
+        thinking_budgets: ThinkingBudgetMap | None | _Unset = _UNSET,
+        compaction: CompactionSettings | _Unset = _UNSET,
+        branch_summary: BranchSummarySettings | _Unset = _UNSET,
+        retry: RetrySettings | _Unset = _UNSET,
+        images: ImageSettings | _Unset = _UNSET,
+        terminal: TerminalSettings | _Unset = _UNSET,
+        markdown: MarkdownSettings | _Unset = _UNSET,
+        warnings: WarningSettings | _Unset = _UNSET,
+        method: MethodSettings | Mapping[str, object] | _Unset = _UNSET,
+        permissions: PermissionSettings | Mapping[str, object] | _Unset = _UNSET,
+        tools: ToolSettings | Mapping[str, object] | _Unset = _UNSET,
+        sandbox: SandboxSettings | Mapping[str, object] | _Unset = _UNSET,
+        statusline: StatusLineControlSettings | Mapping[str, object] | _Unset = _UNSET,
+        session_dir: str | None | _Unset = _UNSET,
+        resource_roots: Iterable[str] | _Unset = _UNSET,
+        package_roots: Iterable[str] | _Unset = _UNSET,
         package_sources: Iterable[PackageSourceConfig | str | Mapping[str, object]]
-        | object = _UNSET,
-        plugin_sources: Iterable[str] | object = _UNSET,
-        disabled_skills: Iterable[str] | object = _UNSET,
-        disabled_plugins: Iterable[str] | object = _UNSET,
+        | _Unset = _UNSET,
+        plugin_sources: Iterable[str] | _Unset = _UNSET,
+        disabled_skills: Iterable[str] | _Unset = _UNSET,
+        disabled_plugins: Iterable[str] | _Unset = _UNSET,
     ) -> None:
         patch: dict[str, Any] = {}
-        if default_model is not _UNSET:
+        if not isinstance(default_model, _Unset):
             patch["default_model"] = _serialize_model_selection(default_model)
         if thinking_level is not _UNSET:
             patch["thinking_level"] = thinking_level
@@ -964,30 +988,30 @@ class SettingsManager:
             patch["statusline"] = _serialize_statusline_settings(statusline)
         if session_dir is not _UNSET:
             patch["session_dir"] = session_dir
-        if resource_roots is not _UNSET:
+        if not isinstance(resource_roots, _Unset):
             patch["resource_roots"] = list(
                 _normalize_string_sequence(resource_roots, "resource_roots")
             )
-        if package_roots is not _UNSET:
+        if not isinstance(package_roots, _Unset):
             patch["package_roots"] = list(
                 _normalize_string_sequence(package_roots, "package_roots")
             )
-        if package_sources is not _UNSET:
+        if not isinstance(package_sources, _Unset):
             patch["packages"] = [
                 _serialize_package_source(source)
                 for source in _normalize_package_source_sequence(
                     list(package_sources), "package_sources"
                 )
             ]
-        if plugin_sources is not _UNSET:
+        if not isinstance(plugin_sources, _Unset):
             patch["plugin_sources"] = list(
                 _normalize_string_sequence(plugin_sources, "plugin_sources")
             )
-        if disabled_skills is not _UNSET:
+        if not isinstance(disabled_skills, _Unset):
             patch["disabled_skills"] = list(
                 _normalize_string_sequence(disabled_skills, "disabled_skills")
             )
-        if disabled_plugins is not _UNSET:
+        if not isinstance(disabled_plugins, _Unset):
             patch["disabled_plugins"] = list(
                 _normalize_string_sequence(disabled_plugins, "disabled_plugins")
             )

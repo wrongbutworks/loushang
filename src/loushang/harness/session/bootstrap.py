@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, TypeVar, cast
+from typing import Generic, TypeVar
 
 from loushang.agent.types import ThinkingLevel
+from loushang.ai.model import Model
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.model.selection import ModelSelection
 from loushang.harness.bootstrap import (
@@ -19,6 +20,8 @@ from loushang.harness.bootstrap import (
     register_resource_extension_tools,
 )
 from loushang.harness.capabilities import CapabilityCompositionRuntime
+from loushang.harness.capabilities.packs import CapabilityPackComposer
+from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.config.activation import ConfigActivationStep
 from loushang.harness.config.agent import ControlConfig, SettingsManager
@@ -26,9 +29,16 @@ from loushang.harness.diagnostics.service import (
     DiagnosticsService,
     run_standard_startup_checks,
 )
-from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
+from loushang.harness.diagnostics.types import (
+    DiagnosticDraft,
+    DiagnosticRecord,
+    StartupCheckResult,
+)
 from loushang.harness.model_catalog import ModelCatalog
-from loushang.harness.resources.activation import SkillActivationRuntime
+from loushang.harness.resources.activation import (
+    ResourceActivation,
+    SkillActivationRuntime,
+)
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.catalog_diagnostics import (
     record_package_lockfile_diagnostics,
@@ -57,6 +67,7 @@ from loushang.harness.session.model_resolution import (
     resolve_session_model,
     scoped_models_from_patterns,
 )
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecService
 
@@ -69,6 +80,7 @@ ServicesT = TypeVar("ServicesT")
 BundleT = TypeVar("BundleT")
 ExtensionT = TypeVar("ExtensionT")
 DiagnosticRecordT = TypeVar("DiagnosticRecordT")
+DiagnosticDraftT = TypeVar("DiagnosticDraftT")
 SessionT = TypeVar("SessionT")
 AuditT = TypeVar("AuditT")
 AgentT = TypeVar("AgentT")
@@ -76,14 +88,36 @@ RegistryT = TypeVar("RegistryT")
 ActivationContextT = TypeVar("ActivationContextT")
 SessionManagerT = TypeVar("SessionManagerT")
 RuntimeT = TypeVar("RuntimeT")
+StandardExtensionT = TypeVar("StandardExtensionT", bound=StandardExtensionRuntime)
+ConstructionDiagnosticT = TypeVar("ConstructionDiagnosticT")
 
 ExtensionFlagValues = Mapping[str, bool | str]
-ExtensionRuntimeFactory = Callable[[ResourceBundle], StandardExtensionRuntime]
 SourceIdentityCheck = Callable[[str], StartupCheckResult]
 
 
+def _record_drafts(
+    diagnostics_service: DiagnosticsService,
+    diagnostics: Sequence[DiagnosticDraft],
+    *,
+    session_id: str,
+) -> None:
+    diagnostics_service.record_drafts(
+        diagnostics,
+        phase="resource_loading",
+        source="bootstrap",
+        session_id=session_id,
+    )
+
+
+def _register_workspace_tool(
+    registry: WorkspaceToolRegistry,
+    tool: ToolDefinition,
+) -> None:
+    registry.register_tool(tool)
+
+
 @dataclass(frozen=True, slots=True)
-class StandardAgentSessionConfigurationRequest:
+class StandardAgentSessionConfigurationRequest(Generic[StandardExtensionT]):
     """Concrete shared services for one standard Agent session activation."""
 
     settings: ControlConfig
@@ -95,34 +129,36 @@ class StandardAgentSessionConfigurationRequest:
     skill_activation_runtime: SkillActivationRuntime
     session_id: str
     cwd: str
-    create_extension_runtime: ExtensionRuntimeFactory
+    create_extension_runtime: Callable[[ResourceBundle], StandardExtensionT]
     source_identity_check: SourceIdentityCheck
     extension_flag_values: ExtensionFlagValues | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class StandardAgentSessionConfigurationResult:
+class StandardAgentSessionConfigurationResult(Generic[StandardExtensionT]):
     resource_bundle: ResourceBundle
-    extension_runtime: StandardExtensionRuntime
+    extension_runtime: StandardExtensionT
     cwd_bound_services_audit: CwdBoundServicesAudit
 
 
 @dataclass
-class _StandardAgentSessionConfigurationContext:
-    request: StandardAgentSessionConfigurationRequest
+class _StandardAgentSessionConfigurationContext(Generic[StandardExtensionT]):
+    request: StandardAgentSessionConfigurationRequest[StandardExtensionT]
     resource_bundle: ResourceBundle | None = None
-    extension_runtime: StandardExtensionRuntime | None = None
+    extension_runtime: StandardExtensionT | None = None
     cwd_bound_services_audit: CwdBoundServicesAudit | None = None
 
 
-class StandardAgentSessionConfigurationRuntime:
+class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
     """Bind standard Harness resource services to the activation graph."""
 
     def configure(
         self,
-        request: StandardAgentSessionConfigurationRequest,
-    ) -> StandardAgentSessionConfigurationResult:
-        context = _StandardAgentSessionConfigurationContext(request=request)
+        request: StandardAgentSessionConfigurationRequest[StandardExtensionT],
+    ) -> StandardAgentSessionConfigurationResult[StandardExtensionT]:
+        context = _StandardAgentSessionConfigurationContext[StandardExtensionT](
+            request=request
+        )
         activate_standard_agent_session_configuration(
             request.settings,
             context,
@@ -148,10 +184,10 @@ class StandardAgentSessionConfigurationRuntime:
             cwd_bound_services_audit=context.cwd_bound_services_audit,
         )
 
-    @staticmethod
     def _startup_checks(
+        self,
         selection: object,
-        context: _StandardAgentSessionConfigurationContext,
+        context: _StandardAgentSessionConfigurationContext[StandardExtensionT],
     ) -> None:
         del selection
         request = context.request
@@ -168,10 +204,10 @@ class StandardAgentSessionConfigurationRuntime:
             session_id=request.session_id,
         )
 
-    @staticmethod
     def _package_sources(
+        self,
         selection: object,
-        context: _StandardAgentSessionConfigurationContext,
+        context: _StandardAgentSessionConfigurationContext[StandardExtensionT],
     ) -> None:
         del selection
         request = context.request
@@ -185,10 +221,10 @@ class StandardAgentSessionConfigurationRuntime:
             phase="startup",
         )
 
-    @staticmethod
     def _resource_roots(
+        self,
         selection: object,
-        context: _StandardAgentSessionConfigurationContext,
+        context: _StandardAgentSessionConfigurationContext[StandardExtensionT],
     ) -> None:
         del selection
         request = context.request
@@ -200,10 +236,10 @@ class StandardAgentSessionConfigurationRuntime:
             session_id=request.session_id,
         )
 
-    @staticmethod
     def _resources(
+        self,
         selection: object,
-        context: _StandardAgentSessionConfigurationContext,
+        context: _StandardAgentSessionConfigurationContext[StandardExtensionT],
     ) -> None:
         del selection
         request = context.request
@@ -222,10 +258,10 @@ class StandardAgentSessionConfigurationRuntime:
         request.diagnostics_service.record_many(result.diagnostics)
         context.resource_bundle = result.resource_bundle
 
-    @staticmethod
     def _extensions(
+        self,
         selection: object,
-        context: _StandardAgentSessionConfigurationContext,
+        context: _StandardAgentSessionConfigurationContext[StandardExtensionT],
     ) -> None:
         del selection
         request = context.request
@@ -248,10 +284,10 @@ class StandardAgentSessionConfigurationRuntime:
         context.resource_bundle = result.resource_bundle
         context.extension_runtime = result.extension_runtime
 
-    @staticmethod
     def _cwd_audit(
+        self,
         selection: object,
-        context: _StandardAgentSessionConfigurationContext,
+        context: _StandardAgentSessionConfigurationContext[StandardExtensionT],
     ) -> None:
         del selection
         request = context.request
@@ -271,10 +307,10 @@ class StandardAgentSessionConfigurationRuntime:
         )
         context.cwd_bound_services_audit = audit
 
-    @staticmethod
     def _model_registry(
+        self,
         selection: object,
-        context: _StandardAgentSessionConfigurationContext,
+        context: _StandardAgentSessionConfigurationContext[StandardExtensionT],
     ) -> None:
         del selection
         request = context.request
@@ -471,6 +507,7 @@ def prepare_agent_session_services(
             ResourceLoaderT,
             BundleT,
             ExtensionT,
+            DiagnosticDraftT,
             DiagnosticRecordT,
         ],
     ],
@@ -657,14 +694,16 @@ class AgentSessionConstructionRequest(Generic[BundleT, RegistryT]):
     max_retry_delay_ms: int | None
     stream_fn: Callable[..., object] | None
     resource_bundle: BundleT
-    tools: Sequence[object] | None
+    tools: Sequence[ToolDefinition] | None
     tool_registry: RegistryT | None
     allowed_tool_names: Sequence[str] | None
     active_tool_names: Sequence[str] | None
     no_tools_mode: NoToolsMode | None
 
 
-class AgentSessionConstructionRuntime(Generic[AgentT, SessionT, BundleT, RegistryT]):
+class AgentSessionConstructionRuntime(
+    Generic[AgentT, SessionT, BundleT, RegistryT, ConstructionDiagnosticT]
+):
     """Compose shared tool registration and Agent construction steps."""
 
     def construct(
@@ -674,9 +713,18 @@ class AgentSessionConstructionRuntime(Generic[AgentT, SessionT, BundleT, Registr
         agent_factory: Callable[..., AgentT],
         register_extension_tools: Callable[
             [BundleT, RegistryT | None],
-            tuple[BundleT, RegistryT | None, Sequence[object]],
+            tuple[
+                BundleT,
+                RegistryT | None,
+                Sequence[ConstructionDiagnosticT],
+            ],
         ],
-        record_extension_diagnostics: Callable[[Sequence[object]], None],
+        record_extension_diagnostics: Callable[
+            [Sequence[ConstructionDiagnosticT]],
+            None,
+        ],
+        registry_factory: Callable[[], RegistryT],
+        register_tool: Callable[[RegistryT, ToolDefinition], None],
         session_factory: Callable[
             [
                 AgentT,
@@ -698,16 +746,17 @@ class AgentSessionConstructionRuntime(Generic[AgentT, SessionT, BundleT, Registr
         if request.no_tools_mode == "all":
             allowed_tool_names = set()
         if resolved_registry is None and request.tools:
-            resolved_registry = WorkspaceToolRegistry()
+            new_registry = registry_factory()
             for tool in request.tools:
-                resolved_registry.register_tool(tool)
+                register_tool(new_registry, tool)
+            resolved_registry = new_registry
 
         resource_bundle, resolved_registry, extension_diagnostics = (
             register_extension_tools(request.resource_bundle, resolved_registry)
         )
         record_extension_diagnostics(extension_diagnostics)
         if request.no_tools_mode == "all" and resolved_registry is None:
-            resolved_registry = WorkspaceToolRegistry()
+            resolved_registry = registry_factory()
         resolved_active_tool_names = resolve_initial_active_tool_names(
             active_tool_names=(
                 list(request.active_tool_names)
@@ -745,30 +794,31 @@ class AgentSessionConstructionRuntime(Generic[AgentT, SessionT, BundleT, Registr
 
 
 @dataclass(frozen=True)
-class AgentProductConstructionPorts(Generic[BundleT, ExtensionT, RegistryT]):
+class AgentProductConstructionPorts(Generic[StandardExtensionT]):
     """Product callbacks around the standard configured Agent construction."""
 
-    activate_resources: Callable[[BundleT], object]
-    prompt_section_composer: object
-    tool_pack_composer: object
-    list_tool_definitions: Callable[[ExtensionT], Sequence[object]]
-    get_tool_source_info: Callable[[ExtensionT, str], object | None]
+    activate_resources: Callable[[ResourceBundle], ResourceActivation]
+    prompt_section_composer: PromptSectionComposer
+    tool_pack_composer: CapabilityPackComposer
+    list_tool_definitions: Callable[
+        [StandardExtensionT],
+        Sequence[ToolDefinition],
+    ]
+    get_tool_source_info: Callable[[StandardExtensionT, str], object | None]
     dispose_capabilities: Callable[[], None]
 
 
 @dataclass(frozen=True)
-class AgentProductConstructionRequest(
-    Generic[AgentT, SessionT, BundleT, ExtensionT, RegistryT]
-):
-    configuration: StandardAgentSessionConfigurationRequest
-    ports: AgentProductConstructionPorts[BundleT, ExtensionT, RegistryT]
+class AgentProductConstructionRequest(Generic[AgentT, SessionT, StandardExtensionT]):
+    configuration: StandardAgentSessionConfigurationRequest[StandardExtensionT]
+    ports: AgentProductConstructionPorts[StandardExtensionT]
     default_system_prompt: str
     explicit_system_prompt: str | None
     append_system_prompt: Sequence[str]
-    model: object | None
+    model: Model | ModelSelection | None
     thinking_level: object
-    tools: Sequence[object] | None
-    tool_registry: RegistryT | None
+    tools: Sequence[ToolDefinition] | None
+    tool_registry: WorkspaceToolRegistry | None
     allowed_tool_names: Sequence[str] | None
     active_tool_names: Sequence[str] | None
     no_tools: NoToolsMode | bool | None
@@ -778,30 +828,28 @@ class AgentProductConstructionRequest(
     session_factory: Callable[
         [
             AgentT,
-            BundleT,
-            ExtensionT,
-            RegistryT | None,
+            ResourceBundle,
+            StandardExtensionT,
+            WorkspaceToolRegistry | None,
             list[str] | None,
             str,
             NoToolsMode | None,
         ],
         SessionT,
     ]
-    on_default_model_unavailable: Callable[[object, Exception, str], None]
+    on_default_model_unavailable: Callable[[ModelSelection, Exception, str], None]
     set_scoped_models: Callable[[SessionT, Sequence[object]], None]
     product_tool_pack_id: str = "product.registry"
     extension_tool_pack_id: str = "product.extensions"
 
 
 @dataclass(frozen=True)
-class AgentProductConstructionResult(Generic[SessionT]):
+class AgentProductConstructionResult(Generic[SessionT, StandardExtensionT]):
     session: SessionT
-    configuration: StandardAgentSessionConfigurationResult
+    configuration: StandardAgentSessionConfigurationResult[StandardExtensionT]
 
 
-class AgentProductConstructionRuntime(
-    Generic[AgentT, SessionT, BundleT, ExtensionT, RegistryT]
-):
+class AgentProductConstructionRuntime(Generic[AgentT, SessionT, StandardExtensionT]):
     """Compose existing configuration, prompt, model, tool, and Agent owners."""
 
     def construct(
@@ -809,15 +857,13 @@ class AgentProductConstructionRuntime(
         request: AgentProductConstructionRequest[
             AgentT,
             SessionT,
-            BundleT,
-            ExtensionT,
-            RegistryT,
+            StandardExtensionT,
         ],
-    ) -> AgentProductConstructionResult[SessionT]:
+    ) -> AgentProductConstructionResult[SessionT, StandardExtensionT]:
         try:
-            configuration = StandardAgentSessionConfigurationRuntime().configure(
-                request.configuration
-            )
+            configuration = StandardAgentSessionConfigurationRuntime[
+                StandardExtensionT
+            ]().configure(request.configuration)
             resource_bundle = configuration.resource_bundle
             extension_runtime = configuration.extension_runtime
             settings = request.configuration.settings
@@ -845,9 +891,13 @@ class AgentProductConstructionRuntime(
             )
 
             def register_extension_tools(
-                bundle: BundleT,
-                registry: RegistryT | None,
-            ) -> tuple[BundleT, RegistryT | None, Sequence[object]]:
+                bundle: ResourceBundle,
+                registry: WorkspaceToolRegistry | None,
+            ) -> tuple[
+                ResourceBundle,
+                WorkspaceToolRegistry | None,
+                Sequence[DiagnosticDraft],
+            ]:
                 return register_resource_extension_tools(
                     extension_runtime=extension_runtime,
                     resource_bundle=bundle,
@@ -862,8 +912,9 @@ class AgentProductConstructionRuntime(
             session = AgentSessionConstructionRuntime[
                 AgentT,
                 SessionT,
-                BundleT,
-                RegistryT,
+                ResourceBundle,
+                WorkspaceToolRegistry,
+                DiagnosticDraft,
             ]().construct(
                 AgentSessionConstructionRequest(
                     session_id=request.configuration.session_id,
@@ -886,14 +937,13 @@ class AgentProductConstructionRuntime(
                 ),
                 agent_factory=request.agent_factory,
                 register_extension_tools=register_extension_tools,
-                record_extension_diagnostics=lambda diagnostics: (
-                    request.configuration.diagnostics_service.record_drafts(
-                        diagnostics,
-                        phase="resource_loading",
-                        source="bootstrap",
-                        session_id=request.configuration.session_id,
-                    )
+                record_extension_diagnostics=lambda diagnostics: _record_drafts(
+                    request.configuration.diagnostics_service,
+                    diagnostics,
+                    session_id=request.configuration.session_id,
                 ),
+                registry_factory=WorkspaceToolRegistry,
+                register_tool=_register_workspace_tool,
                 session_factory=lambda agent, bundle, registry, active, prompt, mode: (
                     request.session_factory(
                         agent,
@@ -922,17 +972,18 @@ class AgentProductConstructionRuntime(
 
 
 @dataclass(frozen=True)
-class AgentProductConstructionBinding(
-    Generic[AgentT, SessionT, BundleT, ExtensionT, RegistryT]
-):
+class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensionT]):
     """Compile Product policy onto the existing construction runtime."""
 
     default_system_prompt: str
     bind_capabilities: Callable[[], CapabilityCompositionRuntime]
-    create_extension_runtime: Callable[[ResourceBundle], ExtensionT]
+    create_extension_runtime: Callable[[ResourceBundle], StandardExtensionT]
     source_identity_check: SourceIdentityCheck
-    list_tool_definitions: Callable[[ExtensionT], Sequence[object]]
-    get_tool_source_info: Callable[[ExtensionT, str], object | None]
+    list_tool_definitions: Callable[
+        [StandardExtensionT],
+        Sequence[ToolDefinition],
+    ]
+    get_tool_source_info: Callable[[StandardExtensionT, str], object | None]
     product_tool_pack_id: str = "product.registry"
     extension_tool_pack_id: str = "product.extensions"
 
@@ -946,10 +997,10 @@ class AgentProductConstructionBinding(
         extension_flag_values: ExtensionFlagValues | None,
         explicit_system_prompt: str | None,
         append_system_prompt: Sequence[str],
-        model: object | None,
+        model: Model | ModelSelection | None,
         thinking_level: object | None,
-        tools: Sequence[object] | None,
-        tool_registry: RegistryT | None,
+        tools: Sequence[ToolDefinition] | None,
+        tool_registry: WorkspaceToolRegistry | None,
         allowed_tool_names: Sequence[str] | None,
         active_tool_names: Sequence[str] | None,
         no_tools: NoToolsMode | bool | None,
@@ -960,18 +1011,21 @@ class AgentProductConstructionBinding(
             [
                 CapabilityCompositionRuntime,
                 AgentT,
-                BundleT,
-                ExtensionT,
-                RegistryT | None,
+                ResourceBundle,
+                StandardExtensionT,
+                WorkspaceToolRegistry | None,
                 list[str] | None,
                 str,
                 NoToolsMode | None,
             ],
             SessionT,
         ],
-        on_default_model_unavailable: Callable[[object, Exception, str], None],
+        on_default_model_unavailable: Callable[
+            [ModelSelection, Exception, str],
+            None,
+        ],
         set_scoped_models: Callable[[SessionT, Sequence[object]], None],
-    ) -> AgentProductConstructionResult[SessionT]:
+    ) -> AgentProductConstructionResult[SessionT, StandardExtensionT]:
         """Build the canonical request and delegate all execution to its owner."""
 
         settings = services.settings_manager.get_settings()
@@ -979,9 +1033,7 @@ class AgentProductConstructionBinding(
         return AgentProductConstructionRuntime[
             AgentT,
             SessionT,
-            BundleT,
-            ExtensionT,
-            RegistryT,
+            StandardExtensionT,
         ]().construct(
             AgentProductConstructionRequest(
                 configuration=StandardAgentSessionConfigurationRequest(
@@ -994,19 +1046,12 @@ class AgentProductConstructionBinding(
                     skill_activation_runtime=capability_runtime.skill_activation,
                     session_id=session_id,
                     cwd=cwd,
-                    create_extension_runtime=cast(
-                        ExtensionRuntimeFactory,
-                        self.create_extension_runtime,
-                    ),
+                    create_extension_runtime=self.create_extension_runtime,
                     source_identity_check=self.source_identity_check,
                     extension_flag_values=extension_flag_values,
                 ),
                 ports=AgentProductConstructionPorts(
-                    activate_resources=lambda bundle: (
-                        capability_runtime.activate_resources(
-                            cast(ResourceBundle, bundle)
-                        )
-                    ),
+                    activate_resources=capability_runtime.activate_resources,
                     prompt_section_composer=capability_runtime.prompt_section_composer,
                     tool_pack_composer=capability_runtime.tool_pack_composer,
                     list_tool_definitions=self.list_tool_definitions,

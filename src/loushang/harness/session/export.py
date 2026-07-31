@@ -5,9 +5,14 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any, Protocol
 
+from loushang.harness.presentation import RenderableToolDefinition
+from loushang.harness.session.inspection import AgentSessionInspector
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.transcript import (
+    AgentTranscriptContext,
+    ProductTranscriptSession,
     TranscriptExportRequest,
     TranscriptHtmlExportProfile,
     TranscriptToolDefinition,
@@ -16,12 +21,35 @@ from loushang.harness.transcript import (
 )
 from loushang.protocol import require_json_mapping
 
-if TYPE_CHECKING:
-    from loushang.harness.session.facade import SessionFacade
+
+class ExportAgentPort(Protocol):
+    @property
+    def system_prompt(self) -> str: ...
+
+
+class SessionExportPort(Protocol):
+    session_manager: ProductTranscriptSession[Any, Any]
+    _session_inspector: AgentSessionInspector
+
+    @property
+    def agent(self) -> ExportAgentPort: ...
+
+    @property
+    def session_id(self) -> str: ...
+
+    @property
+    def session_name(self) -> str | None: ...
+
+    def get_all_tools(self) -> list[ToolDefinition]: ...
+
+    def get_tool_definition(self, name: str) -> RenderableToolDefinition | None: ...
+
+    def get_session_context(self) -> AgentTranscriptContext: ...
 
 
 def export_session_to_jsonl(
-    session: SessionFacade, output_path: str | None = None
+    session: SessionExportPort,
+    output_path: str | None = None,
 ) -> str:
     path = (
         Path(output_path)
@@ -36,7 +64,8 @@ def export_session_to_jsonl(
 
 
 def export_session_to_html(
-    session: SessionFacade, output_path: str | None = None
+    session: SessionExportPort,
+    output_path: str | None = None,
 ) -> str:
     path = (
         Path(output_path)
@@ -54,7 +83,7 @@ def export_session_to_html(
     )
 
 
-def _build_export_request(session: SessionFacade) -> TranscriptExportRequest:
+def _build_export_request(session: SessionExportPort) -> TranscriptExportRequest:
     stats = session._session_inspector.build_session_stats()
     context_usage = stats.context_usage
     entries = session.session_manager.get_entries()
@@ -81,7 +110,10 @@ def _build_export_request(session: SessionFacade) -> TranscriptExportRequest:
         message_count=stats.message_count,
         active_tool_count=stats.active_tool_count,
         estimated_context_tokens=(
-            context_usage.estimated_context_tokens if context_usage is not None else 0
+            context_usage.estimated_context_tokens
+            if context_usage is not None
+            and context_usage.estimated_context_tokens is not None
+            else 0
         ),
         system_prompt=session.agent.system_prompt,
         tool_definitions=tools,
@@ -89,7 +121,7 @@ def _build_export_request(session: SessionFacade) -> TranscriptExportRequest:
     )
 
 
-def _default_jsonl_export_path(session: SessionFacade) -> Path:
+def _default_jsonl_export_path(session: SessionExportPort) -> Path:
     cwd = Path(session.session_manager.get_cwd()).expanduser().resolve()
     timestamp = (
         datetime.now(UTC)
@@ -101,13 +133,13 @@ def _default_jsonl_export_path(session: SessionFacade) -> Path:
     return cwd / f"session-{timestamp}.jsonl"
 
 
-def _default_html_export_path(session: SessionFacade) -> Path:
+def _default_html_export_path(session: SessionExportPort) -> Path:
     return (
         session.session_manager.get_session_dir() / f"{session.session_id}-export.html"
     )
 
 
-def _custom_message_renderer(session: SessionFacade):
+def _custom_message_renderer(session: SessionExportPort):
     runner = getattr(session, "extension_runner", None)
     getter = (
         getattr(runner, "get_message_renderer", None) if runner is not None else None
@@ -115,7 +147,7 @@ def _custom_message_renderer(session: SessionFacade):
     return getter if callable(getter) else None
 
 
-def _export_theme(session: SessionFacade) -> dict[str, str]:
+def _export_theme(session: SessionExportPort) -> dict[str, str]:
     theme = getattr(session, "export_theme", None)
     if isinstance(theme, dict):
         return {str(key): str(value) for key, value in theme.items()}

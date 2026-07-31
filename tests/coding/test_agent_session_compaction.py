@@ -677,10 +677,10 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": assistant}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [assistant]}, AbortSignal()
         )
         await asyncio.sleep(0)
@@ -791,10 +791,10 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": assistant}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [assistant]}, AbortSignal()
         )
         await asyncio.sleep(0)
@@ -1249,11 +1249,11 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
     monkeypatch.setattr(session.agent, "continue_run", _continue_run)
 
     async def scenario() -> None:
-        await session._handle_agent_event(
-            {"type": "message_end", "message": assistant}, signal=None
+        await session._session_runtime.handle_agent_event(
+            {"type": "message_end", "message": assistant}, session.agent.signal
         )
-        await session._handle_agent_event(
-            {"type": "agent_end", "messages": [assistant]}, signal=None
+        await session._session_runtime.handle_agent_event(
+            {"type": "agent_end", "messages": [assistant]}, session.agent.signal
         )
         await asyncio.sleep(0)
 
@@ -1355,10 +1355,10 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": assistant}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [assistant]}, AbortSignal()
         )
         await asyncio.sleep(0)
@@ -1470,14 +1470,14 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "message_end", "message": assistant}, AbortSignal()
         )
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [assistant]}, AbortSignal()
         )
         await asyncio.sleep(0)
-        await session._handle_agent_event(
+        await session._session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [assistant]}, AbortSignal()
         )
 

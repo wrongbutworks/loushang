@@ -31,9 +31,13 @@ from loushang.harness.cli.resource_toggles import (
     agent_resource_toggle_request,
     report_agent_resource_settings_errors,
 )
-from loushang.harness.cli.session_resolution import resolve_agent_cli_session
+from loushang.harness.cli.session_resolution import (
+    SessionResolutionRuntime,
+    resolve_agent_cli_session,
+)
 from loushang.harness.host.product_host import ProductHostLifecycle
 from loushang.harness.tools.workspace import (
+    ToolPolicyEvaluator,
     WorkspaceToolRuntimeSettings,
     workspace_tool_runtime_settings,
 )
@@ -152,7 +156,7 @@ class AgentCliStatePreparationPorts(Generic[AgentArgsT]):
         [object, WorkspaceToolRuntimeSettings, object],
         object,
     ]
-    policy_factory: Callable[..., object]
+    policy_factory: Callable[..., ToolPolicyEvaluator]
     build_interactive_approval_resolver: Callable[[], object]
     run_resource_toggle: Callable[..., int | None]
     evaluate_plugin_source: Callable[[str], str | None] | None = None
@@ -485,7 +489,13 @@ def build_agent_cli_application_ports(
                         tool_policy_evaluator=None,
                     )
                 ),
-                resolve_session=resolve_agent_cli_session,
+                resolve_session=lambda args, runtime, project_root: (
+                    resolve_agent_cli_session(
+                        args,
+                        cast(SessionResolutionRuntime, runtime),
+                        project_root,
+                    )
+                ),
                 services=binding.services,
             )
         ),
@@ -599,7 +609,7 @@ async def _resolve_bound_agent_cli_session(
             raise RuntimeError(message)
     return await resolve_agent_cli_session(
         context.state.args,
-        context.runtime,
+        cast(SessionResolutionRuntime, context.runtime),
         context.bootstrap.project_root,
     )
 
@@ -676,6 +686,7 @@ class CliApplicationRuntime(Generic[ArgsT, StateT, RuntimeT, SessionT]):
                 )
             if runtime_result is not None:
                 return runtime_result
+            session: SessionT | None
             try:
                 with self._ports.output_guard(
                     cli_output_guard_enabled(bootstrap.launch_plan)

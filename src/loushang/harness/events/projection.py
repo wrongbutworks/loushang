@@ -91,6 +91,9 @@ def project_runtime_event(
 ) -> RuntimeEventView:
     """Bind a Product JSON projection to one common runtime envelope."""
 
+    normalized_payload = snake_case_json_keys(dict(payload))
+    if not isinstance(normalized_payload, Mapping):
+        raise TypeError("runtime event projection must remain a mapping")
     return RuntimeEventView(
         event_id=event.event_id,
         kind=event.kind,
@@ -100,7 +103,7 @@ def project_runtime_event(
         event_type=event_type,
         view=view,
         payload=require_json_mapping(
-            dict(snake_case_json_keys(dict(payload))),
+            dict(normalized_payload),
             name="runtime_event_projection",
         ),
         delivery_hint=delivery_hint,

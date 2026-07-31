@@ -7,7 +7,7 @@ Product wire formats and display projections remain outside Harness.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
@@ -19,6 +19,7 @@ from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     AgentTranscriptInspector,
+    AgentTranscriptRecord,
     AgentTranscriptSession,
     ContextCompactionCheckpoint,
     build_context_usage_snapshot,
@@ -134,7 +135,7 @@ class AgentSessionInspector:
     get_active_tool_names: Callable[[], list[str]]
     is_retrying: Callable[[], bool]
     is_compacting: Callable[[], bool]
-    get_last_diagnostics: Callable[[int], list[object]]
+    get_last_diagnostics: Callable[[int], Sequence[object]]
     get_model_selection: Callable[[], ModelSelection | None]
     is_host_running: Callable[[], bool] | None = None
     get_compaction_reserve_tokens: Callable[[], int] = lambda: 0
@@ -245,7 +246,9 @@ class AgentSessionInspector:
         return self._transcript.recent_assistant_texts(self.agent.state.messages)
 
 
-def _build_token_usage_totals(branch_entries: list[object]) -> TokenUsageTotals:
+def _build_token_usage_totals(
+    branch_entries: Sequence[AgentTranscriptRecord],
+) -> TokenUsageTotals:
     latest_compaction = _latest_compaction_with_index(branch_entries)
     input_tokens = 0
     output_tokens = 0
@@ -285,14 +288,15 @@ def _build_token_usage_totals(branch_entries: list[object]) -> TokenUsageTotals:
 
 
 def _latest_compaction_with_index(
-    entries: list[object],
+    entries: Sequence[AgentTranscriptRecord],
 ) -> tuple[ContextCompactionCheckpoint, int] | None:
     for index in range(len(entries) - 1, -1, -1):
         entry = entries[index]
         if getattr(entry, "kind", None) != CONTEXT_COMPACTION_CHECKPOINT_KIND:
             continue
-        if isinstance(getattr(entry, "payload", None), ContextCompactionCheckpoint):
-            return entry.payload, index
+        payload = entry.payload
+        if isinstance(payload, ContextCompactionCheckpoint):
+            return payload, index
     return None
 
 

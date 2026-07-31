@@ -9,7 +9,7 @@ session directories, summaries, and lifecycle policy.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -120,7 +120,7 @@ class AgentTranscriptSession:
     def get_children(self, parent_id: str) -> list[AgentTranscriptRecord]:
         return list(self._transcript.children(parent_id))
 
-    def get_tree(self) -> list[object]:
+    def get_tree(self) -> Sequence[object]:
         """Return the current record tree for product-neutral inspection."""
 
         return list(self._transcript.tree())

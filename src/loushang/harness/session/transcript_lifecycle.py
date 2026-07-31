@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from inspect import isawaitable
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
@@ -42,11 +42,15 @@ from loushang.harness.transcript.session_catalog import SessionSummary
 SessionT = TypeVar("SessionT")
 PayloadT = TypeVar("PayloadT")
 TranscriptSessionT = TypeVar("TranscriptSessionT")
+ProductTranscriptSessionT = TypeVar(
+    "ProductTranscriptSessionT",
+    bound=ProductTranscriptSession[Any, Any],
+)
 ValueT = TypeVar("ValueT")
 
 SessionCallback = Callable[[SessionT], Awaitable[None] | None]
 LifecycleCallback = Callable[[], Awaitable[None] | None]
-SessionDiagnosticsProvider = Callable[[object | None], SessionDiagnosticsRuntime]
+SessionDiagnosticsProvider = Callable[[SessionT | None], SessionDiagnosticsRuntime]
 TranscriptSessionBuilder = Callable[
     [TranscriptSessionT, SessionT | None, SessionLifecycleTransition],
     SessionT | Awaitable[SessionT],
@@ -82,10 +86,10 @@ class ProductTranscriptSessionLifecyclePorts(Generic[TranscriptSessionT, Session
 
 
 @dataclass(frozen=True)
-class ProductTranscriptSessionBinding:
+class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
     """Bind the standard Product transcript session API to lifecycle ports."""
 
-    session_type: type[ProductTranscriptSession]
+    session_type: type[ProductTranscriptSessionT]
     session_dir: Path
     persist: bool
     resolve_cwd_override: Callable[[str | Path], str]
@@ -94,7 +98,7 @@ class ProductTranscriptSessionBinding:
         self,
         cwd: str,
         parent_session_ref: str | None,
-    ) -> ProductTranscriptSession:
+    ) -> ProductTranscriptSessionT:
         return await self.session_type.new(
             session_dir=self.session_dir,
             cwd=cwd,
@@ -106,7 +110,7 @@ class ProductTranscriptSessionBinding:
         self,
         session_ref: str | Path,
         cwd_override: str | None,
-    ) -> ProductTranscriptSession:
+    ) -> ProductTranscriptSessionT:
         return await self.session_type.open(
             session_ref,
             session_dir=self.session_dir,
@@ -120,9 +124,9 @@ class ProductTranscriptSessionBinding:
 
     async def fork(
         self,
-        transcript: ProductTranscriptSession,
+        transcript: ProductTranscriptSessionT,
         target_entry_id: str | None,
-    ) -> ProductTranscriptSession:
+    ) -> ProductTranscriptSessionT:
         if target_entry_id is not None:
             return await transcript.fork(target_entry_id)
         session_ref = transcript.get_session_file()
@@ -132,7 +136,7 @@ class ProductTranscriptSessionBinding:
         )
 
     @staticmethod
-    async def dispose(transcript: ProductTranscriptSession) -> None:
+    async def dispose(transcript: ProductTranscriptSessionT) -> None:
         await transcript.dispose_runtime_profile()
 
     async def rename(
@@ -153,7 +157,7 @@ class ProductTranscriptSessionBinding:
         )
 
     @staticmethod
-    def validate_available_cwd(transcript: ProductTranscriptSession) -> None:
+    def validate_available_cwd(transcript: ProductTranscriptSessionT) -> None:
         session_cwd = transcript.get_cwd()
         candidate = Path(session_cwd).expanduser()
         if candidate.exists() and candidate.is_dir():
@@ -289,7 +293,7 @@ class AgentTranscriptSessionRuntime(
         session_index_refresh_interval: float = 0.5,
         session_index_flush_delay: float = 0.25,
         record_index_refresh_failure: Callable[[Exception, bool], None] | None = None,
-        diagnostics_runtime: SessionDiagnosticsProvider | None = None,
+        diagnostics_runtime: SessionDiagnosticsProvider[SessionT] | None = None,
     ) -> None:
         super().__init__(
             session_dir=session_dir,
@@ -511,7 +515,7 @@ class AgentTranscriptSessionRuntime(
 
 
 def require_session_operation_session(
-    result: SessionOperationResult[SessionT, PayloadT | None],
+    result: SessionOperationResult[SessionT, PayloadT],
 ) -> SessionT:
     """Return a completed operation's active session with a stable error."""
 

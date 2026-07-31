@@ -5,7 +5,11 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
-from loushang.harness.workspace.truncation import DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES
+from loushang.harness.workspace.truncation import (
+    DEFAULT_MAX_BYTES,
+    DEFAULT_MAX_LINES,
+    TruncationKind,
+)
 
 
 def _as_tuple_of_strings(
@@ -152,9 +156,9 @@ class ExecResult:
     stdout_preview: str = ""
     stderr_preview: str = ""
     stdout_truncated: bool = False
-    stdout_truncated_by: str | None = None
+    stdout_truncated_by: TruncationKind | None = None
     stderr_truncated: bool = False
-    stderr_truncated_by: str | None = None
+    stderr_truncated_by: TruncationKind | None = None
     stdout_artifact_path: str | None = None
     stderr_artifact_path: str | None = None
     stdout_total_lines: int | None = None

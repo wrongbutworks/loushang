@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
+from typing import Any, Protocol, cast
 
 from loushang.agent import Agent
 from loushang.ai.api_registry import (
     ApiProviderRegistry,
     get_default_api_provider_registry,
 )
+from loushang.ai.model import ModelSelection
+from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import CapabilityCompositionRuntime
 from loushang.harness.config.agent import (
     CompactionSettings,
@@ -19,6 +22,7 @@ from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.events import project_session_runtime_event
 from loushang.harness.extensions import ExtensionProviderRuntime
+from loushang.harness.extensions.agent.input_adapter import ExtensionInputAdapter
 from loushang.harness.extensions.agent.replacement import ExtensionReplacementRuntime
 from loushang.harness.extensions.context import (
     ReplacedSessionContext,
@@ -28,9 +32,13 @@ from loushang.harness.extensions.context import (
 from loushang.harness.extensions.provider_config import provider_from_extension_config
 from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
 from loushang.harness.policy import PolicyEvaluator
+from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.catalog import PackageSummaryProvider
 from loushang.harness.resources.packages.materializer import PackageMaterializer
-from loushang.harness.resources.packages.session import SessionPackageController
+from loushang.harness.resources.packages.session import (
+    SessionPackageController,
+    SessionPackageSettingsManager,
+)
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import (
     CancellationSignal,
@@ -48,11 +56,13 @@ from loushang.harness.session.command_controller import (
 from loushang.harness.session.command_pack import StandardSessionCommandPorts
 from loushang.harness.session.composition import (
     SessionCompositionPorts,
+    SessionExtensionCompositionPort,
+    SessionModelCatalogPort,
     compose_session_runtime,
 )
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
-from loushang.harness.session.facade import SessionFacade
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
+from loushang.harness.session.runtime import SessionRuntime
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.side_question import (
     SIDE_QUESTION_BOUNDARY_PROMPT,
@@ -60,41 +70,58 @@ from loushang.harness.session.side_question import (
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
+    AgentTranscriptSelectionRuntime,
     BranchSummaryOutput,
     CompactionHookDecision,
     CompactionHookRequest,
     CompactionResult,
+    ProductTranscriptSession,
 )
 from loushang.harness.workspace.exec import ExecService
 
-CompactionExecutor = Callable[..., Awaitable[object]]
+CompactionExecutor = Callable[..., Awaitable[CompactionResult]]
 BranchSummaryExecutor = Callable[..., Awaitable[BranchSummaryOutput]]
 ChangelogProvider = Callable[[str, str], object]
 ClipboardWriter = Callable[[str], object]
 RetrySleeper = Callable[[int, CancellationSignal], Awaitable[None]]
 
 
-class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
+class FooterDataPort(Protocol):
+    """Footer updates consumed by the shared Product session adapter."""
+
+    def set_extension_status(self, name: str, status: str | None) -> None: ...
+
+    def set_available_provider_count(self, count: int) -> None: ...
+
+    def dispose(self) -> None: ...
+
+
+class AgentProductSession(AgentSessionAdapterMixin):
     """Bind Product callbacks to the existing standard session runtimes."""
+
+    resource_bundle: ResourceBundle | None
+    _extension_message_controller: ExtensionInputAdapter
+    _session_runtime: SessionRuntime
+    _selection_runtime: AgentTranscriptSelectionRuntime
 
     def __init__(
         self,
         *,
         agent: Agent,
-        session_manager: object,
+        session_manager: ProductTranscriptSession[Any, Any],
         capability_runtime: CapabilityCompositionRuntime,
         execute_compaction: CompactionExecutor,
         execute_branch_summary: BranchSummaryExecutor,
         get_changelog: ChangelogProvider,
         copy_to_clipboard: ClipboardWriter,
         retry_sleep: RetrySleeper,
-        footer_data_provider: object,
+        footer_data_provider: FooterDataPort,
         package_summary_provider: PackageSummaryProvider | None = None,
         settings_manager: SettingsManager | None = None,
-        model_registry: object | None = None,
-        resource_loader: object | None = None,
+        model_registry: SessionModelCatalogPort | None = None,
+        resource_loader: ResourceLoader | None = None,
         resource_bundle: ResourceBundle | None = None,
-        extension_runner: object | None = None,
+        extension_runner: SessionExtensionCompositionPort | None = None,
         tool_registry: WorkspaceToolRegistry | None = None,
         allowed_tool_names: list[str] | None = None,
         active_tool_names: list[str] | None = None,
@@ -107,7 +134,7 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         api_provider_registry: ApiProviderRegistry | None = None,
         exec_service: ExecService | None = None,
         tool_exec_service: ExecService | None = None,
-        approval_resolver: object | None = None,
+        approval_resolver: InteractiveApprovalResolver | None = None,
         tool_policy_evaluator: PolicyEvaluator | None = None,
     ) -> None:
         self.agent = agent
@@ -135,7 +162,9 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
         self._tool_exec_service = tool_exec_service
-        self._capability_runtime = capability_runtime
+        self._capability_runtime: CapabilityCompositionRuntime | None = (
+            capability_runtime
+        )
         side_question_factory = capability_runtime.side_question_provider_factory
         self._side_question = (
             SideQuestionCoordinator(side_question_factory.bind(self))
@@ -167,7 +196,10 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         self._package_controller = SessionPackageController(
             get_session_id=lambda: self.session_manager.get_session_record().session_id,
             get_cwd=self.session_manager.get_cwd,
-            get_settings_manager=self._settings_controller.get_settings_manager,
+            get_settings_manager=lambda: cast(
+                SessionPackageSettingsManager | None,
+                self._settings_controller.get_settings_manager(),
+            ),
             get_package_materializer=lambda: self._package_materializer,
             get_resource_loader=lambda: self._resource_loader,
             get_diagnostics_service=lambda: self.diagnostics_service,
@@ -188,30 +220,24 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
             model_registry=self.model_registry,
             get_active_tool_names=lambda: self.get_active_tool_names(),
             get_all_tools=lambda: list(self.get_all_tools()),
-            get_model_selection=lambda: self.get_model_selection(),
+            get_model_selection=self._get_extension_model_selection,
             set_active_tools=self._set_active_tools_from_extension,
             set_model=self._set_model_from_extension,
-            register_tool=lambda tool, source_info=None: self._register_extension_runtime_tool(
-                tool, source_info
-            ),
+            register_tool=self._register_extension_runtime_tool,
             append_entry=self._append_extension_entry,
-            send_message=lambda message, options=None: self._extension_message_controller.send_message(
-                message, options
-            ),
-            send_user_message=lambda content, options=None: self._extension_message_controller.send_user_message(
-                content, options
-            ),
+            send_message=self._send_message_from_extension,
+            send_user_message=self._send_user_message_from_extension_async,
             get_signal=lambda: self.agent.signal,
             set_session_name=self.set_session_name,
             get_session_name=lambda: self.session_name,
             set_label=self._set_extension_label,
             list_commands=lambda: self.list_commands(),
             request_resource_refresh=self.request_resource_refresh,
-            shutdown=self.abort,
+            shutdown=self._abort_from_extension,
             record_diagnostic=self._record_extension_runtime_diagnostic,
-            abort=self.abort,
+            abort=self._abort_from_extension,
             is_idle=lambda: not self.agent.is_streaming,
-            has_pending_messages=lambda: self._extension_message_controller.has_pending_messages(),
+            has_pending_messages=self.has_pending_messages,
             get_context_usage=self.get_context_usage,
             get_thinking_level=lambda: self.agent.thinking_level,
             set_thinking_level=self.set_thinking_level,
@@ -255,7 +281,7 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
                 invalidate_extension_contexts=self._invalidate_extension_contexts,
                 sync_extension_diagnostics=self._sync_extension_diagnostics,
                 close_approvals=self._close_session_approvals,
-                continue_run=lambda: self._session_runtime.schedule_continue_run(),
+                continue_run=composition.session_runtime.schedule_continue_run,
             ),
             settings=self._settings_controller,
             session_manager=self.session_manager,
@@ -319,7 +345,6 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
             model_registry=self.model_registry,
             api_provider_registry=self.api_provider_registry,
             resource_loader=self._resource_loader,
-            resource_bundle=self.resource_bundle,
             get_resource_bundle=lambda: self.resource_bundle,
             extension_runner=self._extension_runner,
             tool_registry=self._tool_registry,
@@ -329,7 +354,6 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
             show_empty_tool_prompt=show_empty_tool_prompt,
             base_prompt=self._base_prompt,
             diagnostics_service=self.diagnostics_service,
-            package_materializer=self._package_materializer,
             session_start_event=self._session_start_event,
             footer_data_provider=self.footer_data_provider,
             exec_service=self._exec_service,
@@ -359,10 +383,6 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
             record_extension_runtime_diagnostic=self._record_extension_runtime_diagnostic,
             refresh_resources_for_extension_runtime=self._refresh_resources_for_extension_runtime,
             refresh_resources_for_extension_runtime_async=self._refresh_resources_for_extension_runtime_async,
-            get_changelog=lambda args: self._get_product_changelog(
-                self.session_manager.get_cwd(), args
-            ),
-            copy_to_clipboard=self._copy_product_text,
             execute_compaction=self._execute_product_compaction,
             execute_branch_summary=lambda entries, signal: self._branch_summary_runner(
                 custom_instructions=None,
@@ -370,7 +390,6 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
             )(entries, signal),
             before_compaction=self._before_product_compaction,
             after_compaction=self._after_product_compaction,
-            before_tree=self._apply_before_tree_hook,
             project_event=project_session_runtime_event,
             serialize_context_usage=serialize_context_usage_payload,
             before_agent_start_system_prompt_options=self._before_agent_start_system_prompt_options,
@@ -380,7 +399,6 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
             ),
             set_extension_ui_context=self._set_extension_ui_context,
             set_extension_runtime_host=self._set_extension_runtime_host,
-            on_shutdown=self._finalize_after_session_shutdown,
             sleep_for_retry=self._retry_sleep,
             continue_run=lambda: self._session_runtime.schedule_continue_run(),
             compact_internal=lambda **kwargs: self._compact_internal(**kwargs),
@@ -425,9 +443,15 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         self.footer_data_provider.dispose()
         self._capability_runtime = None
 
+    def _abort_from_extension(self) -> None:
+        self.abort()
+
     def _register_provider_from_extension(self, name: str, config: object) -> None:
         self._extension_provider_controller.register_provider(name, config)
         self._sync_footer_available_provider_count()
+
+    def _get_extension_model_selection(self) -> ModelSelection | None:
+        return cast(ModelSelection | None, self.get_model_selection())
 
     def _unregister_provider_from_extension(self, name: str) -> None:
         self._extension_provider_controller.unregister_provider(name)
@@ -451,7 +475,10 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
             raise RuntimeError(
                 "Session replacement callback requires a valid Agent session."
             )
-        return self._extension_replacement_controller.create_context(session)
+        return cast(
+            ReplacedSessionContext,
+            self._extension_replacement_controller.create_context(session),
+        )
 
     def _branch_summary_runner(
         self,
@@ -489,7 +516,11 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         if decision is not None and decision.cancel:
             self._sync_extension_diagnostics(phase="runtime")
             return CompactionHookDecision(cancel=True)
-        result = getattr(decision, "compaction", None)
+        result = decision.compaction if decision is not None else None
+        if result is not None and not isinstance(result, CompactionResult):
+            raise TypeError(
+                "Extension compaction hooks must return a CompactionResult."
+            )
         return CompactionHookDecision(result=result) if result is not None else None
 
     async def _after_product_compaction(
@@ -501,7 +532,7 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         extension_runner = self._extension_runner
         if extension_runner is None:
             return
-        await extension_runner.emit_event(
+        await extension_runner.emit_agent_event(
             {
                 "type": "session_compact",
                 "compaction": result,

@@ -16,14 +16,16 @@ from loushang.harness.extensions.agent.input import (
     ExtensionApplicationInput,
     ExtensionInputRuntime,
     ExtensionUserInput,
+    UserInputDeliveryMode,
 )
-from loushang.harness.transcript import ApplicationMessage
+from loushang.harness.transcript import ApplicationDeliveryMode, ApplicationMessage
 
 
 class ExtensionInputAgentPort(Protocol):
     """The minimal live-Agent state needed for Coding wire-policy decisions."""
 
-    is_streaming: bool
+    @property
+    def is_streaming(self) -> bool: ...
 
 
 @dataclass
@@ -74,7 +76,7 @@ class ExtensionInputAdapter:
             return
         deliver_as = opts.get("deliverAs", opts.get("deliver_as"))
         if deliver_as in {"followUp", "follow_up"}:
-            mode = "follow_up"
+            mode: UserInputDeliveryMode = "follow_up"
         elif deliver_as == "steer":
             mode = "steering"
         else:
@@ -92,7 +94,7 @@ class ExtensionInputAdapter:
 
 def _application_delivery_mode(
     *, deliver_as: object, trigger_turn: bool, streaming: bool
-) -> str:
+) -> ApplicationDeliveryMode:
     if deliver_as in {"nextTurn", "next_turn"}:
         return "next_turn"
     if deliver_as in {"followUp", "follow_up"}:

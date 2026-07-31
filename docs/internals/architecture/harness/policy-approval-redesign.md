@@ -448,6 +448,28 @@ Names such as `ActorRef`, `ActionRequest`, `PolicyVerdict`, and the durable
 stores below remain design vocabulary until Work/daemon provides their second
 runtime consumer.
 
+### 7.0 Terminology Conventions
+
+The implemented policy/approval cluster reuses a small set of words for
+distinct concepts. Documentation, docstrings, and new code must use the
+qualified terms below; the bare words "rule", "permission", and "grant" are
+ambiguous and should not appear without their qualifier.
+
+| Qualified term | Meaning | Implemented type(s) | Not to be confused with |
+| --- | --- | --- | --- |
+| **policy rule** | Evaluation input: matches a subject and yields allow/deny/ask | `PolicyRule` (`loushang.harness.policy.evaluators`) | retained approval rule |
+| **retained approval rule** | Persisted rule created when a user chooses "always allow" during approval | `ApprovalPolicyRule` (`loushang.harness.approval.rules`) | policy rule |
+| **permission profile** | Product-selected authority ceiling for a session (e.g. Standard/Cautious/Full Access) | `PermissionProfile` (`loushang.harness.permissions`) | effective execution profile; approval permissions snapshot |
+| **effective execution profile** | Frozen, non-widening authority for one execution attempt | `EffectiveExecutionProfile` (`loushang.harness.authorization`) | permission profile |
+| **approval permissions snapshot** | Read model of pending requests, session grants, and retained rules | `ApprovalPermissionsSnapshot` (`loushang.harness.approval.grants`) | permission profile |
+| **grant proposal** | Proposed, not yet issued session-scoped authority attached to a request | `ApprovalGrantProposal` (`loushang.harness.approval.requests`) | grant |
+| **grant** | Issued session-scoped authority stored for preauthorization | `ApprovalGrant` (`loushang.harness.approval.grants`) | grant proposal |
+
+Public type renames to align the type names with these terms are deliberately
+deferred: the implemented contracts are the compatibility baseline, and any
+rename must follow the deprecation policy once a second Product consumer
+revises the contracts.
+
 ### 7.1 Actor
 
 ```python
@@ -1230,24 +1252,60 @@ Products may choose aliases, but they operate on the shared runtime.
 
 ## 15. Physical Module Layout
 
-The implemented layout keeps each mechanism focused:
+The implemented layout keeps each mechanism focused. Modules are grouped by
+the domain concept they implement (§7–§12); the concept ownership, not the
+file list, is the stable reference. Single-consumer helper modules are
+mechanism internals and have been folded into their consumer's package
+(`policy/effects_detection.py`, `approval/proposals.py`) without a
+compatibility guarantee; the accepted `loushang.harness.policy_engine`
+import path remains as a compatibility shim over `policy/engine.py` until
+its removal is scheduled.
 
 ```text
 src/loushang/harness/
-  effects.py                         # typed protected-resource effects
-  policy.py                          # subjects, decisions, normalization
-  policy_engine.py                   # default Product-injected rule engine
-  approval.py                        # broker, options, grants, rule stores
+  effects.py                         # typed protected-resource effects (§7.3)
+  policy/                            # policy mechanism package (§7.5, §8)
+    decisions.py                     # verdict values and contract errors
+    subjects.py                      # subjects and command/shell normalization
+    evaluators.py                    # evaluator/matcher protocols, rules, chains
+    matchers.py                      # concrete matchers
+    effects_detection.py             # heuristic effect detection (§5.4, §5.5)
+    engine.py                        # default Product-injected rule engine (§12.1)
+  policy_engine.py                   # compatibility shim over policy/engine.py
+  approval/                          # approval mechanism package (§9, §10)
+    requests.py                      # request/decision/option values, projections
+    ports.py                         # resolver/presenter protocols
+    grants.py                        # session grants, stores, permission snapshots
+    rules.py                         # retained rule stores, store binding
+    resolvers.py                     # headless/deny/actor-bound resolvers
+    broker.py                        # complete-once broker, interactive resolver
+    proposals.py                     # grant and policy-amendment proposals (§9.1)
+  permissions.py                     # permission profiles and execution ceilings (§7.4)
   authorization/
-    execution_profile.py             # non-widening effective authority
+    execution_profile.py             # non-widening effective authority (§12.4)
   tools/
-    authoring.py                     # direct/authorized tool bindings
-    execution.py                     # prepared/authorized action contracts
+    authoring.py                     # direct/authorized tool bindings and action adapters
+    execution.py                     # prepared/authorized action contracts (§7.2)
     workspace/
-      authorization.py               # mandatory live Gateway
+      authorization.py               # mandatory live Gateway (§11)
       policy.py                      # Policy/Approval enforcement adapter
-      audit.py                       # redacted action/execution projection
+      audit.py                       # redacted action/execution projection (§13)
 ```
+
+Concept map (§7 domain model to implemented owner):
+
+| Domain concept | Implemented type(s) | Owner module |
+| --- | --- | --- |
+| Actor (§7.1) | actor binding on resolvers; `ActorRef` remains design vocabulary | `approval.py` (`ActorBoundApprovalResolver`); child provenance in `harness.multiagent` |
+| Action (§7.2) | `PreparedToolAction`, `AuthorizedToolAction` | `tools/execution.py`; bindings in `tools/authoring.py` |
+| Resource claims and effects (§7.3) | `FilesystemEffect`, `ProcessEffect`, `NetworkEffect`, `PublicationEffect` | `effects.py` |
+| Permission profile (§7.4) | `PermissionProfile`, ceilings, snapshots | `permissions.py` |
+| Policy verdict (§7.5) | `PolicyDecision`, policy subjects | `policy/decisions.py`, `policy/subjects.py` |
+| Policy model (§8) | `PolicyRule`, matchers, evaluator chains | `policy/evaluators.py`, `policy/matchers.py`; default engine in `policy/engine.py` |
+| Grants (§9) | `ApprovalGrant` and stores; grant/amendment proposals | `approval/grants.py`; `approval/proposals.py` |
+| Approval lifecycle (§10) | `ApprovalRequest`/`ApprovalDecision`/`ApprovalOption`, broker, resolver/presenter ports, retained rule stores | `approval/requests.py`, `approval/ports.py`, `approval/broker.py`, `approval/rules.py` |
+| Enforcement gateway (§11) | mandatory live Gateway | `tools/workspace/authorization.py` |
+| Permission enforcer (§12.4) | `EffectiveExecutionProfile` | `authorization/execution_profile.py` |
 
 Product adapters remain thin and outside these modules:
 
@@ -1257,10 +1315,11 @@ src/loushang/harnesstui/approval/    # common interactive projection
 src/loushang/work/                   # event projection; durability deferred
 ```
 
-`harness.policy`, `harness.approval`, and `harness.authorization` are
-cooperating public boundaries. Merging them into one physical package would
-not improve enforcement and would needlessly invalidate the implemented
-surface. Product packages must not reimplement or re-export these mechanisms.
+`harness.policy`, `harness.approval`, `harness.permissions`, and
+`harness.authorization` are cooperating public boundaries. Merging them into
+one physical package would not improve enforcement and would needlessly
+invalidate the implemented surface. Product packages must not reimplement or
+re-export these mechanisms.
 
 ## 16. Implemented Owner Ledger
 
@@ -1268,7 +1327,7 @@ The local/session cutover is complete:
 
 | Concern | Implemented owner |
 |---|---|
-| Policy values, subjects, normalization, evaluation | `harness.policy` and `harness.policy_engine` |
+| Policy values, subjects, normalization, evaluation | `harness.policy` (default engine in `harness.policy.engine`) |
 | Approval request, broker, grants, retained rules | `harness.approval` |
 | Effective sandbox/executor authority | `harness.authorization` |
 | Tool route and immutable action contracts | `harness.tools.authoring` and `harness.tools.execution` |

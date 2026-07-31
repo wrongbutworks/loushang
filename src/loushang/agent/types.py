@@ -282,7 +282,7 @@ def _snapshot_tool_output_content(
                 path=error_path,
                 value_type=value_type,
             ) from exc
-        snapshot.append(restored)
+        snapshot.append(cast(TextPart | ImagePart, restored))
     return snapshot
 
 
@@ -423,12 +423,23 @@ class TransformContextFn(Protocol):
 
 @runtime_checkable
 class AgentTool(Protocol[TDetails]):
-    name: str
-    description: str
-    parameters: dict[str, Any]
-    label: str
-    prepare_arguments: Callable[[object], dict[str, Any]] | None
-    execution_mode: ToolExecutionMode
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def description(self) -> str: ...
+
+    @property
+    def parameters(self) -> dict[str, Any]: ...
+
+    @property
+    def label(self) -> str: ...
+
+    @property
+    def prepare_arguments(self) -> Callable[[object], dict[str, Any]] | None: ...
+
+    @property
+    def execution_mode(self) -> ToolExecutionMode: ...
 
     def execute(
         self,

@@ -28,6 +28,7 @@ def test_prepare_agent_session_services_uses_existing_resource_runtime(
             dict[str, object],
             dict[str, object],
             str,
+            str,
         ](
             discover_resources=lambda _loader, cwd: {"cwd": str(cwd)},
             create_extension_runtime=lambda bundle: {"bundle": bundle},

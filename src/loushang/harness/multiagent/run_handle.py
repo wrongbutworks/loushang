@@ -271,18 +271,23 @@ class SubagentRunHandle:
                 change_set_ref=result.change_set_ref,
             )
 
-        progress_kwargs: dict[str, object] = {
-            "latest_input_tokens": result.latest_input_tokens,
-            "output_tokens_delta": result.output_tokens,
-            "tool_uses_delta": result.tool_uses,
-        }
-        if result.summary is not None:
-            progress_kwargs["summary"] = result.summary
-        self._control.record_progress(
-            self.ref,
-            round_id=round_id,
-            **progress_kwargs,
-        )
+        if result.summary is None:
+            self._control.record_progress(
+                self.ref,
+                round_id=round_id,
+                latest_input_tokens=result.latest_input_tokens,
+                output_tokens_delta=result.output_tokens,
+                tool_uses_delta=result.tool_uses,
+            )
+        else:
+            self._control.record_progress(
+                self.ref,
+                round_id=round_id,
+                latest_input_tokens=result.latest_input_tokens,
+                output_tokens_delta=result.output_tokens,
+                tool_uses_delta=result.tool_uses,
+                summary=result.summary,
+            )
         duration_ms = (
             result.duration_ms
             if result.duration_ms is not None

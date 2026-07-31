@@ -772,6 +772,9 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     product_source = Path("src/loushang/harness/session/agent_product.py").read_text(
         encoding="utf-8"
     )
+    adapter_source = Path(
+        "src/loushang/harness/session/agent_adapter.py"
+    ).read_text(encoding="utf-8")
     coding_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
@@ -785,10 +788,8 @@ def test_session_facade_is_neutral_and_adopted() -> None:
 
     assert "loushang.coding" not in facade_source
     assert "execute_pi_style" not in facade_source
-    assert (
-        "class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):"
-        in product_source
-    )
+    assert "class AgentSessionAdapterMixin(SessionFacade" in adapter_source
+    assert "class AgentProductSession(AgentSessionAdapterMixin):" in product_source
     assert "class AgentSession(AgentProductSession):" in coding_source
     assert "_facade" not in coding_source
     assert "SessionControlPort" in facade_source
@@ -3355,12 +3356,20 @@ def test_policy_and_approval_have_only_harness_owners() -> None:
 
 
 def test_harness_control_plane_modules_do_not_import_product_layers() -> None:
+    control_plane_roots = (
+        Path("src/loushang/harness/approval"),
+        Path("src/loushang/harness/policy"),
+    )
     control_plane_paths = (
-        Path("src/loushang/harness/approval.py"),
-        Path("src/loushang/harness/policy.py"),
+        *(
+            path
+            for root in control_plane_roots
+            for path in sorted(root.rglob("*.py"))
+        ),
         Path("src/loushang/harness/extensions/control.py"),
         Path("src/loushang/harness/extensions/routing.py"),
     )
+    assert [root.as_posix() for root in control_plane_roots if not root.is_dir()] == []
     assert [path.as_posix() for path in control_plane_paths if not path.exists()] == []
 
     forbidden_prefixes = (

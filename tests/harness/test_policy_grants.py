@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.approval.proposals import (
+    propose_policy_amendments,
+    propose_session_approval_grant,
+)
 from loushang.harness.policy import (
     build_tool_policy_subject,
     normalize_command_subject,
-)
-from loushang.harness.policy_grants import (
-    propose_policy_amendments,
-    propose_session_approval_grant,
 )
 
 

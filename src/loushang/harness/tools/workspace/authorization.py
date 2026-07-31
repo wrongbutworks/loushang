@@ -464,10 +464,10 @@ def _validate_path_authority(
             for path_value in effect.paths:
                 _validate_one_path(path_value, roots=roots, profile=profile)
         return
-    path_value = arguments.get("path")
-    if not isinstance(path_value, str):
+    fallback_path_value = arguments.get("path")
+    if not isinstance(fallback_path_value, str):
         return
-    path = Path(path_value).resolve(strict=False)
+    path = Path(fallback_path_value).resolve(strict=False)
     if any(path == root or path.is_relative_to(root) for root in profile.denied_roots):
         raise ExecutionAuthorizationError(f"path is denied by execution profile: {path}")
     roots = (

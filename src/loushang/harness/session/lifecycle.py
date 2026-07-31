@@ -436,7 +436,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
                 raise SessionLifecyclePreparationCancelledError(
                     "session lifecycle preparation was cancelled"
                 )
-            session = await _maybe_await(_restore(previous))
+            session = await _restore(previous)
 
             async def _rollback() -> None:
                 await _maybe_await(self._dispose_session(session))

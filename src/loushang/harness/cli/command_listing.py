@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from loushang.harness.commands import project_command_descriptor
 
@@ -34,16 +34,21 @@ def list_command_records(session: object) -> list[dict[str, object]]:
 
 
 def format_command_records(
-    records: list[Mapping[str, object]],
+    records: Sequence[Mapping[str, object]],
     output_format: str,
 ) -> str:
     if output_format == "json":
         return json.dumps(records, ensure_ascii=False) + "\n"
     return "".join(
         f"{command['name']}\t{command['source']}\t"
-        f"{command['source_info']['path']}\t{command['description']}\n"
+        f"{_command_source_path(command)}\t{command['description']}\n"
         for command in records
     )
+
+
+def _command_source_path(command: Mapping[str, object]) -> object:
+    source_info = command.get("source_info")
+    return source_info.get("path", "") if isinstance(source_info, Mapping) else ""
 
 
 __all__ = ["CommandListingError", "format_command_records", "list_command_records"]

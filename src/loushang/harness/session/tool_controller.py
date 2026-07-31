@@ -96,6 +96,7 @@ class SessionToolController:
                     "raw preinstalled AgentTool values are not admitted"
                 )
             self.tool_registry = WorkspaceToolRegistry()
+        tool_registry = self.tool_registry
         policy_evaluator = self.policy_evaluator
         if policy_evaluator is None:
             from loushang.harness.policy_engine import PolicyEngine
@@ -110,7 +111,7 @@ class SessionToolController:
             policy_evaluator=policy_evaluator,
             approval_resolver=approval_resolver,
         )
-        self.tool_registry.bind_execution_host(self._execution_host)
+        tool_registry.bind_execution_host(self._execution_host)
         profile = self.activation_profile or ToolActivationProfile(
             preferred_names=_DEFAULT_ACTIVE_TOOL_NAMES,
             builtin_names=_BUILTIN_TOOL_NAMES,
@@ -124,11 +125,11 @@ class SessionToolController:
             )
         self._runtime = SessionToolRuntime(
             agent=self.agent,
-            tool_registry=self.tool_registry,
+            tool_registry=tool_registry,
             allowed_tool_names=self.allowed_tool_names,
             initial_active_tool_names=self.initial_active_tool_names,
             default_active_tool_names=lambda: profile.default_names(
-                self.tool_registry.list_enabled_definitions(),
+                tool_registry.list_enabled_definitions(),
                 self.allowed_tool_names,
             ),
             should_activate_new_tool=profile.should_activate_new,

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from typing import cast
 
 from loushang.agent import ThinkingLevel
 from loushang.ai.model import ModelSelection
@@ -60,6 +61,19 @@ class ExtensionRuntimeBindingFactory:
     exec_command: Callable[..., Awaitable[ExecResult]] | None = None
 
     def build(self) -> ExtensionRuntimeBindings:
+        async def set_model(selection: object) -> None:
+            if not isinstance(selection, ModelSelection):
+                raise TypeError("model selection must be a ModelSelection")
+            await self.set_model(selection)
+
+        def list_commands() -> Sequence[object]:
+            return self.list_commands()
+
+        async def set_thinking_level(level: str) -> None:
+            if level not in {"off", "minimal", "low", "medium", "high", "xhigh"}:
+                raise ValueError(f"unsupported thinking level: {level}")
+            await self.set_thinking_level(cast(ThinkingLevel, level))
+
         ui_context = self.get_ui_context()
         extension_error_handler = (
             getattr(ui_context, "emit_extension_error", None)
@@ -74,7 +88,7 @@ class ExtensionRuntimeBindingFactory:
             get_all_tools=self.get_all_tools,
             get_model_selection=self.get_model_selection,
             set_active_tools=self.set_active_tools,
-            set_model=self.set_model,
+            set_model=set_model,
             register_tool=self.register_tool,
             append_entry=self.append_entry,
             send_message=self.send_message,
@@ -83,7 +97,7 @@ class ExtensionRuntimeBindingFactory:
             set_session_name=self.set_session_name,
             get_session_name=self.get_session_name,
             set_label=self.set_label,
-            list_commands=self.list_commands,
+            list_commands=list_commands,
             request_resource_refresh=self.request_resource_refresh,
             shutdown=self.shutdown,
             record_diagnostic=self.record_diagnostic,
@@ -94,7 +108,7 @@ class ExtensionRuntimeBindingFactory:
                 self.get_context_usage()
             ),
             get_thinking_level=self.get_thinking_level,
-            set_thinking_level=self.set_thinking_level,
+            set_thinking_level=set_thinking_level,
             register_provider=self.register_provider,
             unregister_provider=self.unregister_provider,
             set_extension_status=self.set_extension_status,

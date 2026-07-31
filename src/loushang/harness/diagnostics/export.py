@@ -17,6 +17,9 @@ from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path, PurePosixPath
+from typing import cast
+
+from loushang.harness.diagnostics.types import DiagnosticRecord
 
 
 @dataclass(frozen=True)
@@ -75,9 +78,12 @@ def export_diagnostics_bundle(
         directory=profile.archive_directory,
         prefix=profile.archive_prefix,
     )
+    def serialize_record(record: object) -> Mapping[str, object]:
+        return serialize_diagnostic(cast(DiagnosticRecord, record))
+
     diagnostics = collect_diagnostics(
         diagnostics_service,
-        serializer=serialize_diagnostic,
+        serializer=serialize_record,
         limit=DEFAULT_DIAGNOSTICS_LIMIT,
     )
     debug_latest = (

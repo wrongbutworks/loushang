@@ -33,7 +33,10 @@ async def preferred_model_candidates(
         return preferred_details
     selections = await iter_available_model_selections(session)
     preferred_selection = preferred_model_selection(selections, preferred_models)
-    return [preferred_selection] if preferred_selection is not None else selections
+    if preferred_selection is not None:
+        return [preferred_selection]
+    candidates: list[object] = list(selections)
+    return candidates
 
 
 async def available_model_details(session: object) -> list[object]:

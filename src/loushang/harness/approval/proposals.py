@@ -1,14 +1,25 @@
+"""Grant and policy-amendment proposals for approved actions.
+
+Implements grant proposals (§9.1) of
+docs/internals/architecture/harness/policy-approval-redesign.md: generalizes
+an approved tool action into a session-scoped approval grant or a
+project/user policy amendment when the action is safely generalizable
+(simple commands, conservative git push forms). Consumed by
+`loushang.harness.tools.workspace.policy`; Products retain wording,
+risk presentation, and amendment destinations.
+"""
+
 from __future__ import annotations
 
 import os
 import shlex
 from pathlib import Path
 
-from loushang.harness.approval import (
+from loushang.harness.approval.requests import (
     ApprovalGrantProposal,
     PolicyAmendmentProposal,
 )
-from loushang.harness.policy import ToolPolicySubject
+from loushang.harness.policy.subjects import ToolPolicySubject
 
 _SHELL_CONTROL = frozenset({";", "&&", "||", "|", "&", "(", ")"})
 _GIT_GLOBAL_VALUE_OPTIONS = frozenset(

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from loushang.agent import Agent, StreamFn, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
@@ -329,7 +329,7 @@ def _create_agent_session(
         session_factory=_create_session,
         on_default_model_unavailable=lambda selection, error, reason: (
             record_default_model_unavailable(
-                cast(ModelSelection, selection),
+                selection,
                 error=error,
                 reason=reason,
                 diagnostics_service=services.diagnostics_service,
@@ -552,17 +552,13 @@ def _source_identity_startup_check(cwd: str) -> StartupCheckResult:
 _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
     Agent,
     AgentSession,
-    ResourceBundle,
     ExtensionRunner,
-    WorkspaceToolRegistry,
 ](
     default_system_prompt=DEFAULT_CODING_SYSTEM_PROMPT,
     bind_capabilities=lambda: bind_capability_composition_runtime(
         CODING_CAPABILITY_PROFILE
     ),
-    create_extension_runtime=lambda bundle: ExtensionRunner(
-        cast(Any, bundle.extensions)
-    ),
+    create_extension_runtime=lambda bundle: ExtensionRunner(bundle.extensions),
     source_identity_check=_source_identity_startup_check,
     list_tool_definitions=lambda runner: runner.list_tool_definitions(),
     get_tool_source_info=lambda runner, name: runner.get_tool_source_info(name),

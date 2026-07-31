@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Protocol
 
 from loushang.harness.cli.agent_args import AgentCliArgs
+from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.session import require_session_operation_session
 
 
@@ -16,6 +18,28 @@ class SessionResolutionRequest:
     resume: bool | str = False
     fork: str | None = None
     cwd: str | Path = "."
+
+
+class SessionResolutionRuntime(Protocol):
+    async def restore_session_operation(
+        self,
+        session: str,
+    ) -> SessionOperationResult[Any, Any]: ...
+
+    async def new_session_operation(
+        self,
+        *,
+        cwd: str,
+    ) -> SessionOperationResult[Any, Any]: ...
+
+    async def fork_session_operation(
+        self,
+        entry_id: str,
+        *,
+        position: str,
+    ) -> SessionOperationResult[Any, Any]: ...
+
+    def list_sessions(self) -> list[object]: ...
 
 
 def agent_session_resolution_request(
@@ -32,7 +56,10 @@ def agent_session_resolution_request(
     )
 
 
-async def resolve_session(runtime: object, request: SessionResolutionRequest) -> object:
+async def resolve_session(
+    runtime: SessionResolutionRuntime,
+    request: SessionResolutionRequest,
+) -> object:
     """Resolve a new, resumed, continued, or forked session."""
 
     if isinstance(request.resume, str):
@@ -70,7 +97,7 @@ async def resolve_session(runtime: object, request: SessionResolutionRequest) ->
 
 async def resolve_agent_cli_session(
     args: AgentCliArgs,
-    runtime: object,
+    runtime: SessionResolutionRuntime,
     project_root: str | Path,
 ) -> object:
     """Resolve one standard Agent CLI session request."""
@@ -81,7 +108,7 @@ async def resolve_agent_cli_session(
     )
 
 
-def resolve_latest_session_file(runtime: object) -> str | None:
+def resolve_latest_session_file(runtime: SessionResolutionRuntime) -> str | None:
     try:
         sessions = runtime.list_sessions()
     except Exception as error:
@@ -99,6 +126,7 @@ def resolve_latest_session_file(runtime: object) -> str | None:
 
 __all__ = [
     "SessionResolutionRequest",
+    "SessionResolutionRuntime",
     "agent_session_resolution_request",
     "resolve_agent_cli_session",
     "resolve_latest_session_file",

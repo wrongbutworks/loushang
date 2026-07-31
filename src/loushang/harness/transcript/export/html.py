@@ -365,7 +365,7 @@ def _read_asset(name: str) -> str:
 
 
 def _encode_transcript_data(request: TranscriptExportRequest) -> str:
-    data = {
+    data: dict[str, object] = {
         "header": dict(_HEADER_CODEC.encode_header(request.header)),
         "entries": [
             dict(_RECORD_CODEC.encode_record(entry)) for entry in request.entries

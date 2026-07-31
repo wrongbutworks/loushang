@@ -30,6 +30,7 @@ dev = [
   "pytest-cov>=7,<8",
   "ruff>=0.11,<1",
   "mypy>=1.15,<2",
+  "types-Pygments>=2.19,<3",
 ]
 
 [tool.pytest.ini_options]

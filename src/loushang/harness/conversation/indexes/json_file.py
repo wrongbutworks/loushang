@@ -169,7 +169,7 @@ class JsonConversationIndex(Generic[P, Q]):
         *,
         version: int,
         codec: ProjectionCodec[P],
-        query_items: IndexQuery[P, Q],
+        query_items: IndexQuery[Q, P],
     ) -> None:
         if version < 1:
             raise ValueError("conversation index version must be positive")
@@ -447,14 +447,14 @@ def _new_generation() -> str:
     return secrets.token_hex(16)
 
 
-def _writable_generation(state: _JsonConversationIndexState[object]) -> str:
+def _writable_generation(state: _JsonConversationIndexState[P]) -> str:
     if state.index_state == "fresh":
         return state.generation
     return _new_generation()
 
 
 def _legacy_generation(
-    items: Mapping[ConversationLocator, IndexedProjection[object]],
+    items: Mapping[ConversationLocator, IndexedProjection[P]],
 ) -> str:
     digest = json.dumps(
         [
@@ -498,7 +498,7 @@ def _decode_locator(value: Mapping[str, object]) -> ConversationLocator:
     )
 
 
-def _indexed_projection_key(item: IndexedProjection[object]):
+def _indexed_projection_key(item: IndexedProjection[P]):
     return item.locator
 
 

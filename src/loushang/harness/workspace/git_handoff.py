@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal, cast
+from typing import Any, BinaryIO, Literal, TypedDict, Unpack, cast
 from uuid import uuid4
 
 from loushang.harness.journal import journal_file_lock
@@ -70,6 +70,13 @@ class GitWorkspaceRecord:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "artifact_refs", tuple(self.artifact_refs))
+
+
+class _GitWorkspaceRecordChanges(TypedDict, total=False):
+    status: GitWorkspaceStatus
+    runtime_owned: bool
+    artifact_refs: tuple[str, ...]
+    last_error: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -912,7 +919,7 @@ class GitWorkspaceManager:
     def _update_record(
         self,
         record: GitWorkspaceRecord,
-        **changes: object,
+        **changes: Unpack[_GitWorkspaceRecordChanges],
     ) -> GitWorkspaceRecord:
         with _file_lock(self._repository_state / "locks" / "catalog.lock"):
             path = self._record_path(record.workspace_id)
@@ -938,7 +945,7 @@ class _AsyncFileLock:
     def __init__(self, path: Path, *, timeout_seconds: float) -> None:
         self._path = path
         self._timeout_seconds = timeout_seconds
-        self._handle = None
+        self._handle: BinaryIO | None = None
         self._lock_module: Any | None = None
 
     async def __aenter__(self) -> _AsyncFileLock:

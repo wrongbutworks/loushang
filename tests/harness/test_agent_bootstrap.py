@@ -155,7 +155,13 @@ def test_agent_session_construction_runtime_uses_product_callbacks() -> None:
         no_tools_mode=None,
     )
 
-    result = AgentSessionConstructionRuntime[FakeAgent, str, dict, object]().construct(
+    result = AgentSessionConstructionRuntime[
+        FakeAgent,
+        str,
+        dict,
+        object,
+        object,
+    ]().construct(
         request,
         agent_factory=lambda **kwargs: FakeAgent(),
         register_extension_tools=lambda bundle, registry: (
@@ -164,6 +170,8 @@ def test_agent_session_construction_runtime_uses_product_callbacks() -> None:
             ["extension-diagnostic"],
         ),
         record_extension_diagnostics=diagnostics.extend,
+        registry_factory=object,
+        register_tool=lambda _registry, _tool: None,
         session_factory=lambda agent, bundle, registry, active, prompt, mode: (
             agent.session_id,
             bundle,
@@ -256,8 +264,6 @@ def test_agent_product_construction_runtime_composes_existing_owners(
     result = AgentProductConstructionRuntime[
         FakeAgent,
         tuple[object, ...],
-        dict[str, object],
-        object,
         object,
     ]().construct(
         AgentProductConstructionRequest(
@@ -347,8 +353,6 @@ def test_agent_product_construction_binding_compiles_research_policy(
         ),
     )
     binding = AgentProductConstructionBinding[
-        object,
-        object,
         object,
         object,
         object,

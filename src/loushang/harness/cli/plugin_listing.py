@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from loushang.harness.resources.plugins import PluginManager, project_installed_plugin
 
@@ -29,7 +29,7 @@ def list_plugin_records(settings_manager: object | None) -> list[dict[str, objec
 
 
 def format_plugin_records(
-    records: list[Mapping[str, object]],
+    records: Sequence[Mapping[str, object]],
     output_format: str,
 ) -> str:
     if output_format == "json":
