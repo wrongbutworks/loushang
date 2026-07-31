@@ -1,8 +1,8 @@
 # Multi-Agent Context Fork Boundary
 
-> Status: **draft proposal**（目标设计，未经接受）。本文定义
+> Status: **implemented**（已实现，与 `SubagentContextFactory` 代码一致）。本文定义
 > `loushang.harness.multiagent` 的子 agent 上下文构造边界：隔离模型、
-> fork 档位、历史过滤、审批冒泡装配。不描述当前实现状态。
+> fork 档位、历史过滤、审批冒泡装配。
 
 ## Scope
 

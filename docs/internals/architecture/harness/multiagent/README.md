@@ -1,7 +1,7 @@
 # Loushang Multi-Agent Architecture
 
-> Status: **draft proposal**（目标设计，未经接受）。本目录的所有文档
-> 表达 should-be 的目标边界，不描述当前实现状态；与代码冲突时以代码
+> Status: **implemented**（已实现，Phases 1A-1C / 2A-2B 全部完成）。
+> 本目录的文档描述已实现的架构边界；与代码冲突时以代码
 > 与已接受 ARD 为准（见
 > [Loushang Documentation Model](../../loushang-documentation-model.md)）。
 

@@ -1,8 +1,9 @@
 # Technical Multi-Agent Runtime, Scheduling, And Tools
 
-> Status: **draft proposal**. This document consolidates the intended
-> implementation boundary for multi-agent execution. It is a target design,
-> not a claim about the current implementation.
+> Status: **implemented**. This document records the accepted and
+> implemented boundary for multi-agent execution. Phases 1A-1C and 2A-2B
+> are complete; the technical runtime, tools, workspace, and TUI surface
+> are shipping.
 >
 > For implementation shape, execution ownership, and the model tool surface,
 > this document supersedes older candidate-component wording when they differ.

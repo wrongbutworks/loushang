@@ -1,9 +1,9 @@
 # Multi-Agent Temporary Implementation Plan
 
-> Status: **temporary planning document**. This is an execution checklist for
-> the proposed design in [Technical Runtime, Scheduling, And Tools](technical-runtime-and-tools.md).
-> It does not supersede accepted architecture decisions and should be removed
-> or converted into a durable development record once implementation stabilises.
+> Status: **executed**（Phases 1A-1C, 2A-2B 全部完成）。本文是
+> [Technical Runtime, Scheduling, And Tools](technical-runtime-and-tools.md)
+> 的执行检查表，保留为已完成阶段的开发记录。Phase 3 (Durable Work Execution)
+> 与 Phase 4 (Method Orchestration) 移至各自的子系统设计文档。
 
 ## Goal
 

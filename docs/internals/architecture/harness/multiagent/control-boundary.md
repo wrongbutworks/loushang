@@ -1,8 +1,8 @@
 # Multi-Agent Control Boundary
 
-> Status: **draft proposal**（目标设计，未经接受）。本文定义
+> Status: **implemented**（已实现，与 `MultiAgentControl` 代码一致）。本文定义
 > `loushang.harness.multiagent` 的控制面边界：spawn 流水线、消息路由、
-> interrupt / close 的编排。不描述当前实现状态。
+> interrupt / close 的编排。
 
 ## Scope
 
