@@ -22,7 +22,12 @@ from loushang.harness.config.activation import (
     ConfigActivationStep,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.diagnostics.types import (
+    DiagnosticDraft,
+    DiagnosticPhase,
+    DiagnosticRecord,
+    DiagnosticSource,
+)
 from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.contribution import (
@@ -36,7 +41,10 @@ from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 LoaderT = TypeVar("LoaderT")
 BundleT = TypeVar("BundleT")
 ExtensionT = TypeVar("ExtensionT")
+StandardExtensionT = TypeVar("StandardExtensionT", bound="StandardExtensionRuntime")
 DiagnosticT = TypeVar("DiagnosticT")
+DiagnosticInputT = TypeVar("DiagnosticInputT")
+DiagnosticOutputT = TypeVar("DiagnosticOutputT")
 ActivationConfigT = TypeVar("ActivationConfigT")
 ActivationContextT = TypeVar("ActivationContextT")
 FlagValues = Mapping[str, bool | str] | None
@@ -62,51 +70,69 @@ class StandardExtensionRuntime(Protocol):
 
 
 @dataclass(frozen=True)
-class ResourceBootstrapPorts(Generic[LoaderT, BundleT, ExtensionT, DiagnosticT]):
+class ResourceBootstrapPorts(
+    Generic[LoaderT, BundleT, ExtensionT, DiagnosticInputT, DiagnosticOutputT]
+):
     """Callbacks that bind Product resource and extension semantics."""
 
     discover_resources: Callable[[LoaderT, Path], BundleT]
     create_extension_runtime: Callable[[BundleT], ExtensionT]
-    apply_extension_flags: Callable[[ExtensionT, FlagValues], Sequence[DiagnosticT]]
+    apply_extension_flags: Callable[
+        [ExtensionT, FlagValues],
+        Sequence[DiagnosticInputT],
+    ]
     rediscover_resources: Callable[[ExtensionT, BundleT], BundleT]
-    bundle_diagnostics: Callable[[BundleT], Sequence[DiagnosticT]]
-    extension_diagnostics: Callable[[ExtensionT], Sequence[DiagnosticT]]
-    normalize_diagnostic: Callable[[DiagnosticT, str, str], DiagnosticT]
+    bundle_diagnostics: Callable[[BundleT], Sequence[DiagnosticInputT]]
+    extension_diagnostics: Callable[[ExtensionT], Sequence[DiagnosticInputT]]
+    normalize_diagnostic: Callable[
+        [DiagnosticInputT, DiagnosticPhase, DiagnosticSource],
+        DiagnosticOutputT,
+    ]
 
 
 @dataclass(frozen=True)
-class ResourceBootstrapResult(Generic[BundleT, ExtensionT, DiagnosticT]):
+class ResourceBootstrapResult(Generic[BundleT, ExtensionT, DiagnosticOutputT]):
     """Resources, extensions, and normalized diagnostics for one cwd."""
 
     resource_bundle: BundleT
     extension_runtime: ExtensionT
-    diagnostics: tuple[DiagnosticT, ...]
+    diagnostics: tuple[DiagnosticOutputT, ...]
 
 
 @dataclass(frozen=True)
-class ResourceDiscoveryResult(Generic[BundleT, DiagnosticT]):
+class ResourceDiscoveryResult(Generic[BundleT, DiagnosticOutputT]):
     """One resource discovery phase and its normalized diagnostics."""
 
     resource_bundle: BundleT
-    diagnostics: tuple[DiagnosticT, ...]
+    diagnostics: tuple[DiagnosticOutputT, ...]
 
 
 @dataclass(frozen=True)
-class ExtensionResourceActivationResult(Generic[BundleT, ExtensionT, DiagnosticT]):
+class ExtensionResourceActivationResult(
+    Generic[BundleT, ExtensionT, DiagnosticOutputT]
+):
     """Extension activation over an already discovered resource bundle."""
 
     resource_bundle: BundleT
     extension_runtime: ExtensionT
-    flag_diagnostics: tuple[DiagnosticT, ...]
-    extension_diagnostics: tuple[DiagnosticT, ...]
+    flag_diagnostics: tuple[DiagnosticOutputT, ...]
+    extension_diagnostics: tuple[DiagnosticOutputT, ...]
 
 
-class ResourceBootstrapRuntime(Generic[LoaderT, BundleT, ExtensionT, DiagnosticT]):
+class ResourceBootstrapRuntime(
+    Generic[LoaderT, BundleT, ExtensionT, DiagnosticInputT, DiagnosticOutputT]
+):
     """Run the shared resource/extension bootstrap transaction."""
 
     def __init__(
         self,
-        ports: ResourceBootstrapPorts[LoaderT, BundleT, ExtensionT, DiagnosticT],
+        ports: ResourceBootstrapPorts[
+            LoaderT,
+            BundleT,
+            ExtensionT,
+            DiagnosticInputT,
+            DiagnosticOutputT,
+        ],
     ) -> None:
         self._ports = ports
 
@@ -117,7 +143,7 @@ class ResourceBootstrapRuntime(Generic[LoaderT, BundleT, ExtensionT, DiagnosticT
         cwd: str | Path,
         extension_flags: FlagValues = None,
         transform_bundle: BundleTransform[BundleT] | None = None,
-    ) -> ResourceBootstrapResult[BundleT, ExtensionT, DiagnosticT]:
+    ) -> ResourceBootstrapResult[BundleT, ExtensionT, DiagnosticOutputT]:
         discovery = self.discover(
             loader=loader,
             cwd=cwd,
@@ -144,7 +170,7 @@ class ResourceBootstrapRuntime(Generic[LoaderT, BundleT, ExtensionT, DiagnosticT
         loader: LoaderT,
         cwd: str | Path,
         transform_bundle: BundleTransform[BundleT] | None = None,
-    ) -> ResourceDiscoveryResult[BundleT, DiagnosticT]:
+    ) -> ResourceDiscoveryResult[BundleT, DiagnosticOutputT]:
         """Discover Product resources without activating extensions."""
 
         resolved_cwd = Path(cwd).expanduser().resolve(strict=False)
@@ -171,7 +197,7 @@ class ResourceBootstrapRuntime(Generic[LoaderT, BundleT, ExtensionT, DiagnosticT
         resource_bundle: BundleT,
         extension_flags: FlagValues = None,
         transform_bundle: BundleTransform[BundleT] | None = None,
-    ) -> ExtensionResourceActivationResult[BundleT, ExtensionT, DiagnosticT]:
+    ) -> ExtensionResourceActivationResult[BundleT, ExtensionT, DiagnosticOutputT]:
         """Activate extensions and rediscover their resource contributions."""
 
         extension_runtime = self._ports.create_extension_runtime(resource_bundle)
@@ -210,14 +236,15 @@ class ResourceBootstrapRuntime(Generic[LoaderT, BundleT, ExtensionT, DiagnosticT
 
 def create_standard_resource_bootstrap_runtime(
     *,
-    create_extension_runtime: Callable[[ResourceBundle], StandardExtensionRuntime],
+    create_extension_runtime: Callable[[ResourceBundle], StandardExtensionT],
     diagnostics_service: DiagnosticsService,
     session_id: str | None = None,
 ) -> ResourceBootstrapRuntime[
     StandardResourceLoader,
     ResourceBundle,
-    StandardExtensionRuntime,
+    StandardExtensionT,
     DiagnosticDraft,
+    DiagnosticRecord,
 ]:
     """Bind standard Harness resource, extension, and diagnostic components."""
 

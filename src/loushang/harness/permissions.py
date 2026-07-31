@@ -15,6 +15,7 @@ from typing import Literal, Protocol
 
 from loushang.harness.policy import (
     PolicyDecision,
+    PolicyEvaluator,
     PolicySubject,
     evaluate_policy,
 )
@@ -172,7 +173,7 @@ class PermissionCeilingProvider(Protocol):
 class PermissionProfilePolicyEvaluator:
     """Apply a live permission profile after managed Policy has evaluated."""
 
-    policy: object
+    policy: PolicyEvaluator
     profile_provider: PermissionProfileProvider
     ceiling_provider: PermissionCeilingProvider = PermissionProfileCeiling
 

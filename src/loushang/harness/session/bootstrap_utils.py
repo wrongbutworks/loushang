@@ -11,7 +11,7 @@ NoToolsMode = Literal["all", "builtin"]
 def normalize_no_tools(no_tools: NoToolsMode | bool | None) -> NoToolsMode | None:
     if no_tools is True:
         return "all"
-    if no_tools in (False, None):
+    if no_tools is False or no_tools is None:
         return None
     if no_tools in {"all", "builtin"}:
         return no_tools

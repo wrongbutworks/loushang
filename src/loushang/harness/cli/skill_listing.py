@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from loushang.harness.resources.skills import project_skill_descriptor
 
@@ -36,7 +36,7 @@ def list_skill_records(session: object) -> list[dict[str, object]]:
 
 
 def format_skill_records(
-    records: list[Mapping[str, object]],
+    records: Sequence[Mapping[str, object]],
     output_format: str,
 ) -> str:
     if output_format == "json":

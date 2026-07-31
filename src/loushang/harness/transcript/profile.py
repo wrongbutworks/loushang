@@ -11,6 +11,7 @@ from loushang.ai.types import (
     ImagePart,
     Message,
     TextPart,
+    ThinkingPart,
     ToolCall,
     ToolResultMessage,
     UserMessage,
@@ -642,7 +643,7 @@ def _payload_tokens(record: AgentTranscriptRecord) -> int:
         for part in payload.content:
             if isinstance(part, TextPart):
                 characters += len(part.text)
-            elif getattr(part, "type", None) == "thinking":
+            elif isinstance(part, ThinkingPart):
                 characters += len(part.thinking)
             elif isinstance(part, ToolCall):
                 characters += len(part.name) + len(str(part.arguments))

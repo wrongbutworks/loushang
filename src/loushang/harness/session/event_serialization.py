@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
+from loushang.agent.types import AgentMessage, AgentToolResult
+from loushang.ai.types import AssistantMessageEvent
 from loushang.harness.events.json import snake_case_json_keys
 from loushang.protocol import require_json_value
 
@@ -10,13 +12,16 @@ from loushang.protocol import require_json_value
 def serialize_agent_message(message: object) -> object:
     from loushang.harness.transcript import create_agent_transcript_message_codec
 
-    return create_agent_transcript_message_codec().serialize(message)
+    return create_agent_transcript_message_codec().serialize(
+        cast(AgentMessage, message)
+    )
 
 
 def serialize_tool_result(message: object) -> object:
     from loushang.agent.json_codec import serialize_tool_result as serialize
 
-    return serialize(message)
+    return serialize(cast(AgentToolResult[Any], message))
+
 
 def serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
     return snake_case_json_keys(_serialize_session_event(event))  # type: ignore[return-value]
@@ -31,7 +36,8 @@ def _serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
         return {
             "type": event_type,
             "messages": [
-                serialize_agent_message(message) for message in event["messages"]
+                serialize_agent_message(message)
+                for message in cast(list[object], event["messages"])
             ],
         }
     if event_type == "turn_end":
@@ -39,7 +45,8 @@ def _serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
             "type": event_type,
             "message": serialize_agent_message(event["message"]),
             "tool_results": [
-                serialize_agent_message(message) for message in event["tool_results"]
+                serialize_agent_message(message)
+                for message in cast(list[object], event["tool_results"])
             ],
         }
     if event_type == "message_start":
@@ -54,7 +61,7 @@ def _serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
             "type": event_type,
             "message": serialize_agent_message(event["message"]),
             "assistant_message_event": serialize_assistant_message_event(
-                event["assistant_message_event"]
+                cast(AssistantMessageEvent, event["assistant_message_event"])
             ),
         }
     if event_type == "message_end":
@@ -91,22 +98,27 @@ def _serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
     if event_type == "queue_update":
         return {
             "type": event_type,
-            "steering": list(event["steering"]),
-            "follow_up": list(event["follow_up"]),
+            "steering": list(cast(list[object], event["steering"])),
+            "follow_up": list(cast(list[object], event["follow_up"])),
         }
     if event_type == "session_info_changed":
         return {"type": event_type, "name": event["name"]}
     if event_type == "compaction_start":
         from loushang.harness.context import serialize_context_usage_payload
 
-        payload: dict[str, Any] = {"type": event_type, "reason": event["reason"]}
+        compaction_payload: dict[str, Any] = {
+            "type": event_type,
+            "reason": event["reason"],
+        }
         if "usage" in event:
-            payload["usage"] = serialize_context_usage_payload(event["usage"])
-        return payload
+            compaction_payload["usage"] = serialize_context_usage_payload(
+                event["usage"]
+            )
+        return compaction_payload
     if event_type == "compaction_end":
         from loushang.harness.context import serialize_context_usage_payload
 
-        payload: dict[str, Any] = {
+        compaction_end_payload: dict[str, Any] = {
             "type": event_type,
             "reason": event["reason"],
             "result": require_json_value(
@@ -117,16 +129,16 @@ def _serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
             "will_retry": event["will_retry"],
         }
         if "usage_before" in event:
-            payload["usage_before"] = serialize_context_usage_payload(
+            compaction_end_payload["usage_before"] = serialize_context_usage_payload(
                 event["usage_before"]
             )
         if "usage_after" in event:
-            payload["usage_after"] = serialize_context_usage_payload(
+            compaction_end_payload["usage_after"] = serialize_context_usage_payload(
                 event["usage_after"]
             )
         if "error_message" in event:
-            payload["error_message"] = event["error_message"]
-        return payload
+            compaction_end_payload["error_message"] = event["error_message"]
+        return compaction_end_payload
     if event_type == "auto_retry_start":
         return {
             "type": event_type,

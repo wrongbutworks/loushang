@@ -524,6 +524,8 @@ def _streaming_prompt_method(session: Any, *, streaming_behavior: str):
 
 
 def _supports_keyword(callable_obj: object, keyword: str) -> bool:
+    if not callable(callable_obj):
+        return False
     try:
         signature = inspect.signature(callable_obj)
     except (TypeError, ValueError):

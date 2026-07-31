@@ -5,14 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from loushang.agent.types import AgentTool
-from loushang.harness.tools.authoring import ToolContextProvider
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolPackDefinition,
     ToolResolutionResult,
     resolve_tool_contributions,
 )
-from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.core import ToolContextProvider, ToolDefinition
 from loushang.harness.tools.core import ToolRegistry as CoreToolRegistry
 from loushang.harness.tools.execution import ToolExecutionHost
 

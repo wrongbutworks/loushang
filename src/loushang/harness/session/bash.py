@@ -94,7 +94,7 @@ class BashExecutionRuntime:
         *,
         command: str,
         result: Mapping[str, object],
-        exclude_from_context: bool,
+        exclude_from_context: bool = False,
     ) -> None:
         await self._runtime.record_result(
             command=command,

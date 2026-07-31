@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import inspect
 import shlex
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
 from typing import Literal
@@ -94,7 +94,10 @@ STANDARD_SESSION_COMMANDS: tuple[StandardSessionCommandDefinition, ...] = (
 
 def list_standard_session_command_descriptors() -> list[SessionCommandDescriptor]:
     source_info = create_source_info(
-        "<builtin>", source="builtin", scope="project", origin="harness"
+        "<builtin>",
+        source="builtin",
+        scope="project",
+        origin="top-level",
     )
     return [
         SessionCommandDescriptor(
@@ -215,10 +218,10 @@ class StandardSessionCommandPorts:
     clone_session: CommandPort | None = None
     navigate_tree: CommandPort | None = None
     get_active_tool_names: Callable[[], list[str]] | None = None
-    get_all_tools: Callable[[], list[object]] | None = None
+    get_all_tools: Callable[[], Sequence[object]] | None = None
     set_active_tools: Callable[[list[str]], object | Awaitable[object]] | None = None
     get_default_active_tool_names: Callable[[], list[str]] | None = None
-    get_extensions: Callable[[], list[object]] | None = None
+    get_extensions: Callable[[], Sequence[object]] | None = None
     get_recent_assistant_texts: Callable[[], tuple[str, ...]] | None = None
     get_last_assistant_text: Callable[[], str | None] | None = None
     copy_text: Callable[[str], object] | None = None
@@ -640,7 +643,8 @@ def _object_field(value: object, field: str) -> str:
 
 
 def _available_tool_entries(
-    tools: list[object], active_tools: list[str]
+    tools: Sequence[object],
+    active_tools: list[str],
 ) -> list[dict[str, object]]:
     active_set = set(active_tools)
     entries: list[dict[str, object]] = []
@@ -827,6 +831,7 @@ def project_standard_session_command_result(
             )
         case StandardSessionCommandId.CHANGELOG:
             return _ok_command_result(command, changelog=_to_plain_data(result.value))
+    raise ValueError(f"Unsupported standard session command: {result.command_id}")
 
 
 def _to_plain_data(value: object) -> object:

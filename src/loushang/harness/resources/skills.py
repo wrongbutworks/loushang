@@ -120,9 +120,13 @@ def project_skill_descriptor(skill: object) -> dict[str, object] | None:
         return None
     source_path = _safe_skill_getattr(skill, "source_path", None)
     source_root = _safe_skill_getattr(skill, "source_root", None)
+    raw_diagnostics = _safe_skill_getattr(skill, "diagnostics", ())
+    diagnostic_values = (
+        raw_diagnostics if isinstance(raw_diagnostics, list | tuple) else ()
+    )
     diagnostics = [
         normalized
-        for diagnostic in _safe_skill_getattr(skill, "diagnostics", ()) or ()
+        for diagnostic in diagnostic_values
         if (normalized := project_skill_diagnostic(diagnostic)) is not None
     ]
     return {

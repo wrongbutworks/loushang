@@ -11,17 +11,21 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from typing import Any, TypeAlias, cast
 
 from loushang.agent import Agent
+from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
 from loushang.harness.events import CompactionReason
 from loushang.harness.extensions.context import (
+    SessionBeforeTreeResult,
     SessionShutdownEvent,
 )
 from loushang.harness.runtime import CancellationSignal
 from loushang.harness.session.composition import (
     SessionComposition,
+    SessionExtensionCompositionPort,
 )
 from loushang.harness.transcript import (
     BranchSummaryOutput,
@@ -30,9 +34,16 @@ from loushang.harness.transcript import (
     CompactionPreparation,
     CompactionResult,
     CompactionStatus,
+    ProductTranscriptSession,
     TranscriptNavigationPlan,
     TranscriptNavigationResult,
     normalize_branch_summary_output,
+)
+
+BeforeTreeHookResult: TypeAlias = (
+    tuple[str | None, bool, str | None, BranchSummaryOutput | None, bool]
+    | SessionBeforeTreeResult
+    | None
 )
 
 
@@ -42,11 +53,11 @@ class SessionOperationsPorts:
 
     composition: SessionComposition
     agent: Agent
-    session_manager: object
-    extension_runner: object | None
-    execute_compaction: Callable[..., Awaitable[object]]
+    session_manager: ProductTranscriptSession[Any, Any]
+    extension_runner: SessionExtensionCompositionPort | None
+    execute_compaction: Callable[..., Awaitable[CompactionResult]]
     execute_branch_summary: Callable[..., Awaitable[BranchSummaryOutput]]
-    before_tree: Callable[..., Awaitable[object | None]]
+    before_tree: Callable[..., Awaitable[BeforeTreeHookResult]]
     before_compaction: Callable[
         [CompactionHookRequest], Awaitable[CompactionHookDecision | None]
     ]
@@ -99,7 +110,9 @@ class SessionOperations:
         emit_refresh: bool,
         source: str = "set",
     ) -> None:
-        resolved = self.composition.selection_runtime.resolve_model(model)
+        resolved = self.composition.selection_runtime.resolve_model(
+            cast(Model | ModelSelection, model)
+        )
         previous = self.ports.agent.model
         endpoint_id = getattr(model, "endpoint_id", None) if _is_model_selection(model) else None
         await self.composition.selection_runtime.apply_model(
@@ -109,17 +122,15 @@ class SessionOperations:
         if emit_refresh:
             await self.refresh_extension_runtime(reason="model_selection_changed")
         if self.ports.extension_runner is not None and previous != resolved:
-            emit_event = getattr(self.ports.extension_runner, "emit_event", None)
-            if callable(emit_event):
-                await emit_event(
-                    {
-                        "type": "model_select",
-                        "model": resolved,
-                        "previous_model": previous,
-                        "source": source,
-                    },
-                    cwd=self.ports.session_manager.get_cwd(),
-                )
+            await self.ports.extension_runner.emit_agent_event(
+                {
+                    "type": "model_select",
+                    "model": resolved,
+                    "previous_model": previous,
+                    "source": source,
+                },
+                cwd=self.ports.session_manager.get_cwd(),
+            )
 
     async def compact_manual(self, custom_instructions: str | None = None) -> CompactionResult:
         self.composition.session_runtime.abort()
@@ -189,7 +200,7 @@ class SessionOperations:
             ),
         )
         if not summarize and self.ports.extension_runner is not None:
-            await self.ports.extension_runner.emit_event(
+            await self.ports.extension_runner.emit_agent_event(
                 {
                     "type": "session_tree",
                     "new_leaf_id": self.ports.session_manager.get_leaf_id(),
@@ -273,7 +284,7 @@ class SessionOperations:
         self,
         preparation: CompactionPreparation,
         custom_instructions: str | None,
-    ) -> object:
+    ) -> CompactionResult:
         kwargs: dict[str, object] = {
             "preparation": preparation,
             "model": self.ports.agent.model,
@@ -314,17 +325,20 @@ class SessionOperations:
             return decision
         if decision is None:
             return custom_instructions, replace_instructions, label, None, False
-        if getattr(decision, "cancel", False):
+        if decision.cancel:
             self.ports.sync_extension_diagnostics(phase="runtime")
             return custom_instructions, replace_instructions, label, None, True
         return (
-            getattr(decision, "custom_instructions", None) or custom_instructions,
-            getattr(decision, "replace_instructions", None)
-            if getattr(decision, "replace_instructions", None) is not None
+            decision.custom_instructions or custom_instructions,
+            decision.replace_instructions
+            if decision.replace_instructions is not None
             else replace_instructions,
-            getattr(decision, "label", None) or label,
-            normalize_branch_summary_output(getattr(decision, "summary", None), from_hook=True)
-            if getattr(decision, "summary", None) is not None
+            decision.label or label,
+            normalize_branch_summary_output(
+                decision.summary,
+                from_hook=True,
+            )
+            if decision.summary is not None
             else None,
             False,
         )

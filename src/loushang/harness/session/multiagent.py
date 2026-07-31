@@ -250,7 +250,7 @@ class SessionMultiAgentRuntime:
         if isinstance(root_input, AgentInputFacade):
             self._inputs[control.root_ref] = root_input
         self._operation_lock = asyncio.Lock()
-        self._notice_tasks: set[asyncio.Task[object]] = set()
+        self._notice_tasks: set[asyncio.Task[None]] = set()
         self._closed = False
         self._unsubscribe_notices = control.subscribe_notices(self._on_notice)
 
@@ -317,9 +317,13 @@ class SessionMultiAgentRuntime:
                 assert current is not None
                 return current
             except BaseException:
-                handle = self._handles.pop(record.ref, None)
-                if handle is not None:
-                    await handle.close()
+                cleanup_handle = (
+                    self._handles.pop(record.ref)
+                    if record.ref in self._handles
+                    else None
+                )
+                if cleanup_handle is not None:
+                    await cleanup_handle.close()
                 else:
                     if driver is not None:
                         await driver.dispose()
@@ -549,8 +553,11 @@ class SessionMultiAgentRuntime:
         *,
         name: str,
     ) -> None:
+        async def deliver() -> None:
+            await operation
+
         task = asyncio.create_task(
-            operation,
+            deliver(),
             name=name,
         )
         self._notice_tasks.add(task)
@@ -558,7 +565,7 @@ class SessionMultiAgentRuntime:
 
     def _notice_delivery_done(
         self,
-        task: asyncio.Task[object],
+        task: asyncio.Task[None],
     ) -> None:
         self._notice_tasks.discard(task)
         if not task.cancelled():

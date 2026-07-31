@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from importlib import resources
@@ -28,6 +28,7 @@ from loushang.harness.resources.types import (
     ResourceMergeDecision,
     ResourceSnapshot,
     ResourceSourceKind,
+    ResourceSourceScope,
     SkillDescriptor,
     ThemeDescriptor,
 )
@@ -46,7 +47,7 @@ _SOURCE_PRIORITY: dict[ResourceSourceKind, int] = {
     "external_package": 2,
     "built_in": 3,
 }
-_SOURCE_SCOPE = {
+_SOURCE_SCOPE: dict[ResourceSourceKind, ResourceSourceScope] = {
     "built_in": "builtin",
     "external_package": "package",
     "project_local": "project",
@@ -184,8 +185,8 @@ class ResourceLoader:
 
     def set_package_roots(
         self,
-        package_roots: list[str | Path] | tuple[str | Path, ...] | None,
-        package_source_filters: dict[str | Path, PackageSourceConfig] | None = None,
+        package_roots: Sequence[str | Path] | None,
+        package_source_filters: Mapping[str | Path, PackageSourceConfig] | None = None,
     ) -> None:
         self._package_roots = _normalize_package_roots(package_roots)
         self._package_source_filters = _normalize_package_source_filters(
@@ -194,12 +195,9 @@ class ResourceLoader:
 
     def set_user_resource_roots(
         self,
-        user_resource_roots: list[str | Path] | tuple[str | Path, ...] | None,
+        user_resource_roots: Sequence[str | Path] | None,
         *,
-        explicit_roots: list[str | Path]
-        | tuple[str | Path, ...]
-        | set[str]
-        | None = None,
+        explicit_roots: Collection[str | Path] | None = None,
     ) -> None:
         self._user_resource_roots = _normalize_user_resource_roots(user_resource_roots)
         self._explicit_user_resource_roots = set(
@@ -473,6 +471,9 @@ def _discover_snapshot(
     project_resource_root: Path | None = None,
 ) -> ResourceSnapshot:
     target = Path(cwd)
+    context_descriptors: list[PromptFragmentDescriptor]
+    agents_descriptor: PromptFragmentDescriptor | None
+    context_diagnostics: list[DiagnosticDraft]
     if no_context_files:
         context_descriptors, agents_descriptor, context_diagnostics = [], None, []
     else:
@@ -907,28 +908,28 @@ def _discover_temporary_resources(
     diagnostics: list[DiagnosticDraft] = []
 
     for index, raw_path in enumerate(prompt_paths):
-        loaded, loaded_diagnostics = _discover_temporary_prompts_from_path(
+        loaded_prompts, loaded_diagnostics = _discover_temporary_prompts_from_path(
             _resolve_runtime_path(raw_path, cwd), index
         )
-        prompts.extend(loaded)
+        prompts.extend(loaded_prompts)
         diagnostics.extend(loaded_diagnostics)
     for index, raw_path in enumerate(skill_paths):
-        loaded, loaded_diagnostics = _discover_temporary_skills_from_path(
+        loaded_skills, loaded_diagnostics = _discover_temporary_skills_from_path(
             _resolve_runtime_path(raw_path, cwd), index
         )
-        skills.extend(loaded)
+        skills.extend(loaded_skills)
         diagnostics.extend(loaded_diagnostics)
     for index, raw_path in enumerate(extension_paths):
-        loaded, loaded_diagnostics = _discover_temporary_extensions_from_path(
+        loaded_extensions, loaded_diagnostics = _discover_temporary_extensions_from_path(
             _resolve_runtime_path(raw_path, cwd), index
         )
-        extensions.extend(loaded)
+        extensions.extend(loaded_extensions)
         diagnostics.extend(loaded_diagnostics)
     for index, raw_path in enumerate(theme_paths):
-        loaded, loaded_diagnostics = _discover_temporary_themes_from_path(
+        loaded_themes, loaded_diagnostics = _discover_temporary_themes_from_path(
             _resolve_runtime_path(raw_path, cwd), index
         )
-        themes.extend(loaded)
+        themes.extend(loaded_themes)
         diagnostics.extend(loaded_diagnostics)
 
     return _SourceDiscovery(
@@ -1357,7 +1358,7 @@ def _discover_prompts_from_dir(
     prompts_dir: Path,
     *,
     source_kind: ResourceSourceKind,
-    source_scope: str,
+    source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int = 0,
 ) -> tuple[list[PromptFragmentDescriptor], list[DiagnosticDraft]]:
@@ -1410,7 +1411,7 @@ def _prompt_descriptor_from_text(
     text: str,
     canonical_name: str,
     source_kind: ResourceSourceKind,
-    source_scope: str,
+    source_scope: ResourceSourceScope,
     source: str,
     source_root: Path,
     source_root_order: int = 0,
@@ -1456,7 +1457,7 @@ def _discover_skills_from_dir(
     skills_dir: Path,
     *,
     source_kind: ResourceSourceKind,
-    source_scope: str,
+    source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int = 0,
 ) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
@@ -1480,7 +1481,7 @@ def _discover_skills_recursive(
     root_dir: Path,
     ignore_patterns: tuple[str, ...],
     source_kind: ResourceSourceKind,
-    source_scope: str,
+    source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int = 0,
 ) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
@@ -1545,7 +1546,7 @@ def _skill_descriptor_from_file(
     root_dir: Path,
     parent_name: str,
     source_kind: ResourceSourceKind,
-    source_scope: str,
+    source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int,
 ) -> tuple[SkillDescriptor | None, list[DiagnosticDraft]]:
@@ -1668,7 +1669,7 @@ def _discover_extensions_from_dir(
     extensions_dir: Path,
     *,
     source_kind: ResourceSourceKind,
-    source_scope: str,
+    source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int = 0,
 ) -> tuple[list[ExtensionDescriptor], list[DiagnosticDraft]]:
@@ -1739,7 +1740,7 @@ def _discover_themes_from_dir(
     themes_dir: Path,
     *,
     source_kind: ResourceSourceKind,
-    source_scope: str,
+    source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int = 0,
 ) -> tuple[list[ThemeDescriptor], list[DiagnosticDraft]]:
@@ -2284,7 +2285,7 @@ def _package_source_root_path(resource_package: str, category: str) -> Path:
 
 
 def _normalize_package_roots(
-    package_roots: list[str | Path] | tuple[str | Path, ...] | None,
+    package_roots: Sequence[str | Path] | None,
 ) -> tuple[Path, ...]:
     if not package_roots:
         return ()
@@ -2292,7 +2293,7 @@ def _normalize_package_roots(
 
 
 def _normalize_package_source_filters(
-    package_source_filters: dict[str | Path, PackageSourceConfig] | None,
+    package_source_filters: Mapping[str | Path, PackageSourceConfig] | None,
 ) -> dict[Path, PackageSourceConfig]:
     if not package_source_filters:
         return {}
@@ -2447,7 +2448,7 @@ def _source_precedence_rank(source_kind: ResourceSourceKind) -> int:
 
 
 def _normalize_user_resource_roots(
-    user_resource_roots: list[str | Path] | tuple[str | Path, ...] | None,
+    user_resource_roots: Sequence[str | Path] | None,
 ) -> tuple[Path, ...]:
     if not user_resource_roots:
         return ()
@@ -2572,7 +2573,7 @@ def _resolve_candidates(
                     logical_id=logical_id,
                     winner_id=winner.id,
                     winner_source_kind=winner.source_kind,
-                    candidate_ids=(winner.id,),
+                    candidate_ids=(winner.id or winner.name,),
                     candidate_source_kinds=(winner.source_kind,),
                     reason="single_candidate",
                 )
@@ -2727,7 +2728,7 @@ def _resolve_strict_named_candidates(
                     logical_id=logical_id,
                     winner_id=winner.id,
                     winner_source_kind=winner.source_kind,
-                    candidate_ids=(winner.id,),
+                    candidate_ids=(winner.id or winner.name,),
                     candidate_source_kinds=(winner.source_kind,),
                     reason="single_candidate",
                 )

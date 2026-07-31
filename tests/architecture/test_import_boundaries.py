@@ -772,6 +772,9 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     product_source = Path("src/loushang/harness/session/agent_product.py").read_text(
         encoding="utf-8"
     )
+    adapter_source = Path(
+        "src/loushang/harness/session/agent_adapter.py"
+    ).read_text(encoding="utf-8")
     coding_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
@@ -785,10 +788,8 @@ def test_session_facade_is_neutral_and_adopted() -> None:
 
     assert "loushang.coding" not in facade_source
     assert "execute_pi_style" not in facade_source
-    assert (
-        "class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):"
-        in product_source
-    )
+    assert "class AgentSessionAdapterMixin(SessionFacade" in adapter_source
+    assert "class AgentProductSession(AgentSessionAdapterMixin):" in product_source
     assert "class AgentSession(AgentProductSession):" in coding_source
     assert "_facade" not in coding_source
     assert "SessionControlPort" in facade_source

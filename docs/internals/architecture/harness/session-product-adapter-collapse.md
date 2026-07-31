@@ -55,10 +55,11 @@ an inspection controller merely to adapt Coding policy.
   session-scoped diagnostic fallback. The standard
   `ProductTranscriptSessionBinding` removes repeated create/open/fork/dispose
   adapters for Product transcript subclasses.
-- `AgentSessionAdapterMixin` supplies the standard lifecycle-hook binding for
+- `AgentSessionAdapterMixin` is the typed Agent Product adapter base over
+  `SessionFacade`. It supplies the standard lifecycle-hook binding for
   approvals, runtime-host rebinding, extension start/switch/fork/shutdown, and
-  session-only disposal. Coding no longer implements those effects in its
-  runtime adapter.
+  session-only disposal. Product sessions inherit this single base instead of
+  combining an untyped mixin with the Facade through multiple inheritance.
 - `ExtensionInputRuntime`, `ExtensionAgentHookRuntime`, and
   `ExtensionAgentEventRuntime` own standard extension input delivery, Agent
   hook composition, and lifecycle-event mirroring in the optional

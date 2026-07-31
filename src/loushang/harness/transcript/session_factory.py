@@ -86,7 +86,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         """Create one empty transcript with Product-selected runtime metadata."""
 
         resolved_session_id = self._resolve_conversation_id(session_id)
-        binding_input = self._resolve_binding_input(persist=persist)
+        binding_input = self._resolve_binding_input(persist)
         return await self._create(
             session_dir=session_dir,
             cwd=cwd,
@@ -112,7 +112,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
             session_dir=session_dir,
             cwd_override=cwd_override,
         )
-        binding_input = self._resolve_binding_input(persist=persist)
+        binding_input = self._resolve_binding_input(persist)
         self._validate_restored_header(context.header, binding_input, persist)
         return await self._lifecycle.restore(context, binding_input)
 
@@ -190,7 +190,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
                 session_dir=session_dir,
                 cwd=target_cwd,
                 persist=persist,
-                binding_input=self._resolve_binding_input(persist=persist),
+                binding_input=self._resolve_binding_input(persist),
                 parent_conversation_id=source.context.header.conversation_id,
                 parent_session=str(Path(source_file)),
                 records=source.transcript.records,

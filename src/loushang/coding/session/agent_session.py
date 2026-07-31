@@ -35,6 +35,7 @@ from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
 from loushang.harness.session.changelog import read_changelog_for_cwd
 from loushang.harness.session.composition import sleep_for_retry
+from loushang.harness.session.cwd_audit import CwdBoundServicesAudit
 from loushang.harness.session.event_types import AgentSessionEvent
 from loushang.harness.session.footer import FooterDataProvider
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -99,6 +100,7 @@ class AgentSession(AgentProductSession):
     ) -> None:
         self._sandbox_runtime = sandbox_runtime
         self.delegated_execution_profile = delegated_execution_profile
+        self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
         resolved_capability_runtime = (
             capability_runtime
             or bind_capability_composition_runtime(CODING_CAPABILITY_PROFILE)

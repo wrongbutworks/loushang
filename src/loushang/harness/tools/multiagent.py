@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol, cast
 
@@ -340,11 +340,11 @@ class MultiAgentToolPack:
 
 def _result(
     text: str,
-    details: dict[str, object],
+    details: Mapping[str, object],
 ) -> AgentToolResult[dict[str, object]]:
     return AgentToolResult(
         content=[TextPart(type="text", text=text)],
-        details=details,
+        details=dict(details),
     )
 
 

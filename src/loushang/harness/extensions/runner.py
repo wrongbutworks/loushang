@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -86,7 +86,7 @@ class _BeforeAgentStartContext:
 class ExtensionRunner(ExtensionRuntime):
     def __init__(
         self,
-        extensions: list[LoadedExtension | ExtensionDescriptor] | None = None,
+        extensions: Sequence[LoadedExtension | ExtensionDescriptor] | None = None,
         *,
         loader_factory: Callable[[], ExtensionLoader] = ExtensionLoader,
     ) -> None:
@@ -127,7 +127,7 @@ class ExtensionRunner(ExtensionRuntime):
     async def emit_user_bash(self, event: object, *, cwd: str = "") -> object | None:
         return await super().emit_user_bash(_event_object(event), cwd=cwd)
 
-    async def emit_event(self, event: object, *, cwd: str = "") -> None:
+    async def emit_agent_event(self, event: object, *, cwd: str = "") -> None:
         event_type = _event_type(event)
         if event_type is None:
             return

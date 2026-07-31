@@ -21,6 +21,7 @@ from loushang.harness.transcript.session import AgentTranscriptSession
 from loushang.harness.transcript.session_catalog import (
     AgentTranscriptSessionCatalog,
     SessionMetadata,
+    SessionQuery,
     SessionRecord,
     SessionSummary,
     SessionTreeNode,
@@ -346,7 +347,7 @@ class ProductTranscriptSession(
     def find_sessions(
         cls,
         session_dir: Path,
-        query: object | None = None,
+        query: SessionQuery | None = None,
     ) -> builtins.list[SessionSummary]:
         return AgentTranscriptSessionCatalog(session_dir).find_summaries(query)
 
@@ -354,7 +355,7 @@ class ProductTranscriptSession(
     def find_all_sessions(
         cls,
         sessions_root: Path,
-        query: object | None = None,
+        query: SessionQuery | None = None,
     ) -> builtins.list[SessionSummary]:
         return find_all_agent_transcript_session_summaries(sessions_root, query)
 
@@ -385,7 +386,7 @@ class ProductTranscriptSession(
     def find_indexed_sessions(
         cls,
         session_dir: Path,
-        query: object | None = None,
+        query: SessionQuery | None = None,
     ) -> builtins.list[SessionSummary]:
         return AgentTranscriptSessionCatalog(session_dir).find_indexed_summaries(query)
 
@@ -412,7 +413,7 @@ class ProductTranscriptSession(
     def find_all_indexed_sessions(
         cls,
         sessions_root: Path,
-        query: object | None = None,
+        query: SessionQuery | None = None,
     ) -> builtins.list[SessionSummary]:
         return find_all_indexed_agent_transcript_session_summaries(sessions_root, query)
 

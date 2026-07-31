@@ -37,7 +37,6 @@ from loushang.harness.session.lifecycle_adapter import (
     SessionLifecycleOperationAdapter,
 )
 from loushang.harness.session.transcript_lifecycle import (
-    AgentTranscriptSessionRuntime,
     ProductTranscriptSessionLifecyclePorts,
     ProductTranscriptSessionLifecycleStore,
     require_session_operation_session,
@@ -51,12 +50,22 @@ from loushang.harness.transcript import (
 
 SessionT = TypeVar("SessionT")
 TranscriptT = TypeVar("TranscriptT")
+TranscriptT_contra = TypeVar("TranscriptT_contra", contravariant=True)
 PayloadT = TypeVar("PayloadT")
 
-SessionBuilder = Callable[
-    [TranscriptT, SessionT | None, SessionLifecycleTransition],
-    SessionT | Awaitable[SessionT],
-]
+
+class SessionBuilder(Protocol[TranscriptT_contra, SessionT]):
+    """Build one Product runtime session from its transcript binding."""
+
+    def __call__(
+        self,
+        transcript: TranscriptT_contra,
+        current_session: SessionT | None,
+        transition: SessionLifecycleTransition,
+        /,
+    ) -> SessionT | Awaitable[SessionT]: ...
+
+
 TranscriptValidator = Callable[[TranscriptT], None | Awaitable[None]]
 RenameTranscript = Callable[
     [Path, str | None], SessionSummary | Awaitable[SessionSummary]
@@ -98,7 +107,7 @@ class ProductSessionRuntimePorts(Generic[SessionT, TranscriptT, PayloadT]):
     transcript_cwd: Callable[[TranscriptT], str]
     transcript_session_ref: Callable[[TranscriptT], str | None]
     transcript_leaf_entry_id: Callable[[TranscriptT], str | None]
-    build_session: SessionBuilder[SessionT, TranscriptT]
+    build_session: SessionBuilder[TranscriptT, SessionT]
     validate_restored_transcript: TranscriptValidator[TranscriptT] | None
     fork_profile: ForkProfile
     fork_target_resolver: ForkTargetResolver[SessionT, PayloadT]
@@ -119,7 +128,6 @@ class ProductSessionRuntimePorts(Generic[SessionT, TranscriptT, PayloadT]):
 
 class ProductSessionRuntime(
     SessionLifecycleOperationAdapter[SessionT, PayloadT],
-    AgentTranscriptSessionRuntime[SessionT, PayloadT],
     Generic[SessionT, TranscriptT, PayloadT],
 ):
     """Compose standard session runtimes for any Agent product.

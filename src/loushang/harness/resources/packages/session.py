@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol, cast
@@ -22,21 +22,25 @@ from loushang.harness.resources.packages.projection import (
     project_package_entries,
     serialize_package_materialization_record,
 )
-from loushang.harness.resources.packages.roots import configure_resource_loader_roots
+from loushang.harness.resources.packages.roots import (
+    ResourceRootSettingsManager,
+    ResourceRootSettingsSnapshot,
+    configure_resource_loader_roots,
+)
 from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.packages.source_resolver import PackageSourceResolver
 
 SettingsScope = Literal["global", "project", "session"]
 
 
-class SessionPackageSettings(Protocol):
-    package_roots: Sequence[str]
-    plugin_sources: Sequence[str]
-    package_sources: Sequence[PackageSourceConfig]
-    disabled_plugins: Sequence[str]
+class SessionPackageSettings(ResourceRootSettingsSnapshot, Protocol):
+    package_roots: tuple[str, ...]
+    plugin_sources: tuple[str, ...]
+    package_sources: tuple[PackageSourceConfig, ...]
+    disabled_plugins: tuple[str, ...]
 
 
-class SessionPackageSettingsManager(Protocol):
+class SessionPackageSettingsManager(ResourceRootSettingsManager, Protocol):
     def get_settings(self) -> SessionPackageSettings: ...
 
     def add_package_source(self, source: str, *, scope: SettingsScope) -> None: ...

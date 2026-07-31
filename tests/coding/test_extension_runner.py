@@ -1712,12 +1712,14 @@ def test_extension_runner_emits_agent_lifecycle_events() -> None:
         ]
     )
 
-    asyncio.run(runner.emit_event({"type": "agent_start"}))
+    asyncio.run(runner.emit_agent_event({"type": "agent_start"}))
     asyncio.run(
-        runner.emit_event({"type": "turn_start", "turn_index": 2, "timestamp": 123})
+        runner.emit_agent_event(
+            {"type": "turn_start", "turn_index": 2, "timestamp": 123}
+        )
     )
     asyncio.run(
-        runner.emit_event(
+        runner.emit_agent_event(
             {
                 "type": "tool_execution_start",
                 "tool_call_id": "tc1",
@@ -1764,7 +1766,7 @@ def test_extension_runner_emits_runtime_error_for_agent_lifecycle_hook_failure()
         )
     )
 
-    asyncio.run(runner.emit_event({"type": "agent_start"}))
+    asyncio.run(runner.emit_agent_event({"type": "agent_start"}))
 
     assert [diagnostic.code for diagnostic in runner.get_diagnostics()] == [
         "extension_agent_start_failed"

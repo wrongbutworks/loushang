@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar, cast
 
+from loushang.agent import ThinkingLevel
 from loushang.ai.types import ImagePart
 from loushang.harness.approval import (
     ApprovalOutcome,
@@ -214,7 +215,7 @@ class SessionMaintenancePort(Protocol):
 class SessionResourcePort(Protocol):
     """Resource refresh controls exposed by a composed Product session."""
 
-    def get_prompt_templates(self) -> list[object]: ...
+    def get_prompt_templates(self) -> Sequence[object]: ...
 
     async def refresh_resources(self) -> None: ...
 
@@ -244,17 +245,17 @@ class SessionModelPort(Protocol):
 
     async def cycle_model(self, direction: str = "forward") -> object | None: ...
 
-    async def set_thinking_level(self, level: object) -> None: ...
+    async def set_thinking_level(self, level: ThinkingLevel) -> None: ...
 
-    async def cycle_thinking_level(self) -> object | None: ...
+    async def cycle_thinking_level(self) -> ThinkingLevel | None: ...
 
     def supports_thinking(self) -> bool: ...
 
-    def get_available_thinking_levels(self) -> list[object]: ...
+    def get_available_thinking_levels(self) -> Sequence[object]: ...
 
-    def get_available_models(self) -> list[object]: ...
+    def get_available_models(self) -> Sequence[object]: ...
 
-    def get_available_model_details(self) -> list[object]: ...
+    def get_available_model_details(self) -> Sequence[object]: ...
 
     def get_scoped_models(self) -> list[dict[str, object]]: ...
 
@@ -476,6 +477,7 @@ class SessionFacadePorts(
     settings: SessionSettingsPort | None = None
     application_input: SessionApplicationInputPort | None = None
     approval_interaction: SessionApprovalInteractionPort | None = None
+    event_projector: Callable[[RuntimeEvent[object]], object | None] | None = None
 
 
 @dataclass
@@ -515,6 +517,7 @@ class SessionFacade(
     settings: SessionSettingsPort | None = None
     application_input: SessionApplicationInputPort | None = None
     approval_interaction: SessionApprovalInteractionPort | None = None
+    event_projector: Callable[[RuntimeEvent[object]], object | None] | None = None
 
     @classmethod
     def from_ports(
@@ -551,6 +554,7 @@ class SessionFacade(
             settings=ports.settings,
             application_input=ports.application_input,
             approval_interaction=ports.approval_interaction,
+            event_projector=ports.event_projector,
         )
 
     @property
@@ -715,23 +719,25 @@ class SessionFacade(
     async def cycle_model(self, direction: str = "forward") -> object | None:
         return await self._require_model_selection().cycle_model(direction)
 
-    async def set_thinking_level(self, level: object) -> None:
+    async def set_thinking_level(self, level: ThinkingLevel) -> None:
         await self._require_model_selection().set_thinking_level(level)
 
-    async def cycle_thinking_level(self) -> object | None:
+    async def cycle_thinking_level(self) -> ThinkingLevel | None:
         return await self._require_model_selection().cycle_thinking_level()
 
     def supports_thinking(self) -> bool:
         return self._require_model_selection().supports_thinking()
 
     def get_available_thinking_levels(self) -> list[object]:
-        return self._require_model_selection().get_available_thinking_levels()
+        return list(
+            self._require_model_selection().get_available_thinking_levels()
+        )
 
     def get_available_models(self) -> list[object]:
-        return self._require_model_selection().get_available_models()
+        return list(self._require_model_selection().get_available_models())
 
     def get_available_model_details(self) -> list[object]:
-        return self._require_model_selection().get_available_model_details()
+        return list(self._require_model_selection().get_available_model_details())
 
     @property
     def scoped_models(self) -> list[dict[str, object]]:
@@ -840,10 +846,19 @@ class SessionFacade(
         self,
         listener: SessionEventListener[EventT],
         *,
-        project: SessionEventProjector[EventT],
+        project: SessionEventProjector[EventT] | None = None,
     ) -> Callable[[], None]:
+        selected_project = project
+        if selected_project is None:
+            if self.event_projector is None:
+                raise RuntimeError("A session event projector is not configured.")
+            selected_project = cast(
+                SessionEventProjector[EventT],
+                self.event_projector,
+            )
+
         def relay(event: RuntimeEvent[object]) -> Awaitable[None] | None:
-            projected = project(event)
+            projected = selected_project(event)
             if projected is None:
                 return None
             return listener(projected)
@@ -1018,7 +1033,7 @@ class SessionFacade(
         self.maintenance.abort_compaction()
 
     def get_prompt_templates(self) -> list[object]:
-        return self.resources.get_prompt_templates()
+        return list(self.resources.get_prompt_templates())
 
     async def refresh_resources(self) -> None:
         await self.resources.refresh_resources()

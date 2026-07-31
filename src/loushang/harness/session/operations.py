@@ -136,15 +136,35 @@ class SessionOperationRuntime:
         on_preflight: Callable[[bool], None] | None = None,
     ) -> None:
         self._require(SessionOperationCapability.INPUT)
-        prompt_kwargs: dict[str, object] = {
-            "streaming_behavior": request.streaming_behavior,
-            "source": request.source,
-        }
-        if on_preflight is not None:
-            prompt_kwargs["preflight_result"] = on_preflight
-        if request.images:
-            prompt_kwargs["images"] = list(request.images)
-        await self._control.prompt(request.text, **prompt_kwargs)
+        images = list(request.images) or None
+        if images is not None and on_preflight is not None:
+            await self._control.prompt(
+                request.text,
+                images=images,
+                streaming_behavior=request.streaming_behavior,
+                source=request.source,
+                preflight_result=on_preflight,
+            )
+        elif images is not None:
+            await self._control.prompt(
+                request.text,
+                images=images,
+                streaming_behavior=request.streaming_behavior,
+                source=request.source,
+            )
+        elif on_preflight is not None:
+            await self._control.prompt(
+                request.text,
+                streaming_behavior=request.streaming_behavior,
+                source=request.source,
+                preflight_result=on_preflight,
+            )
+        else:
+            await self._control.prompt(
+                request.text,
+                streaming_behavior=request.streaming_behavior,
+                source=request.source,
+            )
         await self._control.wait_for_idle()
 
     async def new_session(
@@ -153,15 +173,15 @@ class SessionOperationRuntime:
         cwd: str | None = None,
         parent_session: str | None = None,
     ) -> SessionOperationResult[Any, Any]:
-        self._require_lifecycle_port()
-        return await self._lifecycle.new_session(cwd, parent_session)
+        lifecycle = self._require_lifecycle_port()
+        return await lifecycle.new_session(cwd, parent_session)
 
     async def restore_session(
         self,
         session_ref: str | Path,
     ) -> SessionOperationResult[Any, Any]:
-        self._require_lifecycle_port()
-        return await self._lifecycle.restore_session(session_ref)
+        lifecycle = self._require_lifecycle_port()
+        return await lifecycle.restore_session(session_ref)
 
     async def fork_session(
         self,
@@ -169,17 +189,17 @@ class SessionOperationRuntime:
         *,
         position: str = "at",
     ) -> SessionOperationResult[Any, Any]:
-        self._require_lifecycle_port()
-        return await self._lifecycle.fork_session(entry_id, position)
+        lifecycle = self._require_lifecycle_port()
+        return await lifecycle.fork_session(entry_id, position)
 
     async def clone_session(self) -> SessionOperationResult[Any, Any]:
         """Create an independent session at the current product position."""
-        self._require_lifecycle_port()
-        if self._lifecycle.clone_session is None:
+        lifecycle = self._require_lifecycle_port()
+        if lifecycle.clone_session is None:
             raise SessionOperationUnavailableError(
                 "Session clone operation is unavailable"
             )
-        return await self._lifecycle.clone_session()
+        return await lifecycle.clone_session()
 
     def steer(self, text: str, *, images: Iterable[ImagePart] = ()) -> None:
         self._require(SessionOperationCapability.INPUT)
@@ -290,12 +310,13 @@ class SessionOperationRuntime:
     def _require(self, capability: SessionOperationCapability) -> None:
         self._availability.require(capability)
 
-    def _require_lifecycle_port(self) -> None:
+    def _require_lifecycle_port(self) -> SessionLifecycleOperationPorts:
         self._require(SessionOperationCapability.LIFECYCLE)
         if self._lifecycle is None:
             raise SessionOperationUnavailableError(
                 "Session lifecycle operation ports are not bound"
             )
+        return self._lifecycle
 
 
 def current_session_operation_resolver(

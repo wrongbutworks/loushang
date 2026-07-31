@@ -13,7 +13,6 @@ from typing import (
     Annotated,
     Any,
     NotRequired,
-    Protocol,
     Required,
     get_args,
     get_origin,
@@ -39,6 +38,7 @@ from loushang.harness.tools.core import (
     _TOOL_SPEC_ATTR,
     DecoratedTool,
     DecoratedToolSpec,
+    ToolContextProvider,
     ToolDefinition,
     apply_schema_overrides,
     infer_schema_from_signature,
@@ -70,10 +70,6 @@ class ToolContext:
     model: object | None = None
     event_sink: ToolEventSink | None = None
     exec_service: ExecService | None = None
-
-
-class ToolContextProvider(Protocol):
-    def __call__(self, *, tool_call_id: str) -> ToolContext: ...
 
 
 def _titleize_tool_name(name: str) -> str:
@@ -298,7 +294,7 @@ def _build_decorated_definition(
         parameters=parameters,
         execution=execution,
         prompt_snippet=obj.prompt_snippet,
-        prompt_guidelines=obj.prompt_guidelines,
+        prompt_guidelines=tuple(obj.prompt_guidelines),
     )
 
 

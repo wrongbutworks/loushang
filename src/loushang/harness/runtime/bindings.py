@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
@@ -53,7 +53,7 @@ class ProductRuntimeBindings:
     set_session_name: Callable[[str | None], Awaitable[None]] = _ignore_session_name
     get_session_name: Callable[[], str | None] = lambda: None
     set_label: Callable[[str, str | None], Awaitable[None]] = _ignore_label
-    list_commands: Callable[[], list[object]] = lambda: []
+    list_commands: Callable[[], Sequence[object]] = lambda: ()
     abort: Callable[[], None] = lambda: None
     is_idle: Callable[[], bool] = lambda: True
     has_pending_messages: Callable[[], bool] = lambda: False

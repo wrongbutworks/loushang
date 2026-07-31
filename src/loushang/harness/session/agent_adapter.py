@@ -11,15 +11,17 @@ from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 
-from loushang.agent import AgentEvent
-from loushang.ai.model import ModelSelection
+from loushang.agent import Agent, AgentEvent, ThinkingLevel
+from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import AssistantMessage
 from loushang.harness.approval import (
     ApprovalOutcome,
     ApprovalPermissionsSnapshot,
+    InteractiveApprovalResolver,
 )
+from loushang.harness.capabilities import CapabilityCompositionRuntime
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticPhase
 from loushang.harness.events import (
@@ -28,32 +30,65 @@ from loushang.harness.events import (
     PermissionProfileChanged,
     project_session_runtime_event,
 )
-from loushang.harness.extensions.agent import ExtensionAgentHookRuntime
+from loushang.harness.extensions import ExtensionProviderRuntime
+from loushang.harness.extensions.agent import (
+    ExtensionAgentEventRuntime,
+    ExtensionAgentHookRuntime,
+    ExtensionInputRuntime,
+)
+from loushang.harness.extensions.agent.input_adapter import ExtensionInputAdapter
+from loushang.harness.extensions.agent.replacement import ExtensionReplacementRuntime
 from loushang.harness.extensions.context import (
+    ReplacedSessionContext,
+    SessionActionDecision,
     SessionBeforeForkEvent,
     SessionBeforeSwitchEvent,
     SessionBeforeTreeEvent,
     SessionShutdownEvent,
     SessionStartEvent,
 )
+from loushang.harness.extensions.runtime_bindings import (
+    ExtensionRuntimeBindingFactory,
+    ExtensionRuntimeBindings,
+)
+from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
+from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.permissions import (
     PermissionProfileScope,
     PermissionProfileSnapshot,
     permission_profile,
     permission_profile_snapshot,
 )
-from loushang.harness.resources.packages.materializer import PackageProgressEvent
+from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.packages.materializer import (
+    PackageMaterializer,
+    PackageProgressEvent,
+)
+from loushang.harness.resources.packages.session import SessionPackageController
+from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.runtime import copy_file_exclusive
+from loushang.harness.session.bash import BashExecutionRuntime
+from loushang.harness.session.bindings import (
+    SessionExtensionBinding,
+    SessionIdentityBinding,
+    SessionMaintenanceBinding,
+    SessionModelBinding,
+)
 from loushang.harness.session.capabilities import (
     UserCommandHookResult,
     UserCommandRequest,
 )
-from loushang.harness.session.composition import SessionComposition
+from loushang.harness.session.command_controller import SessionCommandController
+from loushang.harness.session.composition import (
+    SessionComposition,
+    SessionExtensionCompositionPort,
+    SessionModelCatalogPort,
+)
 from loushang.harness.session.diagnostics import (
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
 )
-from loushang.harness.session.event_types import AgentSessionEvent
 from loushang.harness.session.export import (
     export_session_to_html,
     export_session_to_jsonl,
@@ -64,6 +99,7 @@ from loushang.harness.session.facade import (
     ApprovalRequestPresenter,
     SessionFacade,
 )
+from loushang.harness.session.inspection import AgentSessionInspector
 from loushang.harness.session.lifecycle import (
     ForkProfile,
     ForkSelection,
@@ -87,6 +123,9 @@ from loushang.harness.session.product_runtime import (
     session_file_from_session,
     session_id_from_session,
 )
+from loushang.harness.session.resource_refresh import SessionResourceRefreshRuntime
+from loushang.harness.session.runtime import SessionRuntime
+from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.transcript_lifecycle import (
     ProductTranscriptSessionBinding,
 )
@@ -94,8 +133,14 @@ from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
 )
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
+    AgentTranscriptCompactionCapability,
+    AgentTranscriptCompactionRuntime,
     AgentTranscriptContext,
+    AgentTranscriptNavigationRuntime,
+    AgentTranscriptRetryRuntime,
+    AgentTranscriptSelectionRuntime,
     BranchSummaryOutput,
     CompactionPreparation,
     CompactionResult,
@@ -105,10 +150,22 @@ from loushang.harness.transcript import (
     TranscriptNavigationResult,
     normalize_branch_summary_output,
 )
-from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecUpdateCallback
+from loushang.harness.workspace.exec import (
+    ExecRequest,
+    ExecResult,
+    ExecService,
+    ExecUpdateCallback,
+)
+
+if TYPE_CHECKING:
+    from loushang.harness.session.tool_controller import SessionToolController
 
 SessionT = TypeVar("SessionT")
 TranscriptT = TypeVar("TranscriptT", bound=ProductTranscriptSession)
+
+
+class _ReloadableSettings(Protocol):
+    def reload(self) -> None: ...
 
 
 @dataclass
@@ -173,8 +230,60 @@ class _AgentSessionApprovalInteraction:
         return await self._session.apply_approval_permission_action(action)
 
 
-class AgentSessionAdapterMixin:
-    """Common methods shared by Coding and other Product session adapters."""
+class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any]):
+    """Typed base for standard Agent Product session adapters."""
+
+    agent: Agent
+    session_manager: ProductTranscriptSession[Any, Any]
+    model_registry: SessionModelCatalogPort | None
+    diagnostics_service: DiagnosticsService | None
+    _approval_presenter_lease: _AgentApprovalPresentationLease | None
+    _approval_presenter_generation: int
+    _approval_resolver: InteractiveApprovalResolver | None
+    _approval_session_state: str
+    _bash_runtime: BashExecutionRuntime
+    _capability_runtime: CapabilityCompositionRuntime | None
+    _command_controller: SessionCommandController[Any]
+    _compaction_capability: AgentTranscriptCompactionCapability
+    _compaction_runtime: AgentTranscriptCompactionRuntime
+    _diagnostics_bridge: SessionDiagnosticsRuntime
+    _exec_service: ExecService
+    _extension_binding: SessionExtensionBinding
+    _extension_event_sink: ExtensionAgentEventRuntime
+    _extension_input_runtime: ExtensionInputRuntime
+    _extension_message_controller: ExtensionInputAdapter
+    _extension_provider_controller: ExtensionProviderRuntime
+    _extension_replacement_controller: ExtensionReplacementRuntime
+    _extension_runner: SessionExtensionCompositionPort | None
+    _extension_runtime_binding_factory: ExtensionRuntimeBindingFactory
+    _extension_runtime_controller: ExtensionSessionRuntime[ExtensionRuntimeBindings]
+    _extension_runtime_host: object | None
+    _extension_ui_context: object | None
+    _identity_binding: SessionIdentityBinding
+    _maintenance_binding: SessionMaintenanceBinding
+    _model_binding: SessionModelBinding
+    _navigation_runtime: AgentTranscriptNavigationRuntime
+    _operations: SessionOperations
+    _package_controller: SessionPackageController
+    _package_materializer: PackageMaterializer | None
+    _resource_loader: ResourceLoader | None
+    _resource_refresh_runtime: SessionResourceRefreshRuntime
+    _resource_watch_controller: ResourceChangeWatcher
+    _retry_runtime: AgentTranscriptRetryRuntime
+    _selection_runtime: AgentTranscriptSelectionRuntime
+    _session_default_model: Model
+    _session_inspector: AgentSessionInspector
+    _session_runtime: SessionRuntime
+    _settings_controller: SessionSettingsBinding
+    _tool_controller: SessionToolController
+    _tool_registry: WorkspaceToolRegistry | None
+    resource_bundle: ResourceBundle | None
+
+    def _create_replaced_session_context(
+        self,
+        session: object | None,
+    ) -> ReplacedSessionContext:
+        raise NotImplementedError
 
     @property
     def resource_loader(self):
@@ -224,9 +333,12 @@ class AgentSessionAdapterMixin:
     def _apply_agent_transcript_context(
         self, session_context: AgentTranscriptContext
     ) -> None:
-        self.agent.state.set_messages(session_context.messages)
+        self.agent.state.set_messages(list(session_context.messages))
         if self.session_manager.get_entries():
-            self.agent.thinking_level = session_context.thinking_level
+            self.agent.thinking_level = cast(
+                ThinkingLevel,
+                session_context.thinking_level,
+            )
         resolved_model = self._session_default_model
         if session_context.model is not None and self.model_registry is not None:
             selection = ModelSelection(
@@ -494,7 +606,7 @@ class AgentSessionAdapterMixin:
         )
 
     def _record_extension_command_error(
-        self, *, command: object, exc: BaseException
+        self, *, command: ResolvedCommand, exc: BaseException
     ) -> None:
         self._command_controller.record_extension_command_error(
             command=command, exc=exc
@@ -686,7 +798,7 @@ class AgentSessionAdapterMixin:
             "context_files": [],
         }
 
-    def _set_resource_bundle(self, resource_bundle: object) -> None:
+    def _set_resource_bundle(self, resource_bundle: ResourceBundle) -> None:
         self.resource_bundle = resource_bundle
 
     def _refresh_resources_for_extension_runtime(self) -> None:
@@ -727,7 +839,10 @@ class AgentSessionAdapterMixin:
         return sorted(paths, key=lambda path: path.as_posix())
 
     def _prepare_resource_refresh(self) -> None:
-        settings_manager = self._settings_controller.get_settings_manager()
+        settings_manager = cast(
+            _ReloadableSettings | None,
+            self._settings_controller.get_settings_manager(),
+        )
         if settings_manager is not None:
             settings_manager.reload()
         self._configure_package_resource_roots()
@@ -737,11 +852,6 @@ class AgentSessionAdapterMixin:
 
     async def _prepare_configured_remote_package_records(self) -> None:
         await self._package_controller.prepare_configured_remote_package_records()
-
-    def _record_package_projection_diagnostics(
-        self, packages: list[dict[str, object]]
-    ) -> None:
-        self._package_controller.record_package_projection_diagnostics(packages)
 
     def _record_package_update_check_diagnostics(
         self, updates: list[dict[str, object]]
@@ -859,12 +969,6 @@ class AgentSessionAdapterMixin:
         )
         return {"cancelled": result.cancelled}
 
-    async def _handle_agent_event(self, event: object, signal: object) -> None:
-        await self._session_runtime.handle_agent_event(event, signal)
-
-    async def _emit_extension_agent_event(self, event: object) -> None:
-        await self._extension_event_sink.emit_agent_event(event)
-
     def _bind_package_progress_events(self) -> None:
         if self._package_materializer is not None:
             self._package_materializer.set_progress_callback(
@@ -959,7 +1063,11 @@ class AgentSessionAdapterMixin:
     ) -> None:
         self._command_controller.record_preflight_diagnostics(diagnostics)
 
-    def _sync_extension_diagnostics(self, *, phase: str) -> None:
+    def _sync_extension_diagnostics(
+        self,
+        *,
+        phase: DiagnosticPhase,
+    ) -> None:
         self._diagnostics_bridge.sync_extension_diagnostics(phase=phase)
 
     def _record_runtime_exception(self, *, code: str, exc: Exception | str) -> None:
@@ -984,23 +1092,17 @@ class AgentSessionAdapterMixin:
                 get_cwd=self.session_manager.get_cwd,
             ).install()
 
-    def subscribe(
-        self, listener: Callable[[AgentSessionEvent], Awaitable[None] | None]
-    ):
-        return super().subscribe(listener, project=project_session_runtime_event)
-
-
 def initialize_composed_session(
-    session: object,
+    session: AgentSessionAdapterMixin,
     composition: SessionComposition,
     *,
     operations_ports: SessionOperationsPorts,
-    settings: object,
-    session_manager: object,
+    settings: SessionSettingsBinding,
+    session_manager: ProductTranscriptSession[Any, Any],
     active_tool_names: list[str] | None,
     show_empty_tool_prompt: bool,
-    tool_registry: object | None,
-    apply_context: Callable[[object], None],
+    tool_registry: WorkspaceToolRegistry | None,
+    apply_context: Callable[[AgentTranscriptContext], None],
     sync_footer: Callable[[], None],
 ) -> None:
     """Install an assembled composition on a Product Session adapter."""
@@ -1014,7 +1116,10 @@ def initialize_composed_session(
     session._compaction_capability = composition.compaction_capability
     session._compaction_runtime = composition.compaction_runtime
     session._bash_runtime = composition.bash_runtime
-    session._package_controller = composition.package_controller
+    package_controller = composition.package_controller
+    if package_controller is None:
+        raise RuntimeError("Agent Product sessions require package operations.")
+    session._package_controller = package_controller
     session._command_controller = composition.command_controller
     session._extension_event_sink = composition.extension_event_sink
     session._retry_runtime = composition.retry_runtime
@@ -1054,8 +1159,9 @@ def initialize_composed_session(
         extensions=composition.extension_binding,
         settings=settings,
         application_input=composition.extension_message_controller,
+        event_projector=project_session_runtime_event,
         approval_interaction=(
-            _AgentSessionApprovalInteraction(cast(AgentSessionAdapterMixin, session))
+            _AgentSessionApprovalInteraction(session)
             if getattr(session, "_approval_resolver", None) is not None
             else None
         ),
@@ -1096,6 +1202,7 @@ def build_agent_session_lifecycle_hooks(
         if runner is None:
             return None
         manager = getattr(current, "session_manager")
+        decision: SessionActionDecision | None
         if transition.reason == "fork":
             entry_id = transition.fork_entry_id
             position = transition.fork_position
@@ -1396,11 +1503,16 @@ def _open_session_approvals(session: object) -> None:
         callback()
 
 
-def _session_extension_runner(session: object) -> object | None:
-    return getattr(
-        session,
-        "extension_runner",
-        getattr(session, "_extension_runner", None),
+def _session_extension_runner(
+    session: object,
+) -> SessionExtensionCompositionPort | None:
+    return cast(
+        SessionExtensionCompositionPort | None,
+        getattr(
+            session,
+            "extension_runner",
+            getattr(session, "_extension_runner", None),
+        ),
     )
 
 

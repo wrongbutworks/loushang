@@ -129,6 +129,7 @@ def project_session_record(record: object) -> dict[str, object]:
 
     metadata = _safe_session_getattr(record, "metadata", None)
     session_file = _safe_session_getattr(record, "session_file", None)
+    normalized: dict[str, object]
     if metadata is not None:
         normalized = {
             "session_id": _session_string_attr(record, "session_id"),
@@ -403,18 +404,22 @@ class AgentTranscriptSessionCatalog:
     """Agent projection facade over a provider-bound conversation catalog."""
 
     def __init__(self, session_dir: str | Path) -> None:
-        self.session_dir = Path(session_dir).expanduser().resolve(strict=False)
-        self._layout = AgentTranscriptFileLayout(self.session_dir)
+        resolved_session_dir = Path(session_dir).expanduser().resolve(strict=False)
+        layout = AgentTranscriptFileLayout(resolved_session_dir)
+        self.session_dir: Path | None = resolved_session_dir
+        self._layout: AgentTranscriptFileLayout | None = layout
         self._provider = ConversationProviderBinding(
-            provider_id=f"agent-conversation-jsonl:{self.session_dir.as_posix()}",
-            namespace=self._layout.namespace,
-            store=create_agent_transcript_file_store(self._layout),
+            provider_id=(
+                f"agent-conversation-jsonl:{resolved_session_dir.as_posix()}"
+            ),
+            namespace=layout.namespace,
+            store=create_agent_transcript_file_store(layout),
         )
         self._external_index: ConversationIndex[SessionSummary, SessionQuery] | None = (
             None
         )
         self._session_file_for: Callable[[ConversationLocator], Path | None] = (
-            lambda locator: self._layout.resolve_path(locator.key)
+            lambda locator: layout.resolve_path(locator.key)
         )
 
     @classmethod

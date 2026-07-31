@@ -15,6 +15,7 @@ DirectApplicationProjector = Callable[[ApplicationMessage, str], Awaitable[None]
 TriggerTurnRunner = Callable[[ApplicationMessage], Awaitable[None]]
 VisibleText = Callable[[ApplicationMessage], str]
 ApplicationInputDisposition = Literal[
+    "staged",
     "committed",
     "already_committed",
     "queued",

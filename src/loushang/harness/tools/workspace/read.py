@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
-from typing import Any, NotRequired, Protocol, TypedDict
+from typing import Any, NotRequired, Protocol, TypedDict, TypeVar, cast
 
 from loushang.agent.types import AgentToolResult, ImagePart, TextPart
 from loushang.harness.tools.authoring import (
@@ -33,6 +33,7 @@ from .types import PiTruncationDetails, ToolDefinition
 MAX_INLINE_IMAGE_BASE64_BYTES = int(4.5 * 1024 * 1024)
 MAX_INLINE_IMAGE_DIMENSION = 2000
 DEFAULT_RESIZED_IMAGE_JPEG_QUALITIES = (80, 85, 70, 55, 40)
+ImageT = TypeVar("ImageT")
 
 
 class ReadToolInput(TypedDict):
@@ -275,6 +276,7 @@ def create_read_tool_definition(
                 start_line=start_line,
                 path=path,
             )
+            assert first_line_notice is not None
             return AgentToolResult(
                 content=[TextPart(type="text", text=first_line_notice)],
                 details={
@@ -555,14 +557,20 @@ class PillowReadImageResizer:
         except ImportError:
             return None
 
+        image_ops: object | None
         try:
-            from PIL import ImageOps
+            from PIL import ImageOps as pillow_image_ops
         except ImportError:
-            ImageOps = None
+            image_ops = None
+        else:
+            image_ops = pillow_image_ops
 
         try:
             with Image.open(BytesIO(payload)) as opened_image:
-                image = _apply_exif_transpose(opened_image, image_ops=ImageOps)
+                image = _apply_exif_transpose(
+                    opened_image,
+                    image_ops=image_ops,
+                )
                 original_dimensions = (image.width, image.height)
                 try:
                     for target_dimensions in _iter_resize_dimensions(
@@ -611,13 +619,17 @@ class PillowReadImageResizer:
         return None
 
 
-def _apply_exif_transpose(image: object, *, image_ops: object | None) -> object:
+def _apply_exif_transpose(
+    image: ImageT,
+    *,
+    image_ops: object | None,
+) -> ImageT:
     if image_ops is None:
         return image
     exif_transpose = getattr(image_ops, "exif_transpose", None)
     if not callable(exif_transpose):
         return image
-    return exif_transpose(image)
+    return cast(ImageT, exif_transpose(image))
 
 
 def _initial_resize_dimensions(
@@ -699,7 +711,7 @@ def _encode_resized_image_candidates(
     return candidates
 
 
-def _pillow_lanczos_filter(image_module: object) -> object:
+def _pillow_lanczos_filter(image_module: object) -> Any:
     resampling = getattr(image_module, "Resampling", None)
     if resampling is not None:
         return resampling.LANCZOS

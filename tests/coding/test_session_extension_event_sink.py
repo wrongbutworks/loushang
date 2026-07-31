@@ -19,7 +19,7 @@ def test_extension_event_sink_mirrors_lifecycle_events_with_turn_index() -> None
     emitted: list[tuple[object, str]] = []
 
     class Runner:
-        async def emit_event(self, event, *, cwd: str = "") -> None:
+        async def emit_agent_event(self, event, *, cwd: str = "") -> None:
             emitted.append((event, cwd))
 
     sink = ExtensionAgentEventRuntime(

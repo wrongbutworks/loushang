@@ -22,13 +22,19 @@ def register_extension_flag_arguments(
         if flag_type not in {"boolean", "string"}:
             continue
         registered[name] = flag
-        kwargs: dict[str, object] = {
-            "dest": extension_flag_dest(name),
-            "default": None,
-        }
         if flag_type == "boolean":
-            kwargs["action"] = "store_true"
-        parser.add_argument(f"--{name}", **kwargs)
+            parser.add_argument(
+                f"--{name}",
+                dest=extension_flag_dest(name),
+                default=None,
+                action="store_true",
+            )
+        else:
+            parser.add_argument(
+                f"--{name}",
+                dest=extension_flag_dest(name),
+                default=None,
+            )
     return registered
 
 

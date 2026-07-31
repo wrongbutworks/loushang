@@ -9,15 +9,18 @@ compaction, tools, resources, extensions, and command runtimes.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from loushang.agent import Agent
 from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.model import ModelSelection
+from loushang.ai.model import Model, ModelSelection
 from loushang.ai.utils import is_context_overflow
+from loushang.harness.approval import ApprovalResolver
+from loushang.harness.capabilities import CapabilityCompositionRuntime
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import (
@@ -29,15 +32,31 @@ from loushang.harness.extensions.agent import (
     ExtensionAgentEventRuntime,
     ExtensionInputRuntime,
 )
+from loushang.harness.extensions.agent.hooks import ExtensionAgentHookPort
 from loushang.harness.extensions.agent.input_adapter import ExtensionInputAdapter
+from loushang.harness.extensions.agent.lifecycle import ExtensionEventPort
 from loushang.harness.extensions.agent.replacement import ExtensionReplacementRuntime
-from loushang.harness.extensions.context import SessionStartEvent
+from loushang.harness.extensions.context import (
+    SessionActionDecision,
+    SessionBeforeCompactResult,
+    SessionBeforeForkResult,
+    SessionBeforeTreeResult,
+    SessionStartEvent,
+)
 from loushang.harness.extensions.provider_config import provider_from_extension_config
-from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
-from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
+from loushang.harness.extensions.runtime_bindings import (
+    ExtensionRuntimeBindingFactory,
+    ExtensionRuntimeBindings,
+)
+from loushang.harness.extensions.session_runtime import (
+    ExtensionSessionRuntime,
+    SessionExtensionRuntimePort,
+)
 from loushang.harness.policy import PolicyEvaluator
+from loushang.harness.resources.packages.session import SessionPackageController
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.resources.watcher import ResourceChangeWatcher
+from loushang.harness.runtime import CancellationSignal
 from loushang.harness.runtime.retry import RetryPolicy
 from loushang.harness.session.bash import BashExecutionPorts, BashExecutionRuntime
 from loushang.harness.session.bindings import (
@@ -46,14 +65,21 @@ from loushang.harness.session.bindings import (
     SessionMaintenanceBinding,
     SessionModelBinding,
 )
+from loushang.harness.session.capabilities import CommandHook
 from loushang.harness.session.command_controller import SessionCommandController
+from loushang.harness.session.command_sources import ExtensionCommandProvider
 from loushang.harness.session.diagnostics import (
+    ExtensionDiagnosticsPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
 )
 from loushang.harness.session.event_types import AgentSessionEvent
 from loushang.harness.session.inspection import AgentSessionInspector
-from loushang.harness.session.resource_refresh import SessionResourceRefreshRuntime
+from loushang.harness.session.resource_refresh import (
+    ResourceLoaderPort,
+    ResourceSettingsPort,
+    SessionResourceRefreshRuntime,
+)
 from loushang.harness.session.runtime import (
     AfterTurnPolicyPort,
     SessionRuntime,
@@ -65,6 +91,8 @@ from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import ExecServiceBashOperations
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
+    TURN_AWARE_SUMMARY_IMPLEMENTATION,
+    TURN_AWARE_SUMMARY_VERSION,
     AgentTranscriptCompactionCapability,
     AgentTranscriptCompactionRuntime,
     AgentTranscriptContext,
@@ -76,14 +104,77 @@ from loushang.harness.transcript import (
     CompactionHookRequest,
     CompactionPreparation,
     CompactionResult,
+    ModelSelectionCatalog,
+    ProductTranscriptSession,
     TranscriptCompactionPolicy,
 )
 from loushang.harness.workspace.exec import ExecService
 
+if TYPE_CHECKING:
+    from loushang.harness.session.tool_controller import SessionToolController
+
 AsyncEvent = Callable[[object], Awaitable[None]]
 EventDispatcher = Callable[..., Awaitable[None]]
-CompactionExecutor = Callable[..., Awaitable[object]]
+CompactionExecutor = Callable[..., Awaitable[CompactionResult]]
+CompactionRunner = Callable[..., Awaitable[CompactionResult | None]]
 BranchSummaryExecutor = Callable[..., Awaitable[BranchSummaryOutput]]
+
+
+class ModelDetailRegistryPort(Protocol):
+    """Read-only model details needed by Product session presentation."""
+
+    def list_models(self) -> Sequence[object]: ...
+
+
+class SessionModelCatalogPort(ModelSelectionCatalog, Protocol):
+    """Model selection plus detail projection used during session composition."""
+
+    @property
+    def ai_registry(self) -> ModelDetailRegistryPort: ...
+
+
+class SessionExtensionCompositionPort(
+    ExtensionDiagnosticsPort,
+    ExtensionEventPort,
+    ExtensionAgentHookPort,
+    ExtensionCommandProvider,
+    SessionExtensionRuntimePort[ExtensionRuntimeBindings],
+    Protocol,
+):
+    """Extension operations consumed while composing one Agent session."""
+
+    def list_extensions(self) -> list[dict[str, object]]: ...
+
+    def has_handlers(self, hook_name: str) -> bool: ...
+
+    async def emit_user_bash(
+        self,
+        event: object,
+        *,
+        cwd: str = "",
+    ) -> object | None: ...
+
+    async def emit_session_shutdown(self, event: object) -> None: ...
+
+    async def before_session_compact(
+        self,
+        event: object,
+    ) -> SessionBeforeCompactResult | None: ...
+
+    async def before_session_fork(
+        self,
+        event: object,
+    ) -> SessionBeforeForkResult | None: ...
+
+    async def before_session_switch(
+        self,
+        event: object,
+    ) -> SessionActionDecision | None: ...
+
+    async def before_session_tree(
+        self,
+        event: object,
+    ) -> SessionBeforeTreeResult | None: ...
 
 
 @dataclass(frozen=True)
@@ -96,14 +187,13 @@ class SessionCompositionPorts:
     """
 
     agent: Agent
-    session_manager: object
+    session_manager: ProductTranscriptSession[Any, Any]
     settings: SessionSettingsBinding
-    model_registry: object | None
+    model_registry: SessionModelCatalogPort | None
     api_provider_registry: ApiProviderRegistry
-    resource_loader: object | None
-    resource_bundle: ResourceBundle | None
+    resource_loader: ResourceLoaderPort | None
     get_resource_bundle: Callable[[], ResourceBundle | None]
-    extension_runner: object | None
+    extension_runner: SessionExtensionCompositionPort | None
     tool_registry: WorkspaceToolRegistry | None
     allowed_tool_names: list[str] | None
     active_tool_names: list[str] | None
@@ -111,14 +201,13 @@ class SessionCompositionPorts:
     show_empty_tool_prompt: bool
     base_prompt: str
     diagnostics_service: DiagnosticsService | None
-    package_materializer: object | None
     session_start_event: SessionStartEvent
     footer_data_provider: object
     exec_service: ExecService
     tool_exec_service: ExecService | None
-    approval_resolver: object | None
+    approval_resolver: ApprovalResolver | None
     tool_policy_evaluator: PolicyEvaluator | None
-    capability_runtime: object
+    capability_runtime: CapabilityCompositionRuntime
 
     # Product policy and presentation callbacks.
     apply_context: Callable[[AgentTranscriptContext], None]
@@ -126,7 +215,7 @@ class SessionCompositionPorts:
     refresh_agent_messages: Callable[[], None]
     dispatch_event: EventDispatcher
     record_runtime_exception: Callable[..., None]
-    before_bash: Callable[[object], Awaitable[object | None]]
+    before_bash: CommandHook | None
     get_bash_definition: Callable[[], ToolDefinition | None]
     create_bash_call_id: Callable[[], str]
     command_controller: Callable[
@@ -137,7 +226,7 @@ class SessionCompositionPorts:
     extension_runtime_binding_factory: ExtensionRuntimeBindingFactory | None
     get_extension_runtime_host: Callable[[], object | None]
     get_context_usage: Callable[[], object | None]
-    package_controller: object | None
+    package_controller: SessionPackageController | None
     get_resource_watch_paths: Callable[[], list[Path]]
     prepare_resource_refresh: Callable[[], None]
     rebuild_prompt_and_tools_view: Callable[[], None]
@@ -145,13 +234,10 @@ class SessionCompositionPorts:
     record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
     refresh_resources_for_extension_runtime: Callable[[], None]
     refresh_resources_for_extension_runtime_async: Callable[[], Awaitable[None]]
-    get_changelog: Callable[[str], object]
-    copy_to_clipboard: Callable[[str], object]
     execute_compaction: CompactionExecutor
     execute_branch_summary: BranchSummaryExecutor
     before_compaction: Callable[[CompactionHookRequest], Awaitable[CompactionHookDecision | None]]
     after_compaction: Callable[[CompactionResult, str, bool], Awaitable[None]]
-    before_tree: Callable[..., Awaitable[object | None]]
     project_event: Callable[[RuntimeEvent[object]], AgentSessionEvent | None]
     serialize_context_usage: Callable[[object | None], object]
     before_agent_start_system_prompt_options: Callable[[], dict[str, object]]
@@ -159,26 +245,25 @@ class SessionCompositionPorts:
     refresh_extension_runtime: Callable[[str], Awaitable[None]]
     set_extension_ui_context: Callable[[object | None], None]
     set_extension_runtime_host: Callable[[object | None], None]
-    on_shutdown: Callable[[], None]
-    sleep_for_retry: Callable[[int, object], Awaitable[None]]
+    sleep_for_retry: Callable[[int, CancellationSignal], Awaitable[None]]
     continue_run: Callable[[], Awaitable[None]]
-    compact_internal: Callable[..., Awaitable[object | None]]
+    compact_internal: CompactionRunner
 
 
 @dataclass
 class SessionComposition:
     """All standard runtime objects assembled for one Product session."""
 
-    capability_runtime: object
+    capability_runtime: CapabilityCompositionRuntime
     diagnostics_bridge: SessionDiagnosticsRuntime
-    tool_controller: object
+    tool_controller: SessionToolController
     resource_refresh_runtime: SessionResourceRefreshRuntime
     resource_watch_controller: ResourceChangeWatcher
     navigation_runtime: AgentTranscriptNavigationRuntime
     compaction_capability: AgentTranscriptCompactionCapability
     compaction_runtime: AgentTranscriptCompactionRuntime
     bash_runtime: BashExecutionRuntime
-    package_controller: object | None
+    package_controller: SessionPackageController | None
     command_controller: SessionCommandController[Any]
     extension_event_sink: ExtensionAgentEventRuntime
     retry_runtime: AgentTranscriptRetryRuntime
@@ -188,7 +273,7 @@ class SessionComposition:
     extension_provider_controller: ExtensionProviderRuntime
     extension_replacement_controller: ExtensionReplacementRuntime
     extension_runtime_binding_factory: ExtensionRuntimeBindingFactory
-    extension_runtime_controller: ExtensionSessionRuntime
+    extension_runtime_controller: ExtensionSessionRuntime[ExtensionRuntimeBindings]
     selection_runtime: AgentTranscriptSelectionRuntime
     model_binding: SessionModelBinding
     identity_binding: SessionIdentityBinding
@@ -225,7 +310,10 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         get_resource_bundle=ports.get_resource_bundle,
         get_cwd=session.get_cwd,
         get_extension_runtime=lambda: ports.extension_runner,
-        get_settings=settings.get_settings_manager,
+        get_settings=lambda: cast(
+            ResourceSettingsPort | None,
+            settings.get_settings_manager(),
+        ),
         set_resource_bundle=ports.set_resource_bundle,
         rebuild_prompt_and_tools_view=ports.rebuild_prompt_and_tools_view,
         record_refresh_failure=lambda error: ports.record_extension_runtime_diagnostic(
@@ -401,19 +489,19 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             session.get_cwd,
             source="set",
         ),
-        register_tool=tool_controller.register_runtime_tool,
-        append_entry=session.append_custom_entry,
+        register_tool=partial(_register_extension_tool, tool_controller),
+        append_entry=partial(_append_extension_entry, session),
         send_message=extension_message_controller.send_message,
         send_user_message=extension_message_controller.send_user_message,
         get_signal=lambda: agent.signal,
         set_session_name=lambda name: _set_session_name(session, ports.dispatch_event, name),
         get_session_name=lambda: session.get_session_record().metadata.name,
-        set_label=session.append_label,
+        set_label=partial(_set_extension_label, session),
         list_commands=command_controller.list_commands,
         request_resource_refresh=resource_refresh_runtime.request_refresh,
-        shutdown=session_runtime.abort,
+        shutdown=lambda: _abort_session(session_runtime),
         record_diagnostic=ports.record_extension_runtime_diagnostic,
-        abort=session_runtime.abort,
+        abort=lambda: _abort_session(session_runtime),
         is_idle=lambda: not agent.is_streaming,
         has_pending_messages=extension_message_controller.has_pending_messages,
         get_context_usage=lambda: ports.serialize_context_usage(ports.get_context_usage()),
@@ -423,18 +511,18 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         unregister_provider=None,
         set_extension_status=lambda _key, _text: None,
         get_footer_data_provider=lambda: ports.footer_data_provider,
-        compact=lambda instructions=None: _compact_manual(
-            session_runtime, compaction_runtime, instructions
-        ),
+        compact=partial(_compact_manual, session_runtime, compaction_runtime),
         get_system_prompt=lambda: agent.system_prompt,
         wait_for_idle=session_runtime.wait_for_idle,
         reload=lambda: _bind_extension_runtime(extension_runtime_controller),
-        navigate_tree=lambda target, options=None: _navigate_tree(
-            navigation_runtime, target, options, ports.execute_branch_summary
+        navigate_tree=partial(
+            _navigate_tree,
+            navigation_runtime,
+            summary_executor=ports.execute_branch_summary,
         ),
-        fork=lambda entry, options=None: _unsupported_replacement("fork", entry, options),
-        new_session=lambda options=None: _unsupported_replacement("new", None, options),
-        switch_session=lambda path, options=None: _unsupported_replacement("switch", path, options),
+        fork=_unsupported_fork,
+        new_session=_unsupported_new,
+        switch_session=_unsupported_switch,
         get_ui_context=lambda: None,
         exec_command=None,
     )
@@ -476,9 +564,8 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         available_thinking_levels_callback=selection_runtime.get_available_thinking_levels,
         available_models_callback=selection_runtime.get_available_models,
         available_model_details_callback=lambda: (
-            ports.model_registry.ai_registry.list_models()
+            list(ports.model_registry.ai_registry.list_models())
             if ports.model_registry is not None
-            and hasattr(ports.model_registry, "ai_registry")
             else []
         ),
         get_scoped_models_callback=selection_runtime.get_scoped_models,
@@ -498,10 +585,12 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         auto_compaction_enabled_callback=lambda: settings.auto_compaction_enabled,
         set_auto_retry_enabled_callback=settings.set_auto_retry_enabled,
         set_auto_compaction_enabled_callback=settings.set_auto_compaction_enabled,
-        compact_callback=lambda instructions=None: _compact_manual(
-            session_runtime, compaction_runtime, instructions
+        compact_callback=partial(
+            _compact_manual,
+            session_runtime,
+            compaction_runtime,
         ),
-        abort_compaction_callback=session_runtime.abort,
+        abort_compaction_callback=lambda: _abort_session(session_runtime),
     )
     extension_binding = SessionExtensionBinding(
         start_runtime_callback=lambda reason: extension_runtime_controller.bind(reason=reason),
@@ -528,12 +617,21 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         is_retrying=lambda: retry_runtime.is_retrying,
         is_compacting=lambda: compaction_runtime.is_compacting
         or navigation_runtime.is_summarizing,
-        get_last_diagnostics=lambda limit=50: diagnostics_bridge.get_last_diagnostics(limit),
+        get_last_diagnostics=diagnostics_bridge.get_last_diagnostics,
         get_model_selection=selection_runtime.get_model_selection,
         is_host_running=lambda: session_runtime.is_active,
-        get_compaction_reserve_tokens=lambda: settings.get_compaction_settings().reserve_tokens,
-        get_compaction_compact_percent=lambda: settings.get_compaction_settings().compact_percent,
-        get_compaction_keep_recent_tokens=lambda: settings.get_compaction_settings().keep_recent_tokens,
+        get_compaction_reserve_tokens=lambda: _compaction_policy(
+            settings.get_compaction_settings(),
+            compaction_capability.policy,
+        ).reserve_tokens,
+        get_compaction_compact_percent=lambda: _compaction_policy(
+            settings.get_compaction_settings(),
+            compaction_capability.policy,
+        ).compact_percent,
+        get_compaction_keep_recent_tokens=lambda: _compaction_policy(
+            settings.get_compaction_settings(),
+            compaction_capability.policy,
+        ).keep_recent_tokens,
     )
     return SessionComposition(
         capability_runtime=capability_runtime,
@@ -565,7 +663,10 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
     )
 
 
-def _build_tool_controller(ports: SessionCompositionPorts, diagnostics: SessionDiagnosticsRuntime):
+def _build_tool_controller(
+    ports: SessionCompositionPorts,
+    diagnostics: SessionDiagnosticsRuntime,
+) -> SessionToolController:
     from loushang.harness.session.tool_controller import ToolController
 
     return ToolController(
@@ -603,7 +704,9 @@ def _build_tool_controller(ports: SessionCompositionPorts, diagnostics: SessionD
     )
 
 
-def _resolve_compaction_capability(session: object) -> AgentTranscriptCompactionCapability:
+def _resolve_compaction_capability(
+    session: ProductTranscriptSession[Any, Any],
+) -> AgentTranscriptCompactionCapability:
     capability = getattr(session, "get_runtime_capability", None)
     if callable(capability):
         value = capability("context.compaction")
@@ -614,8 +717,8 @@ def _resolve_compaction_capability(session: object) -> AgentTranscriptCompaction
     )
 
     return create_agent_transcript_compaction_capability(
-        implementation="turn-aware-summary",
-        implementation_version="1",
+        implementation=TURN_AWARE_SUMMARY_IMPLEMENTATION,
+        implementation_version=TURN_AWARE_SUMMARY_VERSION,
         config={
             "enabled": True,
             "compactPercent": 80.0,
@@ -641,15 +744,44 @@ def _compaction_policy(settings: object, capability: TranscriptCompactionPolicy)
         return capability
     return TranscriptCompactionPolicy(
         enabled=bool(getattr(settings, "enabled", capability.enabled)),
-        reserve_tokens=int(getattr(settings, "reserve_tokens", capability.reserve_tokens)),
-        compact_percent=float(getattr(settings, "compact_percent", capability.compact_percent)),
-        keep_recent_tokens=int(
-            getattr(settings, "keep_recent_tokens", capability.keep_recent_tokens)
+        reserve_tokens=_int_setting(
+            settings,
+            "reserve_tokens",
+            capability.reserve_tokens,
+        ),
+        compact_percent=_float_setting(
+            settings,
+            "compact_percent",
+            capability.compact_percent,
+        ),
+        keep_recent_tokens=_optional_int_setting(
+            settings,
+            "keep_recent_tokens",
+            capability.keep_recent_tokens,
         ),
     )
 
 
-async def sleep_for_retry(delay_ms: int, signal: object) -> None:
+def _int_setting(settings: object, name: str, fallback: int) -> int:
+    value = getattr(settings, name, fallback)
+    return fallback if value is None else int(value)
+
+
+def _float_setting(settings: object, name: str, fallback: float) -> float:
+    value = getattr(settings, name, fallback)
+    return fallback if value is None else float(value)
+
+
+def _optional_int_setting(
+    settings: object,
+    name: str,
+    fallback: int | None,
+) -> int | None:
+    value = getattr(settings, name, fallback)
+    return None if value is None else int(value)
+
+
+async def sleep_for_retry(delay_ms: int, signal: CancellationSignal) -> None:
     """Sleep in abort-aware intervals for the standard Agent retry runtime."""
 
     remaining = max(delay_ms, 0) / 1000
@@ -668,7 +800,7 @@ async def _execute_compaction(
     agent: Agent,
     preparation: CompactionPreparation,
     custom_instructions: str | None,
-) -> object:
+) -> CompactionResult:
     kwargs: dict[str, object] = {
         "preparation": preparation,
         "model": agent.model,
@@ -678,10 +810,6 @@ async def _execute_compaction(
     if custom_instructions is not None:
         kwargs["custom_instructions"] = custom_instructions
     return await executor(**kwargs)
-
-
-async def _compact_internal(runtime: AgentTranscriptCompactionRuntime, **kwargs: object):
-    return await runtime.compact(**kwargs)
 
 
 async def _compact_manual(
@@ -701,41 +829,77 @@ async def _compact_manual(
     return result
 
 
+def _abort_session(session_runtime: SessionRuntime) -> None:
+    session_runtime.abort()
+
+
+def _register_extension_tool(
+    controller: SessionToolController,
+    tool: object,
+    source_info: object | None,
+) -> None:
+    controller.register_runtime_tool(tool, source_info=source_info)
+
+
+async def _append_extension_entry(
+    session: ProductTranscriptSession[Any, Any],
+    custom_type: str,
+    data: object | None,
+) -> None:
+    await session.append_custom_entry(custom_type, data)
+
+
+async def _set_extension_label(
+    session: ProductTranscriptSession[Any, Any],
+    target_id: str,
+    label: str | None,
+) -> None:
+    await session.append_label(target_id, label)
+
+
 async def _set_model(
     selection_runtime: AgentTranscriptSelectionRuntime,
     selection: object,
     agent: Agent,
-    extension_runner: object | None,
+    extension_runner: ExtensionEventPort | None,
     resource_refresh_runtime: SessionResourceRefreshRuntime,
     refresh_extension_runtime: Callable[[str], Awaitable[None]],
     get_cwd: Callable[[], str],
     source: str = "set",
 ) -> None:
-    resolved = selection_runtime.resolve_model(selection)
+    resolved = selection_runtime.resolve_model(
+        cast(Model | ModelSelection, selection)
+    )
     previous = agent.model
     endpoint_id = selection.endpoint_id if isinstance(selection, ModelSelection) else None
     await selection_runtime.apply_model(resolved, endpoint_id=endpoint_id)
     await refresh_extension_runtime("model_selection_changed")
     if extension_runner is not None and previous != resolved:
-        emit = getattr(extension_runner, "emit_event", None)
-        if callable(emit):
-            await emit(
-                {
-                    "type": "model_select",
-                    "model": resolved,
-                    "previous_model": previous,
-                    "source": source,
-                },
-                cwd=get_cwd(),
-            )
+        await extension_runner.emit_agent_event(
+            {
+                "type": "model_select",
+                "model": resolved,
+                "previous_model": previous,
+                "source": source,
+            },
+            cwd=get_cwd(),
+        )
 
 
-async def _set_active_tools(controller: object, names: list[str], refresh: Callable[[], None]) -> None:
+async def _set_active_tools(
+    controller: SessionToolController,
+    names: list[str],
+    refresh: Callable[[], None],
+) -> None:
     controller.apply_active_tools(names)
     refresh()
 
 
-async def _set_session_name(session: object, dispatch: EventDispatcher, name: str | None) -> None:
+async def _set_session_name(
+    session: ProductTranscriptSession[Any, Any],
+    dispatch: EventDispatcher,
+    name: str | None,
+) -> None:
     record_id = await session.append_session_info(name)
     await dispatch(
         ConversationMetadataChanged(name=name),
@@ -745,7 +909,7 @@ async def _set_session_name(session: object, dispatch: EventDispatcher, name: st
 
 async def _reload_resources_from_watch(
     refresh_runtime: SessionResourceRefreshRuntime,
-    extension_runner: object | None,
+    extension_runner: SessionExtensionCompositionPort | None,
     refresh_async: Callable[[], Awaitable[None]],
 ) -> None:
     await refresh_runtime.refresh_async(reason="watch")
@@ -781,6 +945,24 @@ async def _unsupported_replacement(
     operation: str, value: object | None, options: object | None
 ) -> dict[str, object]:
     raise RuntimeError(f"Session replacement operation is not bound: {operation}")
+
+
+async def _unsupported_fork(
+    entry: str,
+    options: object | None,
+) -> dict[str, object]:
+    return await _unsupported_replacement("fork", entry, options)
+
+
+async def _unsupported_new(options: object | None) -> dict[str, object]:
+    return await _unsupported_replacement("new", None, options)
+
+
+async def _unsupported_switch(
+    path: str,
+    options: object | None,
+) -> dict[str, object]:
+    return await _unsupported_replacement("switch", path, options)
 
 
 __all__ = [

@@ -132,6 +132,12 @@ def _normalize_method_applicability(applicability: object) -> dict[str, object]:
 
 
 def _normalize_method_plan(method: object, plan: object) -> dict[str, object]:
+    raw_steps = _safe_getattr(plan, "steps", ())
+    steps = (
+        raw_steps
+        if isinstance(raw_steps, Sequence) and not isinstance(raw_steps, str)
+        else ()
+    )
     return {
         "method": _normalize_method_entry(method),
         "plan": {
@@ -148,7 +154,7 @@ def _normalize_method_plan(method: object, plan: object) -> dict[str, object]:
         },
         "steps": [
             _normalize_method_plan_step(step)
-            for step in _safe_getattr(plan, "steps", ())
+            for step in steps
         ],
     }
 

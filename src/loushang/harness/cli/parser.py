@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, RawTextHelpFormatter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, cast
 
 from loushang.harness.cli.profile import CliProfile
 from loushang.harness.cli.types import (
@@ -64,8 +65,9 @@ def register_profile_arguments(
             arguments.extend(command.arguments)
     else:
         arguments = list(profile_or_arguments)
+    add_argument = cast(Callable[..., Any], parser.add_argument)
     for spec in arguments:
-        parser.add_argument(*spec.flags, **spec.argparse_kwargs())
+        add_argument(*spec.flags, **spec.argparse_kwargs())
 
 
 def parse_args(

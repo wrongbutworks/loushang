@@ -59,7 +59,8 @@ AgentEventListener = Callable[[AgentEvent, AbortSignal], Awaitable[None] | None]
 class SessionAgentPort(Protocol):
     """Agent-loop capabilities required by the shared session runtime."""
 
-    is_streaming: bool
+    @property
+    def is_streaming(self) -> bool: ...
 
     def subscribe(self, listener: AgentEventListener) -> Callable[[], None]: ...
 
