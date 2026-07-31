@@ -1,4 +1,12 @@
-"""Product-neutral permission profiles over Policy and execution ceilings."""
+"""Product-neutral permission profiles over Policy and execution ceilings.
+
+A permission profile is the Product-selected authority ceiling for a
+session; it is not an approval permissions snapshot
+(`loushang.harness.approval.grants.ApprovalPermissionsSnapshot`) or an
+effective execution profile
+(`loushang.harness.authorization.EffectiveExecutionProfile`). See the
+terminology conventions in policy-approval-redesign.md section 7.0.
+"""
 
 from __future__ import annotations
 

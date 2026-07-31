@@ -7,7 +7,9 @@ splits the mechanism into focused modules: `decisions` (verdict values),
 rules, chains), `matchers` (concrete matchers), `effects_detection`
 (heuristic effect detection), and `engine` (the default Product-injected
 rule engine). Risk classification, trust rules, allowlists, and product
-defaults remain with Product adapters.
+defaults remain with Product adapters. Terminology (policy rule vs retained
+approval rule, grant proposal vs grant, the three "permission" concepts) is
+defined in policy-approval-redesign.md section 7.0.
 """
 
 from loushang.harness.policy.decisions import (

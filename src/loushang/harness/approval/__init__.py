@@ -8,7 +8,9 @@ option values and projections), `ports` (resolver/presenter protocols),
 `resolvers` (headless/deny/actor-bound resolvers), `broker` (the
 complete-once broker and interactive resolver), and `proposals` (grant and
 policy-amendment proposals). Interactive presenters, product risk wording,
-and persisted allowlist policy remain with Product adapters.
+and persisted allowlist policy remain with Product adapters. Terminology
+(policy rule vs retained approval rule, grant proposal vs grant, the three
+"permission" concepts) is defined in policy-approval-redesign.md section 7.0.
 """
 
 from loushang.harness.approval.broker import (

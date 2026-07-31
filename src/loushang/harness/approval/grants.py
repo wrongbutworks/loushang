@@ -1,4 +1,12 @@
-"""Session-scoped approval grants, stores, and permission snapshots."""
+"""Session-scoped approval grants, stores, and permission snapshots.
+
+An approval permissions snapshot (`ApprovalPermissionsSnapshot`) is a read
+model of pending requests, session grants, and retained rules; it is not a
+permission profile (`loushang.harness.permissions.PermissionProfile`) or an
+effective execution profile
+(`loushang.harness.authorization.EffectiveExecutionProfile`). See the
+terminology conventions in policy-approval-redesign.md section 7.0.
+"""
 
 
 from __future__ import annotations

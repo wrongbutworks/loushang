@@ -4,7 +4,10 @@ Implements the permission enforcer (§12.4) of
 docs/internals/architecture/harness/policy-approval-redesign.md: resolves
 the effective execution profile (readable/writable/denied roots, network
 access) from policy and approval inputs, and constrains child or delegated
-profiles so derived authority can only narrow, never widen.
+profiles so derived authority can only narrow, never widen. An effective
+execution profile is enforcement state, not a permission profile
+(`loushang.harness.permissions.PermissionProfile`); see the terminology
+conventions in section 7.0.
 """
 
 from __future__ import annotations

@@ -1,4 +1,10 @@
-"""Retained approval policy rules and their persistent stores."""
+"""Retained approval rules and their persistent stores.
+
+A retained approval rule (`ApprovalPolicyRule`) records a user's "always
+allow" choice from the approval lifecycle; it is not a policy evaluation
+rule (`loushang.harness.policy.evaluators.PolicyRule`). See the terminology
+conventions in policy-approval-redesign.md section 7.0.
+"""
 
 
 from __future__ import annotations

@@ -1,4 +1,10 @@
-"""Approval request, decision, option, and proposal values with projections."""
+"""Approval request, decision, option, and proposal values with projections.
+
+A grant proposal (`ApprovalGrantProposal`) is proposed, not yet issued
+authority attached to a request; an issued grant lives in
+`loushang.harness.approval.grants.ApprovalGrant`. See the terminology
+conventions in policy-approval-redesign.md section 7.0.
+"""
 
 
 from __future__ import annotations

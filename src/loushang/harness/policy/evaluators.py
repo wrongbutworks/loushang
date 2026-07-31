@@ -1,4 +1,10 @@
-"""Policy evaluator and matcher protocols, rules, chains, and evaluation."""
+"""Policy evaluator and matcher protocols, rules, chains, and evaluation.
+
+A policy rule (`PolicyRule`) is evaluation input that matches a subject and
+yields allow/deny/ask; it is not a retained approval rule
+(`loushang.harness.approval.rules.ApprovalPolicyRule`). See the terminology
+conventions in policy-approval-redesign.md section 7.0.
+"""
 
 from __future__ import annotations
 
