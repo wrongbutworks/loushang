@@ -1,10 +1,9 @@
 # Multi-Agent Tool Surface Boundary
 
-> Status: **draft boundary, implementation aligned in part**。本文保留
-> spawn / send / wait 三个核心交互的参数、结果与提示纪律；一期公共
-> tool pack 另含 `list_agents` / `interrupt_agent` / `close_agent`，
-> 其当前实施状态以
-> [Temporary Implementation Plan](implementation-plan.md) 为准。
+> Status: **implemented**（已实现，与 `MultiAgentToolPack` 代码一致）。
+> 六件套工具（spawn_agent / send_message / wait_agent / list_agents /
+> interrupt_agent / close_agent）已完整交付；参数、结果与提示纪律
+> 与当前实现一致。
 
 ## Scope
 

@@ -1,8 +1,8 @@
 # Multi-Agent AgentInputFacade Boundary
 
-> Status: **draft proposal**（目标设计，未经接受）。本文定义
+> Status: **implemented**（已实现，与当前代码一致）。本文定义
 > `loushang.harness.multiagent` 的 agent input facade 边界：通知合成、投递与
-> `wait_agent` 等待原语。不描述当前实现状态。
+> `wait_agent` 等待原语。
 
 ## Scope
 

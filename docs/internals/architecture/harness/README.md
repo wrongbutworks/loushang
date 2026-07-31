@@ -268,7 +268,7 @@ planning, work event persistence, or AI provider behavior.
   OEM customisation, extension contributions, and harness upgrades interact,
   including override mechanisms, extension categories, surface-type gaps, and
   upgrade-compatibility guarantees.
-- [Multi-Agent Architecture](multiagent/system-context.md) (draft proposal)
+- [Multi-Agent Architecture](multiagent/system-context.md) (implemented)
   defines the target boundary for `loushang.harness.multiagent`: sub-agent
   spawning, context isolation and forking, agent input facade notification,
   concurrency and residency limits, and approval bubbling, with ownership in

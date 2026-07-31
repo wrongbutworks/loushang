@@ -1,8 +1,8 @@
 # Multi-Agent Registry Boundary
 
-> Status: **draft proposal**（目标设计，未经接受）。本文定义
+> Status: **implemented**（已实现，与 `AgentRegistry` 代码一致）。本文定义
 > `loushang.harness.multiagent` 的寻址与拓扑边界：`AgentPath`、两阶段
-> 预留、agent 树拓扑。不描述当前实现状态。
+> 预留、agent 树拓扑。
 
 ## Scope
 

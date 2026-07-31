@@ -1,8 +1,7 @@
 # Multi-Agent Run Handle Boundary
 
-> Status: **draft proposal**（目标设计，未经接受）。本文定义
-> `loushang.harness.multiagent` 的子 agent 运行载体边界，不描述当前
-> 实现状态。
+> Status: **implemented**（已实现，与 `SubagentRunHandle` 代码一致）。本文定义
+> `loushang.harness.multiagent` 的子 agent 运行载体边界。
 
 ## Scope
 

@@ -1,12 +1,10 @@
 # Loushang Multi-Agent Candidate Components
 
-> Status: **draft proposal**（目标设计，未经接受）。按
+> Status: **implemented**（已实现，候选组件已收敛为实际模块）。按
 > [Loushang Documentation Model](../../loushang-documentation-model.md)，
-> 本文表达 should-be 的组件候选，不描述当前实现状态。
->
-> 本版已按评审修订：核对 harness 现有模块（`host/queue.py`、
-> `host/runtime.py`、`approval.py`、`session/`）后，组件按**复用关系**
-> 定义，不平行重造已有机制。
+> 本文记录最终实现前的组件候选分析；实际实现已压缩到五个内核文件
+> （types / registry / control / run_handle / context）加 recipes / executor /
+> workspace / delegation，不按候选逐一造组件。
 
 ## Scope
 

@@ -1,9 +1,9 @@
 # Loushang Multi-Agent System Context
 
-> Status: **draft proposal**（目标设计，未经接受）。按
+> Status: **implemented**（已实现，与当前代码一致）。按
 > [Loushang Documentation Model](../../loushang-documentation-model.md) 的分层，
-> 本文表达 should-be 的目标边界，不描述当前实现状态；与代码冲突时以代码与
-> 已接受 ARD 为准。
+> 本文描述已实现的系统边界与外部实体关系；与代码冲突时以代码
+> 与已接受 ARD 为准。
 
 ## Scope
 
