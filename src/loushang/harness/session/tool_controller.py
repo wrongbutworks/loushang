@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from loushang.agent.types import AgentTool
 from loushang.ai.types import ToolCall
 from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities.prompt import PromptSectionComposer
+from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
-from loushang.harness.session import (
+from loushang.harness.session.tool_runtime import (
+    AgentToolPort,
     SessionToolRuntime,
-    ToolActivationProfile,
-    create_tool_prompt_rebuilder,
+    ToolPromptRebuilder,
 )
 from loushang.harness.tools.authoring import ToolContext
 from loushang.harness.tools.contribution import resolve_tool_contributions
@@ -46,18 +46,78 @@ _BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
 )
 
 
-class AgentPort(Protocol):
+class AgentPort(AgentToolPort, Protocol):
     @property
     def system_prompt(self) -> str: ...
 
     @system_prompt.setter
     def system_prompt(self, value: str) -> None: ...
 
-    @property
-    def tools(self) -> list[AgentTool[Any]]: ...
 
-    @tools.setter
-    def tools(self, value: list[AgentTool[Any]]) -> None: ...
+@dataclass(frozen=True)
+class ToolActivationProfile:
+    """Product-selected defaults for the shared tool activation coordinator."""
+
+    preferred_names: tuple[str, ...] = ()
+    builtin_names: frozenset[str] = frozenset()
+    activate_new_tools: bool = False
+
+    def default_names(
+        self,
+        definitions: Iterable[ToolDefinition],
+        allowed_names: set[str] | None = None,
+    ) -> list[str]:
+        available = [definition.name for definition in definitions]
+        if allowed_names is not None:
+            return [name for name in available if name in allowed_names]
+        available_set = set(available)
+        selected = [name for name in self.preferred_names if name in available_set]
+        selected.extend(
+            name
+            for name in available
+            if name not in self.builtin_names and name not in selected
+        )
+        return selected
+
+    def should_activate_new(self, name: str, definition: ToolDefinition) -> bool:
+        del definition
+        return self.activate_new_tools and name not in self.builtin_names
+
+
+def create_tool_prompt_rebuilder(
+    *,
+    agent: AgentPort,
+    base_prompt: str,
+    get_resource_bundle: Callable[[], ResourceBundle | None],
+    show_empty_tool_prompt: bool = False,
+    resource_activation_runtime: ResourceActivationRuntime | None = None,
+    prompt_section_composer: PromptSectionComposer | None = None,
+) -> ToolPromptRebuilder:
+    """Build the prompt callback bound to a Product's Agent and resources."""
+
+    activation = resource_activation_runtime or ResourceActivationRuntime()
+    composer = prompt_section_composer or PromptSectionComposer()
+
+    def rebuild(active_definitions: list[ToolDefinition] | None) -> None:
+        if show_empty_tool_prompt and active_definitions is None:
+            active_definitions = []
+        tool_prompt = (
+            "Available tools:\n(none)"
+            if show_empty_tool_prompt and active_definitions == []
+            else None
+        )
+        bundle = get_resource_bundle()
+        assembly = assemble_prompt(
+            base_prompt=base_prompt,
+            resource_bundle=bundle,
+            tool_definitions=active_definitions,
+            tool_prompt=tool_prompt,
+            resource_activation=activation.activate(bundle),
+            prompt_section_composer=composer,
+        )
+        agent.system_prompt = assembly.system_prompt
+
+    return rebuild
 
 
 @dataclass
@@ -173,9 +233,7 @@ class SessionToolController:
             cwd=self.get_cwd(),
             diagnostics=self.get_diagnostics_service(),
             exec_service=(
-                self.get_exec_service()
-                if self.get_exec_service is not None
-                else None
+                self.get_exec_service() if self.get_exec_service is not None else None
             ),
             model=getattr(self.agent, "model", None),
             event_sink=(
@@ -264,4 +322,10 @@ class SessionToolController:
 
 ToolController = SessionToolController
 
-__all__ = ["SessionToolController", "ToolController"]
+__all__ = [
+    "AgentPort",
+    "SessionToolController",
+    "ToolActivationProfile",
+    "ToolController",
+    "create_tool_prompt_rebuilder",
+]

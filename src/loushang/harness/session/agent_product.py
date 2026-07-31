@@ -20,7 +20,6 @@ from loushang.harness.config.agent import (
 )
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.events import project_session_runtime_event
 from loushang.harness.extensions import ExtensionProviderRuntime
 from loushang.harness.extensions.agent.input_adapter import ExtensionInputAdapter
 from loushang.harness.extensions.agent.replacement import ExtensionReplacementRuntime
@@ -50,10 +49,13 @@ from loushang.harness.session.agent_adapter import (
     AgentSessionAdapterMixin,
     initialize_composed_session,
 )
+from loushang.harness.session.approval_interaction import (
+    AgentSessionApprovalRuntime,
+)
 from loushang.harness.session.command_controller import (
     StandardSessionCommandController,
 )
-from loushang.harness.session.command_pack import StandardSessionCommandPorts
+from loushang.harness.session.commands.execution import StandardSessionCommandPorts
 from loushang.harness.session.composition import (
     SessionCompositionPorts,
     SessionExtensionCompositionPort,
@@ -61,6 +63,7 @@ from loushang.harness.session.composition import (
     compose_session_runtime,
 )
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
+from loushang.harness.session.extension_bridge import AgentSessionExtensionBridge
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
 from loushang.harness.session.runtime import SessionRuntime
 from loushang.harness.session.settings import SessionSettingsBinding
@@ -157,6 +160,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._resource_loader = resource_loader
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
+        self._extension_bridge = AgentSessionExtensionBridge()
         self._tool_registry = tool_registry
         self.diagnostics_service = diagnostics_service
         self._package_materializer = package_materializer
@@ -181,18 +185,19 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._copy_product_text = copy_to_clipboard
         self._retry_sleep = retry_sleep
         self._bind_package_progress_events()
-        self._extension_ui_context: object | None = None
-        self._extension_runtime_host: object | None = None
         self._session_start_event = session_start_event or SessionStartEvent(
             reason="startup"
         )
-        self._approval_resolver = approval_resolver
-        self._tool_policy_evaluator = tool_policy_evaluator
-        self._approval_session_state = (
-            "active" if approval_resolver is not None else "closed"
+        self._approval_runtime = AgentSessionApprovalRuntime(
+            resolver=approval_resolver,
+            get_permission_profile_snapshot=(
+                self._settings_controller.get_permission_profile_snapshot
+            ),
+            set_permission_profile=self._settings_controller.set_permission_profile,
+            dispatch_event=self._dispatch_event,
+            abort=self.abort,
         )
-        self._approval_presenter_generation = 0
-        self._approval_presenter_lease = None
+        self._tool_policy_evaluator = tool_policy_evaluator
         self._package_controller = SessionPackageController(
             get_session_id=lambda: self.session_manager.get_session_record().session_id,
             get_cwd=self.session_manager.get_cwd,
@@ -212,7 +217,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             provider_factory=provider_from_extension_config,
         )
         self._extension_replacement_controller = ExtensionReplacementRuntime(
-            get_runtime_host=lambda: self._extension_runtime_host,
+            get_runtime_host=lambda: self._extension_bridge.runtime_host,
         )
         self._extension_runtime_binding_factory = ExtensionRuntimeBindingFactory(
             get_cwd=self.session_manager.get_cwd,
@@ -253,7 +258,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             fork=self._fork_from_extension,
             new_session=self._new_session_from_extension,
             switch_session=self._switch_session_from_extension,
-            get_ui_context=lambda: self._extension_ui_context,
+            get_ui_context=lambda: self._extension_bridge.ui_context,
             exec_command=self._exec_command_from_extension,
         )
         composition = compose_session_runtime(self._composition_ports(
@@ -356,13 +361,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
             diagnostics_service=self.diagnostics_service,
             session_start_event=self._session_start_event,
             footer_data_provider=self.footer_data_provider,
-            exec_service=self._exec_service,
             tool_exec_service=self._tool_exec_service,
-            approval_resolver=self._approval_resolver,
+            approval_resolver=self._approval_runtime.resolver,
             tool_policy_evaluator=self._tool_policy_evaluator,
             capability_runtime=capability_runtime,
             apply_context=self._apply_agent_transcript_context,
-            refresh_agent_transcript_context=self._refresh_agent_transcript_context,
             refresh_agent_messages=self._refresh_agent_messages,
             dispatch_event=self._dispatch_event,
             record_runtime_exception=self._record_runtime_exception,
@@ -373,7 +376,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             extension_provider_controller=self._extension_provider_controller,
             extension_replacement_controller=self._extension_replacement_controller,
             extension_runtime_binding_factory=self._extension_runtime_binding_factory,
-            get_extension_runtime_host=lambda: self._extension_runtime_host,
+            extension_bridge=self._extension_bridge,
             get_context_usage=lambda: self.get_context_usage(),
             package_controller=self._package_controller,
             get_resource_watch_paths=self._resource_watch_paths,
@@ -381,8 +384,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
             rebuild_prompt_and_tools_view=self._rebuild_prompt_and_tools_view,
             set_resource_bundle=self._set_resource_bundle,
             record_extension_runtime_diagnostic=self._record_extension_runtime_diagnostic,
-            refresh_resources_for_extension_runtime=self._refresh_resources_for_extension_runtime,
-            refresh_resources_for_extension_runtime_async=self._refresh_resources_for_extension_runtime_async,
             execute_compaction=self._execute_product_compaction,
             execute_branch_summary=lambda entries, signal: self._branch_summary_runner(
                 custom_instructions=None,
@@ -390,17 +391,12 @@ class AgentProductSession(AgentSessionAdapterMixin):
             )(entries, signal),
             before_compaction=self._before_product_compaction,
             after_compaction=self._after_product_compaction,
-            project_event=project_session_runtime_event,
-            serialize_context_usage=serialize_context_usage_payload,
             before_agent_start_system_prompt_options=self._before_agent_start_system_prompt_options,
             compact_before_prompt=self._compact_before_prompt,
-            refresh_extension_runtime=lambda reason: self._refresh_extension_runtime(
-                reason=reason
-            ),
-            set_extension_ui_context=self._set_extension_ui_context,
-            set_extension_runtime_host=self._set_extension_runtime_host,
             sleep_for_retry=self._retry_sleep,
             continue_run=lambda: self._session_runtime.schedule_continue_run(),
+            # Resolve at call time so Product overrides and test/runtime
+            # replacements remain observable after composition.
             compact_internal=lambda **kwargs: self._compact_internal(**kwargs),
         )
 

@@ -357,32 +357,16 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             metadata=metadata or {},
         )
 
-        async def _restore(current: SessionT | None) -> SessionT:
-            try:
-                session = await self.store.restore(current, transition, session_ref)
-            except MissingSessionCwdError as exc:
-                if missing_cwd != "fallback" or fallback_cwd is None:
-                    raise _with_fallback_cwd(exc, fallback_cwd) from exc
-                return await self.store.restore(
-                    current,
-                    transition,
-                    session_ref,
-                    cwd_override=fallback_cwd,
-                )
-            issue = self._missing_cwd_issue(session, fallback_cwd=fallback_cwd)
-            if issue is None:
-                return session
-            await _maybe_await(self._dispose_session(session))
-            if missing_cwd != "fallback" or fallback_cwd is None:
-                raise MissingSessionCwdError(issue)
-            return await self.store.restore(
+        return await self._run(
+            transition,
+            lambda current: self._restore_candidate(
                 current,
-                transition,
-                session_ref,
-                cwd_override=fallback_cwd,
-            )
-
-        return await self._run(transition, _restore)
+                transition=transition,
+                session_ref=session_ref,
+                fallback_cwd=fallback_cwd,
+                missing_cwd=missing_cwd,
+            ),
+        )
 
     async def prepare_restore(
         self,
@@ -400,43 +384,19 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             metadata=metadata or {},
         )
 
-        async def _restore(current: SessionT | None) -> SessionT:
-            try:
-                session = await self.store.restore(current, transition, session_ref)
-            except MissingSessionCwdError as exc:
-                if missing_cwd != "fallback" or fallback_cwd is None:
-                    raise _with_fallback_cwd(exc, fallback_cwd) from exc
-                return await self.store.restore(
-                    current,
-                    transition,
-                    session_ref,
-                    cwd_override=fallback_cwd,
-                )
-            issue = self._missing_cwd_issue(session, fallback_cwd=fallback_cwd)
-            if issue is None:
-                return session
-            await _maybe_await(self._dispose_session(session))
-            if missing_cwd != "fallback" or fallback_cwd is None:
-                raise MissingSessionCwdError(issue)
-            return await self.store.restore(
-                current,
-                transition,
-                session_ref,
-                cwd_override=fallback_cwd,
-            )
-
         async with self._host.transition():
             previous = self._host.current
-            decision = await _maybe_await(
-                self.hooks.before_transition(previous, transition)
-                if self.hooks.before_transition is not None
-                else None
-            )
-            if decision is not None and decision.cancelled:
+            if await self._transition_cancelled(previous, transition):
                 raise SessionLifecyclePreparationCancelledError(
                     "session lifecycle preparation was cancelled"
                 )
-            session = await _restore(previous)
+            session = await self._restore_candidate(
+                previous,
+                transition=transition,
+                session_ref=session_ref,
+                fallback_cwd=fallback_cwd,
+                missing_cwd=missing_cwd,
+            )
 
             async def _rollback() -> None:
                 await _maybe_await(self._dispose_session(session))
@@ -593,12 +553,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             SessionOperationCandidate[SessionT, PayloadT | None]
             | CancelledSessionOperation[PayloadT | None]
         ):
-            decision = await _maybe_await(
-                self.hooks.before_transition(current, transition)
-                if self.hooks.before_transition is not None
-                else None
-            )
-            if decision is not None and decision.cancelled:
+            if await self._transition_cancelled(current, transition):
                 return CancelledSessionOperation(payload, cleanup=rollback)
             session = await _maybe_await(create_session(current))
 
@@ -699,6 +654,52 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             await _maybe_await(
                 self.hooks.before_release(session, target_session, transition)
             )
+
+    async def _restore_candidate(
+        self,
+        current: SessionT | None,
+        *,
+        transition: SessionLifecycleTransition,
+        session_ref: str | Path,
+        fallback_cwd: str | None,
+        missing_cwd: MissingCwdPolicy,
+    ) -> SessionT:
+        try:
+            session = await self.store.restore(current, transition, session_ref)
+        except MissingSessionCwdError as error:
+            if missing_cwd != "fallback" or fallback_cwd is None:
+                raise _with_fallback_cwd(error, fallback_cwd) from error
+            return await self.store.restore(
+                current,
+                transition,
+                session_ref,
+                cwd_override=fallback_cwd,
+            )
+
+        issue = self._missing_cwd_issue(session, fallback_cwd=fallback_cwd)
+        if issue is None:
+            return session
+        await _maybe_await(self._dispose_session(session))
+        if missing_cwd != "fallback" or fallback_cwd is None:
+            raise MissingSessionCwdError(issue)
+        return await self.store.restore(
+            current,
+            transition,
+            session_ref,
+            cwd_override=fallback_cwd,
+        )
+
+    async def _transition_cancelled(
+        self,
+        session: SessionT | None,
+        transition: SessionLifecycleTransition,
+    ) -> bool:
+        if self.hooks.before_transition is None:
+            return False
+        decision = await _maybe_await(
+            self.hooks.before_transition(session, transition)
+        )
+        return decision is not None and decision.cancelled
 
     def _missing_cwd_issue(
         self, session: SessionT, *, fallback_cwd: str | None
@@ -802,9 +803,12 @@ __all__ = [
     "ForkTargetResolver",
     "MissingCwdPolicy",
     "MissingSessionCwdError",
+    "PreparedSessionLifecycleOperation",
+    "PreparedSessionOperationStateError",
     "SessionCwdIssue",
     "SessionLifecycleDecision",
     "SessionLifecycleHooks",
+    "SessionLifecyclePreparationCancelledError",
     "SessionLifecycleReason",
     "SessionLifecycleRuntime",
     "SessionLifecycleStore",

@@ -361,8 +361,13 @@ def test_standard_session_command_pack_forwards_changelog_request() -> None:
 
 
 def test_standard_session_command_pack_has_no_coding_import() -> None:
-    module_path = (
+    session_root = (
         Path(__file__).parents[3] / "src/loushang/harness/session/command_pack.py"
-    )
+    ).parent
+    module_paths = [session_root / "command_pack.py"]
+    module_paths.extend(sorted((session_root / "commands").glob("*.py")))
 
-    assert "loushang.coding" not in module_path.read_text(encoding="utf-8")
+    assert all(
+        "loushang.coding" not in path.read_text(encoding="utf-8")
+        for path in module_paths
+    )

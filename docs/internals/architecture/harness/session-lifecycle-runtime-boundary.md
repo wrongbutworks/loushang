@@ -46,6 +46,11 @@ Harness owns:
   parent accessor, and optional payload projection.
 - the common missing-cwd decision shape: error by default, or a
   Product-selected fallback cwd when that policy is requested.
+- one restore-candidate path shared by immediate restore and staged restore;
+  cwd validation, fallback retry, and disposal of an invalid first candidate
+  therefore cannot drift between the two publication modes.
+- `PreparedSessionLifecycleOperation`, an unpublished-candidate lease whose
+  abort is idempotent and whose consume succeeds at most once.
 - `AgentTranscriptSessionRuntime`, which composes an already-configured
   lifecycle transaction with transcript directory/index operations. It owns no
   additional replacement state or lifecycle lock.
@@ -110,6 +115,13 @@ import file. A Product can report phase-aware failures through `on_failure`.
 After-commit failure propagates after the new session is current, matching the
 existing session-operation contract.
 
+A prepared restore releases the transition lock after staging without
+publishing its candidate. Consumption reacquires the same transaction lock and
+commits only if the active session is still the session observed during
+preparation. If another transition won first, the staged candidate is disposed
+and consumption fails; repeated consume or abort calls cannot publish or
+dispose it twice.
+
 Unknown Product records and transcript replay are not lifecycle concerns; they
 remain with `harness.conversation` and optional transcript profiles.
 
@@ -133,7 +145,9 @@ exported from top-level `loushang.harness.__all__`.
 
 Harness tests use opaque fake sessions to prove the default `at` profile,
 Product-supplied `before` profile/resolver, cancellation, cwd fallback, and
-failure isolation. Coding characterization tests cover the configured
+failure isolation. They also lock the prepare/release/activate/commit order,
+staged-restore cancellation, stale-candidate rollback, and one-shot consume
+state. Coding characterization tests cover the configured
 `before`/`at` behavior, extension cancellation/events, import races, cwd
 fallback, callback order, diagnostics, and serialized replacements.
 

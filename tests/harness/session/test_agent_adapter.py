@@ -11,6 +11,12 @@ from loushang.harness.session import (
     build_agent_session_lifecycle_hooks,
     prepare_current_agent_session,
 )
+from loushang.harness.session.agent_adapter import (
+    AgentProductSessionRuntime as CompatibilityAgentProductSessionRuntime,
+)
+from loushang.harness.session.agent_product_runtime import (
+    AgentProductSessionRuntime as OwnedAgentProductSessionRuntime,
+)
 
 
 class _Manager:
@@ -20,6 +26,10 @@ class _Manager:
 
     def get_cwd(self) -> str:
         return self._cwd
+
+
+def test_agent_adapter_keeps_product_runtime_import_compatibility() -> None:
+    assert CompatibilityAgentProductSessionRuntime is OwnedAgentProductSessionRuntime
 
 
 class _Runner:

@@ -6,17 +6,19 @@ from typing import Any
 
 from loushang.agent.types import AgentTool, AgentToolResult
 from loushang.ai.types import TextPart
+from loushang.harness.capabilities.commands import (
+    CommandRuntimeSource,
+    SessionCommandRuntime,
+)
 from loushang.harness.commands import (
     CommandDescriptor,
     CommandDispatchOutcome,
 )
 from loushang.harness.conversation import CommandExecutionRecord
-from loushang.harness.session import (
-    CommandRuntimeSource,
+from loushang.harness.session.bash import (
     SessionCommandExecutionRuntime,
-    SessionCommandRuntime,
-    SessionToolRuntime,
 )
+from loushang.harness.session.tool_runtime import SessionToolRuntime
 from loushang.harness.tools.contribution import ToolContribution
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.execution import direct_execution
@@ -177,6 +179,50 @@ def test_session_command_runtime_keeps_catalog_and_dispatch_precedence_separate(
     assert result == "extension"
 
 
+def test_session_command_runtime_stops_after_handled_none_result() -> None:
+    calls: list[str] = []
+
+    def _handled_none(command: object) -> CommandDispatchOutcome[str]:
+        del command
+        calls.append("handled-none")
+        return CommandDispatchOutcome.handled_result()
+
+    def _fallback(command: object) -> CommandDispatchOutcome[str]:
+        del command
+        calls.append("fallback")
+        return CommandDispatchOutcome.handled_result("fallback")
+
+    runtime = SessionCommandRuntime(
+        sources=(
+            CommandRuntimeSource(
+                pack_id="handled-none.commands",
+                source="product",
+                descriptor_priority=200,
+                handler_priority=200,
+                list_descriptors=tuple,
+                handler_name="handled-none",
+                handler=_handled_none,
+            ),
+            CommandRuntimeSource(
+                pack_id="fallback.commands",
+                source="extension",
+                descriptor_priority=100,
+                handler_priority=100,
+                list_descriptors=tuple,
+                handler_name="fallback",
+                handler=_fallback,
+            ),
+        )
+    )
+
+    outcome = asyncio.run(runtime.dispatch("review", ""))
+
+    assert outcome.handled is True
+    assert outcome.result is None
+    assert outcome.handler_name == "handled-none"
+    assert calls == ["handled-none"]
+
+
 def test_command_execution_runtime_streams_and_commits_one_record() -> None:
     records: list[CommandExecutionRecord] = []
     chunks: list[ExecOutputChunk] = []
@@ -271,7 +317,7 @@ def test_command_execution_runtime_streams_and_commits_one_record() -> None:
 
 
 def test_tool_activation_profile_selects_product_defaults() -> None:
-    from loushang.harness.session import ToolActivationProfile
+    from loushang.harness.session.tool_controller import ToolActivationProfile
 
     profile = ToolActivationProfile(
         preferred_names=("read", "bash"),
@@ -284,3 +330,22 @@ def test_tool_activation_profile_selects_product_defaults() -> None:
     assert profile.default_names(definitions, {"read"}) == ["read"]
     assert profile.should_activate_new("custom", definitions[0]) is True
     assert profile.should_activate_new("read", definitions[1]) is False
+
+
+def test_capabilities_module_reexports_canonical_runtime_owners() -> None:
+    from loushang.harness.capabilities.commands import (
+        CommandRuntimeSource as CanonicalCommandRuntimeSource,
+    )
+    from loushang.harness.session import capabilities
+    from loushang.harness.session.bash import (
+        BashCommandExecutionRuntime,
+        bash_result_from_tool_result,
+    )
+    from loushang.harness.session.tool_runtime import (
+        SessionToolRuntime as CanonicalSessionToolRuntime,
+    )
+
+    assert capabilities.CommandRuntimeSource is CanonicalCommandRuntimeSource
+    assert capabilities.SessionCommandExecutionRuntime is BashCommandExecutionRuntime
+    assert capabilities.SessionToolRuntime is CanonicalSessionToolRuntime
+    assert capabilities.command_result_from_tool_result is bash_result_from_tool_result

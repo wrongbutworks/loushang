@@ -4,28 +4,56 @@ This optional Harness profile depends on the public Agent and AI message
 contracts. Products supply their own policies and integration callbacks.
 """
 
+from loushang.harness.capabilities.commands import (
+    CommandRuntimeSource,
+    SessionCommandRuntime,
+)
 from loushang.harness.session.agent_adapter import (
-    AgentProductSessionRuntime,
     AgentSessionAdapterMixin,
-    build_agent_product_session_runtime_ports,
-    build_agent_session_lifecycle_hooks,
     initialize_composed_session,
-    prepare_current_agent_session,
 )
 from loushang.harness.session.agent_event_router import AgentEventRouter
 from loushang.harness.session.agent_product import AgentProductSession
+from loushang.harness.session.agent_product_runtime import (
+    AgentProductSessionRuntime,
+    build_agent_product_session_runtime_ports,
+    build_agent_session_lifecycle_hooks,
+    prepare_current_agent_session,
+)
 from loushang.harness.session.application_input import (
     ApplicationInputDelivery,
     ApplicationInputRuntime,
 )
-from loushang.harness.session.bash import BashExecutionPorts, BashExecutionRuntime
+from loushang.harness.session.bash import (
+    BashCommandExecutionRuntime,
+    BashCommandHook,
+    BashExecutionPorts,
+    BashExecutionRuntime,
+    SessionCommandExecutionRuntime,
+    UserBashHookResult,
+    UserBashRequest,
+    UserCommandHookResult,
+    UserCommandRequest,
+    bash_result_from_tool_result,
+    command_result_from_tool_result,
+)
 from loushang.harness.session.bindings import (
     SessionExtensionBinding,
     SessionIdentityBinding,
     SessionMaintenanceBinding,
     SessionModelBinding,
 )
-from loushang.harness.session.bootstrap import (
+from loushang.harness.session.bootstrap_activation import (
+    StandardAgentSessionActivationEffects,
+    activate_standard_agent_session_configuration,
+    standard_agent_session_activation_plan,
+)
+from loushang.harness.session.bootstrap_configuration import (
+    StandardAgentSessionConfigurationRequest,
+    StandardAgentSessionConfigurationResult,
+    StandardAgentSessionConfigurationRuntime,
+)
+from loushang.harness.session.bootstrap_construction import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
     AgentProductConstructionBinding,
@@ -35,19 +63,15 @@ from loushang.harness.session.bootstrap import (
     AgentProductConstructionRuntime,
     AgentSessionConstructionRequest,
     AgentSessionConstructionRuntime,
+)
+from loushang.harness.session.bootstrap_services import (
     AgentSessionServices,
     BootstrapServices,
     CreateAgentSessionResult,
-    StandardAgentSessionActivationEffects,
-    StandardAgentSessionConfigurationRequest,
-    StandardAgentSessionConfigurationResult,
-    StandardAgentSessionConfigurationRuntime,
-    activate_standard_agent_session_configuration,
     build_agent_product_session_runtime,
     build_standard_agent_session_result,
     create_standard_agent_bootstrap_services,
     prepare_agent_session_services,
-    standard_agent_session_activation_plan,
 )
 from loushang.harness.session.bootstrap_utils import (
     NoToolsMode,
@@ -59,19 +83,6 @@ from loushang.harness.session.bootstrap_utils import (
     resolve_base_system_prompt,
     resolve_initial_active_tool_names,
     split_model_thinking_pattern,
-)
-from loushang.harness.session.capabilities import (
-    AgentToolPort,
-    CommandRuntimeSource,
-    SessionCommandExecutionRuntime,
-    SessionCommandRuntime,
-    SessionToolRuntime,
-    ToolActivationProfile,
-    ToolRegistryPort,
-    UserCommandHookResult,
-    UserCommandRequest,
-    command_result_from_tool_result,
-    create_tool_prompt_rebuilder,
 )
 from loushang.harness.session.changelog import (
     STANDARD_CHANGELOG_PROFILE,
@@ -91,21 +102,6 @@ from loushang.harness.session.command_controller import (
     SessionCommandStorePort,
     StandardSessionCommandController,
 )
-from loushang.harness.session.command_pack import (
-    STANDARD_SESSION_COMMAND_PROFILE,
-    STANDARD_SESSION_COMMANDS,
-    StandardSessionCommandDefinition,
-    StandardSessionCommandDisposition,
-    StandardSessionCommandId,
-    StandardSessionCommandPorts,
-    StandardSessionCommandProfile,
-    StandardSessionCommandResult,
-    StandardSessionExport,
-    execute_standard_session_command_async,
-    is_standard_session_command,
-    list_standard_session_command_descriptors,
-    project_standard_session_command_result,
-)
 from loushang.harness.session.command_sources import (
     DiagnosticDraftRecorder,
     ExtensionCommandErrorRecorder,
@@ -118,6 +114,25 @@ from loushang.harness.session.command_sources import (
     ResourceCommandNotFoundRecorder,
     ResourceCommandResultFactory,
     ResourceCommandSourceRuntime,
+)
+from loushang.harness.session.commands.catalog import (
+    STANDARD_SESSION_COMMAND_PROFILE,
+    STANDARD_SESSION_COMMANDS,
+    StandardSessionCommandDefinition,
+    StandardSessionCommandId,
+    StandardSessionCommandProfile,
+    is_standard_session_command,
+    list_standard_session_command_descriptors,
+)
+from loushang.harness.session.commands.execution import (
+    StandardSessionCommandDisposition,
+    StandardSessionCommandPorts,
+    StandardSessionCommandResult,
+    StandardSessionExport,
+    execute_standard_session_command_async,
+)
+from loushang.harness.session.commands.projection import (
+    project_standard_session_command_result,
 )
 from loushang.harness.session.cwd_audit import (
     CwdBoundServicesAudit,
@@ -166,28 +181,30 @@ from loushang.harness.session.facade import (
     ApprovalRequestPresenter,
     OutputCallback,
     RuntimeEventListener,
-    SessionApplicationInputPort,
     SessionApprovalInteractionPort,
     SessionCommandExecutionPort,
     SessionCommandsPort,
     SessionControlPort,
-    SessionDiagnosticsPort,
     SessionEventListener,
     SessionEventProjector,
-    SessionExtensionPort,
     SessionFacade,
     SessionFacadePorts,
     SessionIdentityPort,
     SessionMaintenancePort,
-    SessionModelPort,
-    SessionPackagePort,
     SessionResourcePort,
     SessionRetryPort,
-    SessionSettingsPort,
     SessionToolsPort,
     SessionTranscriptPort,
     SessionViewPort,
     require_active_session_control,
+)
+from loushang.harness.session.facade_optional import (
+    SessionApplicationInputPort,
+    SessionDiagnosticsPort,
+    SessionExtensionPort,
+    SessionModelPort,
+    SessionPackagePort,
+    SessionSettingsPort,
 )
 from loushang.harness.session.inspection import (
     AgentInspectionPort,
@@ -309,7 +326,14 @@ from loushang.harness.session.runtime_event_views import (
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.tool_controller import (
     SessionToolController,
+    ToolActivationProfile,
     ToolController,
+    create_tool_prompt_rebuilder,
+)
+from loushang.harness.session.tool_runtime import (
+    AgentToolPort,
+    SessionToolRuntime,
+    ToolRegistryPort,
 )
 from loushang.harness.session.transcript_lifecycle import (
     AgentTranscriptSessionRuntime,
@@ -353,6 +377,8 @@ __all__ = [
     "AgentInspectionPort",
     "AfterTurnPolicyPort",
     "AgentToolPort",
+    "BashCommandExecutionRuntime",
+    "BashCommandHook",
     "BashExecutionPorts",
     "BashExecutionRuntime",
     "AgentSessionInspector",
@@ -538,9 +564,12 @@ __all__ = [
     "TurnPolicyPort",
     "UserCommandHookResult",
     "UserCommandRequest",
+    "UserBashHookResult",
+    "UserBashRequest",
     "SessionViewPort",
     "apply_session_model_selection",
     "command_result_from_tool_result",
+    "bash_result_from_tool_result",
     "execute_standard_session_command_async",
     "ensure_usable_session_model",
     "get_session_model_identity",

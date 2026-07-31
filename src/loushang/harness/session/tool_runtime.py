@@ -1,0 +1,239 @@
+"""Live tool activation and Agent rebind mechanics for one session."""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+from loushang.agent.types import AgentTool
+from loushang.harness.capabilities.tools import (
+    ToolActivationChange,
+    ToolActivationCoordinator,
+)
+from loushang.harness.tools.authoring import ToolContextProvider
+from loushang.harness.tools.contribution import (
+    ToolContribution,
+    ToolResolutionResult,
+    resolve_tool_contributions,
+)
+from loushang.harness.tools.core import ToolDefinition
+
+
+class AgentToolPort(Protocol):
+    """Only the mutable Agent tool surface required by activation mechanics."""
+
+    @property
+    def tools(self) -> list[AgentTool[Any]]: ...
+
+    @tools.setter
+    def tools(self, value: list[AgentTool[Any]]) -> None: ...
+
+
+class ToolRegistryPort(Protocol):
+    """Registry operations consumed by the live tool runtime."""
+
+    def get_definition(self, name: str) -> ToolDefinition: ...
+
+    def get_source_info(self, name: str) -> object | None: ...
+
+    def list_contributions(self) -> tuple[ToolContribution, ...]: ...
+
+    def list_definitions(self) -> list[ToolDefinition]: ...
+
+    def materialize_definitions(
+        self,
+        definitions: list[ToolDefinition],
+        *,
+        context_provider: ToolContextProvider | None = None,
+    ) -> list[AgentTool[Any]]: ...
+
+    def register_tool(
+        self,
+        tool: ToolDefinition,
+        *,
+        enabled: bool = True,
+        source_info: object | None = None,
+    ) -> ToolDefinition: ...
+
+
+class ToolContributionResolver(Protocol):
+    """The contribution-resolution operation used for runtime tool admission."""
+
+    def __call__(
+        self,
+        contributions: Iterable[ToolContribution],
+        *,
+        fail_on_errors: bool = True,
+    ) -> ToolResolutionResult: ...
+
+
+ToolPromptRebuilder = Callable[[list[ToolDefinition] | None], None]
+ToolActivationPolicy = Callable[[str, ToolDefinition], bool]
+ToolDefaultSelection = Callable[[], Iterable[str]]
+
+
+@dataclass
+class SessionToolRuntime:
+    """Apply a Product-selected tool capability set to one live Agent."""
+
+    agent: AgentToolPort
+    tool_registry: ToolRegistryPort
+    allowed_tool_names: set[str] | None
+    initial_active_tool_names: Iterable[str]
+    default_active_tool_names: ToolDefaultSelection
+    should_activate_new_tool: ToolActivationPolicy
+    build_tool_context: ToolContextProvider
+    rebuild_prompt: ToolPromptRebuilder
+    resolve_contributions: ToolContributionResolver = resolve_tool_contributions
+    _activation: ToolActivationCoordinator[ToolDefinition] = field(
+        init=False, repr=False
+    )
+
+    def __post_init__(self) -> None:
+        self._activation = ToolActivationCoordinator(
+            available=self._available_definitions(),
+            requested_names=self.initial_active_tool_names,
+            allowed_names=self.allowed_tool_names,
+            should_activate_new=self.should_activate_new_tool,
+            rebind=self._rebind_active_tools,
+        )
+
+    def get_active_tool_names(self) -> list[str]:
+        return list(self._activation.snapshot().active_names)
+
+    def get_all_tools(self) -> list[ToolDefinition]:
+        return list(self._activation.filter_items(self._available_definitions()))
+
+    def get_tool_definition(self, name: str) -> ToolDefinition | None:
+        if not self.is_tool_allowed(name):
+            return None
+        try:
+            return self.tool_registry.get_definition(name)
+        except KeyError:
+            return None
+
+    def apply_active_tools(self, tool_names: Iterable[str]) -> None:
+        self._sync_available(activate_new=False, rebind=False)
+        self._activation.request(tool_names)
+
+    def resolve_active_tool_definitions(
+        self, tool_names: Iterable[str]
+    ) -> tuple[list[ToolDefinition], list[str]]:
+        self._sync_available(activate_new=False, rebind=False)
+        resolution = self._activation.resolve(tool_names)
+        return list(resolution.items), list(resolution.names)
+
+    def is_tool_allowed(self, name: str) -> bool:
+        return self._activation.is_allowed(name)
+
+    def filter_allowed_tool_names(self, tool_names: Iterable[str]) -> list[str]:
+        return list(self._activation.filter_names(tool_names))
+
+    def filter_allowed_tool_definitions(
+        self, definitions: Iterable[ToolDefinition]
+    ) -> list[ToolDefinition]:
+        return list(self._activation.filter_items(definitions))
+
+    def tool_source_info(self, name: str) -> object | None:
+        try:
+            return self.tool_registry.get_source_info(name)
+        except KeyError:
+            return None
+
+    def default_active_names(self) -> list[str]:
+        return self.filter_allowed_tool_names(self.default_active_tool_names())
+
+    def set_tool_registry(self, registry: ToolRegistryPort) -> None:
+        self.tool_registry = registry
+        self._sync_available(activate_new=False, rebind=False)
+
+    def register_runtime_tool(
+        self,
+        tool: object,
+        *,
+        source_info: object | None = None,
+    ) -> ToolDefinition:
+        contribution = _runtime_tool_contribution(tool, source_info=source_info)
+        resolution = self.resolve_contributions(
+            (*self.tool_registry.list_contributions(), contribution),
+            fail_on_errors=False,
+        )
+        registration = _runtime_tool_registration_contribution(
+            resolution,
+            fallback=contribution,
+        )
+        definition = self.tool_registry.register_tool(
+            registration.definition,
+            source_info=registration.source_info,
+        )
+        if not self.is_tool_allowed(definition.name):
+            self.rebuild_prompt_and_tools_view()
+            return definition
+        self._sync_available(activate_new=True, rebind=True)
+        return definition
+
+    def rebuild_prompt_and_tools_view(self) -> None:
+        self._sync_available(activate_new=False, rebind=False)
+        self.rebuild_prompt(list(self._activation.active_items()))
+
+    def _available_definitions(self) -> list[ToolDefinition]:
+        return self.tool_registry.list_definitions()
+
+    def _sync_available(self, *, activate_new: bool, rebind: bool) -> None:
+        self._activation.refresh(
+            self._available_definitions(),
+            activate_new=activate_new,
+            rebind=rebind,
+        )
+
+    def _rebind_active_tools(
+        self,
+        change: ToolActivationChange[ToolDefinition],
+    ) -> None:
+        self.agent.tools = self.tool_registry.materialize_definitions(
+            list(change.active_items),
+            context_provider=self.build_tool_context,
+        )
+        self.rebuild_prompt(list(change.active_items))
+
+
+def _runtime_tool_contribution(
+    tool: object, *, source_info: object | None = None
+) -> ToolContribution:
+    definition = _runtime_tool_definition(tool)
+    return ToolContribution(
+        definition,
+        source_info=source_info,
+        metadata={"kind": "runtime_tool", "runtime_tool": definition.name},
+    )
+
+
+def _runtime_tool_definition(tool: object) -> ToolDefinition:
+    if isinstance(tool, ToolDefinition):
+        return tool
+    raise TypeError("runtime tools require an explicitly bound ToolDefinition")
+
+
+def _runtime_tool_registration_contribution(
+    resolution: ToolResolutionResult,
+    *,
+    fallback: ToolContribution,
+) -> ToolContribution:
+    for contribution in resolution.contributions:
+        if contribution.definition.name != fallback.definition.name:
+            continue
+        if contribution.metadata.get("kind") == "runtime_tool":
+            return contribution
+    return fallback
+
+
+__all__ = [
+    "AgentToolPort",
+    "SessionToolRuntime",
+    "ToolActivationPolicy",
+    "ToolContributionResolver",
+    "ToolDefaultSelection",
+    "ToolPromptRebuilder",
+    "ToolRegistryPort",
+]

@@ -344,11 +344,11 @@ The reusable `ToolContext` now lives in the Product-neutral
 contract probe validated its shape. Keep
 `ExtensionRuntimeBindings`, active-tool policy, prompt rebuilds, session
 mutation, and product model/diagnostic interpretation in Coding. The shared
-live capability application now belongs to
-`harness.session.capabilities`; Coding `ToolController` and
-`CommandController` bind Product policy and protocol behavior to that runtime.
-Harness `BashExecutionRuntime` owns the standard shell execution, abort,
-streaming, and transcript-recording path.
+live capability application is split between `harness.capabilities.commands`,
+`harness.session.tool_runtime`, and `harness.session.bash`; Coding
+`ToolController` and `CommandController` bind Product policy and protocol
+behavior to those mechanisms. Harness `BashExecutionRuntime` owns the standard
+shell execution, abort, streaming, and transcript-recording path.
 
 ### Workspace Execution
 

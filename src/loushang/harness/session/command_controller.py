@@ -6,6 +6,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Generic, Protocol, TypeVar
 
+from loushang.harness.capabilities.commands import (
+    CommandRuntimeSource,
+    SessionCommandRuntime,
+)
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt_preflight import PromptPreflightResult
 from loushang.harness.commands import (
@@ -18,21 +22,21 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.resources.types import ResourceBundle
-from loushang.harness.session.capabilities import (
-    CommandRuntimeSource,
-    SessionCommandRuntime,
-)
-from loushang.harness.session.command_pack import (
-    StandardSessionCommandPorts,
-    execute_standard_session_command_async,
-    is_standard_session_command,
-    list_standard_session_command_descriptors,
-    project_standard_session_command_result,
-)
 from loushang.harness.session.command_sources import (
     ExtensionCommandProvider,
     ExtensionCommandSourceRuntime,
     ResourceCommandSourceRuntime,
+)
+from loushang.harness.session.commands.catalog import (
+    is_standard_session_command,
+    list_standard_session_command_descriptors,
+)
+from loushang.harness.session.commands.execution import (
+    StandardSessionCommandPorts,
+    execute_standard_session_command_async,
+)
+from loushang.harness.session.commands.projection import (
+    project_standard_session_command_result,
 )
 from loushang.harness.session.diagnostics import (
     SessionDiagnosticScope,

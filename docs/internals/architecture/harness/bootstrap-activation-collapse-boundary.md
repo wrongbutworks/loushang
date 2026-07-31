@@ -32,6 +32,22 @@ graph. `activate_standard_agent_session_configuration()` executes that plan
 through `BootstrapActivationRuntime` and propagates the first contained
 failure. Neither function implements an alternative activation engine.
 
+## Physical Decomposition
+
+The stable `harness.session.bootstrap` import path is a compatibility export
+surface. Its implementation is split by responsibility without changing the
+activation or construction contracts:
+
+- `bootstrap_activation` owns the ordered activation plan and effect ports;
+- `bootstrap_configuration` binds standard resource/configuration services to
+  that plan;
+- `bootstrap_services` owns cwd-bound service preparation and result values;
+- `bootstrap_construction` owns Agent, tool, and Product session construction.
+
+Dependencies flow from construction to configuration/services and from
+configuration to activation. The compatibility module contains no runtime
+implementation, and session internals import the concrete owner modules.
+
 ## Standard Stage Order
 
 The shared profile fixes this dependency order:
