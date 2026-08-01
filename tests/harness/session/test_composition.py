@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import fields
 from types import SimpleNamespace
 
+import loushang.harness.session.composition as composition_module
 from loushang.harness.config.agent import CompactionSettings
 from loushang.harness.session import ProductCompactionExecutor
 from loushang.harness.session.composition import (
@@ -47,6 +49,28 @@ def test_session_composition_ports_exclude_runtime_owned_forwarders() -> None:
             "continue_run",
         }
     )
+
+
+def test_session_composition_uses_private_staged_builders() -> None:
+    source = inspect.getsource(composition_module.compose_session_runtime)
+    builder_names = {
+        "_build_foundation_runtimes",
+        "_build_maintenance_runtimes",
+        "_build_product_bindings",
+    }
+
+    assert all(name in source for name in builder_names)
+    assert builder_names.isdisjoint(composition_module.__all__)
+    assert len(source.splitlines()) <= 150
+    assert "SessionDiagnosticsRuntime(" not in source
+    assert "AgentTranscriptCompactionRuntime(" not in source
+    assert "SessionModelBinding(" not in source
+    for container in (
+        composition_module._FoundationRuntimes,
+        composition_module._MaintenanceRuntimes,
+        composition_module._ProductBindings,
+    ):
+        assert all("callback" not in field.name for field in fields(container))
 
 
 def test_compaction_policy_uses_capability_without_product_override() -> None:
