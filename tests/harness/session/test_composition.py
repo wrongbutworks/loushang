@@ -11,6 +11,7 @@ from loushang.harness.session.composition import (
     ProductCompactionExecutor as CompositionProductCompactionExecutor,
 )
 from loushang.harness.session.composition import (
+    SessionComposition,
     SessionCompositionPorts,
     _compaction_policy,
     _resolve_compaction_capability,
@@ -49,6 +50,10 @@ def test_session_composition_ports_exclude_runtime_owned_forwarders() -> None:
             "continue_run",
         }
     )
+
+
+def test_session_composition_is_a_frozen_assembly_result() -> None:
+    assert SessionComposition.__dataclass_params__.frozen is True
 
 
 def test_session_composition_uses_private_staged_builders() -> None:

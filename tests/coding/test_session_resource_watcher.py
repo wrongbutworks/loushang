@@ -79,9 +79,9 @@ def test_agent_session_dispose_stops_resource_watcher(tmp_path) -> None:
 
     async def scenario() -> None:
         session.start_resource_watcher(interval_seconds=60)
-        assert session._resource_watch_controller.is_running is True
+        assert session._composition.resource_watch_controller.is_running is True
         await session.dispose()
 
     asyncio.run(scenario())
 
-    assert session._resource_watch_controller.is_running is False
+    assert session._composition.resource_watch_controller.is_running is False

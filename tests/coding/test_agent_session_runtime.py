@@ -253,12 +253,16 @@ async def test_runtime_listener_failure_does_not_duplicate_agent_message(
     event = {"type": "message_end", "message": message}
 
     try:
-        await session._session_runtime.handle_agent_event(event, session.agent.signal)
+        await session._composition.session_runtime.handle_agent_event(
+            event, session.agent.signal
+        )
     except RuntimeError as exc:
         assert str(exc) == "message projection failed"
     else:
         raise AssertionError("message projection failure must propagate")
-    await session._session_runtime.handle_agent_event(event, session.agent.signal)
+    await session._composition.session_runtime.handle_agent_event(
+        event, session.agent.signal
+    )
 
     assert commit_events == 1
     assert failed_message_events == 1

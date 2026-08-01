@@ -850,17 +850,17 @@ def test_agent_session_forwards_agent_lifecycle_events_to_extensions(tmp_path) -
             timestamp=0.0,
         )
 
-        await session._session_runtime.handle_agent_event(
+        await session._composition.session_runtime.handle_agent_event(
             {"type": "agent_start"}, session.agent.signal
         )
-        await session._session_runtime.handle_agent_event(
+        await session._composition.session_runtime.handle_agent_event(
             {"type": "turn_start"}, session.agent.signal
         )
-        await session._session_runtime.handle_agent_event(
+        await session._composition.session_runtime.handle_agent_event(
             {"type": "turn_end", "message": assistant, "tool_results": [tool_result]},
             session.agent.signal,
         )
-        await session._session_runtime.handle_agent_event(
+        await session._composition.session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [assistant]}, session.agent.signal
         )
 
@@ -930,10 +930,10 @@ def test_agent_session_forwards_message_and_tool_execution_events_to_extensions(
             content=[TextPart(type="text", text="ok")], details={}
         )
 
-        await session._session_runtime.handle_agent_event(
+        await session._composition.session_runtime.handle_agent_event(
             {"type": "message_start", "message": assistant}, session.agent.signal
         )
-        await session._session_runtime.handle_agent_event(
+        await session._composition.session_runtime.handle_agent_event(
             {
                 "type": "tool_execution_end",
                 "tool_call_id": "tc1",
@@ -971,7 +971,7 @@ def test_agent_session_records_tool_execution_error_diagnostic_with_correlation(
             agent=Agent(), session_manager=manager, diagnostics_service=diagnostics
         )
 
-        await session._session_runtime.handle_agent_event(
+        await session._composition.session_runtime.handle_agent_event(
             {
                 "type": "tool_execution_end",
                 "tool_call_id": "tc1",
@@ -2391,7 +2391,7 @@ def test_agent_session_removes_visible_queue_when_queued_user_message_starts(
     session.steer("queued")
 
     asyncio.run(
-        session._session_runtime.handle_agent_event(
+        session._composition.session_runtime.handle_agent_event(
             {
                 "type": "message_start",
                 "message": UserMessage(
@@ -2422,9 +2422,9 @@ def test_agent_session_follow_up_and_state_snapshot(tmp_path) -> None:
     session = AgentSession(agent=agent, session_manager=manager)
 
     session.follow_up("later")
-    session._retry_runtime.retry_future = object()  # type: ignore[assignment]
+    session._composition.retry_runtime.retry_future = object()  # type: ignore[assignment]
     state = session.get_state()
-    session._retry_runtime.retry_future = None
+    session._composition.retry_runtime.retry_future = None
 
     assert state.run == RunState(status="idle")
     assert state.follow_up == ["later"]
@@ -3387,7 +3387,7 @@ def test_agent_session_disposal_closes_approval_before_waiting_for_host(
             )
 
         active_run = asyncio.create_task(
-            session._session_runtime.host_runtime.run(wait_for_approval)
+            session._composition.session_runtime.host_runtime.run(wait_for_approval)
         )
         await presented.wait()
         await asyncio.wait_for(getattr(session, dispose_method)(), timeout=0.2)
@@ -3722,7 +3722,7 @@ def test_agent_session_disposal_finalizes_when_host_dispose_fails(tmp_path) -> N
             ),
             approval_resolver=resolver,
         )
-        session._session_runtime._host_runtime = FailingHostRuntime()  # type: ignore[assignment]
+        session._composition.session_runtime._host_runtime = FailingHostRuntime()  # type: ignore[assignment]
         pending = asyncio.create_task(
             resolver.resolve(ApprovalRequest(tool_name="write", arguments={}))
         )

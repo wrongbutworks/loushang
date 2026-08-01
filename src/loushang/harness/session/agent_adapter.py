@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import Any, Protocol, cast
 
 from loushang.agent import Agent, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
@@ -27,12 +27,7 @@ from loushang.harness.events import (
     project_session_runtime_event,
 )
 from loushang.harness.extensions import ExtensionProviderRuntime
-from loushang.harness.extensions.agent import (
-    ExtensionAgentEventRuntime,
-    ExtensionAgentHookRuntime,
-    ExtensionInputRuntime,
-)
-from loushang.harness.extensions.agent.input_adapter import ExtensionInputAdapter
+from loushang.harness.extensions.agent import ExtensionAgentHookRuntime
 from loushang.harness.extensions.agent.replacement import ExtensionReplacementRuntime
 from loushang.harness.extensions.context import (
     ReplacedSessionContext,
@@ -49,7 +44,6 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.packages.session import SessionPackageController
 from loushang.harness.resources.types import ResourceBundle
-from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.session.agent_product_runtime import (
     AgentProductSessionRuntime as AgentProductSessionRuntime,
 )
@@ -61,24 +55,12 @@ from loushang.harness.session.agent_product_runtime import (
 from loushang.harness.session.approval_interaction import (
     AgentSessionApprovalRuntime,
 )
-from loushang.harness.session.bash import (
-    BashExecutionRuntime,
-    UserBashHookResult,
-    UserBashRequest,
-)
-from loushang.harness.session.bindings import (
-    SessionExtensionBinding,
-    SessionIdentityBinding,
-    SessionMaintenanceBinding,
-    SessionModelBinding,
-)
-from loushang.harness.session.command_controller import SessionCommandController
+from loushang.harness.session.bash import UserBashHookResult, UserBashRequest
 from loushang.harness.session.composition import (
     SessionComposition,
     SessionExtensionCompositionPort,
     SessionModelCatalogPort,
 )
-from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.export import (
     export_session_to_html,
     export_session_to_jsonl,
@@ -87,13 +69,10 @@ from loushang.harness.session.extension_bridge import AgentSessionExtensionBridg
 from loushang.harness.session.facade import (
     SessionFacade,
 )
-from loushang.harness.session.inspection import AgentSessionInspector
 from loushang.harness.session.operations_runtime import (
     SessionOperations,
     SessionOperationsPorts,
 )
-from loushang.harness.session.resource_refresh import SessionResourceRefreshRuntime
-from loushang.harness.session.runtime import SessionRuntime
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.protocol import (
@@ -101,12 +80,7 @@ from loushang.harness.tools.workspace.protocol import (
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
-    AgentTranscriptCompactionCapability,
-    AgentTranscriptCompactionRuntime,
     AgentTranscriptContext,
-    AgentTranscriptNavigationRuntime,
-    AgentTranscriptRetryRuntime,
-    AgentTranscriptSelectionRuntime,
     BranchSummaryOutput,
     CompactionResult,
     CompactionStatus,
@@ -122,8 +96,6 @@ from loushang.harness.workspace.exec import (
     ExecUpdateCallback,
 )
 
-if TYPE_CHECKING:
-    from loushang.harness.session.tool_controller import SessionToolController
 
 class _ReloadableSettings(Protocol):
     def reload(self) -> None: ...
@@ -137,38 +109,19 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     model_registry: SessionModelCatalogPort | None
     diagnostics_service: DiagnosticsService | None
     _approval_runtime: AgentSessionApprovalRuntime
-    _bash_runtime: BashExecutionRuntime
     _capability_runtime: CapabilityCompositionRuntime | None
-    _command_controller: SessionCommandController[Any]
-    _compaction_capability: AgentTranscriptCompactionCapability
-    _compaction_runtime: AgentTranscriptCompactionRuntime
-    _diagnostics_bridge: SessionDiagnosticsRuntime
+    _composition: SessionComposition
     _exec_service: ExecService
-    _extension_binding: SessionExtensionBinding
-    _extension_event_sink: ExtensionAgentEventRuntime
-    _extension_input_runtime: ExtensionInputRuntime
-    _extension_message_controller: ExtensionInputAdapter
     _extension_provider_controller: ExtensionProviderRuntime
     _extension_replacement_controller: ExtensionReplacementRuntime
     _extension_runner: SessionExtensionCompositionPort | None
     _extension_bridge: AgentSessionExtensionBridge
-    _identity_binding: SessionIdentityBinding
-    _maintenance_binding: SessionMaintenanceBinding
-    _model_binding: SessionModelBinding
-    _navigation_runtime: AgentTranscriptNavigationRuntime
     _operations: SessionOperations
     _package_controller: SessionPackageController
     _package_materializer: PackageMaterializer | None
     _resource_loader: ResourceLoader | None
-    _resource_refresh_runtime: SessionResourceRefreshRuntime
-    _resource_watch_controller: ResourceChangeWatcher
-    _retry_runtime: AgentTranscriptRetryRuntime
-    _selection_runtime: AgentTranscriptSelectionRuntime
     _session_default_model: Model
-    _session_inspector: AgentSessionInspector
-    _session_runtime: SessionRuntime
     _settings_controller: SessionSettingsBinding
-    _tool_controller: SessionToolController
     _tool_registry: WorkspaceToolRegistry | None
     resource_bundle: ResourceBundle | None
 
@@ -206,15 +159,15 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         """Register live-bound tools without exposing composition internals."""
 
         definitions = tuple(
-            self._tool_controller.register_runtime_tool(
+            self._composition.tool_controller.register_runtime_tool(
                 tool,
                 source_info=source_info,
             )
             for tool in tools
         )
         if activate:
-            active = self._tool_controller.get_active_tool_names()
-            self._tool_controller.apply_active_tools(
+            active = self._composition.tool_controller.get_active_tool_names()
+            self._composition.tool_controller.apply_active_tools(
                 [
                     *active,
                     *(
@@ -332,8 +285,10 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     async def get_command_argument_completions(
         self, invocation_name: str, prefix: str
     ) -> list[object] | None:
-        return await self._command_controller.get_command_argument_completions(
-            invocation_name, prefix
+        return (
+            await self._composition.command_controller.get_command_argument_completions(
+                invocation_name, prefix
+            )
         )
 
     def get_context_usage(self):
@@ -347,7 +302,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
 
     def _get_builtin_session_info(self) -> dict[str, object]:
         record = self.session_manager.get_session_record()
-        stats = self._session_inspector.build_session_stats()
+        stats = self._composition.session_inspector.build_session_stats()
         session_file = record.session_file
         return {
             "session_id": record.session_id,
@@ -459,21 +414,21 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
                 await result
 
     def _default_active_tool_names(self) -> list[str]:
-        return self._tool_controller.default_active_tool_names()
+        return self._composition.tool_controller.default_active_tool_names()
 
     def _register_extension_runtime_tool(
         self, tool: object, source_info: object | None = None
     ) -> None:
-        definition = self._tool_controller.register_runtime_tool(
+        definition = self._composition.tool_controller.register_runtime_tool(
             tool, source_info=source_info
         )
         if self._tool_registry is None:
-            self._tool_registry = self._tool_controller.tool_registry
+            self._tool_registry = self._composition.tool_controller.tool_registry
         if definition.name in self.get_active_tool_names():
             self._extension_bridge.refresh_bindings()
 
     def _rebuild_prompt_and_tools_view(self) -> None:
-        self._tool_controller.rebuild_prompt_and_tools_view()
+        self._composition.tool_controller.rebuild_prompt_and_tools_view()
 
     def _before_agent_start_system_prompt_options(self) -> dict[str, object]:
         return {
@@ -489,7 +444,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         self.resource_bundle = resource_bundle
 
     def _refresh_resources_for_extension_runtime(self) -> None:
-        self._resource_refresh_runtime.refresh()
+        self._composition.resource_refresh_runtime.refresh()
 
     def _resource_watch_paths(self) -> list[Path]:
         cwd = Path(self.session_manager.get_cwd())
@@ -553,12 +508,16 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     async def _send_message_from_extension(
         self, message: object, options: object | None = None
     ) -> None:
-        await self._extension_message_controller.send_message(message, options)
+        await self._composition.extension_message_controller.send_message(
+            message, options
+        )
 
     async def _send_user_message_from_extension_async(
         self, content: object, options: object | None = None
     ) -> None:
-        await self._extension_message_controller.send_user_message(content, options)
+        await self._composition.extension_message_controller.send_user_message(
+            content, options
+        )
 
     async def _compact_from_extension(
         self, custom_instructions: str | None = None
@@ -654,9 +613,9 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
             else None,
         )
         try:
-            self._session_runtime.schedule_event_dispatch(event)
+            self._composition.session_runtime.schedule_event_dispatch(event)
         except RuntimeError:
-            self._session_runtime.dispatch_event_without_loop(event)
+            self._composition.session_runtime.dispatch_event_without_loop(event)
 
     async def _dispatch_event(
         self,
@@ -669,14 +628,14 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     def _preflight_user_input(
         self, user_input: str, *, allow_extension_commands: bool = True
     ):
-        return self._command_controller.preflight_user_input(
+        return self._composition.command_controller.preflight_user_input(
             user_input, allow_extension_commands=allow_extension_commands
         )
 
     async def _preflight_user_input_async(
         self, user_input: str, *, allow_extension_commands: bool = True
     ):
-        return await self._command_controller.preflight_user_input_async(
+        return await self._composition.command_controller.preflight_user_input_async(
             user_input, allow_extension_commands=allow_extension_commands
         )
 
@@ -685,13 +644,17 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         *,
         phase: DiagnosticPhase,
     ) -> None:
-        self._diagnostics_bridge.sync_extension_diagnostics(phase=phase)
+        self._composition.diagnostics_bridge.sync_extension_diagnostics(phase=phase)
 
     def _record_runtime_exception(self, *, code: str, exc: Exception | str) -> None:
-        self._diagnostics_bridge.record_runtime_exception(code=code, exc=exc)
+        self._composition.diagnostics_bridge.record_runtime_exception(
+            code=code, exc=exc
+        )
 
     def _record_extension_runtime_diagnostic(self, diagnostic: DiagnosticDraft) -> None:
-        self._diagnostics_bridge.record_extension_runtime_diagnostic(diagnostic)
+        self._composition.diagnostics_bridge.record_extension_runtime_diagnostic(
+            diagnostic
+        )
 
     def _wire_extension_hooks(self) -> None:
         if self._extension_runner is not None:
@@ -700,6 +663,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
                 extension_runtime=self._extension_runner,
                 get_cwd=self.session_manager.get_cwd,
             ).install()
+
 
 def initialize_composed_session(
     session: AgentSessionAdapterMixin,
@@ -716,36 +680,20 @@ def initialize_composed_session(
 ) -> None:
     """Install an assembled composition on a Product Session adapter."""
 
-    session._capability_runtime = composition.capability_runtime
-    session._diagnostics_bridge = composition.diagnostics_bridge
-    session._tool_controller = composition.tool_controller
-    session._resource_refresh_runtime = composition.resource_refresh_runtime
-    session._resource_watch_controller = composition.resource_watch_controller
-    session._navigation_runtime = composition.navigation_runtime
-    session._compaction_capability = composition.compaction_capability
-    session._compaction_runtime = composition.compaction_runtime
-    session._bash_runtime = composition.bash_runtime
+    if operations_ports.composition is not composition:
+        raise ValueError("Session operations must use the installed composition.")
     package_controller = composition.package_controller
     if package_controller is None:
         raise RuntimeError("Agent Product sessions require package operations.")
+
+    session._composition = composition
+    session._capability_runtime = composition.capability_runtime
     session._package_controller = package_controller
-    session._command_controller = composition.command_controller
-    session._extension_event_sink = composition.extension_event_sink
-    session._retry_runtime = composition.retry_runtime
-    session._session_runtime = composition.session_runtime
-    session._extension_input_runtime = composition.extension_input_runtime
-    session._extension_message_controller = composition.extension_message_controller
     session._extension_provider_controller = composition.extension_provider_controller
     session._extension_replacement_controller = (
         composition.extension_replacement_controller
     )
     session._extension_bridge = composition.extension_bridge
-    session._selection_runtime = composition.selection_runtime
-    session._model_binding = composition.model_binding
-    session._identity_binding = composition.identity_binding
-    session._maintenance_binding = composition.maintenance_binding
-    session._extension_binding = composition.extension_binding
-    session._session_inspector = composition.session_inspector
     session._operations = SessionOperations(operations_ports)
     SessionFacade.__init__(
         session,
@@ -784,7 +732,7 @@ def initialize_composed_session(
         session._rebuild_prompt_and_tools_view()
     if session._extension_runner is not None:
         session._wire_extension_hooks()
-        session._extension_bridge.bind_bindings()
+        composition.extension_bridge.bind_bindings()
     sync_footer()
 
 

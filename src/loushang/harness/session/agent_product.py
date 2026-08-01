@@ -21,7 +21,6 @@ from loushang.harness.config.agent import (
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.extensions import ExtensionProviderRuntime
-from loushang.harness.extensions.agent.input_adapter import ExtensionInputAdapter
 from loushang.harness.extensions.agent.replacement import ExtensionReplacementRuntime
 from loushang.harness.extensions.context import (
     ReplacedSessionContext,
@@ -66,7 +65,6 @@ from loushang.harness.session.composition import (
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.extension_bridge import AgentSessionExtensionBridge
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
-from loushang.harness.session.runtime import SessionRuntime
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.side_question import (
     SIDE_QUESTION_BOUNDARY_PROMPT,
@@ -74,7 +72,6 @@ from loushang.harness.session.side_question import (
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
-    AgentTranscriptSelectionRuntime,
     BranchSummaryOutput,
     CompactionHookDecision,
     CompactionHookRequest,
@@ -103,9 +100,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
     """Bind Product callbacks to the existing standard session runtimes."""
 
     resource_bundle: ResourceBundle | None
-    _extension_message_controller: ExtensionInputAdapter
-    _session_runtime: SessionRuntime
-    _selection_runtime: AgentTranscriptSelectionRuntime
 
     def __init__(
         self,
@@ -450,7 +444,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
     def _sync_footer_available_provider_count(self) -> None:
         providers = {
             selection.provider
-            for selection in self._selection_runtime.get_available_models()
+            for selection in self._composition.selection_runtime.get_available_models()
             if isinstance(selection.provider, str)
         }
         self.footer_data_provider.set_available_provider_count(len(providers))

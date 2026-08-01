@@ -245,15 +245,41 @@ def test_agent_session_uses_and_disposes_selected_compaction_runtime(tmp_path) -
         session = create_agent_session(session_manager=manager, model=_model())
         capability_runtime = session._capability_runtime
 
-        assert session._compaction_capability is compaction_capability
-        assert session._compaction_runtime._get_policy() == compaction_capability.policy
+        mirrored_runtime_names = {
+            "_bash_runtime",
+            "_command_controller",
+            "_compaction_capability",
+            "_compaction_runtime",
+            "_diagnostics_bridge",
+            "_extension_binding",
+            "_extension_event_sink",
+            "_extension_input_runtime",
+            "_extension_message_controller",
+            "_identity_binding",
+            "_maintenance_binding",
+            "_model_binding",
+            "_navigation_runtime",
+            "_resource_refresh_runtime",
+            "_resource_watch_controller",
+            "_retry_runtime",
+            "_selection_runtime",
+            "_session_inspector",
+            "_session_runtime",
+            "_tool_controller",
+        }
+        assert mirrored_runtime_names.isdisjoint(vars(session))
+        assert session._composition.compaction_capability is compaction_capability
+        assert (
+            session._composition.compaction_runtime._get_policy()
+            == compaction_capability.policy
+        )
         assert capability_runtime is not None
         assert (
-            session._tool_controller.prompt_section_composer
+            session._composition.tool_controller.prompt_section_composer
             is capability_runtime.prompt_section_composer
         )
         assert (
-            session._command_controller.pack_composer
+            session._composition.command_controller.pack_composer
             is capability_runtime.command_pack_composer
         )
 

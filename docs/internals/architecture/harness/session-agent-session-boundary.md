@@ -69,6 +69,13 @@ maintenance, inspection, and extension bindings after the core `SessionRuntime`
 exists. The private stage results are frozen containers of existing runtimes,
 not new bridges, coordinators, or callback owners.
 
+`SessionComposition` is also a frozen assembly result. After installation, the
+Agent Product adapter keeps that result as its single source for assembled
+runtimes and bindings instead of copying each component into another private
+attribute. Product objects that must exist before composition, such as package
+and extension controllers, may retain their construction-time references; the
+adapter must not create post-assembly runtime mirrors for convenience.
+
 ## Deletion condition
 
 The old `AgentSession` implementation is reduced to a thin Product adapter.
