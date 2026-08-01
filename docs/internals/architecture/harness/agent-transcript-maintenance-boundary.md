@@ -17,6 +17,11 @@ around an open Agent transcript:
 - retry classification, retry/backoff/cancellation/waiter lifecycle, live
   failed-assistant removal, and common retry events.
 
+The implementation keeps these responsibilities physically cohesive:
+`transcript.maintenance` owns context accounting and compaction, while
+`transcript.retry_runtime` owns the Agent-message retry adapter. The public
+`loushang.harness.transcript` exports remain the stable Product-facing API.
+
 This is an optional Agent/AI profile. `harness.conversation` and generic
 `harness.context` stay independent of Agent and AI message types.
 
@@ -75,10 +80,10 @@ projection, default settings, and TUI/RPC/HTML output projection.
 
 ## Dependency Rule
 
-`harness.transcript.maintenance` may import public Agent message aliases
-and stable `loushang.ai.types`. The adjacent optional
+`harness.transcript.maintenance` and `harness.transcript.retry_runtime` may
+import public Agent message aliases and stable `loushang.ai.types`. The adjacent optional
 `harness.transcript.summarization` module may additionally use the
-public `loushang.ai` completion surface. Neither module may import Coding, AI
+public `loushang.ai` completion surface. None of these modules may import Coding, AI
 provider registries, provider implementations, authentication resolution,
 Product configuration, or UI/RPC types. Product-specific prompt/profile,
 completion selection, artifact decoration, and overflow classification are
@@ -103,5 +108,5 @@ concrete live settings override only their corresponding fields.
   prompt-independent cancellation, and JSON-safe output without Coding.
 - Coding session tests preserve Coding prompt/profile, file-detail decoration,
   extension-hook, retry-policy, session-state, and display behavior.
-- Architecture tests prohibit a Coding import from maintenance and require the
-  Coding session binding to consume the Harness runtimes directly.
+- Architecture tests prohibit a Coding import from maintenance/retry modules
+  and require the Coding session binding to consume the Harness runtimes directly.
