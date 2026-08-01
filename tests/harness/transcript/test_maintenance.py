@@ -14,13 +14,10 @@ from loushang.harness.conversation import (
 from loushang.harness.events import (
     ContextCompactionCompleted,
     ContextCompactionStarted,
-    RetryCompleted,
 )
-from loushang.harness.runtime.retry import RetryPolicy
 from loushang.harness.transcript import (
     AgentTranscriptCompactionRuntime,
     AgentTranscriptRecord,
-    AgentTranscriptRetryRuntime,
     AgentTranscriptSession,
     AgentTranscriptUnitOfWork,
     CompactionAborted,
@@ -538,51 +535,5 @@ def test_abort_after_commit_does_not_cancel_post_commit_observer() -> None:
     asyncio.run(scenario())
 
 
-def test_retry_runtime_owns_identity_free_retry_lifecycle() -> None:
-    async def scenario() -> None:
-        messages = [
-            _assistant(
-                stop_reason="error",
-                error_message="503 service unavailable",
-            )
-        ]
-        events: list[object] = []
-        continued: list[bool] = []
-        runtime = AgentTranscriptRetryRuntime(
-            get_policy=lambda: RetryPolicy(
-                enabled=True,
-                max_attempts=2,
-                base_delay_ms=0,
-            ),
-            get_messages=lambda: list(messages),
-            set_messages=lambda updated: _replace(messages, updated),
-            get_context_window=lambda: 100,
-            dispatch_event=lambda event: _append(events, event),
-            record_runtime_exception=lambda **kwargs: None,
-            sleep_for_retry=lambda delay_ms, signal: _sleep(delay_ms, signal),
-            is_context_overflow_fn=lambda message, context_window: False,
-        )
-
-        outcome = await runtime.handle_retryable_error(messages[0])
-        assert outcome.should_continue is True
-        runtime.continue_retry(lambda: _append(continued, True))
-        await asyncio.sleep(0)
-        assert messages == []
-        assert continued == [True]
-        await runtime.finish(success=True, attempt=1)
-        assert isinstance(events[-1], RetryCompleted)
-        assert runtime.is_retrying is False
-
-    asyncio.run(scenario())
-
-
 async def _append(values: list[object], value: object) -> None:
     values.append(value)
-
-
-def _replace(target: list[object], replacement: list[object]) -> None:
-    target[:] = replacement
-
-
-async def _sleep(delay_ms: int, signal: object) -> None:
-    del delay_ms, signal

@@ -642,6 +642,9 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
     maintenance_source = Path(
         "src/loushang/harness/transcript/maintenance.py"
     ).read_text(encoding="utf-8")
+    retry_source = Path(
+        "src/loushang/harness/transcript/retry_runtime.py"
+    ).read_text(encoding="utf-8")
     composition_source = Path("src/loushang/harness/session/composition.py").read_text(
         encoding="utf-8"
     )
@@ -650,6 +653,9 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
     ).read_text(encoding="utf-8")
 
     assert "loushang.coding" not in maintenance_source
+    assert "loushang.coding" not in retry_source
+    assert "AgentTranscriptRetryRuntime" in retry_source
+    assert "AutoRetryOutcome" in retry_source
     assert "AgentTranscriptCompactionRuntime" in composition_source
     assert "AgentTranscriptRetryRuntime" in composition_source
     assert not Path("src/loushang/coding/session/compaction_controller.py").exists()
