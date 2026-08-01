@@ -4,7 +4,7 @@ import asyncio
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.harness.session import AgentEventRouter
-from loushang.harness.transcript import ApplicationMessage
+from loushang.harness.transcript import ApplicationMessage, AutoRetryOutcome
 
 
 def _usage() -> Usage:
@@ -62,10 +62,16 @@ class _RetryRecorder:
         self.order.append("retry_is_retryable")
         return self.retryable
 
-    async def handle_retryable_error(self, assistant_message: AssistantMessage) -> bool:
+    async def handle_retryable_error(
+        self, assistant_message: AssistantMessage
+    ) -> AutoRetryOutcome:
         del assistant_message
         self.order.append("retry_handle")
-        return self.did_retry
+        return AutoRetryOutcome(should_continue=self.did_retry)
+
+    def continue_retry(self, continue_run: object) -> None:
+        assert callable(continue_run)
+        self.order.append("retry_continue")
 
 
 class _CompactionRecorder:
@@ -109,6 +115,7 @@ def test_agent_event_router_preserves_assistant_message_end_ordering() -> None:
             check_auto_compaction=lambda message: _record_async(
                 order, f"auto_compact:{message.role}"
             ),
+            schedule_continue_run=lambda: _record_async(order, "continue"),
         )
 
         await router.handle({"type": "message_end", "message": assistant}, object())
@@ -147,6 +154,7 @@ def test_agent_event_router_consumes_queued_application_message_on_start() -> No
             sync_extension_diagnostics=lambda **kwargs: None,
             record_assistant_response_error=lambda value: None,
             check_auto_compaction=lambda value: _record_async([], "compact"),
+            schedule_continue_run=lambda: _record_async([], "continue"),
             consume_queued_message=lambda value: consumed.append(value) or True,
         )
 
@@ -179,6 +187,7 @@ def test_agent_event_router_does_not_dispatch_after_append_failure() -> None:
             sync_extension_diagnostics=lambda **kwargs: None,
             record_assistant_response_error=lambda message: None,
             check_auto_compaction=lambda message: _record_async(order, "compact"),
+            schedule_continue_run=lambda: _record_async(order, "continue"),
         )
 
         try:
@@ -225,6 +234,7 @@ def test_agent_event_router_retries_projection_without_appending_again() -> None
             sync_extension_diagnostics=lambda **kwargs: None,
             record_assistant_response_error=lambda message: None,
             check_auto_compaction=lambda message: _record_async(order, "compact"),
+            schedule_continue_run=lambda: _record_async(order, "continue"),
         )
         event = {"type": "message_end", "message": assistant}
 
@@ -273,6 +283,7 @@ def test_agent_event_router_records_tool_errors_before_dispatch_and_extension_mi
             check_auto_compaction=lambda message: _record_async(
                 order, f"auto_compact:{message.role}"
             ),
+            schedule_continue_run=lambda: _record_async(order, "continue"),
         )
 
         await router.handle({"type": "tool_execution_end", "is_error": True}, object())
@@ -317,6 +328,7 @@ def test_agent_event_router_retries_before_auto_compaction_and_short_circuits() 
             check_auto_compaction=lambda message: _record_async(
                 order, f"auto_compact:{message.role}"
             ),
+            schedule_continue_run=lambda: _record_async(order, "continue"),
         )
 
         await router.handle({"type": "agent_end", "messages": [assistant]}, object())
@@ -332,6 +344,7 @@ def test_agent_event_router_retries_before_auto_compaction_and_short_circuits() 
         "retry_ensure_future",
         "retry_is_retryable",
         "retry_handle",
+        "retry_continue",
     ]
 
 

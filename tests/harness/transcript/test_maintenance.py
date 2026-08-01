@@ -558,13 +558,14 @@ def test_retry_runtime_owns_identity_free_retry_lifecycle() -> None:
             set_messages=lambda updated: _replace(messages, updated),
             get_context_window=lambda: 100,
             dispatch_event=lambda event: _append(events, event),
-            continue_run=lambda: _append(continued, True),
             record_runtime_exception=lambda **kwargs: None,
             sleep_for_retry=lambda delay_ms, signal: _sleep(delay_ms, signal),
             is_context_overflow_fn=lambda message, context_window: False,
         )
 
-        assert await runtime.handle_retryable_error(messages[0]) is True
+        outcome = await runtime.handle_retryable_error(messages[0])
+        assert outcome.should_continue is True
+        runtime.continue_retry(lambda: _append(continued, True))
         await asyncio.sleep(0)
         assert messages == []
         assert continued == [True]

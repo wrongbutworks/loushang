@@ -78,7 +78,6 @@ def _retry_runtime(
     agent: Agent,
     get_settings,
     dispatch_event,
-    continue_run,
     record_runtime_exception,
     sleep_for_retry,
 ) -> AgentTranscriptRetryRuntime:
@@ -92,11 +91,9 @@ def _retry_runtime(
         set_messages=agent.state.set_messages,
         get_context_window=lambda: agent.model.context_window,
         dispatch_event=dispatch_event,
-        continue_run=continue_run,
         record_runtime_exception=record_runtime_exception,
         sleep_for_retry=sleep_for_retry,
         is_context_overflow_fn=is_context_overflow,
-        wait_for_idle=agent.wait_for_idle,
     )
 
 
@@ -115,16 +112,16 @@ def test_retry_controller_starts_retry_removes_error_and_continues() -> None:
             enabled=True, max_retries=2, base_delay_ms=1
         ),
         dispatch_event=lambda event: _append_async(events, event),
-        continue_run=lambda: _append_async(continued, "continued"),
         record_runtime_exception=lambda **kwargs: None,
         sleep_for_retry=lambda delay_ms, signal: _noop_async(),
     )
 
     async def scenario() -> None:
         assert controller.should_prepare_retry(error_message) is True
-        did_retry = await controller.handle_retryable_error(error_message)
+        outcome = await controller.handle_retryable_error(error_message)
+        controller.continue_retry(lambda: _append_async(continued, "continued"))
         await asyncio.sleep(0)
-        assert did_retry is True
+        assert outcome.should_continue is True
 
     asyncio.run(scenario())
 
@@ -158,7 +155,6 @@ def test_retry_controller_finishes_success_and_resolves_waiter() -> None:
             enabled=True, max_retries=2, base_delay_ms=1
         ),
         dispatch_event=lambda event: _append_async(events, event),
-        continue_run=_noop_async,
         record_runtime_exception=lambda **kwargs: None,
         sleep_for_retry=lambda delay_ms, signal: _noop_async(),
     )
@@ -197,7 +193,6 @@ def test_retry_controller_abort_cancels_pending_retry() -> None:
             enabled=True, max_retries=2, base_delay_ms=1
         ),
         dispatch_event=lambda event: _append_async(events, event),
-        continue_run=lambda: _append_async([], "unexpected"),
         record_runtime_exception=lambda **kwargs: None,
         sleep_for_retry=_blocking_sleep,
     )
@@ -206,7 +201,7 @@ def test_retry_controller_abort_cancels_pending_retry() -> None:
         task = asyncio.create_task(controller.handle_retryable_error(error_message))
         await started.wait()
         controller.abort()
-        assert await task is False
+        assert (await task).should_continue is False
         await controller.wait()
 
     asyncio.run(scenario())
@@ -235,7 +230,6 @@ def test_retry_controller_does_not_retry_context_overflow() -> None:
             enabled=True, max_retries=2, base_delay_ms=1
         ),
         dispatch_event=lambda event: _append_async([], event),
-        continue_run=_noop_async,
         record_runtime_exception=lambda **kwargs: None,
         sleep_for_retry=lambda delay_ms, signal: _noop_async(),
     )
@@ -277,7 +271,6 @@ def test_retry_controller_treats_auth_and_access_errors_as_non_retryable(
             enabled=True, max_retries=2, base_delay_ms=1
         ),
         dispatch_event=lambda event: _append_async([], event),
-        continue_run=_noop_async,
         record_runtime_exception=lambda **kwargs: None,
         sleep_for_retry=lambda delay_ms, signal: _noop_async(),
     )
@@ -300,7 +293,6 @@ def test_retry_controller_treats_network_connection_lost_as_retryable() -> None:
             enabled=True, max_retries=2, base_delay_ms=1
         ),
         dispatch_event=lambda event: _append_async([], event),
-        continue_run=_noop_async,
         record_runtime_exception=lambda **kwargs: None,
         sleep_for_retry=lambda delay_ms, signal: _noop_async(),
     )

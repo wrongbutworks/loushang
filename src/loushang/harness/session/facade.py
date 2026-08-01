@@ -723,6 +723,7 @@ class SessionFacade(
 
     async def wait_for_retry(self) -> None:
         await self.retry.wait()
+        await self.runtime.wait_for_idle()
 
     @property
     def is_retrying(self) -> bool:
