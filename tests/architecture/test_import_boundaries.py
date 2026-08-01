@@ -639,12 +639,15 @@ def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
 
 
 def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
+    context_usage_source = Path(
+        "src/loushang/harness/transcript/context_usage.py"
+    ).read_text(encoding="utf-8")
     maintenance_source = Path(
         "src/loushang/harness/transcript/maintenance.py"
     ).read_text(encoding="utf-8")
-    retry_source = Path(
-        "src/loushang/harness/transcript/retry_runtime.py"
-    ).read_text(encoding="utf-8")
+    retry_source = Path("src/loushang/harness/transcript/retry_runtime.py").read_text(
+        encoding="utf-8"
+    )
     composition_source = Path("src/loushang/harness/session/composition.py").read_text(
         encoding="utf-8"
     )
@@ -652,8 +655,11 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
         "docs/internals/architecture/harness/agent-transcript-maintenance-boundary.md"
     ).read_text(encoding="utf-8")
 
+    assert "loushang.coding" not in context_usage_source
     assert "loushang.coding" not in maintenance_source
     assert "loushang.coding" not in retry_source
+    assert "class ContextUsageSnapshot" in context_usage_source
+    assert "class ContextUsageSnapshot" not in maintenance_source
     assert "AgentTranscriptRetryRuntime" in retry_source
     assert "AutoRetryOutcome" in retry_source
     assert "AgentTranscriptCompactionRuntime" in composition_source

@@ -74,6 +74,7 @@ from loushang.harness.session.diagnostics import (
 )
 from loushang.harness.session.extension_bridge import AgentSessionExtensionBridge
 from loushang.harness.session.extension_composition import (
+    AgentSessionExtensionComposition,
     AgentSessionExtensionCompositionPorts,
     compose_agent_session_extensions,
 )
@@ -248,7 +249,9 @@ class SessionCompositionPorts:
     record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
     execute_compaction: ProductCompactionExecutor
     execute_branch_summary: BranchSummaryExecutor
-    before_compaction: Callable[[CompactionHookRequest], Awaitable[CompactionHookDecision | None]]
+    before_compaction: Callable[
+        [CompactionHookRequest], Awaitable[CompactionHookDecision | None]
+    ]
     after_compaction: Callable[[CompactionResult, str, bool], Awaitable[None]]
     before_agent_start_system_prompt_options: Callable[[], dict[str, object]]
     sleep_for_retry: Callable[[int, CancellationSignal], Awaitable[None]]
@@ -286,17 +289,152 @@ class SessionComposition:
     session_inspector: AgentSessionInspector
 
 
+@dataclass(frozen=True)
+class _FoundationRuntimes:
+    diagnostics_bridge: SessionDiagnosticsRuntime
+    tool_controller: SessionToolController
+    resource_refresh_runtime: SessionResourceRefreshRuntime
+    resource_watch_controller: ResourceChangeWatcher
+    navigation_runtime: AgentTranscriptNavigationRuntime
+    bash_runtime: BashExecutionRuntime
+
+
+@dataclass(frozen=True)
+class _MaintenanceRuntimes:
+    compaction_capability: AgentTranscriptCompactionCapability
+    compaction_runtime: AgentTranscriptCompactionRuntime
+    retry_runtime: AgentTranscriptRetryRuntime
+
+
+@dataclass(frozen=True)
+class _ProductBindings:
+    selection_runtime: AgentTranscriptSelectionRuntime
+    model_binding: SessionModelBinding
+    identity_binding: SessionIdentityBinding
+    maintenance_binding: SessionMaintenanceBinding
+    extension_composition: AgentSessionExtensionComposition
+    session_inspector: AgentSessionInspector
+
+
 def compose_session_runtime(ports: SessionCompositionPorts) -> SessionComposition:
     """Build the standard Agent session runtime from Product ports."""
 
     agent = ports.agent
     session = ports.session_manager
-    settings = ports.settings
-    capability_runtime = ports.capability_runtime
+    foundation = _build_foundation_runtimes(ports)
+    maintenance = _build_maintenance_runtimes(ports)
+    command_controller = ports.command_controller(foundation.diagnostics_bridge)
+    extension_event_sink = ExtensionAgentEventRuntime(
+        get_extension_runtime=lambda: ports.extension_runner,
+        get_cwd=session.get_cwd,
+    )
 
-    async def refresh_extension_runtime(reason: str) -> None:
-        await ports.extension_bridge.refresh(reason=reason)
+    async def check_auto_compaction(
+        message: AssistantMessage,
+    ) -> AutoCompactionOutcome:
+        return await maintenance.compaction_runtime.maybe_compact_after_turn(
+            message,
+            is_context_overflow_fn=is_context_overflow,
+        )
 
+    async def compact_before_prompt() -> AutoCompactionOutcome:
+        message = _last_assistant_message(agent.state.messages)
+        if message is None:
+            return AutoCompactionOutcome()
+        return await check_auto_compaction(message)
+
+    session_runtime = SessionRuntime(
+        agent=agent,
+        transcript=TranscriptRuntimePort(
+            session_id=session.get_header().conversation_id,
+            append_message=session.append_message,
+            commit_application_message=session.commit_application_message,
+            refresh_context=lambda: ports.apply_context(
+                session.build_session_context()
+            ),
+            set_commit_observer=session.set_commit_observer,
+        ),
+        turn_policy=TurnPolicyPort(
+            get_extension_runner=lambda: ports.extension_runner,
+            get_cwd=session.get_cwd,
+            extract_extension_command_invocation=(
+                command_controller.extract_extension_command_invocation
+            ),
+            execute_command_async=command_controller.execute_command_async,
+            preflight_user_input=command_controller.preflight_user_input,
+            reject_queued_extension_command=(
+                command_controller.raise_if_queued_extension_command
+            ),
+            preflight_user_input_async=command_controller.preflight_user_input_async,
+            before_agent_start_system_prompt_options=ports.before_agent_start_system_prompt_options,
+            sync_extension_diagnostics=(
+                foundation.diagnostics_bridge.sync_extension_diagnostics
+            ),
+            compact_before_prompt_async=compact_before_prompt,
+        ),
+        after_turn_policy=AfterTurnPolicyPort(
+            emit_extension_agent_event=extension_event_sink.emit_agent_event,
+            record_tool_execution_error=(
+                foundation.diagnostics_bridge.record_tool_execution_error
+            ),
+            retry_controller=maintenance.retry_runtime,
+            compaction_controller=maintenance.compaction_runtime,
+            sync_extension_diagnostics=(
+                foundation.diagnostics_bridge.sync_extension_diagnostics
+            ),
+            record_assistant_response_error=(
+                foundation.diagnostics_bridge.record_assistant_response_error
+            ),
+            check_auto_compaction=check_auto_compaction,
+        ),
+    )
+    bindings = _build_product_bindings(
+        ports,
+        foundation=foundation,
+        maintenance=maintenance,
+        command_controller=command_controller,
+        session_runtime=session_runtime,
+    )
+    return SessionComposition(
+        capability_runtime=ports.capability_runtime,
+        diagnostics_bridge=foundation.diagnostics_bridge,
+        tool_controller=foundation.tool_controller,
+        resource_refresh_runtime=foundation.resource_refresh_runtime,
+        resource_watch_controller=foundation.resource_watch_controller,
+        navigation_runtime=foundation.navigation_runtime,
+        compaction_capability=maintenance.compaction_capability,
+        compaction_runtime=maintenance.compaction_runtime,
+        bash_runtime=foundation.bash_runtime,
+        package_controller=ports.package_controller,
+        command_controller=command_controller,
+        extension_event_sink=extension_event_sink,
+        retry_runtime=maintenance.retry_runtime,
+        session_runtime=session_runtime,
+        extension_input_runtime=bindings.extension_composition.input_runtime,
+        extension_message_controller=bindings.extension_composition.message_controller,
+        extension_provider_controller=(
+            bindings.extension_composition.provider_controller
+        ),
+        extension_replacement_controller=(
+            bindings.extension_composition.replacement_controller
+        ),
+        extension_runtime_binding_factory=(
+            bindings.extension_composition.runtime_binding_factory
+        ),
+        extension_bridge=ports.extension_bridge,
+        selection_runtime=bindings.selection_runtime,
+        model_binding=bindings.model_binding,
+        identity_binding=bindings.identity_binding,
+        maintenance_binding=bindings.maintenance_binding,
+        extension_binding=bindings.extension_composition.binding,
+        session_inspector=bindings.session_inspector,
+    )
+
+
+def _build_foundation_runtimes(
+    ports: SessionCompositionPorts,
+) -> _FoundationRuntimes:
+    session = ports.session_manager
     diagnostics_bridge = SessionDiagnosticsRuntime(
         diagnostics_service=ports.diagnostics_service,
         get_scope=lambda: SessionDiagnosticScope(
@@ -310,7 +448,6 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             else 0
         ),
     )
-
     tool_controller = _build_tool_controller(ports, diagnostics_bridge)
     resource_refresh_runtime = SessionResourceRefreshRuntime(
         get_resource_loader=lambda: ports.resource_loader,
@@ -319,7 +456,7 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         get_extension_runtime=lambda: ports.extension_runner,
         get_settings=lambda: cast(
             ResourceSettingsPort | None,
-            settings.get_settings_manager(),
+            ports.settings.get_settings_manager(),
         ),
         set_resource_bundle=ports.set_resource_bundle,
         rebuild_prompt_and_tools_view=ports.rebuild_prompt_and_tools_view,
@@ -329,11 +466,11 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
                 message=f"Extension resource refresh failed: {error}",
             )
         ),
-        sync_extension_diagnostics=lambda: diagnostics_bridge.sync_extension_diagnostics(
-            phase="resource_loading"
+        sync_extension_diagnostics=lambda: (
+            diagnostics_bridge.sync_extension_diagnostics(phase="resource_loading")
         ),
         prepare_resource_refresh=ports.prepare_resource_refresh,
-        skill_activation_runtime=capability_runtime.skill_activation,
+        skill_activation_runtime=ports.capability_runtime.skill_activation,
     )
     resource_watch_controller = ResourceChangeWatcher(
         get_paths=ports.get_resource_watch_paths,
@@ -351,13 +488,41 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             code="branch_summary_failed", exc=error
         ),
     )
+    bash_runtime = BashExecutionRuntime(
+        BashExecutionPorts(
+            get_cwd=session.get_cwd,
+            get_definition=ports.get_bash_definition,
+            execute_definition=tool_controller.execute_tool_definition,
+            create_call_id=ports.create_bash_call_id,
+            append_record=session.append_message,
+            refresh_context=ports.refresh_agent_messages,
+            before_execute=ports.before_bash,
+            operations=(
+                ExecServiceBashOperations(ports.tool_exec_service)
+                if ports.tool_exec_service is not None
+                else None
+            ),
+        )
+    )
+    return _FoundationRuntimes(
+        diagnostics_bridge=diagnostics_bridge,
+        tool_controller=tool_controller,
+        resource_refresh_runtime=resource_refresh_runtime,
+        resource_watch_controller=resource_watch_controller,
+        navigation_runtime=navigation_runtime,
+        bash_runtime=bash_runtime,
+    )
+
+
+def _build_maintenance_runtimes(
+    ports: SessionCompositionPorts,
+) -> _MaintenanceRuntimes:
+    agent = ports.agent
+    session = ports.session_manager
     compaction_capability = _resolve_compaction_capability(session)
 
     def get_compaction_policy() -> TranscriptCompactionPolicy:
-        return _compaction_policy(
-            settings.get_compaction_policy_override(),
-            compaction_capability.policy,
-        )
+        return _current_compaction_policy(ports, compaction_capability)
 
     compaction_runtime = AgentTranscriptCompactionRuntime(
         transcript=session,
@@ -377,49 +542,11 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         before_compaction=ports.before_compaction,
         after_compaction=ports.after_compaction,
         record_runtime_exception=ports.record_runtime_exception,
-        product_id=capability_runtime.profile.product_id,
+        product_id=ports.capability_runtime.profile.product_id,
         session_id=session.get_header().conversation_id,
     )
-    bash_runtime = BashExecutionRuntime(
-        BashExecutionPorts(
-            get_cwd=session.get_cwd,
-            get_definition=ports.get_bash_definition,
-            execute_definition=tool_controller.execute_tool_definition,
-            create_call_id=ports.create_bash_call_id,
-            append_record=session.append_message,
-            refresh_context=ports.refresh_agent_messages,
-            before_execute=ports.before_bash,
-            operations=(
-                ExecServiceBashOperations(ports.tool_exec_service)
-                if ports.tool_exec_service is not None
-                else None
-            ),
-        )
-    )
-
-    package_controller = ports.package_controller
-    command_controller = ports.command_controller(diagnostics_bridge)
-    extension_event_sink = ExtensionAgentEventRuntime(
-        get_extension_runtime=lambda: ports.extension_runner,
-        get_cwd=session.get_cwd,
-    )
-
-    async def check_auto_compaction(
-        message: AssistantMessage,
-    ) -> AutoCompactionOutcome:
-        return await compaction_runtime.maybe_compact_after_turn(
-            message,
-            is_context_overflow_fn=is_context_overflow,
-        )
-
-    async def compact_before_prompt() -> AutoCompactionOutcome:
-        message = _last_assistant_message(agent.state.messages)
-        if message is None:
-            return AutoCompactionOutcome()
-        return await check_auto_compaction(message)
-
     retry_runtime = AgentTranscriptRetryRuntime(
-        get_policy=lambda: _retry_policy(settings.get_retry_settings()),
+        get_policy=lambda: _retry_policy(ports.settings.get_retry_settings()),
         get_messages=lambda: list(agent.state.messages),
         set_messages=agent.state.set_messages,
         get_context_window=lambda: agent.model.context_window,
@@ -428,41 +555,23 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         sleep_for_retry=ports.sleep_for_retry,
         is_context_overflow_fn=is_context_overflow,
     )
-    session_runtime = SessionRuntime(
-        agent=agent,
-        transcript=TranscriptRuntimePort(
-            session_id=session.get_header().conversation_id,
-            append_message=session.append_message,
-            commit_application_message=session.commit_application_message,
-            refresh_context=lambda: ports.apply_context(session.build_session_context()),
-            set_commit_observer=session.set_commit_observer,
-        ),
-        turn_policy=TurnPolicyPort(
-            get_extension_runner=lambda: ports.extension_runner,
-            get_cwd=session.get_cwd,
-            extract_extension_command_invocation=(
-                command_controller.extract_extension_command_invocation
-            ),
-            execute_command_async=command_controller.execute_command_async,
-            preflight_user_input=command_controller.preflight_user_input,
-            reject_queued_extension_command=(
-                command_controller.raise_if_queued_extension_command
-            ),
-            preflight_user_input_async=command_controller.preflight_user_input_async,
-            before_agent_start_system_prompt_options=ports.before_agent_start_system_prompt_options,
-            sync_extension_diagnostics=diagnostics_bridge.sync_extension_diagnostics,
-            compact_before_prompt_async=compact_before_prompt,
-        ),
-        after_turn_policy=AfterTurnPolicyPort(
-            emit_extension_agent_event=extension_event_sink.emit_agent_event,
-            record_tool_execution_error=diagnostics_bridge.record_tool_execution_error,
-            retry_controller=retry_runtime,
-            compaction_controller=compaction_runtime,
-            sync_extension_diagnostics=diagnostics_bridge.sync_extension_diagnostics,
-            record_assistant_response_error=diagnostics_bridge.record_assistant_response_error,
-            check_auto_compaction=check_auto_compaction,
-        ),
+    return _MaintenanceRuntimes(
+        compaction_capability=compaction_capability,
+        compaction_runtime=compaction_runtime,
+        retry_runtime=retry_runtime,
     )
+
+
+def _build_product_bindings(
+    ports: SessionCompositionPorts,
+    *,
+    foundation: _FoundationRuntimes,
+    maintenance: _MaintenanceRuntimes,
+    command_controller: SessionCommandController[Any],
+    session_runtime: SessionRuntime,
+) -> _ProductBindings:
+    agent = ports.agent
+    session = ports.session_manager
     selection_runtime = AgentTranscriptSelectionRuntime(
         session=session,
         get_model=lambda: agent.model,
@@ -471,6 +580,9 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         set_thinking_level_value=lambda level: setattr(agent, "thinking_level", level),
         get_model_catalog=lambda: ports.model_registry,
     )
+
+    async def refresh_extension_runtime(reason: str) -> None:
+        await ports.extension_bridge.refresh(reason=reason)
 
     async def apply_model_selection(
         selection: object,
@@ -482,7 +594,6 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             selection,
             agent,
             ports.extension_runner,
-            resource_refresh_runtime,
             refresh_extension_runtime,
             session.get_cwd,
             source=source,
@@ -500,13 +611,13 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             runtime_binding_factory=ports.extension_runtime_binding_factory,
             bridge=ports.extension_bridge,
             session_start_event=ports.session_start_event,
-            tool_controller=tool_controller,
+            tool_controller=foundation.tool_controller,
             command_controller=command_controller,
             selection_runtime=selection_runtime,
             session_runtime=session_runtime,
-            navigation_runtime=navigation_runtime,
-            resource_refresh_runtime=resource_refresh_runtime,
-            resource_watch_controller=resource_watch_controller,
+            navigation_runtime=foundation.navigation_runtime,
+            resource_refresh_runtime=foundation.resource_refresh_runtime,
+            resource_watch_controller=foundation.resource_watch_controller,
             footer_data_provider=ports.footer_data_provider,
             get_context_usage=ports.get_context_usage,
             set_model=apply_model_selection,
@@ -518,15 +629,19 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             compact=partial(
                 _compact_manual,
                 session_runtime,
-                compaction_runtime,
+                maintenance.compaction_runtime,
             ),
             execute_branch_summary=ports.execute_branch_summary,
             record_runtime_diagnostic=ports.record_extension_runtime_diagnostic,
             sync_extension_diagnostics=(
-                diagnostics_bridge.sync_extension_diagnostics
+                foundation.diagnostics_bridge.sync_extension_diagnostics
             ),
         )
     )
+
+    def get_compaction_policy() -> TranscriptCompactionPolicy:
+        return _current_compaction_policy(ports, maintenance.compaction_capability)
+
     model_binding = SessionModelBinding(
         get_model_selection_callback=selection_runtime.get_model_selection,
         set_model_callback=apply_model_selection,
@@ -557,65 +672,49 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         ),
     )
     maintenance_binding = SessionMaintenanceBinding(
-        is_compacting_callback=lambda: compaction_runtime.is_compacting
-        or navigation_runtime.is_summarizing,
-        auto_retry_enabled_callback=lambda: settings.auto_retry_enabled,
+        is_compacting_callback=lambda: (
+            maintenance.compaction_runtime.is_compacting
+            or foundation.navigation_runtime.is_summarizing
+        ),
+        auto_retry_enabled_callback=lambda: ports.settings.auto_retry_enabled,
         auto_compaction_enabled_callback=lambda: get_compaction_policy().enabled,
-        set_auto_retry_enabled_callback=settings.set_auto_retry_enabled,
-        set_auto_compaction_enabled_callback=settings.set_auto_compaction_enabled,
+        set_auto_retry_enabled_callback=ports.settings.set_auto_retry_enabled,
+        set_auto_compaction_enabled_callback=(
+            ports.settings.set_auto_compaction_enabled
+        ),
         compact_callback=partial(
             _compact_manual,
             session_runtime,
-            compaction_runtime,
+            maintenance.compaction_runtime,
         ),
-        abort_compaction_callback=compaction_runtime.abort,
+        abort_compaction_callback=maintenance.compaction_runtime.abort,
     )
     session_inspector = AgentSessionInspector(
         agent=agent,
         session=session,
         get_session_id=lambda: session.get_session_record().session_id,
         get_session_name=lambda: session.get_session_record().metadata.name,
-        get_active_tool_names=tool_controller.get_active_tool_names,
-        is_retrying=lambda: retry_runtime.is_retrying,
-        is_compacting=lambda: compaction_runtime.is_compacting
-        or navigation_runtime.is_summarizing,
-        get_last_diagnostics=diagnostics_bridge.get_last_diagnostics,
+        get_active_tool_names=foundation.tool_controller.get_active_tool_names,
+        is_retrying=lambda: maintenance.retry_runtime.is_retrying,
+        is_compacting=lambda: (
+            maintenance.compaction_runtime.is_compacting
+            or foundation.navigation_runtime.is_summarizing
+        ),
+        get_last_diagnostics=foundation.diagnostics_bridge.get_last_diagnostics,
         get_model_selection=selection_runtime.get_model_selection,
         is_host_running=lambda: session_runtime.is_active,
         get_compaction_reserve_tokens=lambda: get_compaction_policy().reserve_tokens,
         get_compaction_compact_percent=lambda: get_compaction_policy().compact_percent,
-        get_compaction_keep_recent_tokens=lambda: get_compaction_policy().keep_recent_tokens,
+        get_compaction_keep_recent_tokens=lambda: (
+            get_compaction_policy().keep_recent_tokens
+        ),
     )
-    return SessionComposition(
-        capability_runtime=capability_runtime,
-        diagnostics_bridge=diagnostics_bridge,
-        tool_controller=tool_controller,
-        resource_refresh_runtime=resource_refresh_runtime,
-        resource_watch_controller=resource_watch_controller,
-        navigation_runtime=navigation_runtime,
-        compaction_capability=compaction_capability,
-        compaction_runtime=compaction_runtime,
-        bash_runtime=bash_runtime,
-        package_controller=package_controller,
-        command_controller=command_controller,
-        extension_event_sink=extension_event_sink,
-        retry_runtime=retry_runtime,
-        session_runtime=session_runtime,
-        extension_input_runtime=extension_composition.input_runtime,
-        extension_message_controller=extension_composition.message_controller,
-        extension_provider_controller=extension_composition.provider_controller,
-        extension_replacement_controller=(
-            extension_composition.replacement_controller
-        ),
-        extension_runtime_binding_factory=(
-            extension_composition.runtime_binding_factory
-        ),
-        extension_bridge=ports.extension_bridge,
+    return _ProductBindings(
         selection_runtime=selection_runtime,
         model_binding=model_binding,
         identity_binding=identity_binding,
         maintenance_binding=maintenance_binding,
-        extension_binding=extension_composition.binding,
+        extension_composition=extension_composition,
         session_inspector=session_inspector,
     )
 
@@ -636,8 +735,7 @@ def _build_tool_controller(
             else None
         ),
         initial_active_tool_names=list(
-            ports.active_tool_names
-            or [tool.name for tool in ports.agent.tools]
+            ports.active_tool_names or [tool.name for tool in ports.agent.tools]
         ),
         default_activate_new_tools=(
             ports.active_tool_names is None
@@ -690,6 +788,16 @@ def _retry_policy(settings: object) -> RetryPolicy:
         enabled=bool(getattr(settings, "enabled", False)),
         max_attempts=int(getattr(settings, "max_retries", 0)),
         base_delay_ms=int(getattr(settings, "base_delay_ms", 0)),
+    )
+
+
+def _current_compaction_policy(
+    ports: SessionCompositionPorts,
+    capability: AgentTranscriptCompactionCapability,
+) -> TranscriptCompactionPolicy:
+    return _compaction_policy(
+        ports.settings.get_compaction_policy_override(),
+        capability.policy,
     )
 
 
@@ -798,16 +906,15 @@ async def _set_model(
     selection: object,
     agent: Agent,
     extension_runner: ExtensionEventPort | None,
-    resource_refresh_runtime: SessionResourceRefreshRuntime,
     refresh_extension_runtime: Callable[[str], Awaitable[None]],
     get_cwd: Callable[[], str],
     source: str = "set",
 ) -> None:
-    resolved = selection_runtime.resolve_model(
-        cast(Model | ModelSelection, selection)
-    )
+    resolved = selection_runtime.resolve_model(cast(Model | ModelSelection, selection))
     previous = agent.model
-    endpoint_id = selection.endpoint_id if isinstance(selection, ModelSelection) else None
+    endpoint_id = (
+        selection.endpoint_id if isinstance(selection, ModelSelection) else None
+    )
     await selection_runtime.apply_model(resolved, endpoint_id=endpoint_id)
     await refresh_extension_runtime("model_selection_changed")
     if extension_runner is not None and previous != resolved:

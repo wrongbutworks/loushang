@@ -10,11 +10,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from loushang.harness.context import ConversationCompactionPlanner
+from loushang.harness.transcript.context_usage import estimate_context_tokens
 from loushang.harness.transcript.maintenance import (
     CompactionPlan,
     CompactionPreparation,
     TranscriptCompactionPolicy,
-    estimate_context_tokens,
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import (

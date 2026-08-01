@@ -562,7 +562,7 @@ def serialize_agent_conversation(messages: Sequence[object]) -> str:
 def estimate_agent_message_tokens(message: AgentMessage) -> int:
     """Use the standard transcript estimator for one visible Agent message."""
 
-    from loushang.harness.transcript.maintenance import estimate_message_tokens
+    from loushang.harness.transcript.context_usage import estimate_message_tokens
 
     return estimate_message_tokens(message)
 

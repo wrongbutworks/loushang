@@ -61,6 +61,14 @@ not aliases for already assembled runtimes. Context refresh, resource refresh,
 event projection, and serialization must use their existing runtime owners
 instead of adding pass-through callbacks to `SessionCompositionPorts`.
 
+The composition root is staged internally without expanding that port surface:
+foundation runtimes assemble diagnostics, tools, resources, navigation, and
+bash; maintenance runtimes assemble the selected compaction capability plus
+compaction and retry runtimes; Product bindings assemble model, identity,
+maintenance, inspection, and extension bindings after the core `SessionRuntime`
+exists. The private stage results are frozen containers of existing runtimes,
+not new bridges, coordinators, or callback owners.
+
 ## Deletion condition
 
 The old `AgentSession` implementation is reduced to a thin Product adapter.
