@@ -2,9 +2,9 @@
 
 The profile owns durable conversation facts.  This module owns the reusable
 runtime calculations around those facts: context-budget observations and
-automatic retry lifecycle.  Product code supplies settings, continuation, and
-presentation/diagnostic adapters; it does not need to reimplement the state
-machines.
+automatic retry lifecycle.  Product code supplies settings and presentation or
+diagnostic adapters; the session runtime owns continuation scheduling, and no
+Product needs to reimplement the state machines.
 """
 
 from __future__ import annotations
@@ -96,6 +96,13 @@ class AutoCompactionOutcome:
     """Explicit control result for one automatic-compaction check."""
 
     result: CompactionResult | None = None
+    should_continue: bool = False
+
+
+@dataclass(frozen=True)
+class AutoRetryOutcome:
+    """Explicit control result for one automatic-retry check."""
+
     should_continue: bool = False
 
 
@@ -198,7 +205,6 @@ EventDispatcher = Callable[[SessionRuntimeEventPayload], Awaitable[None]]
 ContinueRun = Callable[[], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]
 RetrySleeper = Callable[[int, CancellationSignal], Awaitable[None]]
-WaitForIdle = Callable[[], Awaitable[None]]
 MessageProvider = Callable[[], list[AgentMessage]]
 MessageSetter = Callable[[list[AgentMessage]], None]
 ContextWindowProvider = Callable[[], int | None]
@@ -216,11 +222,9 @@ class AgentTranscriptRetryRuntime:
         set_messages: MessageSetter,
         get_context_window: ContextWindowProvider,
         dispatch_event: EventDispatcher,
-        continue_run: ContinueRun,
         record_runtime_exception: RuntimeExceptionRecorder,
         sleep_for_retry: RetrySleeper,
         is_context_overflow_fn: ContextOverflowPredicate,
-        wait_for_idle: WaitForIdle | None = None,
     ) -> None:
         self._get_policy = get_policy
         self._get_messages = get_messages
@@ -235,10 +239,8 @@ class AgentTranscriptRetryRuntime:
             delay=lambda delay_ms, controller: sleep_for_retry(
                 delay_ms, controller.signal
             ),
-            continue_run=continue_run,
             on_started=self._on_started,
             on_finished=self._on_finished,
-            wait_for_idle=wait_for_idle,
         )
 
     @property
@@ -310,12 +312,19 @@ class AgentTranscriptRetryRuntime:
             is_context_overflow_fn=self._is_context_overflow,
         )
 
-    async def handle_retryable_error(self, assistant_message: AssistantMessage) -> bool:
-        return await self._coordinator.retry(
+    async def handle_retryable_error(
+        self,
+        assistant_message: AssistantMessage,
+    ) -> AutoRetryOutcome:
+        should_continue = await self._coordinator.retry(
             assistant_message.error_message or "",
             policy=self._get_policy(),
             before_retry=self._remove_failed_assistant,
         )
+        return AutoRetryOutcome(should_continue=should_continue)
+
+    def continue_retry(self, continue_run: ContinueRun) -> None:
+        self._coordinator.continue_retry(continue_run)
 
     async def _on_started(self, attempt: RetryAttempt) -> None:
         await self._dispatch_event(RetryStarted(attempt=attempt))
@@ -1126,6 +1135,7 @@ def estimate_message_tokens(message: AgentMessage) -> int:
 
 __all__ = [
     "AutoCompactionOutcome",
+    "AutoRetryOutcome",
     "AgentTranscriptCompactionRuntime",
     "AgentTranscriptRetryRuntime",
     "CompactionHookDecision",

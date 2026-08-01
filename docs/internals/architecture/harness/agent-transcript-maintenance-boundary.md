@@ -28,6 +28,7 @@ Harness provides:
 ContextUsageSnapshot / CompactionDecision
 CompactionPlan / CompactionPreparation / CompactionResult / CompactionStatus
 AutoCompactionOutcome
+AutoRetryOutcome
 CompactionAborted
 AgentTranscriptCompactionRuntime
 AgentTranscriptRetryRuntime
@@ -50,9 +51,11 @@ summary execution. A branch summary is a normal visible transcript record, not
 a compaction checkpoint, and a Product supplies only its prompt/profile,
 domain detail decoration, and presentation.
 
-The retry runtime consumes a `RetryPolicy`, a live message-state port, and
-continuation/cancellation callbacks. It does not discover credentials, choose
-a model, or dispatch Product UI events.
+The retry runtime consumes a `RetryPolicy` and a live message-state port. It
+returns an explicit automatic-retry outcome after backoff; the Session runtime
+then supplies its owned continuation scheduler to the active retry lifecycle.
+The transcript runtime does not capture Session construction state, discover
+credentials, choose a model, or dispatch Product UI events.
 
 ## Product Binding
 
@@ -62,7 +65,7 @@ A Product supplies:
 - transcript preparation selection, summary prompt/profile, model and
   credential selection, and any Product-specific artifact details;
 - extension before/after interception translation and diagnostics wording;
-- context application, retry continuation, and Product presentation;
+- context application, the Agent continuation driver, and Product presentation;
 - model catalog, authentication, provider behavior, and approval policy.
 
 Coding binds compaction ports directly in `AgentSession`; the retry runtime is

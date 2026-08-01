@@ -38,6 +38,7 @@ from loushang.harness.session.prompt_controller import AgentPort, PromptControll
 from loushang.harness.session.queue_controller import AgentQueuePort, QueueController
 from loushang.harness.transcript import (
     ApplicationMessage,
+    AutoCompactionOutcome,
     CommitResult,
     CompactionResult,
 )
@@ -52,11 +53,11 @@ PreflightUserInput = Callable[..., Awaitable[object]]
 SynchronousPreflightUserInput = Callable[[str], object]
 RejectQueuedExtensionCommand = Callable[[str], None]
 BeforeAgentStartOptions = Callable[[], dict[str, object]]
-PrePromptCompaction = Callable[[], Awaitable[CompactionResult | None]]
+PrePromptCompaction = Callable[[], Awaitable[AutoCompactionOutcome]]
 ToolExecutionErrorRecorder = Callable[[AgentEvent], None]
 AssistantResponseErrorRecorder = Callable[[AssistantMessage], None]
 AutoCompactionChecker = Callable[
-    [AssistantMessage], Awaitable[CompactionResult | None]
+    [AssistantMessage], Awaitable[AutoCompactionOutcome]
 ]
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 AgentEventListener = Callable[[AgentEvent, AbortSignal], Awaitable[None] | None]
@@ -173,7 +174,11 @@ class SessionRuntime:
                 self.turn_policy.before_agent_start_system_prompt_options
             ),
             sync_extension_diagnostics=self.turn_policy.sync_extension_diagnostics,
-            compact_before_prompt_async=self.turn_policy.compact_before_prompt_async,
+            compact_before_prompt_async=(
+                self._compact_before_prompt
+                if self.turn_policy.compact_before_prompt_async is not None
+                else None
+            ),
             run_prompt=self.run_agent_prompt,
         )
         self._application_inputs = ApplicationInputRuntime(
@@ -195,7 +200,8 @@ class SessionRuntime:
             record_assistant_response_error=(
                 self.after_turn_policy.record_assistant_response_error
             ),
-            check_auto_compaction=self.after_turn_policy.check_auto_compaction,
+            check_auto_compaction=self.check_auto_compaction,
+            schedule_continue_run=lambda: self.schedule_continue_run(),
             consume_queued_message=self._queue_controller.mark_message_consumed,
         )
         self.transcript.set_commit_observer(self._schedule_transcript_commit)
@@ -266,9 +272,24 @@ class SessionRuntime:
         self,
         assistant_message: AssistantMessage,
     ) -> CompactionResult | None:
-        return await self.after_turn_policy.check_auto_compaction(
+        outcome = await self.after_turn_policy.check_auto_compaction(
             assistant_message
         )
+        return self._accept_auto_compaction_outcome(outcome)
+
+    async def _compact_before_prompt(self) -> CompactionResult | None:
+        compact = self.turn_policy.compact_before_prompt_async
+        if compact is None:
+            return None
+        return self._accept_auto_compaction_outcome(await compact())
+
+    def _accept_auto_compaction_outcome(
+        self,
+        outcome: AutoCompactionOutcome,
+    ) -> CompactionResult | None:
+        if outcome.should_continue:
+            self.schedule_continue_run()
+        return outcome.result
 
     def abort(self) -> bool:
         return self._host_runtime.abort()

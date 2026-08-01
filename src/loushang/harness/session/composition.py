@@ -102,6 +102,7 @@ from loushang.harness.transcript import (
     AgentTranscriptNavigationRuntime,
     AgentTranscriptRetryRuntime,
     AgentTranscriptSelectionRuntime,
+    AutoCompactionOutcome,
     BranchSummaryOutput,
     CompactionHookDecision,
     CompactionHookRequest,
@@ -403,24 +404,18 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         get_cwd=session.get_cwd,
     )
 
-    async def continue_session_run() -> None:
-        await session_runtime.schedule_continue_run()
-
     async def check_auto_compaction(
         message: AssistantMessage,
-    ) -> CompactionResult | None:
-        outcome = await compaction_runtime.maybe_compact_after_turn(
+    ) -> AutoCompactionOutcome:
+        return await compaction_runtime.maybe_compact_after_turn(
             message,
             is_context_overflow_fn=is_context_overflow,
         )
-        if outcome.should_continue:
-            session_runtime.schedule_continue_run()
-        return outcome.result
 
-    async def compact_before_prompt() -> CompactionResult | None:
+    async def compact_before_prompt() -> AutoCompactionOutcome:
         message = _last_assistant_message(agent.state.messages)
         if message is None:
-            return None
+            return AutoCompactionOutcome()
         return await check_auto_compaction(message)
 
     retry_runtime = AgentTranscriptRetryRuntime(
@@ -429,11 +424,9 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         set_messages=agent.state.set_messages,
         get_context_window=lambda: agent.model.context_window,
         dispatch_event=ports.dispatch_event,
-        continue_run=continue_session_run,
         record_runtime_exception=ports.record_runtime_exception,
         sleep_for_retry=ports.sleep_for_retry,
         is_context_overflow_fn=is_context_overflow,
-        wait_for_idle=lambda: session_runtime.wait_for_idle(),
     )
     session_runtime = SessionRuntime(
         agent=agent,
@@ -470,9 +463,6 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             check_auto_compaction=check_auto_compaction,
         ),
     )
-    # The retry and turn policies close over ``session_runtime`` above.  Their
-    # callbacks are invoked only after construction, so the late binding is
-    # intentional and keeps the composition acyclic.
     selection_runtime = AgentTranscriptSelectionRuntime(
         session=session,
         get_model=lambda: agent.model,

@@ -13,7 +13,13 @@ from loushang.harness.session import (
     TranscriptRuntimePort,
     TurnPolicyPort,
 )
-from loushang.harness.transcript import ApplicationMessage, CommitResult
+from loushang.harness.transcript import (
+    ApplicationMessage,
+    AutoCompactionOutcome,
+    AutoRetryOutcome,
+    CommitResult,
+    CompactionResult,
+)
 
 
 @dataclass(frozen=True)
@@ -37,9 +43,14 @@ class _RetryPort:
         del assistant_message
         return False
 
-    async def handle_retryable_error(self, assistant_message: object) -> bool:
+    async def handle_retryable_error(
+        self, assistant_message: object
+    ) -> AutoRetryOutcome:
         del assistant_message
-        return False
+        return AutoRetryOutcome()
+
+    def continue_retry(self, continue_run: object) -> None:
+        del continue_run
 
 
 class _CompactionPort:
@@ -81,8 +92,8 @@ def test_session_runtime_owns_turn_input_and_direct_application_projection() -> 
             del kwargs
             return _PreflightResult(text=f"prepared:{text}")
 
-        async def no_compaction() -> None:
-            return None
+        async def no_compaction() -> AutoCompactionOutcome:
+            return AutoCompactionOutcome()
 
         agent.prompt = prompt  # type: ignore[method-assign]
         runtime = SessionRuntime(
@@ -133,6 +144,54 @@ def test_session_runtime_owns_turn_input_and_direct_application_projection() -> 
 
         await runtime.dispose()
         assert commit_observer is None
+
+    asyncio.run(scenario())
+
+
+def test_session_runtime_schedules_explicit_auto_compaction_continuation() -> None:
+    async def scenario() -> None:
+        agent = Agent()
+        continued: list[bool] = []
+        result = CompactionResult(
+            summary="summary",
+            first_kept_entry_id="record-1",
+            tokens_before=100,
+        )
+
+        async def continue_run() -> None:
+            continued.append(True)
+
+        async def check_auto_compaction(message: object) -> AutoCompactionOutcome:
+            del message
+            return AutoCompactionOutcome(result=result, should_continue=True)
+
+        agent.continue_run = continue_run  # type: ignore[method-assign]
+        runtime = SessionRuntime(
+            agent=agent,
+            transcript=TranscriptRuntimePort(
+                session_id="session-1",
+                append_message=_append_message,
+                commit_application_message=_commit_application_message,
+                refresh_context=lambda: None,
+                set_commit_observer=lambda observer: None,
+            ),
+            turn_policy=_turn_policy(),
+            after_turn_policy=AfterTurnPolicyPort(
+                emit_extension_agent_event=lambda event: _execute_command("", ""),
+                record_tool_execution_error=lambda event: None,
+                retry_controller=_RetryPort(),
+                compaction_controller=_CompactionPort(),
+                sync_extension_diagnostics=lambda **kwargs: None,
+                record_assistant_response_error=lambda message: None,
+                check_auto_compaction=check_auto_compaction,
+            ),
+        )
+
+        assert await runtime.check_auto_compaction(object()) is result  # type: ignore[arg-type]
+        await asyncio.sleep(0)
+        await runtime.wait_for_idle()
+        assert continued == [True]
+        await runtime.dispose()
 
     asyncio.run(scenario())
 
@@ -292,8 +351,9 @@ def _after_turn_policy() -> AfterTurnPolicyPort:
     async def emit_extension_agent_event(event: object) -> None:
         del event
 
-    async def check_auto_compaction(message: object) -> None:
+    async def check_auto_compaction(message: object) -> AutoCompactionOutcome:
         del message
+        return AutoCompactionOutcome()
 
     return AfterTurnPolicyPort(
         emit_extension_agent_event=emit_extension_agent_event,

@@ -6,7 +6,7 @@ from typing import Protocol
 
 from loushang.agent import AbortSignal, AgentEvent
 from loushang.ai.types import AssistantMessage
-from loushang.harness.transcript import CompactionResult
+from loushang.harness.transcript import AutoRetryOutcome, CompactionResult
 
 AppendMessage = Callable[[object], Awaitable[str]]
 EventDispatcher = Callable[..., Awaitable[None]]
@@ -18,6 +18,7 @@ AutoCompactionChecker = Callable[
     [AssistantMessage], Awaitable[CompactionResult | None]
 ]
 QueuedMessageConsumer = Callable[[object], bool]
+ContinueRun = Callable[[], Awaitable[None]]
 
 
 class RetryRouterPort(Protocol):
@@ -33,7 +34,9 @@ class RetryRouterPort(Protocol):
 
     async def handle_retryable_error(
         self, assistant_message: AssistantMessage
-    ) -> bool: ...
+    ) -> AutoRetryOutcome: ...
+
+    def continue_retry(self, continue_run: ContinueRun) -> None: ...
 
 
 class CompactionRouterPort(Protocol):
@@ -51,6 +54,7 @@ class AgentEventRouter:
     sync_extension_diagnostics: ExtensionDiagnosticsSync
     record_assistant_response_error: AssistantResponseErrorRecorder
     check_auto_compaction: AutoCompactionChecker
+    schedule_continue_run: ContinueRun
     consume_queued_message: QueuedMessageConsumer | None = None
     _committed_messages: dict[int, tuple[object, str]] = field(
         default_factory=dict,
@@ -91,10 +95,11 @@ class AgentEventRouter:
             if self.retry_controller.should_prepare_retry(last_assistant_message):
                 self.retry_controller.ensure_future()
             if self.retry_controller.is_retryable_error(last_assistant_message):
-                did_retry = await self.retry_controller.handle_retryable_error(
+                outcome = await self.retry_controller.handle_retryable_error(
                     last_assistant_message
                 )
-                if did_retry:
+                if outcome.should_continue:
+                    self.retry_controller.continue_retry(self.schedule_continue_run)
                     return
             await self.check_auto_compaction(last_assistant_message)
         if committed_message is not None:
