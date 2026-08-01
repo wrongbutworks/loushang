@@ -84,6 +84,8 @@ class CompactionCoordinator(Generic[R]):
             self._finish()
 
     def abort(self) -> None:
+        if not self._is_compacting:
+            return
         self._aborted = True
         if self._abort_driver is not None:
             self._abort_driver()

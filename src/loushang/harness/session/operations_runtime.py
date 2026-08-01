@@ -16,8 +16,6 @@ from typing import Any, TypeAlias, cast
 from loushang.agent import Agent
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import AssistantMessage
-from loushang.ai.utils import is_context_overflow
-from loushang.harness.events import CompactionReason
 from loushang.harness.extensions.context import (
     SessionBeforeTreeResult,
     SessionShutdownEvent,
@@ -29,9 +27,6 @@ from loushang.harness.session.composition import (
 )
 from loushang.harness.transcript import (
     BranchSummaryOutput,
-    CompactionHookDecision,
-    CompactionHookRequest,
-    CompactionPreparation,
     CompactionResult,
     CompactionStatus,
     ProductTranscriptSession,
@@ -55,19 +50,13 @@ class SessionOperationsPorts:
     agent: Agent
     session_manager: ProductTranscriptSession[Any, Any]
     extension_runner: SessionExtensionCompositionPort | None
-    execute_compaction: Callable[..., Awaitable[CompactionResult]]
     execute_branch_summary: Callable[..., Awaitable[BranchSummaryOutput]]
     before_tree: Callable[..., Awaitable[BeforeTreeHookResult]]
-    before_compaction: Callable[
-        [CompactionHookRequest], Awaitable[CompactionHookDecision | None]
-    ]
-    after_compaction: Callable[[CompactionResult, str, bool], Awaitable[None]]
     dispose_runtime_profile: Callable[[], object | None]
     finalize_shutdown: Callable[[], None]
     invalidate_extension_contexts: Callable[[str], None]
     sync_extension_diagnostics: Callable[..., None]
     close_approvals: Callable[[], None]
-    continue_run: Callable[[], Awaitable[None]]
 
 
 class SessionOperations:
@@ -124,22 +113,13 @@ class SessionOperations:
                 cwd=self.ports.session_manager.get_cwd(),
             )
 
-    async def compact_manual(self, custom_instructions: str | None = None) -> CompactionResult:
-        self.composition.session_runtime.abort()
-        await self.composition.session_runtime.wait_for_idle()
-        result = await self.composition.compaction_runtime.compact(
-            reason="manual",
-            will_retry=False,
-            raise_on_error=True,
-            custom_instructions=custom_instructions,
-        )
-        assert result is not None
-        return result
-
     async def maybe_compact_after_turn(
         self, assistant_message: AssistantMessage
     ) -> CompactionResult | None:
-        return await self._check_auto_compaction(assistant_message)
+        result = await self.composition.session_runtime.check_auto_compaction(
+            assistant_message
+        )
+        return result
 
     def get_compaction_status(self) -> CompactionStatus:
         return CompactionStatus(
@@ -234,69 +214,6 @@ class SessionOperations:
                 self.composition.capability_runtime.dispose()
                 self.ports.finalize_shutdown()
 
-    async def check_auto_compaction(
-        self, assistant_message: AssistantMessage
-    ) -> CompactionResult | None:
-        return await self._check_auto_compaction(assistant_message)
-
-    async def compact_before_prompt(self) -> CompactionResult | None:
-        assistant_message = self._last_assistant_message()
-        if assistant_message is None:
-            return None
-        return await self._check_auto_compaction(assistant_message)
-
-    async def compact_internal(
-        self,
-        *,
-        reason: CompactionReason,
-        will_retry: bool,
-        raise_on_error: bool,
-        custom_instructions: str | None = None,
-    ) -> CompactionResult | None:
-        return await self.composition.compaction_runtime.compact(
-            reason=reason,
-            will_retry=will_retry,
-            raise_on_error=raise_on_error,
-            custom_instructions=custom_instructions,
-        )
-
-    async def execute_selected_compaction(
-        self,
-        preparation: CompactionPreparation,
-        custom_instructions: str | None,
-    ) -> CompactionResult:
-        result = await self._execute_compaction_with(
-            preparation,
-            custom_instructions,
-        )
-        assert isinstance(result, CompactionResult)
-        return result
-
-    async def _execute_compaction_with(
-        self,
-        preparation: CompactionPreparation,
-        custom_instructions: str | None,
-    ) -> CompactionResult:
-        kwargs: dict[str, object] = {
-            "preparation": preparation,
-            "model": self.ports.agent.model,
-            "headers": None,
-            "signal": self.ports.agent.signal,
-        }
-        if custom_instructions is not None:
-            kwargs["custom_instructions"] = custom_instructions
-        return await self.ports.execute_compaction(**kwargs)
-
-    async def _check_auto_compaction(
-        self, assistant_message: AssistantMessage
-    ) -> CompactionResult | None:
-        return await self.composition.compaction_runtime.maybe_compact_after_turn(
-            assistant_message,
-            compact_internal_fn=self.compact_internal,
-            continue_run_fn=self.ports.continue_run,
-            is_context_overflow_fn=is_context_overflow,
-        )
-
     async def _apply_before_tree_hook(
         self,
         plan: TranscriptNavigationPlan,
@@ -354,13 +271,6 @@ class SessionOperations:
             )
 
         return run
-
-    def _last_assistant_message(self) -> AssistantMessage | None:
-        for message in reversed(self.ports.agent.state.messages):
-            if isinstance(message, AssistantMessage):
-                return message
-        return None
-
 
 def _is_model_selection(value: object) -> bool:
     return value.__class__.__name__ == "ModelSelection"

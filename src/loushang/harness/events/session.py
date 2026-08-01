@@ -7,6 +7,13 @@ from typing import Literal, TypeAlias
 from loushang.harness.permissions import PermissionProfileId, PermissionProfileScope
 
 CompactionReason: TypeAlias = Literal["manual", "threshold", "overflow"]
+CompactionStage: TypeAlias = Literal[
+    "started",
+    "aborted",
+    "failed",
+    "committed",
+    "post_hook_failed",
+]
 PackageProgressType: TypeAlias = Literal["start", "progress", "complete", "error"]
 PackageProgressAction: TypeAlias = Literal[
     "install", "update", "remove", "check", "resolve"
@@ -61,6 +68,10 @@ class QueueChanged:
 class ContextCompactionStarted:
     reason: CompactionReason
     usage: Mapping[str, object] | None = None
+    stage: CompactionStage | None = None
+    product_id: str | None = None
+    session_id: str | None = None
+    tokens_before: int | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +83,13 @@ class ContextCompactionCompleted:
     error_message: str | None = None
     usage_before: Mapping[str, object] | None = None
     usage_after: Mapping[str, object] | None = None
+    stage: CompactionStage | None = None
+    product_id: str | None = None
+    session_id: str | None = None
+    duration_ms: float | None = None
+    tokens_before: int | None = None
+    tokens_after: int | None = None
+    checkpoint_record_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -175,6 +193,7 @@ __all__ = [
     "BranchSummaryCompleted",
     "BranchSummaryStarted",
     "CompactionReason",
+    "CompactionStage",
     "ContextCompactionCompleted",
     "ContextCompactionStarted",
     "ConversationMetadataChanged",

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from loushang.ai.types import AssistantMessage, Usage
 from loushang.harness.events import (
     BranchSummaryCompleted,
+    ContextCompactionCompleted,
     ContextCompactionStarted,
     PackageProgressChanged,
     QueueChanged,
@@ -70,6 +71,41 @@ def test_runtime_projection_converts_common_session_payloads() -> None:
         "type": "compaction_start",
         "reason": "threshold",
         "usage": {"tokens": 90},
+    }
+    assert project_session_runtime_event(
+        _event(
+            "session.compaction_end",
+            ContextCompactionCompleted(
+                "manual",
+                {"summary": "done"},
+                False,
+                False,
+                usage_before={"tokens": 90},
+                usage_after={"tokens": 30},
+                stage="committed",
+                product_id="research",
+                session_id="s1",
+                duration_ms=12.5,
+                tokens_before=90,
+                tokens_after=30,
+                checkpoint_record_id="checkpoint-1",
+            ),
+        )
+    ) == {
+        "type": "compaction_end",
+        "reason": "manual",
+        "result": {"summary": "done"},
+        "aborted": False,
+        "will_retry": False,
+        "usage_before": {"tokens": 90},
+        "usage_after": {"tokens": 30},
+        "stage": "committed",
+        "product_id": "research",
+        "session_id": "s1",
+        "duration_ms": 12.5,
+        "tokens_before": 90,
+        "tokens_after": 30,
+        "checkpoint_record_id": "checkpoint-1",
     }
     assert project_session_runtime_event(
         _event(

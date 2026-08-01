@@ -50,6 +50,18 @@ class SessionSettingsBinding:
             return self.default_compaction()
         return getattr(self.settings_manager.get_settings(), "compaction")
 
+    def get_compaction_policy_override(self) -> object | None:
+        """Return the bound Product's field-level policy overrides.
+
+        Compaction setting fields use ``None`` to inherit from the runtime
+        capability, so a default settings manager does not shadow Product or
+        OEM policy values.
+        """
+
+        if self.settings_manager is None:
+            return None
+        return getattr(self.settings_manager.get_settings(), "compaction")
+
     def get_retry_settings(self) -> object:
         if self.settings_manager is None:
             return self.default_retry()
@@ -102,16 +114,13 @@ class SessionSettingsBinding:
     def set_auto_retry_enabled(self, enabled: bool) -> None:
         getattr(self.ensure_settings_manager(), "set_retry_enabled")(enabled)
 
-    @property
-    def auto_compaction_enabled(self) -> bool:
-        return bool(getattr(self.get_compaction_settings(), "enabled", False))
-
     def set_auto_compaction_enabled(self, enabled: bool) -> None:
         manager = self.ensure_settings_manager()
+        current = self.get_compaction_settings()
         getattr(manager, "update_settings")(
             scope="session",
             compaction=replace(
-                cast(Any, self.get_compaction_settings()),
+                cast(Any, current),
                 enabled=enabled,
             ),
         )

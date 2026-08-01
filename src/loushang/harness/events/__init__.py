@@ -9,6 +9,7 @@ _EXPORT_MODULES = {
     "BranchSummaryCompleted": "loushang.harness.events.session",
     "BranchSummaryStarted": "loushang.harness.events.session",
     "CompactionReason": "loushang.harness.events.session",
+    "CompactionStage": "loushang.harness.events.session",
     "ContextCompactionCompleted": "loushang.harness.events.session",
     "ContextCompactionStarted": "loushang.harness.events.session",
     "ConversationMetadataChanged": "loushang.harness.events.session",

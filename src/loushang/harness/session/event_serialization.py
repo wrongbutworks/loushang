@@ -114,6 +114,9 @@ def _serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
             compaction_payload["usage"] = serialize_context_usage_payload(
                 event["usage"]
             )
+        for name in ("stage", "product_id", "session_id", "tokens_before"):
+            if name in event:
+                compaction_payload[name] = event[name]
         return compaction_payload
     if event_type == "compaction_end":
         from loushang.harness.context import serialize_context_usage_payload
@@ -138,6 +141,17 @@ def _serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
             )
         if "error_message" in event:
             compaction_end_payload["error_message"] = event["error_message"]
+        for name in (
+            "stage",
+            "product_id",
+            "session_id",
+            "duration_ms",
+            "tokens_before",
+            "tokens_after",
+            "checkpoint_record_id",
+        ):
+            if name in event:
+                compaction_end_payload[name] = event[name]
         return compaction_end_payload
     if event_type == "auto_retry_start":
         return {

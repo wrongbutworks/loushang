@@ -77,6 +77,11 @@ The Product supplies three bounded bindings:
 2. an optional pre-compaction adapter, such as a Product extension hook;
 3. an optional post-commit projection adapter.
 
+The executor callable is the public
+`loushang.harness.session.ProductCompactionExecutor` contract. Product adapters
+depend on that narrow callable shape; the internal positional executor used by
+the transcript mechanism remains an implementation detail of composition.
+
 The Harness executor may call the stable AI completion surface, but it cannot
 choose a different cut point or append a transcript record. Only Harness
 commits the checkpoint. Coding therefore retains its code-change/file-operation
@@ -99,8 +104,10 @@ existing checkpoints; it must fail rather than cancelling or replacing an
 active compaction.
 
 The selected JSON configuration supplies the mechanism policy. Coding's
-explicit `CompactionSettings` are a higher-priority Product override; when no
-such override is present, an OEM-selected configuration applies directly.
+`CompactionSettings` are higher-priority, field-level Product overrides:
+`None` inherits the selected capability value, while a concrete value overrides
+that field. Changing enablement therefore does not freeze unrelated capability
+thresholds into Product settings.
 
 The resolved runtime profile is persisted as session metadata. It records only
 the mechanism ID, version, and JSON configuration; it never serializes prompt
@@ -123,8 +130,8 @@ generic code-execution injection point.
 
 - Cancellation, executor failure, invalid preparation, and hook cancellation
   leave the transcript and current context projection unchanged.
-- A successful executor result is appended once as a checkpoint before the
-  context projection is refreshed or post-commit adapters run.
+- A successful executor result is appended once as a checkpoint and the context
+  projection is refreshed before post-commit adapters run.
 - A failed post-commit adapter is reported as a Product diagnostic and must not
   retry the append.
 - Overflow recovery performs at most one compact-and-retry attempt per run.

@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from loushang.ai.types import ImagePart, TextPart, UserMessage
 from loushang.harness.runtime.turn import TurnInput, TurnOrchestrator
-from loushang.harness.transcript import ApplicationMessage
+from loushang.harness.transcript import ApplicationMessage, CompactionResult
 
 CommandExtractor = Callable[[str], tuple[str, str] | None]
 CommandExecutor = Callable[[str, str], Awaitable[object | None]]
@@ -17,7 +17,7 @@ CwdProvider = Callable[[], str]
 Preflight = Callable[..., Awaitable[Any]]
 BeforeAgentStartOptions = Callable[[], dict[str, object]]
 ExtensionDiagnosticsSync = Callable[..., None]
-PrePromptCompaction = Callable[[], Awaitable[object | None]]
+PrePromptCompaction = Callable[[], Awaitable[CompactionResult | None]]
 RunPrompt = Callable[[list[object]], Awaitable[None]]
 
 

@@ -195,6 +195,9 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(
 
     assert events[0]["type"] == "compaction_start"
     assert events[0]["reason"] == "manual"
+    assert events[0]["stage"] == "started"
+    assert events[0]["product_id"] == "coding"
+    assert events[0]["session_id"] == session.session_id
     assert events[0]["usage"]["reserve_tokens"] == 8192
     assert events[0]["usage"]["keep_recent_tokens"] == 1
     assert events[-1]["type"] == "compaction_end"
@@ -207,6 +210,11 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(
     }
     assert events[-1]["aborted"] is False
     assert events[-1]["will_retry"] is False
+    assert events[-1]["stage"] == "committed"
+    assert events[-1]["product_id"] == "coding"
+    assert events[-1]["session_id"] == session.session_id
+    assert events[-1]["duration_ms"] >= 0
+    assert events[-1]["checkpoint_record_id"] == compaction_entry.record_id
     assert events[-1]["usage_before"] == events[0]["usage"]
     assert events[-1]["usage_after"]["stale_after_compaction"] is True
 
@@ -278,6 +286,82 @@ def test_agent_session_exposes_compaction_service_surface(
     assert result.summary == "public surface summary"
     assert result.first_kept_entry_id == assistant_id
     assert session.get_compaction_status().is_compacting is False
+
+
+def test_agent_session_abort_compaction_cancels_public_manual_operation(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(role="user", content="older context", timestamp=0.0)
+        )
+    )
+    asyncio.run(manager.append_message(_assistant_text_message("recent reply")))
+    session = AgentSession(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
+        session_manager=manager,
+        settings_manager=SettingsManager(
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True,
+                    reserve_tokens=8_192,
+                    keep_recent_tokens=1,
+                )
+            )
+        ),
+    )
+    started = asyncio.Event()
+    events: list[object] = []
+
+    async def _blocking_compact(**kwargs):
+        del kwargs
+        started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _blocking_compact,
+    )
+    session.subscribe(events.append)
+
+    async def scenario() -> None:
+        task = asyncio.create_task(session.compact())
+        await started.wait()
+        session.abort_compaction()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+
+    assert all(
+        entry.kind != "context.compaction_checkpoint"
+        for entry in manager.get_entries()
+    )
+    assert session.get_compaction_status().is_compacting is False
+    compaction_end = next(
+        event for event in events if event["type"] == "compaction_end"
+    )
+    assert compaction_end["aborted"] is True
+    assert compaction_end["result"] is None
 
 
 def test_agent_session_compact_emits_error_event_on_failure(
@@ -364,12 +448,19 @@ def test_agent_session_compact_emits_error_event_on_failure(
     ]
     assert events[0]["type"] == "compaction_start"
     assert events[0]["reason"] == "manual"
+    assert events[0]["stage"] == "started"
+    assert events[0]["product_id"] == "coding"
+    assert events[0]["session_id"] == session.session_id
     assert events[0]["usage"]["reserve_tokens"] == 8192
     assert events[-1]["type"] == "compaction_end"
     assert events[-1]["reason"] == "manual"
     assert events[-1]["result"] is None
     assert events[-1]["aborted"] is False
     assert events[-1]["will_retry"] is False
+    assert events[-1]["stage"] == "failed"
+    assert events[-1]["product_id"] == "coding"
+    assert events[-1]["session_id"] == session.session_id
+    assert events[-1]["duration_ms"] >= 0
     assert events[-1]["usage_before"] == events[0]["usage"]
     assert events[-1]["usage_after"]["tokens"] == events[0]["usage"]["tokens"]
     assert events[-1]["error_message"] == "Compaction failed: boom"
@@ -449,7 +540,9 @@ def test_agent_session_compact_respects_extension_before_compact_cancellation(
     )
     session.subscribe(events.append)
 
-    with pytest.raises(RuntimeError, match="Compaction cancelled"):
+    from loushang.harness.transcript import CompactionAborted
+
+    with pytest.raises(CompactionAborted, match="Compaction cancelled"):
         asyncio.run(session.compact())
 
     assert [entry.kind for entry in manager.get_entries()] == [
@@ -1238,9 +1331,10 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
             tokens_before=preparation.tokens_before,
         )
 
-    async def _continue_run() -> None:
+    def _continue_run() -> asyncio.Task[None]:
         nonlocal continue_runs
         continue_runs += 1
+        return asyncio.create_task(asyncio.sleep(0))
 
     monkeypatch.setattr(
         "loushang.coding.session.agent_session._execute_coding_compaction",
@@ -1345,9 +1439,10 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
     )
     continue_runs = 0
 
-    async def _continue_run() -> None:
+    def _continue_run() -> asyncio.Task[None]:
         nonlocal continue_runs
         continue_runs += 1
+        return asyncio.create_task(asyncio.sleep(0))
 
     monkeypatch.setattr(
         session._session_runtime, "schedule_continue_run", _continue_run
@@ -1456,9 +1551,10 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
 
     continue_runs = 0
 
-    async def _continue_run() -> None:
+    def _continue_run() -> asyncio.Task[None]:
         nonlocal continue_runs
         continue_runs += 1
+        return asyncio.create_task(asyncio.sleep(0))
 
     monkeypatch.setattr(
         "loushang.coding.session.agent_session._execute_coding_compaction",

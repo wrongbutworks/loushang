@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 from loushang.agent import Agent
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
-    execute_coding_compaction,
+)
+from loushang.coding.compaction.adapter import (
+    execute_coding_compaction as _execute_coding_compaction,
 )
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
@@ -39,7 +41,11 @@ from loushang.harness.session.cwd_audit import CwdBoundServicesAudit
 from loushang.harness.session.event_types import AgentSessionEvent
 from loushang.harness.session.footer import FooterDataProvider
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
-from loushang.harness.transcript import BranchSummaryOutput
+from loushang.harness.transcript import (
+    BranchSummaryOutput,
+    CompactionPreparation,
+    CompactionResult,
+)
 from loushang.harness.workspace.exec import ExecService
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
@@ -53,18 +59,38 @@ def _copy_to_clipboard(text: str) -> object:
     return copy_to_clipboard(text)
 
 
-async def _execute_coding_compaction(**kwargs: object) -> object:
-    return await execute_coding_compaction(**kwargs)
-
-
-async def _execute_coding_compaction_runtime(**kwargs: object) -> object:
-    return await _execute_coding_compaction(**kwargs)
+async def _execute_coding_compaction_runtime(
+    *,
+    preparation: CompactionPreparation,
+    model: object,
+    headers: Mapping[str, str] | None,
+    signal: object | None,
+    custom_instructions: str | None = None,
+) -> CompactionResult:
+    return await _execute_coding_compaction(
+        preparation=preparation,
+        model=model,
+        headers=headers,
+        signal=signal,
+        custom_instructions=custom_instructions,
+    )
 
 
 async def _execute_coding_branch_summary(
-    entries: Sequence[object], **kwargs: object
+    entries: Sequence[object],
+    *,
+    model: object,
+    signal: object | None,
+    custom_instructions: str | None = None,
+    replace_instructions: bool = False,
 ) -> BranchSummaryOutput:
-    return await execute_coding_branch_summary(entries, **kwargs)
+    return await execute_coding_branch_summary(
+        entries,
+        model=model,
+        signal=signal,
+        custom_instructions=custom_instructions,
+        replace_instructions=replace_instructions,
+    )
 
 
 class AgentSession(AgentProductSession):

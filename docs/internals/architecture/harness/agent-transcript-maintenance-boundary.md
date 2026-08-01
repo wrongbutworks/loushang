@@ -27,6 +27,8 @@ Harness provides:
 ```text
 ContextUsageSnapshot / CompactionDecision
 CompactionPlan / CompactionPreparation / CompactionResult / CompactionStatus
+AutoCompactionOutcome
+CompactionAborted
 AgentTranscriptCompactionRuntime
 AgentTranscriptRetryRuntime
 ```
@@ -34,7 +36,10 @@ AgentTranscriptRetryRuntime
 The compaction runtime operates through the existing `AgentTranscriptSession`:
 it reads the active branch, receives a Product-selected preparation strategy and
 summary binding, appends the standard compaction checkpoint only after
-successful execution, refreshes context, and publishes common lifecycle events.
+successful execution, refreshes context before invoking best-effort Product
+post-commit observers, and publishes common lifecycle events. Automatic checks
+return an explicit outcome; the Session runtime, not the transcript runtime,
+owns continuation scheduling.
 `harness.transcript.summarization` owns the reusable model-call and
 message-serialization mechanism; it accepts Product prompt profiles,
 completion selection, and JSON-safe summary decoration. It does not own prompt
@@ -75,6 +80,17 @@ provider registries, provider implementations, authentication resolution,
 Product configuration, or UI/RPC types. Product-specific prompt/profile,
 completion selection, artifact decoration, and overflow classification are
 injected through explicit values or callbacks.
+
+Hook cancellation raises the typed `CompactionAborted` exception; ordinary
+exceptions with similar text are failures, not cancellation. Compaction start
+and end events expose the lifecycle stage, Product and session identifiers,
+elapsed milliseconds, known before/after token counts, and the committed
+checkpoint record ID. Unknown post-checkpoint token usage remains `None` rather
+than being estimated as an observed value.
+
+The resolved runtime capability configuration remains authoritative per field.
+Product compaction settings use `None` to inherit capability values, while
+concrete live settings override only their corresponding fields.
 
 ## Verification
 

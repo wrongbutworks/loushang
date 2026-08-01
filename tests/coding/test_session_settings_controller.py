@@ -14,7 +14,6 @@ def test_session_settings_controller_returns_defaults_without_manager() -> None:
     assert controller.get_compaction_settings() == CompactionSettings()
     assert controller.get_retry_settings() == RetrySettings()
     assert controller.auto_retry_enabled is controller.get_retry_settings().enabled
-    assert controller.auto_compaction_enabled is controller.get_compaction_settings().enabled
 
 
 def test_session_settings_controller_lazily_creates_manager_for_auto_flags() -> None:
