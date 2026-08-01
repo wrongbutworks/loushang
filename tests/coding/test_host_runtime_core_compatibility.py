@@ -68,7 +68,7 @@ def test_agent_session_coordinates_public_lifecycle_through_host_runtime(
                 persist=False,
             ),
         )
-        runtime = session._session_runtime
+        runtime = session._composition.session_runtime
         assert isinstance(runtime, SessionRuntime)
         assert isinstance(runtime.queue, QueueController)
         assert isinstance(runtime.prompt_controller, PromptController)

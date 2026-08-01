@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from loushang.harness.presentation import RenderableToolDefinition
-from loushang.harness.session.inspection import AgentSessionInspector
+from loushang.harness.session.composition import SessionComposition
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.transcript import (
     AgentTranscriptContext,
@@ -29,7 +29,9 @@ class ExportAgentPort(Protocol):
 
 class SessionExportPort(Protocol):
     session_manager: ProductTranscriptSession[Any, Any]
-    _session_inspector: AgentSessionInspector
+
+    @property
+    def _composition(self) -> SessionComposition: ...
 
     @property
     def agent(self) -> ExportAgentPort: ...
@@ -84,7 +86,7 @@ def export_session_to_html(
 
 
 def _build_export_request(session: SessionExportPort) -> TranscriptExportRequest:
-    stats = session._session_inspector.build_session_stats()
+    stats = session._composition.session_inspector.build_session_stats()
     context_usage = stats.context_usage
     entries = session.session_manager.get_entries()
     tools = tuple(

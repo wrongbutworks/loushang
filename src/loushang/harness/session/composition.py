@@ -257,7 +257,7 @@ class SessionCompositionPorts:
     sleep_for_retry: Callable[[int, CancellationSignal], Awaitable[None]]
 
 
-@dataclass
+@dataclass(frozen=True)
 class SessionComposition:
     """All standard runtime objects assembled for one Product session."""
 
