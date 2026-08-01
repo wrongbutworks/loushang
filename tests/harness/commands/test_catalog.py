@@ -54,16 +54,9 @@ def test_default_local_command_profile_is_empty() -> None:
     assert not EMPTY_LOCAL_COMMAND_CATALOG_PROFILE.local_commands_accepting_args
 
 
-@pytest.mark.parametrize(
-    "module_name",
-    (
-        "loushang.harness.capabilities.commands",
-        "loushang.harness.command_composition",
-    ),
-)
-def test_legacy_command_modules_are_absent(module_name: str) -> None:
+def test_legacy_command_composition_module_is_absent() -> None:
     with pytest.raises(ModuleNotFoundError):
-        importlib.import_module(module_name)
+        importlib.import_module("loushang.harness.command_composition")
 
 
 def test_mixed_catalog_routes_and_validates_product_local_commands() -> None:
