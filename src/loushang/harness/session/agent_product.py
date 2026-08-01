@@ -57,6 +57,7 @@ from loushang.harness.session.command_controller import (
 )
 from loushang.harness.session.commands.execution import StandardSessionCommandPorts
 from loushang.harness.session.composition import (
+    ProductCompactionExecutor,
     SessionCompositionPorts,
     SessionExtensionCompositionPort,
     SessionModelCatalogPort,
@@ -82,7 +83,6 @@ from loushang.harness.transcript import (
 )
 from loushang.harness.workspace.exec import ExecService
 
-CompactionExecutor = Callable[..., Awaitable[CompactionResult]]
 BranchSummaryExecutor = Callable[..., Awaitable[BranchSummaryOutput]]
 ChangelogProvider = Callable[[str, str], object]
 ClipboardWriter = Callable[[str], object]
@@ -113,7 +113,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         agent: Agent,
         session_manager: ProductTranscriptSession[Any, Any],
         capability_runtime: CapabilityCompositionRuntime,
-        execute_compaction: CompactionExecutor,
+        execute_compaction: ProductCompactionExecutor,
         execute_branch_summary: BranchSummaryExecutor,
         get_changelog: ChangelogProvider,
         copy_to_clipboard: ClipboardWriter,
@@ -276,17 +276,13 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 agent=self.agent,
                 session_manager=self.session_manager,
                 extension_runner=self._extension_runner,
-                execute_compaction=self._execute_product_compaction,
                 execute_branch_summary=self._execute_product_branch_summary,
                 before_tree=self._apply_before_tree_hook,
-                before_compaction=self._before_product_compaction,
-                after_compaction=self._after_product_compaction,
                 dispose_runtime_profile=self._dispose_session_runtime_profile,
                 finalize_shutdown=self._finalize_after_session_shutdown,
                 invalidate_extension_contexts=self._invalidate_extension_contexts,
                 sync_extension_diagnostics=self._sync_extension_diagnostics,
                 close_approvals=self._close_session_approvals,
-                continue_run=composition.session_runtime.schedule_continue_run,
             ),
             settings=self._settings_controller,
             session_manager=self.session_manager,
@@ -392,12 +388,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             before_compaction=self._before_product_compaction,
             after_compaction=self._after_product_compaction,
             before_agent_start_system_prompt_options=self._before_agent_start_system_prompt_options,
-            compact_before_prompt=self._compact_before_prompt,
             sleep_for_retry=self._retry_sleep,
-            continue_run=lambda: self._session_runtime.schedule_continue_run(),
-            # Resolve at call time so Product overrides and test/runtime
-            # replacements remain observable after composition.
-            compact_internal=lambda **kwargs: self._compact_internal(**kwargs),
         )
 
     def get_context_usage(self):

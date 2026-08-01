@@ -29,10 +29,18 @@ class ThinkingBudgetMap(TypedDict, total=False):
 
 @dataclass(frozen=True)
 class CompactionSettings:
-    enabled: bool = True
-    compact_percent: float = 80.0
-    reserve_tokens: int = 8_192
-    keep_recent_tokens: int = 32_768
+    """Product overrides for the capability-selected compaction policy.
+
+    ``None`` means that the corresponding value is inherited from the active
+    runtime capability.  Concrete values remain compatible with existing
+    settings files and allow each Product or session to override fields
+    independently.
+    """
+
+    enabled: bool | None = None
+    compact_percent: float | None = None
+    reserve_tokens: int | None = None
+    keep_recent_tokens: int | None = None
 
 
 @dataclass(frozen=True)

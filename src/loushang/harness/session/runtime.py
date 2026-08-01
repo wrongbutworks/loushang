@@ -36,7 +36,11 @@ from loushang.harness.session.agent_event_router import (
 from loushang.harness.session.application_input import ApplicationInputRuntime
 from loushang.harness.session.prompt_controller import AgentPort, PromptController
 from loushang.harness.session.queue_controller import AgentQueuePort, QueueController
-from loushang.harness.transcript import ApplicationMessage, CommitResult
+from loushang.harness.transcript import (
+    ApplicationMessage,
+    CommitResult,
+    CompactionResult,
+)
 
 AppendMessage = Callable[[object], Awaitable[str]]
 CommitApplicationMessage = Callable[[ApplicationMessage], Awaitable[CommitResult]]
@@ -48,10 +52,12 @@ PreflightUserInput = Callable[..., Awaitable[object]]
 SynchronousPreflightUserInput = Callable[[str], object]
 RejectQueuedExtensionCommand = Callable[[str], None]
 BeforeAgentStartOptions = Callable[[], dict[str, object]]
-PrePromptCompaction = Callable[[], Awaitable[object | None]]
+PrePromptCompaction = Callable[[], Awaitable[CompactionResult | None]]
 ToolExecutionErrorRecorder = Callable[[AgentEvent], None]
 AssistantResponseErrorRecorder = Callable[[AssistantMessage], None]
-AutoCompactionChecker = Callable[[AssistantMessage], Awaitable[object | None]]
+AutoCompactionChecker = Callable[
+    [AssistantMessage], Awaitable[CompactionResult | None]
+]
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 AgentEventListener = Callable[[AgentEvent, AbortSignal], Awaitable[None] | None]
 
@@ -254,6 +260,14 @@ class SessionRuntime:
         return self._host_runtime.defer_run(
             self.agent.continue_run,
             key="agent-continue",
+        )
+
+    async def check_auto_compaction(
+        self,
+        assistant_message: AssistantMessage,
+    ) -> CompactionResult | None:
+        return await self.after_turn_policy.check_auto_compaction(
+            assistant_message
         )
 
     def abort(self) -> bool:

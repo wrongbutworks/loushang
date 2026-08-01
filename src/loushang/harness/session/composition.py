@@ -9,7 +9,7 @@ compaction, tools, resources, extensions, and command runtimes.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 from loushang.agent import Agent
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.model import Model, ModelSelection
+from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
 from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities import CapabilityCompositionRuntime
@@ -117,9 +118,21 @@ if TYPE_CHECKING:
 
 AsyncEvent = Callable[[object], Awaitable[None]]
 EventDispatcher = Callable[..., Awaitable[None]]
-CompactionExecutor = Callable[..., Awaitable[CompactionResult]]
-CompactionRunner = Callable[..., Awaitable[CompactionResult | None]]
 BranchSummaryExecutor = Callable[..., Awaitable[BranchSummaryOutput]]
+
+
+class ProductCompactionExecutor(Protocol):
+    """Live Product binding for the standard Harness compaction mechanism."""
+
+    async def __call__(
+        self,
+        *,
+        preparation: CompactionPreparation,
+        model: object,
+        headers: Mapping[str, str] | None,
+        signal: object | None,
+        custom_instructions: str | None = None,
+    ) -> CompactionResult: ...
 
 
 class ModelDetailRegistryPort(Protocol):
@@ -232,15 +245,12 @@ class SessionCompositionPorts:
     rebuild_prompt_and_tools_view: Callable[[], None]
     set_resource_bundle: Callable[[ResourceBundle], None]
     record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
-    execute_compaction: CompactionExecutor
+    execute_compaction: ProductCompactionExecutor
     execute_branch_summary: BranchSummaryExecutor
     before_compaction: Callable[[CompactionHookRequest], Awaitable[CompactionHookDecision | None]]
     after_compaction: Callable[[CompactionResult, str, bool], Awaitable[None]]
     before_agent_start_system_prompt_options: Callable[[], dict[str, object]]
-    compact_before_prompt: Callable[[], Awaitable[object | None]]
     sleep_for_retry: Callable[[int, CancellationSignal], Awaitable[None]]
-    continue_run: Callable[[], Awaitable[None]]
-    compact_internal: CompactionRunner
 
 
 @dataclass
@@ -341,11 +351,16 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         ),
     )
     compaction_capability = _resolve_compaction_capability(session)
+
+    def get_compaction_policy() -> TranscriptCompactionPolicy:
+        return _compaction_policy(
+            settings.get_compaction_policy_override(),
+            compaction_capability.policy,
+        )
+
     compaction_runtime = AgentTranscriptCompactionRuntime(
         transcript=session,
-        get_policy=lambda: _compaction_policy(
-            settings.get_compaction_settings(), compaction_capability.policy
-        ),
+        get_policy=get_compaction_policy,
         get_model=lambda: agent.model,
         get_context_messages=lambda: list(session.build_session_context().messages),
         refresh_context=ports.refresh_agent_messages,
@@ -361,6 +376,8 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         before_compaction=ports.before_compaction,
         after_compaction=ports.after_compaction,
         record_runtime_exception=ports.record_runtime_exception,
+        product_id=capability_runtime.profile.product_id,
+        session_id=session.get_header().conversation_id,
     )
     bash_runtime = BashExecutionRuntime(
         BashExecutionPorts(
@@ -385,13 +402,34 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         get_extension_runtime=lambda: ports.extension_runner,
         get_cwd=session.get_cwd,
     )
+
+    async def continue_session_run() -> None:
+        await session_runtime.schedule_continue_run()
+
+    async def check_auto_compaction(
+        message: AssistantMessage,
+    ) -> CompactionResult | None:
+        outcome = await compaction_runtime.maybe_compact_after_turn(
+            message,
+            is_context_overflow_fn=is_context_overflow,
+        )
+        if outcome.should_continue:
+            session_runtime.schedule_continue_run()
+        return outcome.result
+
+    async def compact_before_prompt() -> CompactionResult | None:
+        message = _last_assistant_message(agent.state.messages)
+        if message is None:
+            return None
+        return await check_auto_compaction(message)
+
     retry_runtime = AgentTranscriptRetryRuntime(
         get_policy=lambda: _retry_policy(settings.get_retry_settings()),
         get_messages=lambda: list(agent.state.messages),
         set_messages=agent.state.set_messages,
         get_context_window=lambda: agent.model.context_window,
         dispatch_event=ports.dispatch_event,
-        continue_run=ports.continue_run,
+        continue_run=continue_session_run,
         record_runtime_exception=ports.record_runtime_exception,
         sleep_for_retry=ports.sleep_for_retry,
         is_context_overflow_fn=is_context_overflow,
@@ -420,7 +458,7 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             preflight_user_input_async=command_controller.preflight_user_input_async,
             before_agent_start_system_prompt_options=ports.before_agent_start_system_prompt_options,
             sync_extension_diagnostics=diagnostics_bridge.sync_extension_diagnostics,
-            compact_before_prompt_async=ports.compact_before_prompt,
+            compact_before_prompt_async=compact_before_prompt,
         ),
         after_turn_policy=AfterTurnPolicyPort(
             emit_extension_agent_event=extension_event_sink.emit_agent_event,
@@ -429,12 +467,7 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             compaction_controller=compaction_runtime,
             sync_extension_diagnostics=diagnostics_bridge.sync_extension_diagnostics,
             record_assistant_response_error=diagnostics_bridge.record_assistant_response_error,
-            check_auto_compaction=lambda message: compaction_runtime.maybe_compact_after_turn(
-                message,
-                compact_internal_fn=ports.compact_internal,
-                continue_run_fn=ports.continue_run,
-                is_context_overflow_fn=is_context_overflow,
-            ),
+            check_auto_compaction=check_auto_compaction,
         ),
     )
     # The retry and turn policies close over ``session_runtime`` above.  Their
@@ -537,7 +570,7 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         is_compacting_callback=lambda: compaction_runtime.is_compacting
         or navigation_runtime.is_summarizing,
         auto_retry_enabled_callback=lambda: settings.auto_retry_enabled,
-        auto_compaction_enabled_callback=lambda: settings.auto_compaction_enabled,
+        auto_compaction_enabled_callback=lambda: get_compaction_policy().enabled,
         set_auto_retry_enabled_callback=settings.set_auto_retry_enabled,
         set_auto_compaction_enabled_callback=settings.set_auto_compaction_enabled,
         compact_callback=partial(
@@ -545,7 +578,7 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             session_runtime,
             compaction_runtime,
         ),
-        abort_compaction_callback=lambda: _abort_session(session_runtime),
+        abort_compaction_callback=compaction_runtime.abort,
     )
     session_inspector = AgentSessionInspector(
         agent=agent,
@@ -559,18 +592,9 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         get_last_diagnostics=diagnostics_bridge.get_last_diagnostics,
         get_model_selection=selection_runtime.get_model_selection,
         is_host_running=lambda: session_runtime.is_active,
-        get_compaction_reserve_tokens=lambda: _compaction_policy(
-            settings.get_compaction_settings(),
-            compaction_capability.policy,
-        ).reserve_tokens,
-        get_compaction_compact_percent=lambda: _compaction_policy(
-            settings.get_compaction_settings(),
-            compaction_capability.policy,
-        ).compact_percent,
-        get_compaction_keep_recent_tokens=lambda: _compaction_policy(
-            settings.get_compaction_settings(),
-            compaction_capability.policy,
-        ).keep_recent_tokens,
+        get_compaction_reserve_tokens=lambda: get_compaction_policy().reserve_tokens,
+        get_compaction_compact_percent=lambda: get_compaction_policy().compact_percent,
+        get_compaction_keep_recent_tokens=lambda: get_compaction_policy().keep_recent_tokens,
     )
     return SessionComposition(
         capability_runtime=capability_runtime,
@@ -679,14 +703,18 @@ def _retry_policy(settings: object) -> RetryPolicy:
     )
 
 
-def _compaction_policy(settings: object, capability: TranscriptCompactionPolicy):
-    if not getattr(settings, "enabled", False) and not any(
-        hasattr(settings, field)
-        for field in ("reserve_tokens", "compact_percent", "keep_recent_tokens")
-    ):
+def _compaction_policy(
+    settings: object | None,
+    capability: TranscriptCompactionPolicy,
+) -> TranscriptCompactionPolicy:
+    if settings is None:
         return capability
     return TranscriptCompactionPolicy(
-        enabled=bool(getattr(settings, "enabled", capability.enabled)),
+        enabled=_bool_setting(
+            settings,
+            "enabled",
+            capability.enabled,
+        ),
         reserve_tokens=_int_setting(
             settings,
             "reserve_tokens",
@@ -710,6 +738,11 @@ def _int_setting(settings: object, name: str, fallback: int) -> int:
     return fallback if value is None else int(value)
 
 
+def _bool_setting(settings: object, name: str, fallback: bool) -> bool:
+    value = getattr(settings, name, fallback)
+    return fallback if value is None else bool(value)
+
+
 def _float_setting(settings: object, name: str, fallback: float) -> float:
     value = getattr(settings, name, fallback)
     return fallback if value is None else float(value)
@@ -721,7 +754,7 @@ def _optional_int_setting(
     fallback: int | None,
 ) -> int | None:
     value = getattr(settings, name, fallback)
-    return None if value is None else int(value)
+    return fallback if value is None else int(value)
 
 
 async def sleep_for_retry(delay_ms: int, signal: CancellationSignal) -> None:
@@ -739,20 +772,18 @@ async def sleep_for_retry(delay_ms: int, signal: CancellationSignal) -> None:
 
 
 async def _execute_compaction(
-    executor: CompactionExecutor,
+    executor: ProductCompactionExecutor,
     agent: Agent,
     preparation: CompactionPreparation,
     custom_instructions: str | None,
 ) -> CompactionResult:
-    kwargs: dict[str, object] = {
-        "preparation": preparation,
-        "model": agent.model,
-        "headers": None,
-        "signal": agent.signal,
-    }
-    if custom_instructions is not None:
-        kwargs["custom_instructions"] = custom_instructions
-    return await executor(**kwargs)
+    return await executor(
+        preparation=preparation,
+        model=agent.model,
+        headers=None,
+        signal=agent.signal,
+        custom_instructions=custom_instructions,
+    )
 
 
 async def _compact_manual(
@@ -770,10 +801,6 @@ async def _compact_manual(
     )
     assert result is not None
     return result
-
-
-def _abort_session(session_runtime: SessionRuntime) -> None:
-    session_runtime.abort()
 
 
 async def _set_model(
@@ -827,7 +854,17 @@ async def _reload_resources_from_watch(
         await refresh_async()
 
 
+def _last_assistant_message(
+    messages: Sequence[object],
+) -> AssistantMessage | None:
+    for message in reversed(messages):
+        if isinstance(message, AssistantMessage):
+            return message
+    return None
+
+
 __all__ = [
+    "ProductCompactionExecutor",
     "SessionComposition",
     "SessionCompositionPorts",
     "compose_session_runtime",

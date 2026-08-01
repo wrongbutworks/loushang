@@ -91,6 +91,8 @@ from loushang.harness.transcript.lifecycle import (
 from loushang.harness.transcript.maintenance import (
     AgentTranscriptCompactionRuntime,
     AgentTranscriptRetryRuntime,
+    AutoCompactionOutcome,
+    CompactionAborted,
     CompactionDecision,
     CompactionHookDecision,
     CompactionHookRequest,
@@ -228,6 +230,7 @@ from loushang.harness.transcript.writer import (
 )
 
 __all__ = [
+    "AutoCompactionOutcome",
     "AGENT_MESSAGE_KIND",
     "APPLICATION_MESSAGE_KIND",
     "COMMAND_EXECUTION_KIND",
@@ -291,6 +294,7 @@ __all__ = [
     "CompactionDecision",
     "CompactionHookDecision",
     "CompactionHookRequest",
+    "CompactionAborted",
     "CompactionPlan",
     "CompactionPreparation",
     "CompactionResult",

@@ -6,6 +6,7 @@ from typing import Protocol
 
 from loushang.agent import AbortSignal, AgentEvent
 from loushang.ai.types import AssistantMessage
+from loushang.harness.transcript import CompactionResult
 
 AppendMessage = Callable[[object], Awaitable[str]]
 EventDispatcher = Callable[..., Awaitable[None]]
@@ -13,7 +14,9 @@ ExtensionEventEmitter = Callable[[AgentEvent], Awaitable[None]]
 ToolExecutionErrorRecorder = Callable[[AgentEvent], None]
 ExtensionDiagnosticsSync = Callable[..., None]
 AssistantResponseErrorRecorder = Callable[[AssistantMessage], None]
-AutoCompactionChecker = Callable[[AssistantMessage], Awaitable[object | None]]
+AutoCompactionChecker = Callable[
+    [AssistantMessage], Awaitable[CompactionResult | None]
+]
 QueuedMessageConsumer = Callable[[object], bool]
 
 

@@ -12,7 +12,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from loushang.agent import Agent, AgentEvent, ThinkingLevel
+from loushang.agent import Agent, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import AssistantMessage
 from loushang.harness.approval import (
@@ -23,7 +23,6 @@ from loushang.harness.capabilities import CapabilityCompositionRuntime
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticPhase
 from loushang.harness.events import (
-    CompactionReason,
     PackageProgressChanged,
     project_session_runtime_event,
 )
@@ -40,7 +39,6 @@ from loushang.harness.extensions.context import (
     SessionBeforeTreeEvent,
     SessionShutdownEvent,
 )
-from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.permissions import (
     PermissionProfileSnapshot,
 )
@@ -110,7 +108,6 @@ from loushang.harness.transcript import (
     AgentTranscriptRetryRuntime,
     AgentTranscriptSelectionRuntime,
     BranchSummaryOutput,
-    CompactionPreparation,
     CompactionResult,
     CompactionStatus,
     ProductTranscriptSession,
@@ -195,9 +192,6 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         return self._create_replaced_session_context(
             self if session is None else session
         )
-
-    def _get_registered_provider(self, name: str):
-        return self._extension_provider_controller.get_registered_provider(name)
 
     async def set_active_tools(self, tool_names: list[str]) -> None:
         await self._operations.set_active_tools(tool_names, emit_refresh=True)
@@ -335,24 +329,11 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
             operations=_bash_operations_from_extension_result(event_result)
         )
 
-    def _execute_resource_command(self, invocation_name: str, args: str):
-        return self._command_controller.execute_resource_command(invocation_name, args)
-
-    def _record_command_not_found(self, invocation_name: str, args: str) -> None:
-        self._command_controller.record_command_not_found(invocation_name, args)
-
     async def get_command_argument_completions(
         self, invocation_name: str, prefix: str
     ) -> list[object] | None:
         return await self._command_controller.get_command_argument_completions(
             invocation_name, prefix
-        )
-
-    def _record_extension_command_error(
-        self, *, command: ResolvedCommand, exc: BaseException
-    ) -> None:
-        self._command_controller.record_extension_command_error(
-            command=command, exc=exc
         )
 
     def get_context_usage(self):
@@ -386,25 +367,8 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     async def _reload_from_extension(self) -> None:
         await self._extension_bridge.bind(reason="reload")
 
-    async def _set_model_internal(
-        self, model: object, *, emit_refresh: bool, source: str = "set"
-    ) -> None:
-        await self._operations.set_model(
-            model, emit_refresh=emit_refresh, source=source
-        )
-
     def _apply_active_tools(self, tool_names: list[str]) -> None:
         self._operations.apply_active_tools(tool_names)
-
-    async def _set_active_tools_internal(
-        self, tool_names: list[str], *, emit_refresh: bool
-    ) -> None:
-        await self._operations.set_active_tools(tool_names, emit_refresh=emit_refresh)
-
-    async def _compact_manual(
-        self, custom_instructions: str | None = None
-    ) -> CompactionResult:
-        return await self._operations.compact_manual(custom_instructions)
 
     async def maybe_compact_after_turn(
         self, assistant_message: AssistantMessage
@@ -527,11 +491,6 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     def _refresh_resources_for_extension_runtime(self) -> None:
         self._resource_refresh_runtime.refresh()
 
-    async def _reload_resources_from_watch(self) -> None:
-        await self._resource_refresh_runtime.refresh_async(reason="watch")
-        if self._extension_runner is not None:
-            await self._extension_bridge.refresh(reason="resource_watch")
-
     def _resource_watch_paths(self) -> list[Path]:
         cwd = Path(self.session_manager.get_cwd())
         paths: set[Path] = {
@@ -566,17 +525,6 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         if settings_manager is not None:
             settings_manager.reload()
         self._configure_package_resource_roots()
-
-    def _refresh_package_resources(self) -> None:
-        self._package_controller.refresh_package_resources()
-
-    async def _prepare_configured_remote_package_records(self) -> None:
-        await self._package_controller.prepare_configured_remote_package_records()
-
-    def _record_package_update_check_diagnostics(
-        self, updates: list[dict[str, object]]
-    ) -> None:
-        self._package_controller.record_package_update_check_diagnostics(updates)
 
     def _configure_package_resource_roots(self) -> None:
         self._package_controller.configure_package_resource_roots()
@@ -718,44 +666,6 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     ) -> None:
         await self._operations.dispatch_event(event, source_record_id=source_record_id)
 
-    def _get_compaction_settings(self) -> object:
-        return self._settings_controller.get_compaction_settings()
-
-    def _get_retry_settings(self) -> object:
-        return self._settings_controller.get_retry_settings()
-
-    async def _check_auto_compaction(
-        self, assistant_message: AssistantMessage
-    ) -> CompactionResult | None:
-        return await self._operations.check_auto_compaction(assistant_message)
-
-    async def _compact_before_prompt(self) -> CompactionResult | None:
-        return await self._operations.compact_before_prompt()
-
-    async def _compact_internal(
-        self,
-        *,
-        reason: CompactionReason,
-        will_retry: bool,
-        raise_on_error: bool,
-        custom_instructions: str | None = None,
-    ) -> CompactionResult | None:
-        return await self._operations.compact_internal(
-            reason=reason,
-            will_retry=will_retry,
-            raise_on_error=raise_on_error,
-            custom_instructions=custom_instructions,
-        )
-
-    async def _execute_selected_compaction(
-        self,
-        preparation: CompactionPreparation,
-        custom_instructions: str | None,
-    ) -> CompactionResult:
-        return await self._operations.execute_selected_compaction(
-            preparation, custom_instructions
-        )
-
     def _preflight_user_input(
         self, user_input: str, *, allow_extension_commands: bool = True
     ):
@@ -770,19 +680,6 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
             user_input, allow_extension_commands=allow_extension_commands
         )
 
-    def _extract_extension_command_invocation(
-        self, user_input: str
-    ) -> tuple[str, str] | None:
-        return self._command_controller.extract_extension_command_invocation(user_input)
-
-    def _raise_if_queued_extension_command(self, user_input: str) -> None:
-        self._command_controller.raise_if_queued_extension_command(user_input)
-
-    def _record_preflight_diagnostics(
-        self, diagnostics: tuple[DiagnosticDraft, ...]
-    ) -> None:
-        self._command_controller.record_preflight_diagnostics(diagnostics)
-
     def _sync_extension_diagnostics(
         self,
         *,
@@ -792,14 +689,6 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
 
     def _record_runtime_exception(self, *, code: str, exc: Exception | str) -> None:
         self._diagnostics_bridge.record_runtime_exception(code=code, exc=exc)
-
-    def _record_assistant_response_error(
-        self, assistant_message: AssistantMessage
-    ) -> None:
-        self._diagnostics_bridge.record_assistant_response_error(assistant_message)
-
-    def _record_tool_execution_error(self, event: AgentEvent) -> None:
-        self._diagnostics_bridge.record_tool_execution_error(event)
 
     def _record_extension_runtime_diagnostic(self, diagnostic: DiagnosticDraft) -> None:
         self._diagnostics_bridge.record_extension_runtime_diagnostic(diagnostic)

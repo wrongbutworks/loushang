@@ -49,6 +49,10 @@ def project_session_runtime_event(
         }
         if payload.usage is not None:
             result["usage"] = payload.usage
+        for name in ("stage", "product_id", "session_id", "tokens_before"):
+            value = getattr(payload, name)
+            if value is not None:
+                result[name] = value
         return result
     if isinstance(payload, ContextCompactionCompleted):
         result = {
@@ -64,6 +68,18 @@ def project_session_runtime_event(
             result["usage_before"] = payload.usage_before
         if payload.usage_after is not None:
             result["usage_after"] = payload.usage_after
+        for name in (
+            "stage",
+            "product_id",
+            "session_id",
+            "duration_ms",
+            "tokens_before",
+            "tokens_after",
+            "checkpoint_record_id",
+        ):
+            value = getattr(payload, name)
+            if value is not None:
+                result[name] = value
         return result
     if isinstance(payload, RetryStarted):
         attempt = payload.attempt

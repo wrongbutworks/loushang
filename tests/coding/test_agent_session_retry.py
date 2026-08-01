@@ -532,7 +532,11 @@ def test_agent_session_overflow_routes_to_compaction_instead_of_retry(
     async def _fake_continue_run():
         raise AssertionError("overflow should not trigger retry continue_run")
 
-    monkeypatch.setattr(session, "_compact_internal", _fake_compact_internal)
+    monkeypatch.setattr(
+        session._compaction_runtime,
+        "compact",
+        _fake_compact_internal,
+    )
     monkeypatch.setattr(
         session._session_runtime, "schedule_continue_run", _fake_continue_run
     )

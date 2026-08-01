@@ -7,6 +7,7 @@ from typing import Literal, NotRequired, TypeAlias, TypedDict
 from loushang.agent.types import AgentEvent
 from loushang.harness.events.session import (
     CompactionReason,
+    CompactionStage,
     PackageProgressAction,
     PackageProgressType,
 )
@@ -22,6 +23,10 @@ class CompactionStartEvent(TypedDict):
     type: Literal["compaction_start"]
     reason: CompactionReason
     usage: NotRequired[object]
+    stage: NotRequired[CompactionStage]
+    product_id: NotRequired[str]
+    session_id: NotRequired[str]
+    tokens_before: NotRequired[int]
 
 
 class CompactionEndEvent(TypedDict):
@@ -33,6 +38,13 @@ class CompactionEndEvent(TypedDict):
     error_message: NotRequired[str]
     usage_before: NotRequired[object]
     usage_after: NotRequired[object]
+    stage: NotRequired[CompactionStage]
+    product_id: NotRequired[str]
+    session_id: NotRequired[str]
+    duration_ms: NotRequired[float]
+    tokens_before: NotRequired[int]
+    tokens_after: NotRequired[int]
+    checkpoint_record_id: NotRequired[str]
 
 
 class AutoRetryStartEvent(TypedDict):

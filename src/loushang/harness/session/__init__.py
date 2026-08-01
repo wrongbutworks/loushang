@@ -134,6 +134,7 @@ from loushang.harness.session.commands.execution import (
 from loushang.harness.session.commands.projection import (
     project_standard_session_command_result,
 )
+from loushang.harness.session.composition import ProductCompactionExecutor
 from loushang.harness.session.cwd_audit import (
     CwdBoundServicesAudit,
     CwdBoundServicesAuditIssue,
@@ -451,6 +452,7 @@ __all__ = [
     "ModelSelectionApplyResult",
     "PromptController",
     "ProductSessionRuntime",
+    "ProductCompactionExecutor",
     "ProductSessionRuntimePorts",
     "ProductTranscriptSessionLifecyclePorts",
     "ProductTranscriptSessionLifecycleStore",
