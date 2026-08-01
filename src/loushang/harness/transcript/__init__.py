@@ -21,6 +21,17 @@ from loushang.harness.transcript.compaction import (
     plan_turn_aware_compaction,
     prepare_turn_aware_compaction,
 )
+from loushang.harness.transcript.context_usage import (
+    ContextUsageSnapshot,
+    build_context_usage_snapshot,
+    calculate_context_tokens,
+    current_context_usage,
+    estimate_context_tokens,
+    estimate_message_tokens,
+    has_post_compaction_usage,
+    latest_compaction_entry,
+    model_context_window,
+)
 from loushang.harness.transcript.directory import (
     AgentTranscriptDirectoryRuntime,
     IndexRefreshFailureRecorder,
@@ -99,18 +110,9 @@ from loushang.harness.transcript.maintenance import (
     CompactionPreparation,
     CompactionResult,
     CompactionStatus,
-    ContextUsageSnapshot,
     TranscriptCompactionPolicy,
-    build_context_usage_snapshot,
     build_threshold_compaction_decision,
-    calculate_context_tokens,
-    current_context_usage,
-    estimate_context_tokens,
-    estimate_message_tokens,
-    has_post_compaction_usage,
     is_compaction_aborted,
-    latest_compaction_entry,
-    model_context_window,
 )
 from loushang.harness.transcript.migration import (
     CURRENT_SESSION_VERSION,

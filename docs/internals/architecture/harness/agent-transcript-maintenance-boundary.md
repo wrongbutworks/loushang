@@ -18,8 +18,10 @@ around an open Agent transcript:
   failed-assistant removal, and common retry events.
 
 The implementation keeps these responsibilities physically cohesive:
-`transcript.maintenance` owns context accounting and compaction, while
-`transcript.retry_runtime` owns the Agent-message retry adapter. The public
+`transcript.context_usage` owns Agent-message and checkpoint-aware context
+accounting, `transcript.maintenance` owns compaction decisions and lifecycle,
+and `transcript.retry_runtime` owns the Agent-message retry adapter. Generic
+usage values and budget arithmetic remain in `harness.context`. The public
 `loushang.harness.transcript` exports remain the stable Product-facing API.
 
 This is an optional Agent/AI profile. `harness.conversation` and generic
@@ -80,8 +82,9 @@ projection, default settings, and TUI/RPC/HTML output projection.
 
 ## Dependency Rule
 
-`harness.transcript.maintenance` and `harness.transcript.retry_runtime` may
-import public Agent message aliases and stable `loushang.ai.types`. The adjacent optional
+`harness.transcript.context_usage`, `harness.transcript.maintenance`, and
+`harness.transcript.retry_runtime` may import public Agent message aliases and
+stable `loushang.ai.types`. The adjacent optional
 `harness.transcript.summarization` module may additionally use the
 public `loushang.ai` completion surface. None of these modules may import Coding, AI
 provider registries, provider implementations, authentication resolution,
