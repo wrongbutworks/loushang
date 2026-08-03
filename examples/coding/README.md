@@ -62,7 +62,11 @@ uv run python examples/coding/21_switch_model_route.py
 uv run python examples/coding/22_usage_inspect.py --endpoint kimi-code-anthropic --strict
 uv run python examples/coding/25_render_tool_events_contract.py
 uv run python examples/coding/extensions/01_lifecycle.py
+uv run python examples/coding/arch/01_import_graph.py
 ```
+
+架构分析示例直接使用公共 `loushang.coding.arch` API；更多说明见
+[`arch/README.md`](arch/README.md)。仓库自动化使用的 `scripts/arch` 入口不作为用户示例。
 
 如果已经激活本仓库虚拟环境，也可以直接用 `python`：
 

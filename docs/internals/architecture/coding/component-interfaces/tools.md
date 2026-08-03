@@ -63,6 +63,9 @@
   “分析架构”工具替代可验证的结构化查询。
 - CLI 或 Coding 配置的显式常驻选择应增量加入默认工具集合，不得替换 builtin tools，也不得绕过 `--no-tools`、session
   allowlist、delegated execution profile、policy 或 approval 边界。
+- 高频查询复用语言 provider 输出的版本化逐文件事实缓存，而不缓存 AST 或主观架构结论。CLI 默认在
+  `LOUSHANG_HOME/cache/coding/arch` 使用磁盘缓存；长驻工具复用进程内缓存。内容指纹负责单文件失效，文件集合变化则使依赖
+  模块索引的事实整体失效；缓存损坏或版本不兼容必须安全退化为重新分析。
 
 ## Reference Implementation Alignment
 
