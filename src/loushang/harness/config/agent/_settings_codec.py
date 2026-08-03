@@ -14,6 +14,7 @@ from loushang.harness.config import (
     encode_dataclass_diff,
 )
 from loushang.harness.config.agent.types import (
+    CapabilityMountMode,
     ControlConfig,
     DoubleEscapeAction,
     ExternalToolPolicy,
@@ -170,6 +171,37 @@ def _deserialize_headless_approval_mode(value: object) -> HeadlessApprovalMode |
     if value not in {"allow", "deny"}:
         raise ValueError("approval_mode must be 'allow', 'deny', or null")
     return cast(HeadlessApprovalMode, value)
+
+
+def _deserialize_capability_mounts(
+    value: object,
+) -> dict[str, CapabilityMountMode]:
+    if not isinstance(value, Mapping):
+        raise TypeError("capabilities must be a JSON object")
+    normalized: dict[str, CapabilityMountMode] = {}
+    for capability, mode in value.items():
+        if not isinstance(capability, str) or not capability.strip():
+            raise TypeError("capability ids must be non-empty strings")
+        if mode not in {"disabled", "on_demand", "always"}:
+            raise ValueError(
+                f"capabilities.{capability} must be 'disabled', "
+                "'on_demand', or 'always'"
+            )
+        normalized[capability.strip()] = cast(CapabilityMountMode, mode)
+    return normalized
+
+
+def _decode_capability_mount_overlay(
+    value: object,
+    current: object,
+) -> dict[str, CapabilityMountMode]:
+    existing = (
+        dict(cast(Mapping[str, CapabilityMountMode], current))
+        if isinstance(current, Mapping)
+        else {}
+    )
+    existing.update(_deserialize_capability_mounts(value))
+    return existing
 
 
 def _deserialize_permission_profile(value: object) -> PermissionProfileId:
@@ -620,6 +652,13 @@ CONTROL_CONFIG_CODEC = SchemaConfigCodec(
             decode=_decode_keybinding_overlay,
             encode=lambda current, default: _serialize_keybindings(
                 cast(Mapping[str, KeybindingValue], current)
+            ),
+        ),
+        ConfigFieldSpec(
+            "capabilities",
+            decode=_decode_capability_mount_overlay,
+            encode=lambda current, default: dict(
+                cast(Mapping[str, CapabilityMountMode], current)
             ),
         ),
         ConfigFieldSpec(

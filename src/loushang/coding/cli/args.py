@@ -19,6 +19,7 @@ from loushang.harness.cli.agent_args import (
     agent_cli_argument_values,
     normalize_agent_cli_argv,
 )
+from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.extensions.types import RegisteredFlag, ResolvedFlag
 
 MethodListFormat = Literal["tsv", "json"]
@@ -33,6 +34,7 @@ _BUILTIN_FLAG_NAMES = CODING_CLI_PROFILE.option_names
 class CliArgs(AgentCliArgs):
     """Standard Agent CLI values plus Coding's Method/Work additions."""
 
+    capability_modes: tuple[tuple[str, CapabilityMountMode], ...]
     method: str | None
     no_method: bool
     prompt_steps: str | None
@@ -93,6 +95,7 @@ def parse_args(
             unknown_flags=unknown_flags,
             extension_flag_values=extension_flag_values,
         ),
+        capability_modes=tuple(namespace.capability),
         method=namespace.method,
         no_method=namespace.no_method,
         prompt_steps=namespace.prompt_steps,

@@ -1,4 +1,11 @@
 from loushang.ai.model import ModelSelection
+from loushang.coding.arch import (
+    CODING_ARCH_TOOL_PACK,
+    INSPECT_IMPORT_GRAPH_TOOL_NAME,
+    ImportGraphToolRuntime,
+    create_inspect_import_graph_tool_definition,
+    register_coding_arch_tools,
+)
 from loushang.coding.bootstrap import (
     AgentSessionServices,
     BootstrapServices,
@@ -13,6 +20,7 @@ from loushang.coding.bootstrap import (
     create_agent_session_services,
     create_services,
 )
+from loushang.coding.capabilities import CODING_ARCH_CAPABILITY
 from loushang.coding.prompt import assemble_system_prompt
 from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
@@ -45,6 +53,7 @@ from loushang.coding.tool_pack import (
     register_coding_builtin_tools,
 )
 from loushang.harness.config.agent import (
+    CapabilityMountMode,
     ControlConfig,
     HeadlessApprovalMode,
     SettingsManager,
@@ -58,7 +67,10 @@ __all__ = [
     "BootstrapServices",
     "CODING_BUILTIN_TOOL_NAMES",
     "CODING_BUILTIN_TOOL_PACK",
+    "CODING_ARCH_CAPABILITY",
+    "CODING_ARCH_TOOL_PACK",
     "CODING_TOOL_NAMES",
+    "CapabilityMountMode",
     "CompactionDecision",
     "ContextUsage",
     "ContextUsageSnapshot",
@@ -69,6 +81,8 @@ __all__ = [
     "DefaultResourceLoader",
     "ExtensionFlagValues",
     "HeadlessApprovalMode",
+    "INSPECT_IMPORT_GRAPH_TOOL_NAME",
+    "ImportGraphToolRuntime",
     "ModelSelection",
     "ToolSettings",
     "TreeNavigationResult",
@@ -87,9 +101,11 @@ __all__ = [
     "create_coding_tool_definition",
     "create_coding_tool_definitions",
     "create_coding_tools",
+    "create_inspect_import_graph_tool_definition",
     "create_agent_session_runtime",
     "create_services",
     "check_sdk_surface_compatibility",
     "get_sdk_surface_snapshot",
     "register_coding_builtin_tools",
+    "register_coding_arch_tools",
 ]
