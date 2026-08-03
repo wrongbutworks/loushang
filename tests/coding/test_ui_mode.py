@@ -13,6 +13,13 @@ class _TTYStringIO(StringIO):
         return True
 
 
+def _runtime_for(session: object) -> object:
+    return SimpleNamespace(
+        get_current_session=lambda: session,
+        current_session=session,
+    )
+
+
 class _Session:
     def __init__(self) -> None:
         self.session_id = "254d6156"
@@ -167,7 +174,7 @@ def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> 
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
-            runtime=object(),
+            runtime=_runtime_for(session),
             session=session,
             stdin=StringIO("hello\n"),
             stdout=StringIO(),

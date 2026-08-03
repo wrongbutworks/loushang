@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import inspect
 from typing import Any, TextIO, cast
 
@@ -13,6 +12,8 @@ from loushang.harness.session import (
     SessionControlPort,
     SessionOperationAvailability,
     SessionOperationResolver,
+    current_session_operation_resolver,
+    require_active_session,
     session_operation_resolver,
 )
 from loushang.harnesstui.commands.catalog import ConversationCommandCatalog
@@ -21,7 +22,9 @@ from loushang.harnesstui.conversation.action_presentation import (
     PresentedConversationActionHost,
     build_standard_presented_conversation_action_host,
 )
-from loushang.harnesstui.conversation.attachments import PromptImageAttachment
+from loushang.harnesstui.conversation.agent_binding import (
+    agent_image_parts_from_prompt_attachments,
+)
 from loushang.harnesstui.conversation.controller import (
     ConversationUiController,
     build_standard_conversation_ui_controller,
@@ -108,35 +111,26 @@ def build_coding_session_operation_resolver(
     runtime: Any | None = None,
     availability: SessionOperationAvailability | None = None,
 ) -> SessionOperationResolver:
-    """Bind shared operations to Coding's dynamically current Session."""
+    """Bind Coding to an explicit dynamic or fixed Session operation mode."""
 
-    def current_session() -> Any:
-        return _current_coding_session(session=session, runtime=runtime)
-
-    def current_control() -> SessionControlPort:
-        current = current_session()
-        return cast(
-            SessionControlPort,
-            getattr(current, "session_control", current),
+    if runtime is not None:
+        return current_session_operation_resolver(
+            runtime,
+            availability=availability,
         )
 
+    control = cast(
+        SessionControlPort,
+        getattr(session, "session_control", session),
+    )
     return session_operation_resolver(
-        current_control,
+        lambda: control,
         availability=availability,
     )
 
 
 def _current_coding_session(*, session: Any, runtime: Any | None) -> Any:
-    if runtime is not None:
-        getter = getattr(runtime, "get_current_session", None)
-        if callable(getter):
-            current = getter()
-            if current is not None:
-                return current
-        current = getattr(runtime, "current_session", None)
-        if current is not None:
-            return current
-    return session
+    return session if runtime is None else require_active_session(runtime)
 
 
 def _coding_result_from_command_execution(
@@ -174,24 +168,7 @@ def build_screen_coding_action_host(
         controller=controller,
         stderr=stderr,
         verbose=verbose,
-        attachments=image_parts_from_prompt_attachments,
-    )
-
-
-def image_parts_from_prompt_attachments(
-    attachments: tuple[PromptImageAttachment, ...],
-) -> tuple[ImagePart, ...] | None:
-    """Convert neutral prompt attachments at Coding's Agent boundary."""
-
-    if not attachments:
-        return None
-    return tuple(
-        ImagePart(
-            type="image",
-            data=base64.b64encode(attachment.bytes).decode("ascii"),
-            mime_type=attachment.mime_type,
-        )
-        for attachment in attachments
+        attachments=agent_image_parts_from_prompt_attachments,
     )
 
 
@@ -199,5 +176,4 @@ __all__ = [
     "build_coding_session_operation_resolver",
     "build_coding_ui_controller",
     "build_screen_coding_action_host",
-    "image_parts_from_prompt_attachments",
 ]
