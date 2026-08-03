@@ -90,5 +90,6 @@ footer behavior, replacement validation, and Product compaction/branch hooks.
 The public Coding session surface and RPC wire shape remain unchanged.  The
 slice is accepted only when focused session tests, AgentSession regressions,
 architecture import-boundary tests, Ruff, and `git diff --check` pass.  A
-Harness fake-product probe must construct and dispose the shared runtime
-without importing `loushang.coding`.
+Harness fake-product probe must construct two independently configured Product
+sessions, exercise their compaction strategies and hooks, and dispose them
+without cross-session state or any import of `loushang.coding`.

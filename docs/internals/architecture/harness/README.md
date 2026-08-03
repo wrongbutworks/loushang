@@ -370,3 +370,10 @@ Harness refactoring should not block TUI, agent, or AI provider work:
 When a migration slice touches a product adapter, it must prove product behavior
 is unchanged with focused tests and must keep the architecture import-boundary
 tests passing.
+
+## Quality Gate
+
+Run `make check-harness` before integrating Harness changes. The gate runs Ruff
+over Harness production and tests, mypy over the complete Harness source tree,
+the full Harness test suite, and the architecture import-boundary contracts.
+The same command runs in the dedicated Harness CI workflow.
