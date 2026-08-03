@@ -27,6 +27,26 @@ implementation can only be retrieved through the exact slot/key/version
 selection in a resolved profile and the explicit `RuntimeProfileBinding`
 returned by its binder.
 
+## Internal Module Ownership
+
+`loushang.harness.runtime.profile` is the stable public facade. Its private
+implementation modules have one-way responsibilities:
+
+- `_profile_types` owns declarations, diagnostics, resolved values, and the
+  current snapshot codec;
+- `_profile_admission` owns Product grants, admission results, and admission
+  policy;
+- `_profile_resolution` owns deterministic source/selection ordering and pure
+  plan-to-profile resolution;
+- `_profile_binding` owns factory/disposer types, registries, live creation,
+  rebind, rollback, leases, and disposal;
+- `_profile_standard` owns standard capability slots.
+
+Admission, resolution, binding, and standard slots may depend on profile types.
+Binding and resolution do not depend on each other, and types do not import the
+higher-level policy or lifecycle modules. Snapshot remains with profile types
+until it develops an independently versioned evolution path.
+
 ## Data Model
 
 `ProductRuntimePlan` contains a Product identifier, declared

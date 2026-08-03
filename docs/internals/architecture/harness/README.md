@@ -12,7 +12,23 @@ Harness may provide explicitly overridable cross-product platform defaults. It
 does not own domain content/defaults, product stores, product UI state, method
 planning, work event persistence, or AI provider behavior.
 
-## Documents
+## Start Here
+
+- [Current Owner Map](current-owner-map.md) is the short, authoritative map of
+  implemented owners, dependency direction, Product-owned exclusions, Session
+  assembly phases, and public loading boundaries.
+- [Shared Capability Boundaries](shared-capability-boundaries.md) provides the
+  detailed owner matrix for cross-Product capabilities.
+- [Refactoring Principles](refactoring-principles.md) defines the evidence and
+  neutrality gates for moving code into Harness.
+
+The source tree and architecture gates are authoritative. Boundary documents
+describe accepted decisions. Files named `plan`, `inventory`, `ledger`,
+`status`, or `migration` are delivery and historical records; they do not
+override the current owner map merely because they contain a target-state
+description.
+
+## Boundary And Migration Document Catalog
 
 - [Product And OEM Glossary](../../glossary/loushang-product.md) defines the
   canonical Product, OEM, Product Package, Capability Pack, Product Capability
