@@ -79,7 +79,8 @@ Compatibility facades remain stable while large implementation pipelines are
 split internally. The implemented dependency direction is:
 
 ```text
-resource loader facade -> snapshot pipeline -> discovery + resolution
+resource loader facade -> snapshot pipeline -> context discovery
+                                            -> other source discovery + resolution
                                             -> precedence policy
 
 runtime profile facade -> types + admission + resolution + binding + standard slots
@@ -92,10 +93,16 @@ settings schema codec / typed settings patch -> Agent settings types
 workspace read tool + Host prompt input -> workspace image payload owner
 ```
 
-Resolution never imports discovery, live profile binding never imports profile
-resolution, and internal leaf modules never import their public facade. The
-Agent settings manager depends only on the explicit codec/patch ports enforced
-by the architecture tests, not on field-level serializer helpers.
+Context-file ancestor traversal, configured filename precedence, descriptor
+construction, and nearest-context selection belong to
+`harness.resources._loader_discovery_context`. Filesystem, package, temporary,
+and built-in source discovery remain in `_loader_discovery`; both discovery
+owners are called by the snapshot pipeline and do not depend on one another.
+Resolution never imports either discovery owner, live profile binding never
+imports profile resolution, and internal leaf modules never import their public
+facade. The Agent settings manager depends only on the explicit codec/patch
+ports enforced by the architecture tests, not on field-level serializer
+helpers.
 Image MIME validation, header dimensions, base64 encoding, inline limits, and
 resize preparation belong to `harness.tools.workspace.image_payload`; neither
 prompt input nor the read tool owns a second copy of those rules or the
@@ -110,8 +117,8 @@ policy remains with Host prompt input and the read tool.
 - no Session-module import from the Session public barrel;
 - one-way Harness, Work, and Channel dependencies;
 - explicit Agent/AI import allowlists for optional profiles;
-- one-way resource loader, runtime profile, and Agent settings internals with
-  an exact manager-to-codec/patch import allowlist;
+- one-way resource loader, context discovery, runtime profile, and Agent
+  settings internals with an exact manager-to-codec/patch import allowlist;
 - one shared workspace image-payload owner consumed by Host prompt input and
   the read tool;
 - Product-neutral Harnesstui and shared runtime owners.
