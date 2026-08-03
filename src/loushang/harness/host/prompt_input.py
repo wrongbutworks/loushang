@@ -7,7 +7,6 @@ the input protocol and image payload construction remain shared.
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
@@ -15,10 +14,8 @@ from typing import TextIO
 from loushang.ai.types import ImagePart
 from loushang.harness.tools.workspace.image_payload import (
     PillowReadImageResizer,
-    detect_image_dimensions,
     detect_supported_image_mime_type,
-    format_image_dimension_note,
-    image_exceeds_inline_limits,
+    prepare_image_payload_sync,
 )
 from loushang.harness.tools.workspace.path_utils import resolve_tool_path
 
@@ -87,45 +84,29 @@ def _process_file_args(
             continue
         mime_type = detect_supported_image_mime_type(path, payload)
         if mime_type is not None:
-            original_dimensions = detect_image_dimensions(mime_type, payload)
-            dimensions = original_dimensions
-            encoded = base64.b64encode(payload)
-            dimension_note: str | None = None
-            if auto_resize_images and image_exceeds_inline_limits(encoded, dimensions):
-                resize_result = PillowReadImageResizer().resize_image(
-                    payload,
-                    mime_type=mime_type,
-                    dimensions=dimensions,
+            prepared = prepare_image_payload_sync(
+                payload,
+                mime_type=mime_type,
+                image_resizer=PillowReadImageResizer(),
+                resize_if_needed=auto_resize_images,
+            )
+            if prepared.resize_attempted and not prepared.resize_succeeded:
+                text_parts.append(
+                    f'<file name="{path}">'
+                    "[Image omitted: could not be resized below the inline image size limit.]"
+                    "</file>\n"
                 )
-                if resize_result is None:
-                    text_parts.append(
-                        f'<file name="{path}">'
-                        "[Image omitted: could not be resized below the inline image size limit.]"
-                        "</file>\n"
-                    )
-                    continue
-                payload = resize_result.payload
-                mime_type = resize_result.mime_type
-                dimensions = resize_result.dimensions or detect_image_dimensions(
-                    mime_type, payload
-                )
-                original_dimensions = (
-                    resize_result.original_dimensions or original_dimensions
-                )
-                encoded = base64.b64encode(payload)
-                dimension_note = format_image_dimension_note(
-                    original_dimensions=original_dimensions,
-                    dimensions=dimensions,
-                    was_resized=resize_result.was_resized,
-                )
+                continue
             images.append(
                 ImagePart(
                     type="image",
-                    data=encoded.decode("ascii"),
-                    mime_type=mime_type,
+                    data=prepared.base64_payload.decode("ascii"),
+                    mime_type=prepared.mime_type,
                 )
             )
-            text_parts.append(f'<file name="{path}">{dimension_note or ""}</file>\n')
+            text_parts.append(
+                f'<file name="{path}">{prepared.dimension_note or ""}</file>\n'
+            )
             continue
         try:
             content = payload.decode("utf-8")

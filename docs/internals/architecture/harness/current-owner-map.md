@@ -96,9 +96,11 @@ Resolution never imports discovery, live profile binding never imports profile
 resolution, and internal leaf modules never import their public facade. The
 Agent settings manager depends only on the explicit codec/patch ports enforced
 by the architecture tests, not on field-level serializer helpers.
-Image MIME validation, header dimensions, inline limits, and default resizing
-belong to `harness.tools.workspace.image_payload`; neither prompt input nor the
-read tool owns a second copy of those rules.
+Image MIME validation, header dimensions, base64 encoding, inline limits, and
+resize preparation belong to `harness.tools.workspace.image_payload`; neither
+prompt input nor the read tool owns a second copy of those rules or the
+inspect/resize/recompute sequence. Consumer-specific omission and presentation
+policy remains with Host prompt input and the read tool.
 
 ## Architecture Gates
 

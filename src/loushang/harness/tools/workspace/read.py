@@ -1,4 +1,3 @@
-import base64
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
@@ -16,11 +15,20 @@ from .builtin_renderers import render_read_call, render_read_result
 from .image_payload import (
     PillowReadImageResizer,
     ReadImageResizer,
-    ReadImageResizeResult,
-    detect_image_dimensions,
     detect_supported_image_mime_type,
-    format_image_dimension_note,
-    image_exceeds_inline_limits,
+    prepare_image_payload,
+)
+from .image_payload import (
+    ReadImageResizeResult as ReadImageResizeResult,
+)
+from .image_payload import (
+    detect_image_dimensions as detect_image_dimensions,
+)
+from .image_payload import (
+    format_image_dimension_note as format_image_dimension_note,
+)
+from .image_payload import (
+    image_exceeds_inline_limits as image_exceeds_inline_limits,
 )
 from .operations import (
     normalize_read_operations,
@@ -31,7 +39,6 @@ from .runtime import (
     coerce_int_parameter,
     pi_truncation_details,
     prepare_tool_arguments,
-    resolve_maybe_awaitable,
 )
 from .truncate import DEFAULT_MAX_BYTES, format_size, truncate_head, truncation_details
 from .types import PiTruncationDetails, ToolDefinition
@@ -119,50 +126,25 @@ def create_read_tool_definition(
             resolved, payload, operations=ops
         )
         if mime_type is not None:
-            dimensions = detect_image_dimensions(mime_type, payload)
-            original_dimensions = dimensions
-            encoded = base64.b64encode(payload)
             model_supports_image_input = _model_supports_image_input(ctx.model)
-            text_note = f"Read image file [{mime_type}]"
-            exceeds_inline_limits = image_exceeds_inline_limits(encoded, dimensions)
             omit_for_model = model_supports_image_input is False
-            image_resized = False
-            resize_note: str | None = None
-            resize_unavailable = False
-            resize_reason: str | None = None
-            if exceeds_inline_limits and not omit_for_model and auto_resize_images:
-                resize_unavailable = _image_resize_unavailable(image_resizer)
-                resize_reason = "unavailable" if resize_unavailable else None
-                resize_result = (
-                    None
-                    if resize_unavailable
-                    else await _resize_image_payload(
-                        image_resizer,
-                        payload,
-                        mime_type=mime_type,
-                        dimensions=dimensions,
-                    )
-                )
-                if resize_result is not None:
-                    payload = resize_result.payload
-                    mime_type = resize_result.mime_type
-                    dimensions = resize_result.dimensions or detect_image_dimensions(
-                        mime_type, payload
-                    )
-                    original_dimensions = (
-                        resize_result.original_dimensions or original_dimensions
-                    )
-                    encoded = base64.b64encode(payload)
-                    image_resized = resize_result.was_resized
-                    resize_note = format_image_dimension_note(
-                        original_dimensions=original_dimensions,
-                        dimensions=dimensions,
-                        was_resized=image_resized,
-                    )
-                    exceeds_inline_limits = image_exceeds_inline_limits(
-                        encoded, dimensions
-                    )
-                    text_note = f"Read image file [{mime_type}]"
+            prepared = await prepare_image_payload(
+                payload,
+                mime_type=mime_type,
+                image_resizer=image_resizer,
+                resize_if_needed=auto_resize_images and not omit_for_model,
+            )
+            payload = prepared.payload
+            mime_type = prepared.mime_type
+            encoded = prepared.base64_payload
+            dimensions = prepared.dimensions
+            original_dimensions = prepared.original_dimensions
+            text_note = f"Read image file [{mime_type}]"
+            exceeds_inline_limits = prepared.exceeds_inline_limits
+            image_resized = prepared.was_resized
+            resize_note = prepared.dimension_note
+            resize_unavailable = prepared.resize_unavailable
+            resize_reason = "unavailable" if resize_unavailable else None
 
             if exceeds_inline_limits or omit_for_model:
                 omit_reasons = []
@@ -327,23 +309,6 @@ def _resolve_image_resizer(options: ReadToolOptions | None) -> ReadImageResizer:
     if options is not None and options.image_resizer is not None:
         return options.image_resizer
     return PillowReadImageResizer()
-
-
-def _image_resize_unavailable(image_resizer: ReadImageResizer) -> bool:
-    is_available = getattr(image_resizer, "is_available", None)
-    return bool(callable(is_available) and not is_available())
-
-
-async def _resize_image_payload(
-    image_resizer: ReadImageResizer,
-    payload: bytes,
-    *,
-    mime_type: str,
-    dimensions: tuple[int, int] | None,
-) -> ReadImageResizeResult | None:
-    return await resolve_maybe_awaitable(
-        image_resizer.resize_image(payload, mime_type=mime_type, dimensions=dimensions)
-    )
 
 
 async def _read_file_payload(

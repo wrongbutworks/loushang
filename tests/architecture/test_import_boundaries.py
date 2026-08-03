@@ -1179,6 +1179,7 @@ def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:
     image_payload_path = Path("src/loushang/harness/tools/workspace/image_payload.py")
     read_tool_path = Path("src/loushang/harness/tools/workspace/read.py")
     prompt_input_source = prompt_input_path.read_text(encoding="utf-8")
+    read_tool_source = read_tool_path.read_text(encoding="utf-8")
     agent_args_source = Path("src/loushang/harness/cli/agent_args.py").read_text(
         encoding="utf-8"
     )
@@ -1193,6 +1194,14 @@ def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:
     assert "loushang.harness.tools.workspace.image_payload" in read_tool_imports
     assert "loushang.harness.tools.workspace.read" not in image_payload_imports
     assert "loushang.harness.host" not in image_payload_imports
+    assert "prepare_image_payload_sync" in prompt_input_source
+    assert "prepare_image_payload(" in read_tool_source
+    assert "base64.b64encode" not in prompt_input_source
+    assert "base64.b64encode" not in read_tool_source
+    assert ".resize_image(" not in prompt_input_source
+    assert ".resize_image(" not in read_tool_source
+    assert "_resize_image_payload" not in read_tool_source
+    assert "_image_resize_unavailable" not in read_tool_source
     assert "resolve_prompt_input" in agent_args_source
     assert "resolve_agent_prompt_input" in cli_source
     assert "_process_file_args" not in cli_source
