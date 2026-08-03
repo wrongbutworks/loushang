@@ -1,6 +1,7 @@
 from loushang.harness.continuity.activation import (
     ActivationLeaseStateError,
     CallbackPreparedActivationLease,
+    consume_prepared_activation,
 )
 from loushang.harness.continuity.composition import (
     BoundContinuityProvider,
@@ -67,4 +68,5 @@ __all__ = [
     "ProviderPageState",
     "ProviderQuery",
     "compose_experience_continuity",
+    "consume_prepared_activation",
 ]

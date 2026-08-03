@@ -603,3 +603,51 @@ def test_admission_requires_an_explicit_grant_and_slot_permission() -> None:
         slot_permissions={"tool.packs": frozenset({"tool.execute"})},
     ).admit(plan, (extension_layer,))
     assert admitted.require_valid() == (extension_layer,)
+
+
+def test_runtime_profile_public_facades_export_the_same_admission_types() -> None:
+    import loushang.harness.runtime as runtime_module
+    import loushang.harness.runtime.profile as profile_module
+
+    assert runtime_module.RuntimeProfileAdmission is profile_module.RuntimeProfileAdmission
+    assert (
+        runtime_module.RuntimeProfileAdmissionPolicy
+        is profile_module.RuntimeProfileAdmissionPolicy
+    )
+    assert (
+        runtime_module.RuntimeProfileLayerGrant
+        is profile_module.RuntimeProfileLayerGrant
+    )
+
+
+def test_admission_leaves_unknown_slots_for_the_resolver_to_diagnose() -> None:
+    plan = ProductRuntimePlan(product_id="research", slots=(TOOL_PACKS_SLOT,))
+    layer = RuntimeProfileLayer(
+        source="extension",
+        layer_id="extension:unknown-slot",
+        selections=(
+            RuntimeCapabilitySelection(
+                slot="unknown.capability",
+                implementation="unknown",
+                implementation_version=1,
+            ),
+        ),
+    )
+    policy = RuntimeProfileAdmissionPolicy(
+        grants=(
+            RuntimeProfileLayerGrant(
+                source="extension",
+                layer_id="extension:unknown-slot",
+                allowed_slots=frozenset(),
+            ),
+        )
+    )
+
+    admitted = policy.admit(plan, (layer,))
+
+    assert admitted.require_valid() == (layer,)
+    with pytest.raises(RuntimeProfileResolutionError) as exc_info:
+        RuntimeProfileResolver().resolve(plan, layers=admitted.layers)
+    assert [diagnostic.code for diagnostic in exc_info.value.diagnostics] == [
+        "unknown_slot"
+    ]

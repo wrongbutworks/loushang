@@ -378,6 +378,7 @@ def test_harnesstui_neutral_modules_do_not_import_product_or_model_layers() -> N
     } == {
         "loushang.agent.types",
         "loushang.agent.types.AgentToolResult",
+        "loushang.agent.types.ImagePart",
     }
 
 
@@ -611,6 +612,16 @@ def test_coding_agent_session_delegates_shared_turn_runtime_to_harness() -> None
         "AgentEventRouter",
     )
     assert all(owner not in coding_source for owner in forbidden_owners)
+
+
+def test_agent_product_contract_probe_has_no_coding_dependency() -> None:
+    contract_path = Path("tests/harness/session/test_agent_product_contract.py")
+
+    assert "loushang.coding" not in _absolute_imports(contract_path)
+    source = contract_path.read_text(encoding="utf-8")
+    assert "AgentProductSession" in source
+    assert 'product_id="research"' in source
+    assert 'product_id="design"' in source
 
 
 def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
@@ -1213,6 +1224,9 @@ def test_reusable_product_bindings_use_existing_shared_owners() -> None:
     agent_application = Path(
         "src/loushang/harnesstui/conversation/agent_application.py"
     ).read_text(encoding="utf-8")
+    agent_surfaces = Path(
+        "src/loushang/harnesstui/conversation/agent_surfaces.py"
+    ).read_text(encoding="utf-8")
     coding_ui = Path("src/loushang/coding/ui/mode.py").read_text(encoding="utf-8")
     coding_surfaces = Path("src/loushang/coding/ui/screen_surfaces.py").read_text(
         encoding="utf-8"
@@ -1229,14 +1243,20 @@ def test_reusable_product_bindings_use_existing_shared_owners() -> None:
     assert "WorkspaceToolProfile" in coding_tools
     assert "resolve_tool_contributions" not in coding_tools
     assert "handle_agent_screen_approval" in agent_application
-    assert "bind_agent_screen_approval_presenter" in coding_ui
+    assert "completion_provider_loader" in agent_application
+    assert "bind_agent_screen_approval_presenter" not in coding_ui
     assert "build_agent_screen_surface_workflow_ports" in agent_application
-    assert "build_agent_screen_surface_workflow_ports" in coding_surfaces
+    assert "build_agent_screen_surface_workflow_ports" in agent_surfaces
+    assert "build_standard_agent_screen_surface_workflow_ports" in coding_surfaces
     for duplicate in (
         "snapshot_conversation_command_catalog",
         "format_available_session_models",
         "get_session_model_identity",
         "ApprovalSurfaceDecision",
+        "build_fork_prompt_surface_view",
+        "build_session_rename_surface_view",
+        "build_side_question_surface_view",
+        "build_agent_tree_surface_view",
     ):
         assert duplicate not in coding_surfaces
     assert not Path("src/loushang/coding/policy/tui.py").exists()
@@ -1244,6 +1264,29 @@ def test_reusable_product_bindings_use_existing_shared_owners() -> None:
     assert "sleep_for_retry" in coding_session
     assert "MissingSessionCwdIssue" not in coding_runtime
     assert "_coding_missing_cwd_error" not in coding_runtime
+
+
+def test_multiagent_recipe_cli_contract_and_projection_are_harness_owned() -> None:
+    shared_cli = Path("src/loushang/harness/cli/multiagent.py")
+    coding_cli = Path("src/loushang/coding/cli/multiagent.py")
+    shared_source = shared_cli.read_text(encoding="utf-8")
+    coding_source = coding_cli.read_text(encoding="utf-8")
+
+    assert not any(
+        _matches_any(imported, ("loushang.coding",))
+        for imported in _absolute_imports(shared_cli)
+    )
+    assert "class MultiAgentRunCommand" in shared_source
+    assert "def resolve_multiagent_prompt" in shared_source
+    assert "def write_multiagent_recipe_result" in shared_source
+    assert "run_coding_multiagent_command" in coding_source
+    for duplicate in (
+        "class MultiAgentRunCommand",
+        "def parse_multiagent_command",
+        "def resolve_multiagent_prompt",
+        "def write_multiagent_recipe_result",
+    ):
+        assert duplicate not in coding_source
 
 
 def test_plain_services_and_work_bindings_remove_coding_duplication() -> None:
@@ -2947,10 +2990,12 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
 
     expected_imports = {
         Path("src/loushang/harness/config/agent/manager.py"): {
-            "loushang.harness.config.ConfigFieldSpec",
             "loushang.harness.config.LayeredConfig",
-            "loushang.harness.config.SchemaConfigCodec",
             "loushang.harness.config.ScopedConfigRuntime",
+        },
+        Path("src/loushang/harness/config/agent/_settings_codec.py"): {
+            "loushang.harness.config.ConfigFieldSpec",
+            "loushang.harness.config.SchemaConfigCodec",
         },
         Path("src/loushang/coding/bootstrap.py"): {
             "loushang.harness.session.AgentProductConstructionBinding",
@@ -3022,6 +3067,125 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
         "ScopedConfigRuntime",
     }
     assert config_symbols.isdisjoint(set(harness.__all__))
+
+
+def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
+    runtime_root = Path("src/loushang/harness/runtime")
+    resource_root = Path("src/loushang/harness/resources")
+    settings_root = Path("src/loushang/harness/config/agent")
+    required_paths = {
+        runtime_root / "_profile_admission.py",
+        runtime_root / "_profile_binding.py",
+        runtime_root / "_profile_resolution.py",
+        runtime_root / "_profile_types.py",
+        resource_root / "_loader_discovery.py",
+        resource_root / "_loader_pipeline.py",
+        resource_root / "_loader_precedence.py",
+        resource_root / "_loader_resolution.py",
+        settings_root / "_settings_codec.py",
+        settings_root / "_settings_patch.py",
+        settings_root / "manager.py",
+    }
+    assert sorted(path.as_posix() for path in required_paths if not path.exists()) == []
+
+    forbidden_by_path = {
+        runtime_root / "_profile_types.py": (
+            "loushang.harness.runtime._profile_admission",
+            "loushang.harness.runtime._profile_binding",
+            "loushang.harness.runtime._profile_resolution",
+            "loushang.harness.runtime._profile_standard",
+        ),
+        runtime_root / "_profile_admission.py": (
+            "loushang.harness.runtime._profile_binding",
+            "loushang.harness.runtime._profile_resolution",
+            "loushang.harness.runtime._profile_standard",
+        ),
+        runtime_root / "_profile_binding.py": (
+            "loushang.harness.runtime._profile_admission",
+            "loushang.harness.runtime._profile_resolution",
+        ),
+        runtime_root / "_profile_resolution.py": (
+            "loushang.harness.runtime._profile_admission",
+            "loushang.harness.runtime._profile_binding",
+        ),
+        runtime_root / "_profile_standard.py": (
+            "loushang.harness.runtime._profile_admission",
+            "loushang.harness.runtime._profile_binding",
+            "loushang.harness.runtime._profile_resolution",
+        ),
+        resource_root / "_loader_precedence.py": (
+            "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources._loader_resolution",
+            "loushang.harness.resources.loader",
+        ),
+        resource_root / "_loader_discovery.py": (
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources._loader_precedence",
+            "loushang.harness.resources._loader_resolution",
+            "loushang.harness.resources.loader",
+        ),
+        resource_root / "_loader_resolution.py": (
+            "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources.loader",
+        ),
+        resource_root / "_loader_pipeline.py": (
+            "loushang.harness.resources.loader",
+        ),
+        settings_root / "types.py": (
+            "loushang.harness.config.agent._settings_codec",
+            "loushang.harness.config.agent._settings_patch",
+            "loushang.harness.config.agent.manager",
+        ),
+        settings_root / "_settings_codec.py": (
+            "loushang.harness.config.agent._settings_patch",
+            "loushang.harness.config.agent.manager",
+        ),
+        settings_root / "_settings_patch.py": (
+            "loushang.harness.config.agent.manager",
+        ),
+    }
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for path, forbidden_prefixes in forbidden_by_path.items()
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, forbidden_prefixes)
+    ]
+
+    manager_path = settings_root / "manager.py"
+    codec_module = "loushang.harness.config.agent._settings_codec"
+    patch_module = "loushang.harness.config.agent._settings_patch"
+    manager_internal_allowlist = {
+        codec_module,
+        f"{codec_module}.CONTROL_CONFIG_CODEC",
+        f"{codec_module}.control_config_to_patch",
+        f"{codec_module}.decode_package_source",
+        patch_module,
+        f"{patch_module}.UNSET",
+        f"{patch_module}.AgentSettingsUpdate",
+        f"{patch_module}.Unset",
+        f"{patch_module}.build_settings_patch",
+        f"{patch_module}.prepare_override_patch",
+    }
+    offenders.extend(
+        f"{manager_path.as_posix()} imports non-port symbol {imported}"
+        for imported in _absolute_imports(manager_path)
+        if _matches_any(imported, (codec_module, patch_module))
+        and imported not in manager_internal_allowlist
+    )
+
+    assert offenders == []
+    assert "loushang.harness.runtime._profile_admission" in _absolute_imports(
+        runtime_root / "profile.py"
+    )
+    assert "loushang.harness.resources._loader_pipeline" in _absolute_imports(
+        resource_root / "loader.py"
+    )
+    assert "loushang.harness.resources._loader_precedence" in _absolute_imports(
+        resource_root / "_loader_resolution.py"
+    )
+    assert patch_module in _absolute_imports(manager_path)
 
 
 def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:

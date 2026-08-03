@@ -62,7 +62,11 @@ def test_resource_snapshot_to_bundle_preserves_agents_and_active_prompt_order() 
 
     assert bundle.agents_path == Path("/tmp/project/AGENTS.md")
     assert bundle.agents_md == "Project guidance"
-    assert bundle.prompt_fragments == ["Project guidance", "Project prompt", "Built-in prompt"]
+    assert bundle.prompt_fragments == [
+        "Project guidance",
+        "Project prompt",
+        "Built-in prompt",
+    ]
     assert bundle.prompt_descriptors == [agents, project_prompt, built_in_prompt]
     assert bundle.prompts == [project_prompt, built_in_prompt]
 
@@ -94,7 +98,9 @@ def test_default_resource_loader_discovers_agents_md_from_parent_dirs(tmp_path) 
     assert snapshot.source_kinds == ("built_in", "project_local")
 
 
-def test_default_resource_loader_stacks_global_and_ancestor_context_files(tmp_path) -> None:
+def test_default_resource_loader_stacks_global_and_ancestor_context_files(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -165,7 +171,9 @@ def test_default_resource_loader_can_disable_context_files(tmp_path) -> None:
     assert bundle.prompt_descriptors == []
 
 
-def test_default_resource_loader_exposes_user_global_skill_candidates_and_project_precedence(tmp_path) -> None:
+def test_default_resource_loader_exposes_user_global_skill_candidates_and_project_precedence(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -187,7 +195,10 @@ def test_default_resource_loader_exposes_user_global_skill_candidates_and_projec
     assert [skill.source_kind for skill in bundle.skills] == ["project_local"]
     assert [skill.source_scope for skill in bundle.skills] == ["project"]
     assert [skill.source_root for skill in bundle.skills] == [project_root / "skills"]
-    assert [(skill.name, skill.source_kind, skill.source_root) for skill in snapshot.candidate_skill_descriptors] == [
+    assert [
+        (skill.name, skill.source_kind, skill.source_root)
+        for skill in snapshot.candidate_skill_descriptors
+    ] == [
         ("review", "user_global", user_root / "skills"),
         ("review", "project_local", project_root / "skills"),
     ]
@@ -199,7 +210,9 @@ def test_default_resource_loader_exposes_user_global_skill_candidates_and_projec
     )
 
 
-def test_default_resource_loader_loads_explicit_resource_paths_when_defaults_disabled(tmp_path) -> None:
+def test_default_resource_loader_loads_explicit_resource_paths_when_defaults_disabled(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -207,11 +220,17 @@ def test_default_resource_loader_loads_explicit_resource_paths_when_defaults_dis
     project_root = tmp_path / "project"
     project_root.mkdir()
     (project_root / "skills" / "project").mkdir(parents=True)
-    (project_root / "skills" / "project" / "SKILL.md").write_text("Project skill", encoding="utf-8")
+    (project_root / "skills" / "project" / "SKILL.md").write_text(
+        "Project skill", encoding="utf-8"
+    )
     (project_root / "prompts").mkdir()
-    (project_root / "prompts" / "project.md").write_text("Project prompt", encoding="utf-8")
+    (project_root / "prompts" / "project.md").write_text(
+        "Project prompt", encoding="utf-8"
+    )
     (project_root / "extensions").mkdir()
-    (project_root / "extensions" / "project.py").write_text("def register(api): pass\n", encoding="utf-8")
+    (project_root / "extensions" / "project.py").write_text(
+        "def register(api): pass\n", encoding="utf-8"
+    )
     (project_root / "themes").mkdir()
     (project_root / "themes" / "project.json").write_text("{}", encoding="utf-8")
 
@@ -249,13 +268,23 @@ def test_default_resource_loader_loads_explicit_resource_paths_when_defaults_dis
     assert [prompt.source_kind for prompt in bundle.prompts] == ["temporary"]
     assert [extension.source_kind for extension in bundle.extensions] == ["temporary"]
     assert [theme.source_kind for theme in bundle.themes] == ["temporary"]
-    assert "project" not in [skill.name for skill in snapshot.candidate_skill_descriptors]
-    assert "project" not in [prompt.name for prompt in snapshot.candidate_prompt_descriptors]
-    assert "project" not in [extension.name for extension in snapshot.candidate_extension_descriptors]
-    assert "project" not in [theme.name for theme in snapshot.candidate_theme_descriptors]
+    assert "project" not in [
+        skill.name for skill in snapshot.candidate_skill_descriptors
+    ]
+    assert "project" not in [
+        prompt.name for prompt in snapshot.candidate_prompt_descriptors
+    ]
+    assert "project" not in [
+        extension.name for extension in snapshot.candidate_extension_descriptors
+    ]
+    assert "project" not in [
+        theme.name for theme in snapshot.candidate_theme_descriptors
+    ]
 
 
-def test_default_resource_loader_resolves_system_prompt_sources_as_text_or_files(tmp_path) -> None:
+def test_default_resource_loader_resolves_system_prompt_sources_as_text_or_files(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -270,10 +299,15 @@ def test_default_resource_loader_resolves_system_prompt_sources_as_text_or_files
     loader.discover_resources(tmp_path)
 
     assert loader.get_system_prompt_override() == "Inline system"
-    assert loader.get_append_system_prompt_overrides() == ["Append from file", "Inline append"]
+    assert loader.get_append_system_prompt_overrides() == [
+        "Append from file",
+        "Inline append",
+    ]
 
 
-def test_default_resource_loader_discovers_extension_descriptors_and_reports_invalid_entries(tmp_path) -> None:
+def test_default_resource_loader_discovers_extension_descriptors_and_reports_invalid_entries(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -283,17 +317,29 @@ def test_default_resource_loader_discovers_extension_descriptors_and_reports_inv
     extensions_dir = project_root / "extensions"
     nested.mkdir(parents=True)
     (extensions_dir / "sample_ext").mkdir(parents=True)
-    (extensions_dir / "sample_ext" / "extension.py").write_text("EXTENSION = object()\n", encoding="utf-8")
-    (extensions_dir / "file_ext.py").write_text("EXTENSION = object()\n", encoding="utf-8")
+    (extensions_dir / "sample_ext" / "extension.py").write_text(
+        "EXTENSION = object()\n", encoding="utf-8"
+    )
+    (extensions_dir / "file_ext.py").write_text(
+        "EXTENSION = object()\n", encoding="utf-8"
+    )
     (extensions_dir / "broken_ext").mkdir(parents=True)
-    (extensions_dir / "README.txt").write_text("not a directory entry", encoding="utf-8")
+    (extensions_dir / "README.txt").write_text(
+        "not a directory entry", encoding="utf-8"
+    )
     (project_root / "AGENTS.md").write_text("Project guidance", encoding="utf-8")
 
     loader = DefaultResourceLoader()
     bundle = loader.discover_resources(nested)
 
-    assert [descriptor.name for descriptor in bundle.extensions] == ["file_ext", "sample_ext"]
-    assert [descriptor.id for descriptor in bundle.extensions] == ["file_ext.py", "sample_ext"]
+    assert [descriptor.name for descriptor in bundle.extensions] == [
+        "file_ext",
+        "sample_ext",
+    ]
+    assert [descriptor.id for descriptor in bundle.extensions] == [
+        "file_ext.py",
+        "sample_ext",
+    ]
     assert [diagnostic.code for diagnostic in bundle.diagnostics] == [
         "missing_extension_entry",
         "unsupported_extension_entry",
@@ -301,11 +347,17 @@ def test_default_resource_loader_discovers_extension_descriptors_and_reports_inv
     assert bundle.diagnostics[0].source_path == extensions_dir / "broken_ext"
     assert bundle.diagnostics[1].source_path == extensions_dir / "README.txt"
     snapshot = loader.get_resource_snapshot()
-    assert [descriptor.name for descriptor in snapshot.candidate_extension_descriptors] == ["sample_ext", "file_ext"]
-    assert [descriptor.name for descriptor in snapshot.active_extension_descriptors] == ["file_ext", "sample_ext"]
+    assert [
+        descriptor.name for descriptor in snapshot.candidate_extension_descriptors
+    ] == ["sample_ext", "file_ext"]
+    assert [
+        descriptor.name for descriptor in snapshot.active_extension_descriptors
+    ] == ["file_ext", "sample_ext"]
 
 
-def test_default_resource_loader_discovers_prompt_and_skill_descriptors_into_snapshot_and_bundle(tmp_path) -> None:
+def test_default_resource_loader_discovers_prompt_and_skill_descriptors_into_snapshot_and_bundle(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -328,13 +380,17 @@ def test_default_resource_loader_discovers_prompt_and_skill_descriptors_into_sna
     assert bundle.prompt_fragments == ["Project guidance", "Prompt rules"]
     assert [descriptor.name for descriptor in bundle.prompts] == ["repo"]
     assert [descriptor.id for descriptor in bundle.prompts] == ["repo.md"]
-    assert [descriptor.source_kind for descriptor in bundle.prompts] == ["project_local"]
+    assert [descriptor.source_kind for descriptor in bundle.prompts] == [
+        "project_local"
+    ]
     assert [descriptor.name for descriptor in bundle.skills] == ["review"]
     assert [descriptor.id for descriptor in bundle.skills] == ["review/SKILL.md"]
     prompts = loader.get_prompts()
     assert prompts["prompts"] == bundle.prompts
     assert loader.get_agents_files() == {
-        "agents_files": [{"path": str(project_root / "AGENTS.md"), "content": "Project guidance"}]
+        "agents_files": [
+            {"path": str(project_root / "AGENTS.md"), "content": "Project guidance"}
+        ]
     }
     assert loader.get_append_system_prompt() == ["Project guidance", "Prompt rules"]
     assert loader.get_system_prompt(base_prompt="Base") == (
@@ -348,8 +404,12 @@ def test_default_resource_loader_discovers_prompt_and_skill_descriptors_into_sna
     )
     assert loader.get_skills() == bundle.skills
     assert snapshot.active_agents_descriptor is not None
-    assert [descriptor.id for descriptor in snapshot.active_prompt_descriptors] == ["repo.md"]
-    assert [descriptor.id for descriptor in snapshot.active_skill_descriptors] == ["review/SKILL.md"]
+    assert [descriptor.id for descriptor in snapshot.active_prompt_descriptors] == [
+        "repo.md"
+    ]
+    assert [descriptor.id for descriptor in snapshot.active_skill_descriptors] == [
+        "review/SKILL.md"
+    ]
 
 
 def test_default_resource_loader_parses_skill_frontmatter_metadata(tmp_path) -> None:
@@ -382,7 +442,9 @@ def test_default_resource_loader_parses_skill_frontmatter_metadata(tmp_path) -> 
     assert skill.metadata["body"] == "Check the failing path first."
 
 
-def test_default_resource_loader_parses_prompt_argument_hint_frontmatter(tmp_path) -> None:
+def test_default_resource_loader_parses_prompt_argument_hint_frontmatter(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -418,10 +480,7 @@ def test_default_resource_loader_reports_invalid_prompt_frontmatter(tmp_path) ->
     prompts_dir = project_root / "prompts"
     prompts_dir.mkdir(parents=True)
     (prompts_dir / "broken.md").write_text(
-        "---\n"
-        "description: [broken\n"
-        "---\n\n"
-        "Review $1.",
+        "---\ndescription: [broken\n---\n\nReview $1.",
         encoding="utf-8",
     )
 
@@ -429,14 +488,18 @@ def test_default_resource_loader_reports_invalid_prompt_frontmatter(tmp_path) ->
     bundle = loader.discover_resources(project_root)
 
     assert bundle.prompts == []
-    assert [diagnostic.code for diagnostic in bundle.diagnostics] == ["invalid_prompt_frontmatter"]
+    assert [diagnostic.code for diagnostic in bundle.diagnostics] == [
+        "invalid_prompt_frontmatter"
+    ]
     diagnostic = bundle.diagnostics[0]
     assert diagnostic.details["resource_type"] == "prompt"
     assert diagnostic.source_path == prompts_dir / "broken.md"
     assert "line 1" in diagnostic.message
 
 
-def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loading_skill(tmp_path) -> None:
+def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loading_skill(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -445,10 +508,7 @@ def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loadi
     skill_dir = project_root / "skills" / "broken"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
-        "---\n"
-        "description: [broken\n"
-        "---\n\n"
-        "Broken skill body.",
+        "---\ndescription: [broken\n---\n\nBroken skill body.",
         encoding="utf-8",
     )
 
@@ -458,7 +518,9 @@ def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loadi
 
     assert bundle.skills == []
     assert snapshot.candidate_skill_descriptors == ()
-    assert [diagnostic.code for diagnostic in bundle.diagnostics] == ["invalid_skill_frontmatter"]
+    assert [diagnostic.code for diagnostic in bundle.diagnostics] == [
+        "invalid_skill_frontmatter"
+    ]
     diagnostic = bundle.diagnostics[0]
     assert diagnostic.details["resource_type"] == "skill"
     assert diagnostic.details["source_kind"] == "project_local"
@@ -466,7 +528,9 @@ def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loadi
     assert "line 1" in diagnostic.message
 
 
-def test_default_resource_loader_reports_skill_frontmatter_validation_diagnostics(tmp_path) -> None:
+def test_default_resource_loader_reports_skill_frontmatter_validation_diagnostics(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -475,10 +539,7 @@ def test_default_resource_loader_reports_skill_frontmatter_validation_diagnostic
     skill_dir = project_root / "skills" / "Debugging"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
-        "---\n"
-        "name: Bad_Name\n"
-        "---\n\n"
-        "Check the failing path first.",
+        "---\nname: Bad_Name\n---\n\nCheck the failing path first.",
         encoding="utf-8",
     )
 
@@ -490,7 +551,9 @@ def test_default_resource_loader_reports_skill_frontmatter_validation_diagnostic
         "invalid_skill_name",
         "invalid_skill_name",
     ]
-    assert [diagnostic.details["resource_type"] for diagnostic in bundle.diagnostics] == [
+    assert [
+        diagnostic.details["resource_type"] for diagnostic in bundle.diagnostics
+    ] == [
         "skill",
         "skill",
         "skill",
@@ -500,7 +563,9 @@ def test_default_resource_loader_reports_skill_frontmatter_validation_diagnostic
     } == {"description", "name"}
 
 
-def test_default_resource_loader_recursively_discovers_skills_and_skips_ignored_directories(tmp_path) -> None:
+def test_default_resource_loader_recursively_discovers_skills_and_skips_ignored_directories(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -537,8 +602,12 @@ def test_default_resource_loader_recursively_discovers_skills_and_skips_ignored_
     hidden_skill = project_root / "skills" / ".hidden" / "ignored"
     ignored_skill.mkdir(parents=True)
     hidden_skill.mkdir(parents=True)
-    (ignored_skill / "SKILL.md").write_text("---\nname: ignored\n---\n\nIgnored.", encoding="utf-8")
-    (hidden_skill / "SKILL.md").write_text("---\nname: hidden\n---\n\nIgnored.", encoding="utf-8")
+    (ignored_skill / "SKILL.md").write_text(
+        "---\nname: ignored\n---\n\nIgnored.", encoding="utf-8"
+    )
+    (hidden_skill / "SKILL.md").write_text(
+        "---\nname: hidden\n---\n\nIgnored.", encoding="utf-8"
+    )
 
     loader = DefaultResourceLoader()
     bundle = loader.discover_resources(project_root)
@@ -563,7 +632,9 @@ def test_default_resource_loader_applies_skill_ignore_files(tmp_path) -> None:
     included_skill.mkdir(parents=True)
     ignored_skill.mkdir(parents=True)
     nested_ignored_skill.mkdir(parents=True)
-    (skills_dir / ".gitignore").write_text("ignored/\nworkflows/generated/\n", encoding="utf-8")
+    (skills_dir / ".gitignore").write_text(
+        "ignored/\nworkflows/generated/\n", encoding="utf-8"
+    )
     (included_skill / "SKILL.md").write_text(
         "---\nname: included\n"
         "description: Included workflow.\n"
@@ -572,17 +643,11 @@ def test_default_resource_loader_applies_skill_ignore_files(tmp_path) -> None:
         encoding="utf-8",
     )
     (ignored_skill / "SKILL.md").write_text(
-        "---\nname: ignored\n"
-        "description: Ignored workflow.\n"
-        "---\n\n"
-        "Ignored.",
+        "---\nname: ignored\ndescription: Ignored workflow.\n---\n\nIgnored.",
         encoding="utf-8",
     )
     (nested_ignored_skill / "SKILL.md").write_text(
-        "---\nname: generated\n"
-        "description: Generated workflow.\n"
-        "---\n\n"
-        "Ignored.",
+        "---\nname: generated\ndescription: Generated workflow.\n---\n\nIgnored.",
         encoding="utf-8",
     )
 
@@ -596,7 +661,7 @@ def test_default_resource_loader_applies_skill_ignore_files(tmp_path) -> None:
 def test_default_resource_loader_prefers_project_local_prompt_when_built_in_candidate_collides(
     tmp_path, monkeypatch
 ) -> None:
-    import loushang.harness.resources.loader as loader_module
+    import loushang.harness.resources._loader_discovery as discovery_module
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -619,19 +684,29 @@ def test_default_resource_loader_prefers_project_local_prompt_when_built_in_cand
         source="package_resource",
     )
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_prompts", lambda _package, *, source_root_order: ([built_in_prompt], []))
+    monkeypatch.setattr(
+        discovery_module,
+        "_discover_built_in_prompts",
+        lambda _package, *, source_root_order: ([built_in_prompt], []),
+    )
 
     loader = DefaultResourceLoader()
     bundle = loader.discover_resources(project_root)
     snapshot = loader.get_resource_snapshot()
 
     assert bundle.prompt_fragments == ["Project guidance", "Project rules"]
-    assert [descriptor.source_kind for descriptor in bundle.prompts] == ["project_local"]
-    assert [descriptor.source_kind for descriptor in snapshot.candidate_prompt_descriptors] == [
+    assert [descriptor.source_kind for descriptor in bundle.prompts] == [
+        "project_local"
+    ]
+    assert [
+        descriptor.source_kind for descriptor in snapshot.candidate_prompt_descriptors
+    ] == [
         "built_in",
         "project_local",
     ]
-    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == ["resource_collision"]
+    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == [
+        "resource_collision"
+    ]
     metadata = snapshot.diagnostics[0].details["metadata"]
     assert metadata["winner_path"] == str(prompts_dir / "repo.md")
     assert metadata["candidate_paths"] == (
@@ -647,7 +722,9 @@ def test_default_resource_loader_prefers_project_local_prompt_when_built_in_cand
     )
 
 
-def test_default_resource_loader_discovers_external_package_resources_before_built_in(tmp_path) -> None:
+def test_default_resource_loader_discovers_external_package_resources_before_built_in(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -664,12 +741,16 @@ def test_default_resource_loader_discovers_external_package_resources_before_bui
     snapshot = loader.get_resource_snapshot()
 
     assert "external_package" in snapshot.source_kinds
-    assert [descriptor.source_kind for descriptor in bundle.prompts] == ["external_package"]
+    assert [descriptor.source_kind for descriptor in bundle.prompts] == [
+        "external_package"
+    ]
     assert bundle.prompt_fragments == ["Package review rules"]
     assert bundle.prompts[0].source_root_order == 0
 
 
-def test_default_resource_loader_reports_missing_invalid_and_empty_package_roots(tmp_path) -> None:
+def test_default_resource_loader_reports_missing_invalid_and_empty_package_roots(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -686,19 +767,27 @@ def test_default_resource_loader_reports_missing_invalid_and_empty_package_roots
     loader = DefaultResourceLoader(package_roots=[missing_root, file_root, empty_root])
     loader.discover_resources(project_root)
 
-    diagnostics = loader.get_resource_diagnostics(source_kind="external_package", resource_type="package")
+    diagnostics = loader.get_resource_diagnostics(
+        source_kind="external_package", resource_type="package"
+    )
     assert [diagnostic.code for diagnostic in diagnostics] == [
         "missing_package_root",
         "invalid_package_root",
         "empty_package_root",
     ]
-    assert [diagnostic.source_path for diagnostic in diagnostics] == [missing_root.resolve(), file_root.resolve(), empty_root.resolve()]
+    assert [diagnostic.source_path for diagnostic in diagnostics] == [
+        missing_root.resolve(),
+        file_root.resolve(),
+        empty_root.resolve(),
+    ]
     assert diagnostics[0].details["metadata"]["package_root"] == str(
         missing_root.resolve()
     )
 
 
-def test_default_resource_loader_exposes_package_resource_summaries_and_filtered_diagnostics(tmp_path) -> None:
+def test_default_resource_loader_exposes_package_resource_summaries_and_filtered_diagnostics(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -739,10 +828,14 @@ def test_default_resource_loader_exposes_package_resource_summaries_and_filtered
         resource_type="extension",
         code="unsupported_extension_entry",
     )
-    assert [diagnostic.source_path for diagnostic in extension_diagnostics] == [extensions_dir / "README.txt"]
+    assert [diagnostic.source_path for diagnostic in extension_diagnostics] == [
+        extensions_dir / "README.txt"
+    ]
 
 
-def test_default_resource_loader_reload_resources_refreshes_cached_bundle(tmp_path) -> None:
+def test_default_resource_loader_reload_resources_refreshes_cached_bundle(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -768,7 +861,9 @@ def test_default_resource_loader_reload_resources_refreshes_cached_bundle(tmp_pa
     assert second_snapshot.active_agents_descriptor.text == "Updated version"
 
 
-def test_default_resource_loader_returns_empty_bundle_when_no_agents_md_exists(tmp_path) -> None:
+def test_default_resource_loader_returns_empty_bundle_when_no_agents_md_exists(
+    tmp_path,
+) -> None:
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
@@ -787,11 +882,14 @@ def test_default_resource_loader_returns_empty_bundle_when_no_agents_md_exists(t
     assert loader.get_resource_snapshot().source_kinds == ("built_in", "project_local")
 
 
-def test_prompt_same_precedence_collision_disables_only_that_prompt_identity(tmp_path, monkeypatch) -> None:
-    import loushang.harness.resources.loader as loader_module
+def test_prompt_same_precedence_collision_disables_only_that_prompt_identity(
+    tmp_path, monkeypatch
+) -> None:
+    import loushang.harness.resources._loader_pipeline as pipeline_module
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
+    from loushang.harness.resources._loader_types import _SourceDiscovery
     from loushang.harness.resources.types import PromptFragmentDescriptor
 
     root = tmp_path / "project"
@@ -813,11 +911,15 @@ def test_prompt_same_precedence_collision_disables_only_that_prompt_identity(tmp
         canonical_name="repo.md",
     )
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
     monkeypatch.setattr(
-        loader_module,
+        pipeline_module,
+        "_discover_built_in_resources",
+        lambda _packages: _SourceDiscovery(),
+    )
+    monkeypatch.setattr(
+        pipeline_module,
         "_discover_project_resources",
-        lambda _root: loader_module._SourceDiscovery(prompts=[prompt_a, prompt_b]),
+        lambda _root: _SourceDiscovery(prompts=[prompt_a, prompt_b]),
     )
 
     loader = DefaultResourceLoader()
@@ -826,14 +928,20 @@ def test_prompt_same_precedence_collision_disables_only_that_prompt_identity(tmp
 
     assert bundle.prompt_fragments == ["repo guidance"]
     assert snapshot.active_prompt_descriptors == ()
-    assert any(decision.logical_id == "repo.md" and decision.winner_id is None for decision in snapshot.merge_decisions)
+    assert any(
+        decision.logical_id == "repo.md" and decision.winner_id is None
+        for decision in snapshot.merge_decisions
+    )
 
 
-def test_skill_same_precedence_collision_disables_only_that_skill_identity(tmp_path, monkeypatch) -> None:
-    import loushang.harness.resources.loader as loader_module
+def test_skill_same_precedence_collision_disables_only_that_skill_identity(
+    tmp_path, monkeypatch
+) -> None:
+    import loushang.harness.resources._loader_pipeline as pipeline_module
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
+    from loushang.harness.resources._loader_types import _SourceDiscovery
     from loushang.harness.resources.types import SkillDescriptor
 
     root = tmp_path / "project"
@@ -854,11 +962,15 @@ def test_skill_same_precedence_collision_disables_only_that_skill_identity(tmp_p
         canonical_name="review/SKILL.md",
     )
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
     monkeypatch.setattr(
-        loader_module,
+        pipeline_module,
+        "_discover_built_in_resources",
+        lambda _packages: _SourceDiscovery(),
+    )
+    monkeypatch.setattr(
+        pipeline_module,
         "_discover_project_resources",
-        lambda _root: loader_module._SourceDiscovery(skills=[skill_a, skill_b]),
+        lambda _root: _SourceDiscovery(skills=[skill_a, skill_b]),
     )
 
     loader = DefaultResourceLoader()
@@ -874,43 +986,62 @@ def test_skill_same_precedence_collision_disables_only_that_skill_identity(tmp_p
     )
 
 
-def test_theme_same_precedence_collision_keeps_first_winner_and_records_loser(tmp_path, monkeypatch) -> None:
-    import loushang.harness.resources.loader as loader_module
+def test_theme_same_precedence_collision_keeps_first_winner_and_records_loser(
+    tmp_path, monkeypatch
+) -> None:
+    import loushang.harness.resources._loader_pipeline as pipeline_module
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
+    from loushang.harness.resources._loader_types import _SourceDiscovery
     from loushang.harness.resources.types import ThemeDescriptor
 
     root = tmp_path / "project"
     root.mkdir()
 
-    theme_a = ThemeDescriptor(name="clean", source_path=root / "themes" / "a.json", canonical_name="clean")
-    theme_b = ThemeDescriptor(name="clean", source_path=root / "themes" / "b.json", canonical_name="clean")
+    theme_a = ThemeDescriptor(
+        name="clean", source_path=root / "themes" / "a.json", canonical_name="clean"
+    )
+    theme_b = ThemeDescriptor(
+        name="clean", source_path=root / "themes" / "b.json", canonical_name="clean"
+    )
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
     monkeypatch.setattr(
-        loader_module,
+        pipeline_module,
+        "_discover_built_in_resources",
+        lambda _packages: _SourceDiscovery(),
+    )
+    monkeypatch.setattr(
+        pipeline_module,
         "_discover_project_resources",
-        lambda _root: loader_module._SourceDiscovery(themes=[theme_a, theme_b]),
+        lambda _root: _SourceDiscovery(themes=[theme_a, theme_b]),
     )
 
     loader = DefaultResourceLoader()
     loader.discover_resources(root)
     snapshot = loader.get_resource_snapshot()
 
-    assert [descriptor.source_path.name for descriptor in snapshot.active_theme_descriptors] == ["a.json"]
-    assert [descriptor.source_path.name for descriptor in snapshot.candidate_theme_descriptors] == ["a.json", "b.json"]
+    assert [
+        descriptor.source_path.name for descriptor in snapshot.active_theme_descriptors
+    ] == ["a.json"]
+    assert [
+        descriptor.source_path.name
+        for descriptor in snapshot.candidate_theme_descriptors
+    ] == ["a.json", "b.json"]
     assert any(
         diagnostic.details["resource_type"] == "theme"
         for diagnostic in snapshot.diagnostics
     )
 
 
-def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(tmp_path, monkeypatch) -> None:
-    import loushang.harness.resources.loader as loader_module
+def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(
+    tmp_path, monkeypatch
+) -> None:
+    import loushang.harness.resources._loader_pipeline as pipeline_module
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
+    from loushang.harness.resources._loader_types import _SourceDiscovery
 
     root = tmp_path / "project"
     themes_dir = root / "themes"
@@ -918,23 +1049,34 @@ def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(tmp_path,
     (themes_dir / "clean.json").write_text("{}", encoding="utf-8")
     (themes_dir / "README.md").write_text("not a theme", encoding="utf-8")
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
+    monkeypatch.setattr(
+        pipeline_module,
+        "_discover_built_in_resources",
+        lambda _packages: _SourceDiscovery(),
+    )
 
     loader = DefaultResourceLoader()
     loader.discover_resources(root)
     snapshot = loader.get_resource_snapshot()
 
-    assert [descriptor.canonical_name for descriptor in snapshot.candidate_theme_descriptors] == ["clean.json"]
-    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == ["unsupported_theme_entry"]
+    assert [
+        descriptor.canonical_name for descriptor in snapshot.candidate_theme_descriptors
+    ] == ["clean.json"]
+    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == [
+        "unsupported_theme_entry"
+    ]
     assert snapshot.diagnostics[0].details["resource_type"] == "theme"
     assert snapshot.diagnostics[0].source_path == themes_dir / "README.md"
 
 
-def test_theme_discovery_reports_invalid_json_theme_diagnostic(tmp_path, monkeypatch) -> None:
-    import loushang.harness.resources.loader as loader_module
+def test_theme_discovery_reports_invalid_json_theme_diagnostic(
+    tmp_path, monkeypatch
+) -> None:
+    import loushang.harness.resources._loader_pipeline as pipeline_module
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
+    from loushang.harness.resources._loader_types import _SourceDiscovery
 
     root = tmp_path / "project"
     themes_dir = root / "themes"
@@ -942,23 +1084,34 @@ def test_theme_discovery_reports_invalid_json_theme_diagnostic(tmp_path, monkeyp
     (themes_dir / "clean.json").write_text('{"colors": {}}', encoding="utf-8")
     (themes_dir / "broken.json").write_text("{not json", encoding="utf-8")
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
+    monkeypatch.setattr(
+        pipeline_module,
+        "_discover_built_in_resources",
+        lambda _packages: _SourceDiscovery(),
+    )
 
     loader = DefaultResourceLoader()
     loader.discover_resources(root)
     snapshot = loader.get_resource_snapshot()
 
-    assert [descriptor.canonical_name for descriptor in snapshot.candidate_theme_descriptors] == ["clean.json"]
-    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == ["invalid_theme_json"]
+    assert [
+        descriptor.canonical_name for descriptor in snapshot.candidate_theme_descriptors
+    ] == ["clean.json"]
+    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == [
+        "invalid_theme_json"
+    ]
     assert snapshot.diagnostics[0].details["resource_type"] == "theme"
     assert snapshot.diagnostics[0].source_path == themes_dir / "broken.json"
 
 
-def test_theme_discovery_reports_non_object_theme_schema_diagnostic(tmp_path, monkeypatch) -> None:
-    import loushang.harness.resources.loader as loader_module
+def test_theme_discovery_reports_non_object_theme_schema_diagnostic(
+    tmp_path, monkeypatch
+) -> None:
+    import loushang.harness.resources._loader_pipeline as pipeline_module
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
+    from loushang.harness.resources._loader_types import _SourceDiscovery
 
     root = tmp_path / "project"
     themes_dir = root / "themes"
@@ -966,23 +1119,34 @@ def test_theme_discovery_reports_non_object_theme_schema_diagnostic(tmp_path, mo
     (themes_dir / "clean.json").write_text('{"colors": {}}', encoding="utf-8")
     (themes_dir / "array.json").write_text("[]", encoding="utf-8")
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
+    monkeypatch.setattr(
+        pipeline_module,
+        "_discover_built_in_resources",
+        lambda _packages: _SourceDiscovery(),
+    )
 
     loader = DefaultResourceLoader()
     loader.discover_resources(root)
     snapshot = loader.get_resource_snapshot()
 
-    assert [descriptor.canonical_name for descriptor in snapshot.candidate_theme_descriptors] == ["clean.json"]
-    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == ["invalid_theme_schema"]
+    assert [
+        descriptor.canonical_name for descriptor in snapshot.candidate_theme_descriptors
+    ] == ["clean.json"]
+    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == [
+        "invalid_theme_schema"
+    ]
     assert snapshot.diagnostics[0].details["resource_type"] == "theme"
     assert snapshot.diagnostics[0].source_path == themes_dir / "array.json"
 
 
-def test_extension_same_name_candidates_remain_active_after_precedence_sort(tmp_path, monkeypatch) -> None:
-    import loushang.harness.resources.loader as loader_module
+def test_extension_same_name_candidates_remain_active_after_precedence_sort(
+    tmp_path, monkeypatch
+) -> None:
+    import loushang.harness.resources._loader_pipeline as pipeline_module
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
+    from loushang.harness.resources._loader_types import _SourceDiscovery
     from loushang.harness.resources.types import ExtensionDescriptor
 
     root = tmp_path / "project"
@@ -1007,25 +1171,30 @@ def test_extension_same_name_candidates_remain_active_after_precedence_sort(tmp_
     )
 
     monkeypatch.setattr(
-        loader_module,
+        pipeline_module,
         "_discover_built_in_resources",
-        lambda _packages: loader_module._SourceDiscovery(extensions=[built_in_ext]),
+        lambda _packages: _SourceDiscovery(extensions=[built_in_ext]),
     )
     monkeypatch.setattr(
-        loader_module,
+        pipeline_module,
         "_discover_project_resources",
-        lambda _root: loader_module._SourceDiscovery(extensions=[project_ext]),
+        lambda _root: _SourceDiscovery(extensions=[project_ext]),
     )
 
     loader = DefaultResourceLoader()
     loader.discover_resources(root)
     snapshot = loader.get_resource_snapshot()
 
-    assert [descriptor.source_kind for descriptor in snapshot.active_extension_descriptors] == [
+    assert [
+        descriptor.source_kind for descriptor in snapshot.active_extension_descriptors
+    ] == [
         "project_local",
         "built_in",
     ]
-    assert [descriptor.source_kind for descriptor in snapshot.candidate_extension_descriptors] == [
+    assert [
+        descriptor.source_kind
+        for descriptor in snapshot.candidate_extension_descriptors
+    ] == [
         "built_in",
         "project_local",
     ]
@@ -1050,14 +1219,22 @@ def test_agents_md_stays_outside_named_prompt_collision_model(tmp_path) -> None:
 
 
 def test_project_local_precedes_external_package_and_built_in() -> None:
-    from loushang.harness.resources.loader import _source_precedence_rank
+    from loushang.harness.resources._loader_precedence import (
+        _source_precedence_rank,
+    )
 
-    assert _source_precedence_rank("project_local") < _source_precedence_rank("external_package")
-    assert _source_precedence_rank("external_package") < _source_precedence_rank("built_in")
+    assert _source_precedence_rank("project_local") < _source_precedence_rank(
+        "external_package"
+    )
+    assert _source_precedence_rank("external_package") < _source_precedence_rank(
+        "built_in"
+    )
 
 
-def test_same_tier_candidates_are_sorted_by_source_root_order_then_canonical_path() -> None:
-    from loushang.harness.resources.loader import _candidate_sort_key
+def test_same_tier_candidates_are_sorted_by_source_root_order_then_canonical_path() -> (
+    None
+):
+    from loushang.harness.resources._loader_precedence import _candidate_sort_key
     from loushang.harness.resources.types import PromptFragmentDescriptor
 
     a = PromptFragmentDescriptor(
@@ -1088,15 +1265,23 @@ def test_resource_loader_applies_package_source_filters(tmp_path) -> None:
     (package_root / "prompts").mkdir(parents=True)
     (package_root / "skills" / "review").mkdir(parents=True)
     (package_root / "skills" / "debug").mkdir(parents=True)
-    (package_root / "prompts" / "review.md").write_text("Review prompt", encoding="utf-8")
+    (package_root / "prompts" / "review.md").write_text(
+        "Review prompt", encoding="utf-8"
+    )
     (package_root / "prompts" / "debug.md").write_text("Debug prompt", encoding="utf-8")
-    (package_root / "skills" / "review" / "SKILL.md").write_text("Review skill", encoding="utf-8")
-    (package_root / "skills" / "debug" / "SKILL.md").write_text("Debug skill", encoding="utf-8")
+    (package_root / "skills" / "review" / "SKILL.md").write_text(
+        "Review skill", encoding="utf-8"
+    )
+    (package_root / "skills" / "debug" / "SKILL.md").write_text(
+        "Debug skill", encoding="utf-8"
+    )
 
     loader = DefaultResourceLoader(
         package_roots=(package_root,),
         package_source_filters={
-            package_root: PackageSourceConfig(source=str(package_root), prompts=("review.md",), skills=("review",))
+            package_root: PackageSourceConfig(
+                source=str(package_root), prompts=("review.md",), skills=("review",)
+            )
         },
     )
     bundle = loader.discover_resources(tmp_path)
@@ -1118,10 +1303,16 @@ def test_resource_loader_applies_package_filter_override_patterns(tmp_path) -> N
     (package_root / "prompts").mkdir(parents=True)
     (package_root / "skills" / "review").mkdir(parents=True)
     (package_root / "skills" / "debug").mkdir(parents=True)
-    (package_root / "prompts" / "review.md").write_text("Review prompt", encoding="utf-8")
+    (package_root / "prompts" / "review.md").write_text(
+        "Review prompt", encoding="utf-8"
+    )
     (package_root / "prompts" / "debug.md").write_text("Debug prompt", encoding="utf-8")
-    (package_root / "skills" / "review" / "SKILL.md").write_text("Review skill", encoding="utf-8")
-    (package_root / "skills" / "debug" / "SKILL.md").write_text("Debug skill", encoding="utf-8")
+    (package_root / "skills" / "review" / "SKILL.md").write_text(
+        "Review skill", encoding="utf-8"
+    )
+    (package_root / "skills" / "debug" / "SKILL.md").write_text(
+        "Debug skill", encoding="utf-8"
+    )
 
     loader = DefaultResourceLoader(
         package_roots=(package_root,),

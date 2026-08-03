@@ -345,6 +345,23 @@ def test_controller_dispatches_bash_intent_outside_context() -> None:
     assert session.bash_calls == [("pwd", {"exclude_from_context": True})]
 
 
+def test_controller_does_not_execute_bash_on_a_detached_seed_session() -> None:
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import BashIntent
+
+    session = _Session()
+    runtime = SimpleNamespace(
+        get_current_session=lambda: None,
+        current_session=session,
+    )
+    controller = build_coding_ui_controller(session=session, runtime=runtime)
+
+    result = asyncio.run(controller.dispatch(BashIntent(command="pwd")))
+
+    assert result.error_message == "Session runtime requires an active session"
+    assert session.bash_calls == []
+
+
 def test_controller_dispatches_abort_to_agent_and_bash() -> None:
     from loushang.coding.ui.product_binding import build_coding_ui_controller
     from loushang.harnesstui.conversation.intents import AbortIntent

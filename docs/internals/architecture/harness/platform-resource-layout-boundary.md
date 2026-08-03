@@ -122,9 +122,18 @@ The product-neutral runtime now lives under `loushang.harness.resources`:
 - `builtin` owns built-in package registration and enumeration;
 - `types` owns descriptors, bundles, snapshots, merge decisions, and package
   summaries;
-- `loader` owns filesystem/package discovery, standard `AGENTS.md` convention,
-  filtering, deterministic precedence, merge diagnostics, reload, and the
-  standard workspace resource-root mode;
+- `loader` is the stable public facade and owns loader state, runtime options,
+  reload, queries, and the standard workspace resource-root mode;
+- `_loader_pipeline` owns discovery-to-resolution orchestration, diagnostic and
+  merge-decision aggregation, and `ResourceSnapshot` assembly;
+- `_loader_discovery` owns filesystem, package, built-in, context, and temporary
+  candidate discovery plus source-specific filtering;
+- `_loader_resolution` owns collision handling and winner/active-candidate
+  decisions without importing discovery;
+- `_loader_precedence` is the single owner of the source priority table, rank,
+  and stable candidate/winner sort keys;
+- `_loader_types` owns private discovery records and shared private constants,
+  but not precedence policy;
 - `packages` owns source identity/config parsing, manifests, materialization,
   resource-root resolution, and injected source-policy contracts;
 - `plugins` owns neutral plugin source, manifest, registry, resolver, and
@@ -136,6 +145,10 @@ root and standard `AGENTS.md` filenames. Products may explicitly select a
 legacy project-root mode or optional compatibility filenames. A built-in
 resource package must be registered by the product; Harness contains no Coding
 package name or content default.
+
+The private modules above are implementation owners, not additional public
+APIs. Consumers continue to import `ResourceLoader`, `ResourceLoaderProfile`,
+and `ProfiledResourceLoader` through the public resources facade.
 
 Harness package materialization requires an injected source-policy evaluator
 and safely rejects materialization when none is supplied. Coding injects its

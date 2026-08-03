@@ -238,7 +238,7 @@ def _create_agent_session(
                 coding_multiagent_system_prompt(multiagent_types),
             )
     session_tool_registry = (
-        _clone_workspace_tool_registry(tool_registry)
+        tool_registry.copy()
         if enable_multiagent_tools and tool_registry is not None
         else tool_registry
     )
@@ -672,18 +672,3 @@ def create_agent_session_runtime(
         enable_multiagent=enable_multiagent,
         sandbox_workspace_writable=True,
     )
-
-
-def _clone_workspace_tool_registry(
-    registry: WorkspaceToolRegistry,
-) -> WorkspaceToolRegistry:
-    """Keep session-bound tool closures out of a shared Product registry."""
-
-    cloned = WorkspaceToolRegistry()
-    for contribution in registry.list_contributions():
-        cloned.register_tool(
-            contribution.definition,
-            enabled=contribution.enabled,
-            source_info=contribution.source_info,
-        )
-    return cloned

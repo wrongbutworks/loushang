@@ -13,6 +13,7 @@ from loushang.harness.session import (
     SessionOperationUnavailableError,
     SessionPromptRequest,
     current_session_operation_resolver,
+    require_active_session,
 )
 
 
@@ -247,6 +248,25 @@ def test_current_session_operation_resolver_rebinds_after_session_change() -> No
     assert resolve().session_id == "first"
     product.current = _Session(second)
     assert resolve().session_id == "second"
+
+
+def test_dynamic_session_resolution_rejects_a_missing_active_session() -> None:
+    class _Runtime:
+        def get_current_session(self) -> None:
+            return None
+
+    product = _Runtime()
+    resolve = current_session_operation_resolver(product)
+
+    with pytest.raises(RuntimeError, match="requires an active session"):
+        resolve()
+    with pytest.raises(RuntimeError, match="requires an active session"):
+        require_active_session(product)
+
+
+def test_active_session_resolution_requires_the_runtime_contract() -> None:
+    with pytest.raises(TypeError, match="provide get_current_session"):
+        require_active_session(object())
 
 
 def test_abort_turn_does_not_clear_queue() -> None:

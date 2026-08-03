@@ -13,6 +13,9 @@ from loushang.harness.session.composition import (
 from loushang.harness.session.composition import (
     SessionComposition,
     SessionCompositionPorts,
+    SessionFoundationInputs,
+    SessionMaintenanceInputs,
+    SessionProductInputs,
     _compaction_policy,
     _resolve_compaction_capability,
 )
@@ -52,8 +55,66 @@ def test_session_composition_ports_exclude_runtime_owned_forwarders() -> None:
     )
 
 
+def test_session_composition_ports_are_grouped_by_assembly_phase() -> None:
+    assert [field.name for field in fields(SessionCompositionPorts)] == [
+        "agent",
+        "session_manager",
+        "settings",
+        "capability_runtime",
+        "foundation",
+        "maintenance",
+        "product",
+    ]
+    assert len(fields(SessionFoundationInputs)) < 30
+    assert {field.name for field in fields(SessionMaintenanceInputs)} == {
+        "execute_compaction",
+        "before_compaction",
+        "after_compaction",
+        "sleep_for_retry",
+    }
+    assert {field.name for field in fields(SessionProductInputs)}.issuperset(
+        {"model_registry", "extension_runner", "command_controller"}
+    )
+
+
+def test_session_composition_ports_accept_the_former_flat_keyword_contract() -> None:
+    sentinel = object()
+    names = {
+        field.name
+        for group in (
+            SessionFoundationInputs,
+            SessionMaintenanceInputs,
+            SessionProductInputs,
+        )
+        for field in fields(group)
+    }
+
+    ports = SessionCompositionPorts(
+        agent=sentinel,  # type: ignore[arg-type]
+        session_manager=sentinel,  # type: ignore[arg-type]
+        settings=sentinel,  # type: ignore[arg-type]
+        capability_runtime=sentinel,  # type: ignore[arg-type]
+        **dict.fromkeys(names, sentinel),
+    )
+
+    assert ports.foundation.resource_loader is sentinel
+    assert ports.maintenance.execute_compaction is sentinel
+    assert ports.product.model_registry is sentinel
+
+
 def test_session_composition_is_a_frozen_assembly_result() -> None:
     assert SessionComposition.__dataclass_params__.frozen is True
+    assert [field.name for field in fields(SessionComposition)] == [
+        "capability_runtime",
+        "foundation",
+        "maintenance",
+        "product",
+        "package_controller",
+        "command_controller",
+        "extension_event_sink",
+        "session_runtime",
+        "extension_bridge",
+    ]
 
 
 def test_session_composition_uses_private_staged_builders() -> None:

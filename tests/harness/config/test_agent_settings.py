@@ -724,6 +724,41 @@ def test_settings_manager_reports_persisted_removed_transport_setting(tmp_path) 
     assert "transport setting has been removed" in errors[0].message
 
 
+def test_settings_patch_preserves_omitted_null_and_package_wire_contract() -> None:
+    from loushang.harness.config.agent._settings_patch import (
+        AgentSettingsUpdate,
+        build_settings_patch,
+    )
+
+    assert build_settings_patch(AgentSettingsUpdate()) == {}
+    assert build_settings_patch(
+        AgentSettingsUpdate(
+            theme=None,
+            enabled_models=None,
+            package_sources=("/tmp/shared-package",),
+        )
+    ) == {
+        "theme": None,
+        "enabled_models": None,
+        "packages": ["/tmp/shared-package"],
+    }
+
+
+def test_prepare_override_patch_drops_removed_keys_without_rewriting_storage() -> (
+    None
+):
+    from loushang.harness.config.agent._settings_patch import prepare_override_patch
+
+    patch, messages = prepare_override_patch(
+        {"transport": "websocket", "theme": "night"}
+    )
+
+    assert patch == {"theme": "night"}
+    assert messages == (
+        "transport setting has been removed; use provider/contrib-specific configuration instead",
+    )
+
+
 def test_settings_manager_control_getters_apply_standard_defaults_and_bounds(
     tmp_path, monkeypatch
 ) -> None:

@@ -40,6 +40,9 @@ mapping, task lifecycle, and error wording.
 Hosts receive a `SessionOperationResolver` rather than retaining one runtime
 bound to a concrete Session. The resolver constructs the operation runtime
 from the Product's current control after new, restore, fork, or clone. Its
+dynamic form requires an active runtime Session and never falls back to a
+previously captured Session. Fixed-session hosts bind their control explicitly
+through `session_operation_resolver`. The
 `prompt()` operation returns after the submitted turn has settled; hosts do
 not append a second `wait_for_idle()` to ordinary prompt dispatch. Explicit
 idle waits remain valid for independently initiated operations such as abort

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from loushang.agent.types import AgentTool
@@ -79,6 +80,33 @@ class WorkspaceToolRegistry(CoreToolRegistry):
             )
             for definition in self.list_definitions()
         )
+
+    def copy(self) -> WorkspaceToolRegistry:
+        """Copy definitions and activation state without carrying runtime bindings."""
+
+        return self._copy_contributions(self.list_contributions())
+
+    def select(self, names: Iterable[str]) -> WorkspaceToolRegistry:
+        """Copy the named contributions in caller order into a fresh registry."""
+
+        contributions = {
+            contribution.definition.name: contribution
+            for contribution in self.list_contributions()
+        }
+        return self._copy_contributions(contributions[name] for name in names)
+
+    @staticmethod
+    def _copy_contributions(
+        contributions: Iterable[ToolContribution],
+    ) -> WorkspaceToolRegistry:
+        copied = WorkspaceToolRegistry()
+        for contribution in contributions:
+            copied.register_tool(
+                contribution.definition,
+                enabled=contribution.enabled,
+                source_info=contribution.source_info,
+            )
+        return copied
 
     def resolve_contributions(
         self,

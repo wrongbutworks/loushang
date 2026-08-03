@@ -18,10 +18,7 @@ from loushang.coding.bootstrap import (
     create_services,
 )
 from loushang.coding.cli.args import CliArgs, ExtensionFlag, help_text, parse_args
-from loushang.coding.cli.multiagent import (
-    extract_multiagent_argv,
-    run_coding_multiagent_command,
-)
+from loushang.coding.cli.multiagent import run_coding_multiagent_command
 from loushang.coding.cli.workspace import (
     extract_workspace_argv,
     run_coding_workspace_command,
@@ -94,6 +91,7 @@ from loushang.harness.cli import (
     configure_agent_resource_loader,
     cwd_bound_services_factory,
     distribution_version,
+    extract_multiagent_argv,
     format_agent_cli_help,
     prepare_agent_cli_host_input,
     project_domain_turns_to_cli,
@@ -110,6 +108,7 @@ from loushang.harness.cli import (
     format_cli_error as _format_cli_error,
 )
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.continuity import consume_prepared_activation
 from loushang.harness.diagnostics.observability_runtime import (
     session_observability_context,
     startup_observability_context,
@@ -395,13 +394,7 @@ async def _run_coding_pre_session_bootstrap(
 
         async def activate(target):
             lease = await composition.hub.prepare(target)
-            try:
-                result = await lease.consume()
-            except BaseException:
-                await lease.abort()
-                raise
-            await lease.close()
-            return result
+            return await consume_prepared_activation(lease)
 
         selection = await continuity_runner(
             hub=composition.hub,

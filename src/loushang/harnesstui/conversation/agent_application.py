@@ -103,6 +103,10 @@ Cleanup = Callable[[], None]
 SurfaceT = TypeVar("SurfaceT", bound=PreparedScreenSurfacePort)
 AgentScreenApprovalHandler = Callable[[dict[str, object]], Awaitable[bool | None]]
 PrepareAgentSession = Callable[[object], object | Awaitable[object]]
+_AgentScreenCompletionProviderLoader = Callable[
+    [object, str], object | Awaitable[object]
+]
+_AgentScreenRebindProblemReporter = Callable[[str, Exception], None]
 
 
 def _no_cleanup() -> None:
@@ -161,6 +165,9 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
         Callable[[], SessionApprovalInteractionPort | None] | None
     ) = None
     event_source: object | None = None
+    runtime: object | None = None
+    completion_provider_loader: _AgentScreenCompletionProviderLoader | None = None
+    report_rebind_problem: _AgentScreenRebindProblemReporter | None = None
 
     def prepare(self) -> PreparedScreenConversationRun:
         session = self.session
@@ -218,12 +225,19 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
         self.app.set_statusline_settings(status_provider.statusline_settings())
         surface = self.build_surface(status_provider)
         history_records = materialize_history()
+        event_source = self.event_source or session
+        bind_presenters, bind_transitions = self._prepare_live_session_bindings(
+            surface=surface,
+            status_provider=status_provider,
+            approval_interaction=approval_interaction,
+            event_source=event_source,
+        )
 
         return PreparedScreenConversationRun(
             app=self.app,
             action_host=self.action_host,
             surface=surface,
-            event_source=self.event_source or session,
+            event_source=event_source,
             event_listener_factory=lambda: (
                 build_agent_screen_conversation_projection(
                     self.app,
@@ -253,8 +267,8 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                 active_window_state=self.app.state,
             ),
             completion_provider=self.completion_provider,
-            bind_presenter=lambda: self.bind_presenter(surface),
-            bind_transition=lambda: self.bind_transition(surface),
+            bind_presenter=bind_presenters,
+            bind_transition=bind_transitions,
             on_history_installed=lambda history: _trace_installed_history(
                 self.trace, history
             ),
@@ -268,6 +282,133 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                 ),
             ),
         )
+
+    def _prepare_live_session_bindings(
+        self,
+        *,
+        surface: SurfaceT,
+        status_provider: StatusProvider,
+        approval_interaction: Callable[
+            [], SessionApprovalInteractionPort | None
+        ],
+        event_source: object,
+    ) -> tuple[Callable[[], Cleanup], Callable[[], Cleanup]]:
+        runtime = self.runtime
+        if runtime is None:
+            return (
+                lambda: self.bind_presenter(surface),
+                lambda: self.bind_transition(surface),
+            )
+        if not isinstance(event_source, RebindableEventSource):
+            raise TypeError(
+                "live Agent session rebinding requires RebindableEventSource"
+            )
+        approval_surface = cast(AgentScreenApprovalSurface, surface)
+        active_presenter_cleanup = _no_cleanup
+
+        def report_problem(
+            code: str,
+            summary: str,
+            error: Exception,
+        ) -> None:
+            self.app.add_error(summary, str(error) or error.__class__.__name__)
+            if self.report_rebind_problem is not None:
+                self.report_rebind_problem(code, error)
+
+        async def rebind_session(next_session: object) -> None:
+            nonlocal active_presenter_cleanup
+            next_approval = getattr(next_session, "approval_interaction", None)
+            try:
+                await refresh_agent_screen_session(
+                    runtime=runtime,
+                    app=self.app,
+                    session=next_session,
+                    approval_interaction=next_approval,
+                    event_source=event_source,
+                )
+            except Exception as error:
+                event_source.rebind(next_session)
+                self.app.replace_transcript_window(
+                    (), reason="resume_refresh_failed"
+                )
+                self.app.state.session_label = session_label(next_session)
+                report_problem(
+                    "session_rebind_failed",
+                    "Session changed, but the TUI could not refresh its history.",
+                    error,
+                )
+                return
+            if event_source.last_rebind_error is not None:
+                report_problem(
+                    "event_rebind_failed",
+                    (
+                        "Session changed, but event subscription could not be "
+                        "rebound."
+                    ),
+                    event_source.last_rebind_error,
+                )
+            try:
+                status_provider.update_context(
+                    model_label=self.app.state.model_label,
+                    cwd=self.app.state.cwd,
+                    branch=self.app.state.branch,
+                )
+                if self.completion_provider_loader is not None:
+                    provider = self.completion_provider_loader(
+                        next_session,
+                        self.app.state.cwd,
+                    )
+                    if inspect.isawaitable(provider):
+                        provider = await provider
+                    self.app.composer.set_completion_provider(provider)
+                active_presenter_cleanup()
+                active_presenter_cleanup = bind_agent_screen_approval_presenter(
+                    next_approval,
+                    approval_surface,
+                )
+            except Exception as error:
+                report_problem(
+                    "session_binding_refresh_failed",
+                    (
+                        "Session resumed, but some TUI bindings could not be "
+                        "refreshed."
+                    ),
+                    error,
+                )
+
+        def bind_presenters() -> Cleanup:
+            nonlocal active_presenter_cleanup
+            custom_cleanup = self.bind_presenter(surface)
+            active_presenter_cleanup = bind_agent_screen_approval_presenter(
+                approval_interaction(),
+                approval_surface,
+            )
+
+            def cleanup() -> None:
+                try:
+                    active_presenter_cleanup()
+                finally:
+                    custom_cleanup()
+
+            return cleanup
+
+        def bind_transitions() -> Cleanup:
+            custom_cleanup = self.bind_transition(surface)
+            transition_cleanup = bind_agent_screen_session_transition(
+                runtime,
+                approval_surface,
+                on_rebind=rebind_session,
+            )
+
+            def cleanup() -> None:
+                try:
+                    transition_cleanup()
+                finally:
+                    custom_cleanup()
+
+            return cleanup
+
+        return bind_presenters, bind_transitions
 
 
 def build_agent_screen_surface_workflow_ports(

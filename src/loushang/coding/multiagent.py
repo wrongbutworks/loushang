@@ -8,14 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from loushang.ai.model import Model, ModelSelection, parse_model_selection_reference
-from loushang.ai.types import (
-    AssistantMessage,
-    Message,
-    TextPart,
-    ToolCall,
-    ToolResultMessage,
-    UserMessage,
-)
+from loushang.ai.types import Message
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.sandbox import coding_workspace_execution_profile
@@ -26,14 +19,12 @@ from loushang.harness.approval import (
     InteractiveApprovalResolver,
 )
 from loushang.harness.multiagent import (
-    AgentCaller,
     AgentInputMessage,
     AgentTypeRegistry,
     AgentTypeSpec,
     DelegatedExecutionProfile,
     ForkedHistory,
     ForkTier,
-    MultiAgentControl,
     SubagentContextPlan,
     SubagentRoundResult,
     WorkspaceLease,
@@ -48,14 +39,15 @@ from loushang.harness.session.multiagent import (
     SessionMultiAgentRuntime,
     SessionSubagentFactory,
     SessionSubagentRequest,
+    bind_agent_session_multiagent,
+    build_agent_session_input_facade,
+    install_agent_forked_history,
+    project_agent_round_result,
 )
-from loushang.harness.tools.multiagent import MultiAgentToolPack
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
-from loushang.harness.transcript import ApplicationMessage
 
 _RuntimeBuilder = Callable[..., AgentSessionRuntime]
 _DefaultModelProvider = Callable[[], Model | ModelSelection | None]
-_ALLOWED_HISTORY_TYPES = (UserMessage, AssistantMessage, ToolResultMessage)
 
 _ROLE_PROMPTS: Mapping[str, str] = {
     "explorer": (
@@ -397,7 +389,13 @@ class CodingSubagentFactory(SessionSubagentFactory):
                 delegated_execution_profile=delegated_execution_profile,
             )
             session = await runtime.create_session(cwd=str(child_cwd))
-            _install_forked_history(session, request)
+            install_agent_forked_history(
+                session,
+                request.context_plan,
+                invalid_message=(
+                    "Coding subagent history must contain canonical Agent messages"
+                ),
+            )
         except BaseException:
             try:
                 if child_approval_resolver is not None:
@@ -444,32 +442,12 @@ def install_coding_multiagent_session(
 
     if getattr(session, "multiagent_runtime", None) is not None:
         raise RuntimeError("Coding multi-agent runtime is already installed")
-    input_facade: AgentInputFacade[object] = AgentInputFacade(
-        queue=session.runtime.queue.input_queue,
-        build_payload=_coding_input_payload,
-        submit_mailbox=_mailbox_submitter(session),
-    )
-    runtime = SessionMultiAgentRuntime(
-        control=MultiAgentControl(agent_types=agent_types),
+    return bind_agent_session_multiagent(
+        session,
         child_factory=child_factory,
-        root_input=input_facade,
-        root_is_active=lambda: session.runtime.is_active,
-        notice_wake_policy="queue_only",
+        agent_types=agent_types,
+        register_tools=register_tools,
     )
-    session.multiagent_input = input_facade
-    session.multiagent_runtime = runtime
-    if register_tools:
-        pack = MultiAgentToolPack(
-            runtime=runtime,
-            caller=AgentCaller(runtime.control.root_ref),
-        )
-        session.register_runtime_tools(
-            pack.definitions(),
-            activate=True,
-            source_info={"pack": "harness.multiagent"},
-        )
-        session.multiagent_tool_pack = pack
-    return runtime
 
 
 class _CodingSubagentDriver:
@@ -487,10 +465,8 @@ class _CodingSubagentDriver:
     ) -> None:
         self._runtime = runtime
         self._session = session
-        self.input_facade: AgentInputFacade[object] = AgentInputFacade(
-            queue=session.runtime.queue.input_queue,
-            build_payload=_coding_input_payload,
-            submit_mailbox=_mailbox_submitter(session),
+        self.input_facade: AgentInputFacade[object] = build_agent_session_input_facade(
+            session
         )
         self._initial_message: AgentInputMessage | None = None
         self._rounds_started = 0
@@ -536,8 +512,10 @@ class _CodingSubagentDriver:
             )
         else:
             await self._session.continue_run()
-        result = _round_result(
-            tuple(self._session.agent.state.messages[message_count:])
+        result = project_agent_round_result(
+            tuple(self._session.agent.state.messages[message_count:]),
+            missing_response="Coding child produced no assistant response.",
+            completed_response="Coding child completed.",
         )
         if self._workspace_lease is None or self._workspace_leases is None:
             return result
@@ -607,112 +585,7 @@ def _select_tool_registry(
         raise ValueError(
             "Coding child tools are not registered and enabled: " + ", ".join(missing)
         )
-    selected = WorkspaceToolRegistry()
-    for name in allowed_tools:
-        selected.register_tool(
-            source.get_definition(name),
-            source_info=source.get_source_info(name),
-        )
-    return selected
-
-
-def _coding_input_payload(message: AgentInputMessage) -> ApplicationMessage:
-    sender = (
-        str(message.sender.ref.path)
-        if isinstance(message.sender, AgentCaller)
-        else "host"
-    )
-    return ApplicationMessage(
-        application_message_id=message.message_id,
-        custom_type=(
-            "harness.multiagent.completion_notice"
-            if message.message_id.startswith("completion:")
-            else "harness.multiagent.message"
-        ),
-        content=message.text,
-        timestamp=0.0,
-        display=False,
-        details={
-            "sender": sender,
-            "recipient": str(message.recipient_ref.path),
-            "references": list(message.references),
-        },
-        origin="harness.multiagent",
-        delivery_mode=("next_turn" if message.kind == "mailbox" else message.kind),
-    )
-
-
-def _mailbox_submitter(session: AgentSession) -> Callable[[object], object]:
-    queue = session.runtime.queue
-    submit = getattr(queue, "queue_mailbox_message", None)
-    if callable(submit):
-        return cast(Callable[[object], object], submit)
-    return queue.input_queue.append_next_turn
-
-
-def _install_forked_history(
-    session: AgentSession,
-    request: SessionSubagentRequest,
-) -> None:
-    plan = request.context_plan
-    if plan is None or not plan.history.messages:
-        return
-    messages: list[Message] = []
-    for message in plan.history.messages:
-        if not isinstance(message, _ALLOWED_HISTORY_TYPES):
-            raise TypeError(
-                "Coding subagent history must contain canonical Agent messages"
-            )
-        messages.append(message)
-    session.agent.state.set_messages(messages)
-
-
-def _round_result(messages: tuple[Message, ...]) -> SubagentRoundResult:
-    assistant_messages = tuple(
-        message for message in messages if isinstance(message, AssistantMessage)
-    )
-    if not assistant_messages:
-        return SubagentRoundResult(
-            status="failed",
-            final_message="Coding child produced no assistant response.",
-        )
-
-    final = assistant_messages[-1]
-    text = _assistant_text(final)
-    if final.stop_reason == "aborted":
-        status = "interrupted"
-    elif final.error_message is not None or final.stop_reason == "error":
-        status = "failed"
-    else:
-        status = "completed"
-    final_message = final.error_message or text or "Coding child completed."
-    return SubagentRoundResult(
-        status=status,
-        final_message=final_message,
-        summary=_summary(final_message),
-        latest_input_tokens=(
-            int(final.usage.input or 0) + int(final.usage.cache_read or 0)
-        ),
-        output_tokens=sum(
-            int(message.usage.output or 0) for message in assistant_messages
-        ),
-        tool_uses=sum(
-            isinstance(part, ToolCall)
-            for message in assistant_messages
-            for part in message.content
-        ),
-    )
-
-
-def _assistant_text(message: AssistantMessage) -> str:
-    return "".join(
-        part.text for part in message.content if isinstance(part, TextPart)
-    ).strip()
-
-
-def _summary(value: str, *, limit: int = 1000) -> str:
-    normalized = " ".join(value.split())
-    return normalized if len(normalized) <= limit else f"{normalized[: limit - 1]}…"
+    return source.select(allowed_tools)
 
 
 __all__ = [

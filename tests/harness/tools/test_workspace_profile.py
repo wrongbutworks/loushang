@@ -37,9 +37,9 @@ def test_profile_builds_product_copy_without_changing_tool_order() -> None:
         definition.description.startswith("Design workspace:")
         for definition in definitions
     )
-    assert [tool.name for tool in create_profiled_workspace_tools(
-        DESIGN_TOOL_PROFILE
-    )] == ["read", "write"]
+    assert [
+        tool.name for tool in create_profiled_workspace_tools(DESIGN_TOOL_PROFILE)
+    ] == ["read", "write"]
 
 
 def test_registry_resolves_the_profile_builtin_pack() -> None:
@@ -51,6 +51,22 @@ def test_registry_resolves_the_profile_builtin_pack() -> None:
         "write",
     ]
     assert registry.get_definition("ls").description.startswith("Design workspace:")
+
+
+def test_registry_copy_and_selection_preserve_contribution_metadata() -> None:
+    read, write = create_profiled_workspace_tool_definitions(DESIGN_TOOL_PROFILE)
+    registry = WorkspaceToolRegistry()
+    registry.register_tool(read, source_info={"product": "design"})
+    registry.register_tool(write, enabled=False, source_info={"product": "design"})
+
+    copied = registry.copy()
+    selected = registry.select(("write", "read"))
+
+    assert [tool.name for tool in copied.list_definitions()] == ["read", "write"]
+    assert [tool.name for tool in copied.list_enabled_definitions()] == ["read"]
+    assert copied.get_source_info("read") == {"product": "design"}
+    assert [tool.name for tool in selected.list_definitions()] == ["write", "read"]
+    assert [tool.name for tool in selected.list_enabled_definitions()] == ["read"]
 
 
 def test_profile_rejects_definition_name_changes() -> None:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
@@ -14,7 +13,7 @@ from loushang.harness.multiagent import (
     WorkspaceLeaseRequest,
     WorkspaceLeaseSnapshot,
 )
-from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecService
+from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.git_handoff import (
     GitWorkspaceManager,
     GitWorkspaceRecord,
@@ -58,52 +57,10 @@ def create_coding_git_workspace_manager(
         cwd=cwd,
         state_root=root,
         managed_root=checkouts,
-        exec_service=exec_service or _standalone_git_exec_service(),
+        exec_service=exec_service,
         uuid_factory=uuid_factory,
         timeout_seconds=timeout_seconds,
     )
-
-
-def _standalone_git_exec_service() -> ExecService:
-    """Bounded backend for workspace-only CLI processes without a session host."""
-
-    def execute(request: ExecRequest, **_kwargs: object) -> ExecResult:
-        environment = dict(request.effective_environment or os.environ.items())
-        try:
-            result = subprocess.run(
-                request.command,
-                cwd=request.cwd,
-                env=environment,
-                input=(
-                    request.stdin.encode("utf-8", errors="surrogateescape")
-                    if request.stdin is not None
-                    else None
-                ),
-                check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=request.timeout_seconds,
-            )
-        except subprocess.TimeoutExpired as error:
-            return ExecResult(
-                exit_code=-1,
-                stdout=_subprocess_text(error.stdout),
-                stderr=_subprocess_text(error.stderr),
-                timed_out=True,
-            )
-        return ExecResult(
-            exit_code=result.returncode,
-            stdout=_subprocess_text(result.stdout),
-            stderr=_subprocess_text(result.stderr),
-        )
-
-    return ExecService(backend=execute)
-
-
-def _subprocess_text(value: str | bytes | None) -> str:
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="surrogateescape")
-    return value or ""
 
 
 class CodingGitWorktreeLeasePort(WorkspaceLeasePort):

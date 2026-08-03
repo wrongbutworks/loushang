@@ -1197,3 +1197,51 @@ physical Python LOC (-9), all in `coding.cli.__main__`. Shared production
 owners grow by 43 net lines including exports. The small LOC delta is intentional:
 the change removes duplicate settings interpretation and centralizes one
 standard diagnostic contract without relocating Product callbacks.
+
+### Wave 7, Slice Y: Standard Agent Leaf Mechanics (Complete)
+
+This slice moves four already-proven Agent or lifecycle leaf mechanisms into
+their existing shared owners. It does not move Coding's child-session factory,
+role prompts, sandbox/worktree policy, model selection, approval construction,
+continuity provider, command wording, or session-operation fallback policy.
+
+| Repeated leaf | Existing owner reused | Product retained |
+| --- | --- | --- |
+| workspace registry copy and ordered subset construction | `harness.tools.workspace.WorkspaceToolRegistry` | Coding child-tool admission and missing-tool error text |
+| standard Agent root input binding, transcript payload projection, canonical fork-history installation, and round-result projection | existing `harness.session.multiagent` Product-session adapter | Coding child factory/driver, role policy, workspace leases, model/tool/approval/sandbox construction, and Coding fallback copy |
+| prepared activation consume/abort/close transaction | existing `harness.continuity.activation` lease owner | provider selection, cancelled-result handling, shutdown, and Product status text |
+| prompt attachment to Agent `ImagePart` conversion | existing `harnesstui.conversation.agent_binding` Agent-dependent boundary | clipboard capture/storage/status copy and Product action-host assembly |
+
+The standard multi-agent helpers are exercised without Coding imports, while
+the Coding suite continues to verify its exact error and completion wording.
+The TUI conversion remains in the one module explicitly permitted to depend on
+Agent types; neutral application composition stays free of Agent and AI
+imports. Coding's operation binding also selects two explicit modes: dynamic
+runtimes require their currently published Session, while fixed playback hosts
+bind the supplied control directly. It never sends an operation to a detached
+seed Session. The five touched Coding modules shrink by 173 physical Python
+lines.
+
+### Wave 7, Slice Z: Multi-Agent CLI and Live Screen Mechanics (Complete)
+
+This slice moves two independently reusable mechanisms into their existing
+shared layers. It does not move Coding's recipe runtime construction, model and
+tool policy, settings page, diagnostics copy, hotkeys, continuity-provider
+composition, or Product logging identity.
+
+| Repeated mechanism | Shared owner | Product retained |
+| --- | --- | --- |
+| immediate-recipe argument contracts, validation, attachment assembly, role/replica override parsing, and plain/JSON projection | `harness.cli.multiagent` over the existing `harness.multiagent` recipe contracts | Coding service/runtime construction, model-reference normalization, workspace/session paths, tool registry, policy, and final exit-code mapping |
+| standard resume/delete/fork/rename/agent-tree/side-question screen operations | `harnesstui.conversation.agent_surfaces` over existing continuity and surface components | Coding continuity provider binding, model selector profile, settings page, diagnostics, hotkeys, copy, and approval decision policy |
+| in-process session switch refresh for history, event source, status context, completion, and approval presenter | existing `AgentScreenConversationApplicationBinding` | Product completion-provider loader and problem logger |
+
+The shared recipe CLI is directly tested without Coding imports, including
+non-exiting parse failures and stable JSON output. A structural Research-style
+screen contract exercises fork, rename, and side-question operations, while an
+application-binding contract switches between two live sessions and verifies
+event, model, status, completion, permission, and presenter rebinding.
+
+No public bridge or coordinator is added. Live-session state remains owned by
+the existing Agent screen application binding; the new surface module only
+composes existing workflow ports. Architecture gates prohibit the extracted
+parsers, projections, and standard surface builders from returning to Coding.

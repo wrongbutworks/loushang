@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable
 
+from loushang.harness.continuity.provider import PreparedActivationLease
 from loushang.harness.continuity.types import (
     ActivationDisposition,
     ContinuityTarget,
@@ -85,7 +86,22 @@ class CallbackPreparedActivationLease:
         await self.close()
 
 
+async def consume_prepared_activation(
+    lease: PreparedActivationLease,
+) -> object:
+    """Consume one prepared activation and always settle its lease."""
+
+    try:
+        result = await lease.consume()
+    except BaseException:
+        await lease.abort()
+        raise
+    await lease.close()
+    return result
+
+
 __all__ = [
     "ActivationLeaseStateError",
     "CallbackPreparedActivationLease",
+    "consume_prepared_activation",
 ]

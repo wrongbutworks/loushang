@@ -77,6 +77,23 @@ This optional profile may depend on stable Agent and AI value types. The neutral
 `loushang.harness.config` core outside `config.agent` remains free of Agent and
 AI imports, and the complete config package remains free of Product imports.
 
+The implemented Agent-profile internals have one-way ownership:
+
+- `types.py` owns immutable settings records and defaults;
+- `_settings_codec.py` owns the persistent schema, aliases, removed fields,
+  field decoding/encoding, and complete `ControlConfig` serialization;
+- `_settings_patch.py` owns the `UNSET` command distinction, typed update
+  record, typed-update-to-layer-patch conversion, and removed session override
+  preparation;
+- `manager.py` owns scopes, paths, listeners, collection commands, permission
+  ceiling checks, and the stable getter/setter facade.
+
+`SettingsManager` imports only the explicit codec/patch ports. It does not own
+field-level serializers. Persistent removed fields remain in the raw stored
+scope patch and report schema issues; removed session overrides are dropped
+before application and report adapter errors. These are deliberately different
+compatibility semantics.
+
 ### Scoped Configuration Runtime
 
 `ScopedConfigRuntime[T]`, `ConfigScope[T]`, and `ConfigChange[T]` own:

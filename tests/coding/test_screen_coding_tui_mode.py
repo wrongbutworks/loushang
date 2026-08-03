@@ -48,6 +48,13 @@ class _TTYStringIO(StringIO):
         return True
 
 
+def _runtime_for(session: object) -> object:
+    return SimpleNamespace(
+        get_current_session=lambda: session,
+        current_session=session,
+    )
+
+
 class _RecordingDebugSink:
     def __init__(self) -> None:
         self.events = []
@@ -93,6 +100,7 @@ class _Session:
         self.visible_steering: list[str] = []
         self.visible_follow_up: list[str] = []
         self.context_messages: list[object] = []
+        self.session_control = self
 
     def get_model_selection(self) -> object:
         return self.current_model
@@ -262,7 +270,7 @@ def test_run_coding_tui_interactive_uses_screen_loop(monkeypatch) -> None:
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
-            runtime=object(),
+            runtime=_runtime_for(session),
             session=session,
             stdin=_TTYStringIO(),
             stdout=_TTYStringIO(),
@@ -740,7 +748,7 @@ def test_run_coding_tui_interactive_screen_loop_dispatches_steer_and_followup(
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
-            runtime=object(),
+            runtime=_runtime_for(session),
             session=session,
             stdin=_TTYStringIO(),
             stdout=_TTYStringIO(),
@@ -1112,7 +1120,7 @@ def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> 
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
-            runtime=object(),
+            runtime=_runtime_for(session),
             session=session,
             stdin=StringIO("hello\n"),
             stdout=StringIO(),
@@ -1157,7 +1165,7 @@ def test_screen_event_projection_skips_duplicate_user_messages(monkeypatch) -> N
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
-            runtime=object(),
+            runtime=_runtime_for(session),
             session=session,
             stdin=_TTYStringIO(),
             stdout=_TTYStringIO(),

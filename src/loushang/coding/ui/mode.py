@@ -22,11 +22,8 @@ from loushang.harness.diagnostics import observability_runtime
 from loushang.harnesstui.conversation.agent_application import (
     AgentPlainConversationApplicationBinding,
     AgentScreenConversationApplicationBinding,
-    bind_agent_screen_approval_presenter,
-    bind_agent_screen_session_transition,
     current_agent_runtime_session,
     handle_agent_screen_approval,
-    refresh_agent_screen_session,
 )
 from loushang.harnesstui.conversation.application_host import (
     run_prepared_plain_conversation,
@@ -117,7 +114,6 @@ async def _run_screen_interactive_tui(
         verbose=verbose,
     )
     event_source = RebindableEventSource(session)
-    surface_manager: ScreenSurfaceManager | None = None
 
     def current_approval_interaction():
         return getattr(
@@ -126,14 +122,8 @@ async def _run_screen_interactive_tui(
             None,
         )
 
-    def no_rebound_presenter() -> None:
-        return None
-
-    rebound_presenter_cleanup = no_rebound_presenter
-
     def build_surface(status_provider):
-        nonlocal surface_manager
-        surface_manager = ScreenSurfaceManager(
+        return ScreenSurfaceManager(
             app=app,
             session=session,
             runtime=runtime,
@@ -144,98 +134,15 @@ async def _run_screen_interactive_tui(
             ),
             approval_interaction_provider=current_approval_interaction,
         )
-        return surface_manager
 
-    async def rebind_screen_session(next_session: object) -> None:
-        nonlocal rebound_presenter_cleanup
-        try:
-            await refresh_agent_screen_session(
-                runtime=runtime,
-                app=app,
-                session=next_session,
-                approval_interaction=getattr(
-                    next_session,
-                    "approval_interaction",
-                    None,
-                ),
-                event_source=event_source,
-            )
-        except Exception as refresh_error:
-            event_source.rebind(next_session)
-            app.replace_transcript_window((), reason="resume_refresh_failed")
-            app.state.session_label = getattr(next_session, "session_name", None) or (
-                getattr(next_session, "session_id", None)
-            )
-            app.add_error(
-                "Session changed, but the TUI could not refresh its history.",
-                str(refresh_error) or refresh_error.__class__.__name__,
-            )
-            log.problem(
-                "coding_ui_session_rebind_failed",
-                source="tui",
-                message=str(refresh_error) or refresh_error.__class__.__name__,
-                recoverable=True,
-                exc=refresh_error,
-            )
-            return
-        if event_source.last_rebind_error is not None:
-            rebind_error = event_source.last_rebind_error
-            app.add_error(
-                "Session changed, but event subscription could not be rebound.",
-                str(rebind_error) or rebind_error.__class__.__name__,
-            )
-            log.problem(
-                "coding_ui_event_rebind_failed",
-                source="tui",
-                message=str(rebind_error) or rebind_error.__class__.__name__,
-                recoverable=True,
-                exc=rebind_error,
-            )
-        if surface_manager is None:  # pragma: no cover - prepared before rebind
-            return
-        try:
-            surface_manager.status_provider.update_context(
-                model_label=app.state.model_label,
-                cwd=app.state.cwd,
-                branch=app.state.branch,
-            )
-            app.composer.set_completion_provider(
-                await _load_completion_provider(
-                    next_session,
-                    base_path=Path(app.state.cwd),
-                )
-            )
-            rebound_presenter_cleanup()
-            rebound_presenter_cleanup = bind_agent_screen_approval_presenter(
-                getattr(next_session, "approval_interaction", None),
-                surface_manager,
-            )
-        except Exception as error:
-            app.add_error(
-                "Session resumed, but some TUI bindings could not be refreshed.",
-                str(error) or error.__class__.__name__,
-            )
-            log.problem(
-                "coding_ui_session_binding_refresh_failed",
-                source="tui",
-                message=str(error) or error.__class__.__name__,
-                recoverable=True,
-                exc=error,
-            )
-
-    def bind_screen_presenter(surface):
-        initial_cleanup = bind_agent_screen_approval_presenter(
-            getattr(session, "approval_interaction", None),
-            surface,
+    def report_rebind_problem(code: str, error: Exception) -> None:
+        log.problem(
+            f"coding_ui_{code}",
+            source="tui",
+            message=str(error) or error.__class__.__name__,
+            recoverable=True,
+            exc=error,
         )
-
-        def cleanup() -> None:
-            try:
-                rebound_presenter_cleanup()
-            finally:
-                initial_cleanup()
-
-        return cleanup
 
     prepared = AgentScreenConversationApplicationBinding(
         session=session,
@@ -253,17 +160,16 @@ async def _run_screen_interactive_tui(
         stdout=stdout,
         now=time.monotonic,
         completion_provider=completion_provider,
-        bind_presenter=bind_screen_presenter,
-        bind_transition=lambda surface: bind_agent_screen_session_transition(
-            runtime,
-            surface,
-            on_rebind=rebind_screen_session,
-        ),
         resume_command_prefix=("loushang", "--resume"),
         session_provider=lambda: current_agent_runtime_session(runtime, session),
         get_operations=controller.get_operations,
         approval_interaction_provider=current_approval_interaction,
         event_source=event_source,
+        runtime=runtime,
+        completion_provider_loader=lambda next_session, cwd: (
+            _load_completion_provider(next_session, base_path=Path(cwd))
+        ),
+        report_rebind_problem=report_rebind_problem,
     ).prepare()
     return await run_prepared_screen_conversation(
         prepared,

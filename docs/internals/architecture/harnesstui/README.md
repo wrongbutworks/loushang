@@ -200,6 +200,16 @@ standard Agent history dispositions and result conversion without duplicating
 their projection engines. Products import this module when they need an Agent
 conversation; the neutral modules do not import it eagerly.
 
+`loushang.harnesstui.conversation.agent_application` owns prepared Agent screen
+and plain application state. For live screen Products it also owns the atomic
+session-switch refresh of transcript history, event subscription, status
+context, completion provider, and approval presenter. Products inject their
+completion loader and problem logger. The adjacent
+`loushang.harnesstui.conversation.agent_surfaces` module composes the standard
+resume, delete, fork, rename, agent-tree, and side-question workflow ports from
+the existing surface components; it does not own Product continuity providers,
+settings, diagnostics, hotkeys, model policy, or copy.
+
 Coding no longer owns a parallel intent parser, conversation controller,
 action host, history disposition table, tool projector, or plain/screen event
 adapter. Its product binding supplies the command catalog, callbacks, Product

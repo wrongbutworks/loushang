@@ -1,0 +1,463 @@
+# Loushang Future Target Architecture v3
+
+[Architecture](../README.md) · [Drafts](README.md) ·
+[Open SVG](../future-loushang-architecture-v3.svg)
+
+## Status
+
+Status: proposed target architecture.
+
+This document explains the decisions and invariants shown in the v3 diagram.
+It is not a description of the current package surface and does not authorize
+creating AppService, a daemon, WebSocket transport, a relay, or distributed
+state synchronization ahead of an accepted delivery requirement.
+
+Current code, tests, and accepted ARDs remain authoritative. When this document
+conflicts with them, the live source wins until a later ARD explicitly accepts
+the target decision.
+
+![Loushang future target architecture v3](../future-loushang-architecture-v3.svg)
+
+## Purpose
+
+The target architecture supports two operating shapes without creating two
+execution models:
+
+- a small local Product TUI may bind Harnesstui directly to one embedded Product
+  runtime and Harness instance;
+- a daemon or cloud application host retains live Sessions and admitted Work
+  runs while TUI, WebUI, IDE, and P2P peers attach, disconnect, and resume.
+
+Both shapes reuse the same Product definitions, factories, Harness contracts,
+and Product-owned semantics. They do not share a mutable Session or Work runtime
+instance across process boundaries.
+
+The primary mobile story is:
+
+```text
+Local Daemon starts a Coding Session
+  -> phone attaches through an AppClient
+  -> phone submits work and later disconnects
+  -> Session / Work continues in the Daemon
+  -> phone reconnects from a new attachment
+  -> AppService returns a snapshot plus subsequent events
+  -> the current controller handles any new approval interaction
+```
+
+## Core Decisions
+
+### 1. Share definitions and factories, not runtime instances
+
+A Product composition root supplies immutable definitions, factories, and
+capability descriptors. The host uses them to construct a fresh Product runtime
+binding for each admitted Session or Work execution.
+
+The embedded instance and hosted instance may be created by the same factory,
+but each owns independent mutable state, cancellation, transcript bindings,
+approval presentation, and lifecycle.
+
+The Product registry is therefore a narrow `ProductResolver`, not a runtime
+service locator and not a capability-routing god object. AppService consumes
+resolved Product ports; it does not import Coding, Research, PPT, or Design.
+
+The target type shape is deliberately small. The names below are conceptual,
+not current public API:
+
+```python
+class ProductResolver(Protocol):
+    def resolve(self, product: ProductKey) -> ResolvedProductDefinition: ...
+
+
+@dataclass(frozen=True)
+class ResolvedProductDefinition:
+    identity: ProductIdentityView
+    capabilities: ProductCapabilityView
+    create_session_binding: Callable[
+        [SessionActivationContext], ProductSessionBinding
+    ]
+    create_work_binding: Callable[
+        [WorkActivationContext], ProductWorkBinding
+    ]
+```
+
+Resolution returns one immutable typed definition, never `dict[str, Any]`.
+Identity and capability views are safe to cache. Each factory invocation
+creates a new runtime binding; it cannot return a process-global mutable
+Session, executor, Approval presenter, or Work runtime. The exact Product
+binding protocols should be named only when the first AppService vertical slice
+proves their required methods.
+
+### 2. Select Session or Work semantics explicitly
+
+Loushang does not infer durable business meaning from implementation details
+such as the number of prompts, whether an artifact was produced, or whether an
+approval was requested. The caller selects one of two explicit application
+operations:
+
+| Operation | Meaning | Route |
+|---|---|---|
+| `session_turn` / `run_once` | A lightweight interaction with no durable business commitment | Product conversation binding -> Harness |
+| `submit_work` | An accepted business intent requiring a queryable, replayable terminal outcome | Product work preparer -> Work -> Product executor -> Harness |
+
+The standard Coding Channel `SubmitCodingTurn` adapter is a Work operation and
+uses the second route. A local lightweight Coding prompt may use the first
+route. Method enactment always uses Work.
+
+This distinction follows the Work definition: Work is a persistent commitment,
+not a synonym for every message, turn, Agent invocation, or in-process task.
+
+### 3. Keep Product semantics in Product bindings
+
+A hosted Product runtime binding contains narrow capabilities rather than one
+universal Product interface:
+
+- Conversation capability: prompts, tool profile, policy, and Session
+  operations;
+- Work preparer: Product intent to `WorkOperation`, current `WorkRunSpec`, and a
+  future frozen `WorkPlanSpec`;
+- Work execution binding: the Product-owned `WorkDomainExecutor` that binds a
+  Work step to Harness execution;
+- event and interaction projection: Harness/Work facts and Product-specific
+  views for application clients.
+
+Product bindings retain domain language, prompts, model and provider policy,
+tool selection, artifact content, validation, event vocabulary, and
+presentation decisions. They do not reimplement AppService, Work, or Harness.
+
+## Client And Process Profiles
+
+### Embedded TUI profile
+
+```text
+Product TUI composition
+  -> Harnesstui
+  -> Conversation UI binding
+  -> Embedded Product runtime
+  -> per-Session Harness instance
+```
+
+The binding chooses its backend at startup. Harnesstui continues to own terminal
+input, layout, rendering, local surfaces, and playback.
+
+An embedded Product may persist a local transcript, but v3 defines no automatic
+sync, merge, or runtime handoff to a daemon. The embedded profile is therefore
+local-only and non-migratable. A Session that must survive the foreground
+process or support multi-device attach uses AppService from the beginning,
+possibly through an in-process `AppClient` before a daemon exists.
+
+### Hosted profile
+
+```text
+TUI / WebUI / IDE / P2P peer
+  -> AppClient contract
+  -> versioned App protocol
+  -> endpoint adapter
+  -> AppService
+  -> resolved Product Session or Work port
+```
+
+The Application Host may be a local daemon or a cloud AppServer. Deployment
+changes placement, isolation, admission, and credentials; it does not change
+Product, Work, or Harness semantics.
+
+Client processes own presentation and user interaction only. A P2P peer is a
+remote application peer for pairing, attach, resume, and notification. It is
+not `loushang.agent` and does not participate in the Agent loop.
+
+## App Contract, Channel, And Transport
+
+The diagram places App Contract and Channel as parallel semantic boundaries
+above Transport. They do **not** define one mandatory serialization pipeline.
+
+### App Contract
+
+The App Contract is the stable client-facing application API. Its protocol
+values cover, initially:
+
+- initialization and capability summary;
+- Session open, attach, detach, snapshot, and close;
+- prompt, steer, follow-up, abort-turn, and selected capability operations;
+- work submission and observation;
+- ordered application events;
+- interaction request/response, initially approval; and
+- version negotiation and typed errors.
+
+Protocol values are client-safe projections, not serialized SessionFacade,
+Product runtime, or widget objects.
+
+### Channel
+
+`loushang.channel` remains a narrower operation/event boundary. It carries
+`WorkOperation`, `WorkEvent`, and selected transport-safe
+`RuntimeEventView` values. It may provide correlation, subscription, cursor,
+resume, and delivery semantics for those families.
+
+App protocol commands are not added wholesale to `ChannelEnvelope`. Channel is
+not the transport behind every `AppClient` request and does not become a
+universal UI command bus. AppService consumes injected Channel/Work ports where
+the operation requires them and direct Session ports where it does not.
+
+### Transport
+
+In-process calls, local IPC, HTTP/WebSocket, P2P direct connections, and relay
+fallback are transport adapters over admitted protocol values. They own
+framing, connection lifecycle, limits, and delivery mechanics. They do not own
+Session commands, Product discovery, Work state, approval policy, or UI layout.
+
+### Duplex direction
+
+Client input and server delivery are separate directions even when one duplex
+connection carries both:
+
+```text
+client input
+  AppClient -> transport -> endpoint -> AppService
+    -> Product Session port -> Harness                  # session_turn
+    -> Product Work port -> Work -> Product executor   # submit_work
+
+server delivery
+  Harness / Work facts -> Product projection -> AppService
+    -> endpoint -> transport -> AppClient
+       events / snapshots / interaction requests
+```
+
+Only payload families admitted by the Channel contract use a Channel endpoint.
+Neither `session_turn` nor `submit_work` is forced through Channel merely
+because the AppClient connection is remote. A standard Coding Channel adapter
+does use Channel and Work by its own explicit contract.
+
+## AppService Boundary
+
+AppService is the single hosted application coordinator. It owns:
+
+- principal and device context;
+- attachment identity and the current control lease;
+- idempotency admission for externally retried side effects;
+- Session/Work routing through injected Product ports;
+- client-safe snapshots and revisions;
+- subscriptions and bounded delivery buffers;
+- request, event, and interaction routing; and
+- deterministic detach and close behavior.
+
+AppService does not own:
+
+- Agent loops, model calls, tool execution, or sandbox policy;
+- transcript or Work lifecycle truth;
+- Method selection, compilation, or Method-to-Work conversion;
+- Product prompts, tools, artifact semantics, or event vocabulary;
+- approval futures, timeout, fallback, cancellation, or decision policy; or
+- terminal, WebUI, IDE, or mobile rendering.
+
+Host infrastructure may add resource admission, a live Session routing table,
+execution dispatch, workers, and bounded outbound delivery. Execution remains
+serialized within one Session while independent Sessions may run concurrently.
+
+At composition time AppService receives an explicit `ProductResolver` plus
+host-owned providers for admitted Session, Work, and optional Channel ports.
+The exact provider protocols remain part of the first vertical slice; the
+invariant is that AppService never consults a global registry, imports a
+Product package, or performs provider discovery while dispatching a request.
+
+The host maintains a live Session routing table, not a filesystem directory or
+persistent Session catalog.
+
+## Method, Work, Harness, Agent, And AI
+
+The semantic ownership chain is:
+
+```text
+MethodPlan
+  -> Product Work Preparer
+  -> WorkRunSpec / future WorkPlanSpec
+  -> Work
+  -> Product WorkDomainExecutor
+  -> Harness
+  -> Agent
+  -> AI
+```
+
+Method owns reusable ways of working, constraints, expected artifacts, and plan
+preparation. A MethodPlan returns to the Product work preparer because Product
+owns the conversion from method vocabulary into an executable Work contract.
+Method never executes Harness directly.
+
+Work owns an accepted business commitment, idempotent operation admission,
+run/plan/step lifecycle, terminal outcome, authoritative Work events, replay,
+and Work-correlated `ArtifactRef` values. Work does not own an Agent turn.
+Likewise, an Agent turn does not own a Work run.
+
+Harness owns reusable Session, transcript, context, tools, approval integration,
+retry, compaction, workspace, and sandbox mechanisms. Harness does not import
+Work or a Product package. The Product executor is the adapter that connects a
+Work step to Harness without reversing that dependency.
+
+Agent owns the execution loop and calls AI. Harness and Agent coordinate tool
+execution through admitted tools and sandbox policy; the AI layer remains
+independent of Harness and Product code.
+
+### Method visibility in clients
+
+V3 does not add `MethodPlanStatus` or `MethodStepStatus` to the base App
+protocol. When a Product first needs to render method progress, its projection
+may derive a Product-facing application view from Method identity and
+Work-owned plan/step facts. Harnesstui consumes that view without importing the
+Method package.
+
+A stable Method editing, steering, or inspection protocol is added only after a
+Product surface requires it and defines its compatibility needs. The target
+does not pre-commit that future view to `RuntimeEventView`, `WorkEvent`, or a
+new App protocol value family.
+
+## State And Persistence
+
+Authority remains with the semantic owner:
+
+| State | Authority | Notes |
+|---|---|---|
+| Conversation records | Product-bound Harness transcript runtime | Product/Host supplies the codec, store, path, and retention policy; embedded local state is not automatically merged |
+| Client snapshot and revision | AppService projection | Derived from authoritative Session/Work state; it is not a second transcript store |
+| Work run, events, replay, and Work-correlated artifacts | Work event log | Required only for admitted Work |
+| Method resources and reusable definitions | Method catalog | MethodPlan execution facts belong to Work |
+| Workspace files and sandbox mechanism | Harness/workspace boundary | Product owns content and validation |
+| Product artifact meaning and materialization | Product | A lightweight Session output need not become a Work `ArtifactRef` |
+| Session approval audit events | Harness event source plus an optional Product/Host retention sink | Runtime delivery is observable but not durable by default |
+| Attachment, lease, device, and idempotency records | AppService control plane | These are application coordination facts, not transcript facts |
+
+There is no v3 state-merge protocol between an embedded Session and a hosted
+Session. Import or migration, if later required, must be an explicit Product
+operation with conflict and identity semantics; it must not be an accidental
+side effect of attach.
+
+## Events, Snapshots, And Reconnection
+
+AppService exposes a client-visible state stream as:
+
+1. a snapshot at revision `N`; and
+2. ordered events after revision `N`.
+
+Each attachment has a bounded delivery buffer and cursor. When the requested
+cursor is no longer retained, AppService returns `SnapshotRequired`; the client
+loads a fresh snapshot instead of guessing across a gap.
+
+Attachment disconnect is not Session or Work cancellation. The daemon or cloud
+host continues the admitted execution, subject to its resource and retention
+policy. Reconnection creates a new attachment generation and control lease; it
+does not resurrect transport-owned futures.
+
+Durable Work replay and client delivery buffering are different mechanisms.
+AppService must not create a second transcript or Work audit log merely to
+support reconnect.
+
+## Approval And Interaction Routing
+
+`ApprovalBroker` remains the sole owner of pending approval futures, timeout,
+fallback, cancellation, and resolution. AppService only projects an existing
+request, validates the responding principal, attachment generation, control
+lease, and idempotency key, then forwards the response to the bound Harness
+approval interaction port.
+
+An ordinary Session approval is correlated by Session, invocation, interaction,
+and action identifiers. A WorkRun correlation exists only when the invocation
+was admitted through Work. Harness currently emits session-scoped tool approval
+request/resolution runtime events, so a lightweight approval is correlated and
+observable without inventing a WorkRun.
+
+Runtime events are not, by themselves, a durable audit log. V3 does not require
+approval decisions to be inserted into transcript records, copied into every
+client snapshot, or written to a second approval store. If a Product or
+deployment requires historical compliance queries outside Work, it must bind an
+explicit Session audit sink and retention policy to the existing approval audit
+events. AppService may project retained session-scoped approval history, but it
+does not become its authority or lifecycle owner.
+
+Multiple observers may attach, but only the current controller may submit
+mutating input or answer a blocking interaction. Observer, stale-generation,
+duplicate, and late responses are rejected without changing Broker state.
+
+## Cloud Trust And Accounting
+
+A cloud AppServer applies tenant scope before resolving a Product runtime,
+Session, store, workspace, or credential reference. The AppService
+control/trust plane owns principal/tenant authorization policy and lease
+admission. AppService, or an injected authorizer at its boundary, enforces that
+decision on every route; it does not decide Product tool/policy outcomes.
+
+Supported credential policies may include:
+
+- principal-provided BYOK references; and
+- host-managed secret references authorized for the tenant and Product.
+
+Secret resolution belongs to the credential owner/resolver. Secret values are
+not exposed as App protocol state. Usage collection and cost attribution belong
+to Host Infrastructure and correlate provider/model usage with a principal,
+tenant, Product, Session, and optional WorkRun as policy requires. Store
+namespaces, workspace roots, artifact access, logs, caches, and worker placement
+are all tenant-scoped in the cloud profile.
+
+The exact authorization model, retention policy, quotas, billing export, and
+secret backend require separate security and deployment decisions before a
+cloud implementation is accepted.
+
+## Explicit Non-Goals
+
+The v3 target does not require:
+
+- routing every Product turn through Work or Method;
+- turning Channel into the universal App protocol;
+- sharing mutable runtime instances across processes;
+- automatic Embedded-to-Daemon transcript merge;
+- AppService-owned approval or extension-interaction futures;
+- a public P2P relay in the first AppService release;
+- a base App protocol for MethodPlan/MethodStep state before a Product needs to
+  render, inspect, or steer it;
+- Product imports inside AppService; or
+- one generic Product profile capable of arbitrary runtime injection.
+
+## Staged Delivery
+
+The overview sequence below is subordinate to the detailed phase gates in
+[Application Service Refactor](application-service-refactor.md):
+
+1. Preserve the direct embedded Product/Harnesstui/Harness path, finish the
+   narrow Product runtime contracts, and complete a checked inventory of every
+   server-backed Harnesstui capability. Each item must map to an App command,
+   read model/event, interaction, or explicitly local UI operation.
+2. Extract the smallest versioned App protocol slice and its semantic contract
+   tests. Do not hide unmodeled capabilities in a generic dictionary command.
+3. Introduce AppService and `InProcessAppClient`; add one ordered server-output
+   path only when duplex ordering requires it.
+4. If a Product elects AppClient as its Harnesstui backend, migrate only after
+   the capability inventory closes. The migrated binding retains no concrete
+   Session side door.
+5. Add the local daemon and IPC transport so Sessions outlive one foreground
+   client and support attach/detach.
+6. Add snapshot revision, bounded delivery, cursor handling, and
+   `SnapshotRequired` before promising reliable mobile reconnect.
+7. Add WebUI/IDE and managed-channel adapters over the same App Contract.
+8. Add cloud tenant isolation, authorization, credential policy, usage
+   attribution, quotas, and worker admission before multi-tenant deployment.
+9. Add P2P direct transport and relay fallback only after identity, pairing,
+   authorization, and reconnect semantics are stable.
+
+Two capabilities have independent gates rather than mandatory phase numbers:
+
+- Before exposing embedded-to-hosted transfer, each Product explicitly chooses
+  `no migration`, export/import only, or a migration operation with identity and
+  conflict semantics. Attach never implies merge.
+- Before exposing Method progress, inspection, or steering, a Product identifies
+  a consuming surface and defines the minimum Product-facing projection and
+  compatibility contract.
+
+Each phase must preserve the embedded fast path, Product neutrality, Work and
+Harness dependency direction, and a single lifecycle owner for every pending
+interaction.
+
+## Related Decisions
+
+- [Application Service Refactor](application-service-refactor.md)
+- [Agent, Harness, And Product Adapters](../agent/ARD-001-agent-harness-and-product-adapters.md)
+- [Harness Product Runtime Core Boundary](../harness/product-runtime-core-boundary.md)
+- [Session Facade Boundary](../harness/session-facade-boundary.md)
+- [Channel Architecture](../channel/README.md)
+- [Work Architecture](../work/README.md)
+- [Method Architecture](../method/README.md)

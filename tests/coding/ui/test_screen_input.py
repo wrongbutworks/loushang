@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loushang.coding.ui.product_binding import (
-    image_parts_from_prompt_attachments,
-)
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import build_screen_input_router
+from loushang.harnesstui.conversation.agent_binding import (
+    agent_image_parts_from_prompt_attachments,
+)
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.tui import InputEvent
 from loushang.tui.clipboard_image import ClipboardImage
@@ -22,7 +22,7 @@ def _app(*, cwd: str = "/repo") -> ScreenCodingTuiApp:
     )
 
 
-def test_prompt_image_attachments_convert_at_the_coding_boundary() -> None:
+def test_prompt_image_attachments_convert_at_the_agent_boundary() -> None:
     attachment = PromptImageAttachment(
         bytes=b"png",
         mime_type="image/png",
@@ -31,7 +31,7 @@ def test_prompt_image_attachments_convert_at_the_coding_boundary() -> None:
         marker="@.loushang/clipboard/image.png",
     )
 
-    images = image_parts_from_prompt_attachments((attachment,))
+    images = agent_image_parts_from_prompt_attachments((attachment,))
 
     assert images is not None
     assert images[0].mime_type == "image/png"

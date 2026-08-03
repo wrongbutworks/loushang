@@ -383,6 +383,181 @@ def test_refresh_agent_screen_session_replaces_history_and_event_source(
     assert render_requests == ["product"]
 
 
+def test_agent_screen_application_binding_owns_live_session_rebinding(
+    tmp_path,
+) -> None:
+    class Manager:
+        def get_branch(self) -> tuple[object, ...]:
+            return ()
+
+        def get_cwd(self) -> str:
+            return str(tmp_path)
+
+    class Interaction:
+        def __init__(self, profile_id: str) -> None:
+            self.profile_id = profile_id
+            self.presenter: object | None = None
+
+        def permission_profile_snapshot(self) -> object:
+            return SimpleNamespace(
+                effective_profile=SimpleNamespace(profile_id=self.profile_id)
+            )
+
+        def bind_presenter(
+            self,
+            presenter: object,
+            *,
+            dismisser: object | None = None,
+        ) -> object:
+            del dismisser
+            self.presenter = presenter
+
+            def close() -> None:
+                self.presenter = None
+
+            return SimpleNamespace(close=close)
+
+    class Session:
+        settings_manager = None
+
+        def __init__(self, session_id: str, model: str, profile: str) -> None:
+            self.session_id = session_id
+            self.session_name = session_id.title()
+            self.session_manager = Manager()
+            self.model = model
+            self.approval_interaction = Interaction(profile)
+
+        def get_model_selection(self) -> ModelSelection:
+            return ModelSelection(provider="research", model_id=self.model)
+
+        def get_tool_definition(self, _name: str) -> None:
+            return None
+
+    class Runtime:
+        def __init__(self, current_session: object) -> None:
+            self.current_session = current_session
+            self.rebind: object | None = None
+
+        def get_cwd(self) -> str:
+            return str(tmp_path)
+
+        def set_rebind_session(self, callback: object | None) -> None:
+            self.rebind = callback
+
+        def subscribe_after_session_invalidate(self, _callback: object):
+            return lambda: None
+
+    class Composer:
+        completion_provider: object | None = None
+
+        def set_completion_provider(self, provider: object | None) -> None:
+            self.completion_provider = provider
+
+    class App:
+        def __init__(self) -> None:
+            self.state = SimpleNamespace(
+                running=False,
+                model_label="research/old",
+                cwd=str(tmp_path),
+                branch=None,
+                session_label="Old",
+                permission_profile="standard",
+                records=[],
+            )
+            self.composer = Composer()
+            self.errors: list[tuple[str, str]] = []
+
+        def set_statusline_settings(self, settings: object) -> None:
+            self.settings = settings
+
+        def replace_transcript_window(
+            self,
+            records: tuple[object, ...],
+            *,
+            reason: str,
+        ) -> None:
+            del reason
+            self.state.records = list(records)
+
+        def trim_active_transcript_window(self) -> None:
+            return None
+
+        def request_render(self, _kind: str) -> None:
+            return None
+
+        def add_error(self, summary: str, diagnostics: str = "") -> None:
+            self.errors.append((summary, diagnostics))
+
+    class Surface(_Surface):
+        def open_approval(self, **_payload: object) -> None:
+            return None
+
+        def dismiss_approval(self, _action_id: str) -> None:
+            return None
+
+    initial = Session("old", "analyst", "standard")
+    resumed = Session("resumed", "reviewer", "review")
+    runtime = Runtime(initial)
+    app = App()
+    event_source = RebindableEventSource(initial)
+    statuses: list[object] = []
+    loaded: list[tuple[object, str]] = []
+
+    async def load_completion(session: object, cwd: str) -> object:
+        loaded.append((session, cwd))
+        return "resumed-completions"
+
+    prepared = AgentScreenConversationApplicationBinding(
+        session=initial,
+        app=cast(Any, app),
+        action_host=cast(Any, object()),
+        build_surface=lambda status: statuses.append(status) or Surface(),
+        startup=_startup(),
+        interaction_context=cast(Any, nullcontext()),
+        profile=ConversationScreenRunProfile(
+            input_router_factory=None,
+            interruption_message="Interrupted",
+            cancellation_message="Cancelled",
+        ),
+        trace=lambda _name, **_data: None,
+        stdout=cast(Any, SimpleNamespace(write=lambda _value: None)),
+        now=lambda: 1.0,
+        session_provider=lambda: runtime.current_session,
+        approval_interaction_provider=lambda: getattr(
+            runtime.current_session,
+            "approval_interaction",
+            None,
+        ),
+        event_source=event_source,
+        runtime=runtime,
+        completion_provider_loader=load_completion,
+    ).prepare()
+
+    unbind_presenter = prepared.bind_presenter()
+    unbind_transition = prepared.bind_transition()
+    assert initial.approval_interaction.presenter is not None
+    assert callable(runtime.rebind)
+
+    runtime.current_session = resumed
+    asyncio.run(runtime.rebind(resumed))  # type: ignore[operator]
+
+    assert event_source.source is resumed
+    assert app.state.model_label == "research/reviewer"
+    assert app.state.session_label == "Resumed"
+    assert app.state.permission_profile == "review"
+    assert app.composer.completion_provider == "resumed-completions"
+    assert loaded == [(resumed, str(tmp_path))]
+    assert initial.approval_interaction.presenter is None
+    assert resumed.approval_interaction.presenter is not None
+    assert statuses[0].snapshot().model_label == "research/reviewer"
+    assert app.errors == []
+
+    unbind_transition()
+    unbind_presenter()
+    assert runtime.rebind is None
+    assert resumed.approval_interaction.presenter is None
+
+
 def test_agent_plain_application_binding_prepares_projection_and_header() -> None:
     session = _Session()
     headers: list[dict[str, object]] = []
