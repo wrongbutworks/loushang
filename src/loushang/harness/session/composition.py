@@ -195,22 +195,11 @@ class SessionExtensionCompositionPort(
 
 
 @dataclass(frozen=True)
-class SessionCompositionPorts:
-    """Product inputs needed to assemble a standard session.
+class SessionFoundationInputs:
+    """Inputs for diagnostics, tools, resources, navigation, and bash."""
 
-    These are intentionally ports and callbacks rather than Coding types.  A
-    Research, Design, or OEM product can provide the same values without
-    depending on ``loushang.coding``.
-    """
-
-    agent: Agent
-    session_manager: ProductTranscriptSession[Any, Any]
-    settings: SessionSettingsBinding
-    model_registry: SessionModelCatalogPort | None
-    api_provider_registry: ApiProviderRegistry
     resource_loader: ResourceLoaderPort | None
     get_resource_bundle: Callable[[], ResourceBundle | None]
-    extension_runner: SessionExtensionCompositionPort | None
     tool_registry: WorkspaceToolRegistry | None
     allowed_tool_names: list[str] | None
     active_tool_names: list[str] | None
@@ -218,14 +207,9 @@ class SessionCompositionPorts:
     show_empty_tool_prompt: bool
     base_prompt: str
     diagnostics_service: DiagnosticsService | None
-    session_start_event: SessionStartEvent
-    footer_data_provider: object
     tool_exec_service: ExecService | None
     approval_resolver: ApprovalResolver | None
     tool_policy_evaluator: PolicyEvaluator | None
-    capability_runtime: CapabilityCompositionRuntime
-
-    # Product policy and presentation callbacks.
     apply_context: Callable[[AgentTranscriptContext], None]
     refresh_agent_messages: Callable[[], None]
     dispatch_event: EventDispatcher
@@ -233,6 +217,34 @@ class SessionCompositionPorts:
     before_bash: BashCommandHook | None
     get_bash_definition: Callable[[], ToolDefinition | None]
     create_bash_call_id: Callable[[], str]
+    get_resource_watch_paths: Callable[[], list[Path]]
+    prepare_resource_refresh: Callable[[], None]
+    rebuild_prompt_and_tools_view: Callable[[], None]
+    set_resource_bundle: Callable[[ResourceBundle], None]
+    record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
+
+
+@dataclass(frozen=True)
+class SessionMaintenanceInputs:
+    """Product policy injected into shared compaction and retry mechanisms."""
+
+    execute_compaction: ProductCompactionExecutor
+    before_compaction: Callable[
+        [CompactionHookRequest], Awaitable[CompactionHookDecision | None]
+    ]
+    after_compaction: Callable[[CompactionResult, str, bool], Awaitable[None]]
+    sleep_for_retry: Callable[[int, CancellationSignal], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class SessionProductInputs:
+    """Product-facing model, command, extension, and presentation bindings."""
+
+    model_registry: SessionModelCatalogPort | None
+    api_provider_registry: ApiProviderRegistry
+    extension_runner: SessionExtensionCompositionPort | None
+    session_start_event: SessionStartEvent
+    footer_data_provider: object
     command_controller: Callable[
         [SessionDiagnosticsRuntime], SessionCommandController[Any]
     ]
@@ -242,51 +254,249 @@ class SessionCompositionPorts:
     extension_bridge: AgentSessionExtensionBridge
     get_context_usage: Callable[[], object | None]
     package_controller: SessionPackageController | None
-    get_resource_watch_paths: Callable[[], list[Path]]
-    prepare_resource_refresh: Callable[[], None]
-    rebuild_prompt_and_tools_view: Callable[[], None]
-    set_resource_bundle: Callable[[ResourceBundle], None]
-    record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
-    execute_compaction: ProductCompactionExecutor
     execute_branch_summary: BranchSummaryExecutor
-    before_compaction: Callable[
-        [CompactionHookRequest], Awaitable[CompactionHookDecision | None]
-    ]
-    after_compaction: Callable[[CompactionResult, str, bool], Awaitable[None]]
     before_agent_start_system_prompt_options: Callable[[], dict[str, object]]
-    sleep_for_retry: Callable[[int, CancellationSignal], Awaitable[None]]
+
+
+@dataclass(frozen=True, init=False)
+class SessionCompositionPorts:
+    """Cohesive inputs needed to assemble a standard Product session.
+
+    The three input groups follow the assembly phases.  They contain ports and
+    callbacks rather than Product types, so Research, Design, Coding, or an OEM
+    Product can supply them without depending on another Product package.
+    """
+
+    agent: Agent
+    session_manager: ProductTranscriptSession[Any, Any]
+    settings: SessionSettingsBinding
+    capability_runtime: CapabilityCompositionRuntime
+    foundation: SessionFoundationInputs
+    maintenance: SessionMaintenanceInputs
+    product: SessionProductInputs
+
+    def __init__(
+        self,
+        agent: Agent,
+        session_manager: ProductTranscriptSession[Any, Any],
+        settings: SessionSettingsBinding,
+        *,
+        capability_runtime: CapabilityCompositionRuntime,
+        foundation: SessionFoundationInputs | None = None,
+        maintenance: SessionMaintenanceInputs | None = None,
+        product: SessionProductInputs | None = None,
+        **legacy: Any,
+    ) -> None:
+        """Accept phase inputs or the former flat keyword contract.
+
+        Product adapters in this repository use the phase-oriented form.  The
+        keyword adapter preserves source compatibility for external Products
+        while they migrate without keeping the flat shape inside the object.
+        """
+
+        groups = (foundation, maintenance, product)
+        if all(group is not None for group in groups):
+            if legacy:
+                unexpected = ", ".join(sorted(legacy))
+                raise TypeError(
+                    "phase-oriented SessionCompositionPorts received legacy "
+                    f"arguments: {unexpected}"
+                )
+            resolved_foundation = cast(SessionFoundationInputs, foundation)
+            resolved_maintenance = cast(SessionMaintenanceInputs, maintenance)
+            resolved_product = cast(SessionProductInputs, product)
+        elif any(group is not None for group in groups):
+            raise TypeError(
+                "foundation, maintenance, and product must be supplied together"
+            )
+        else:
+            resolved_foundation, resolved_maintenance, resolved_product = (
+                _legacy_composition_inputs(legacy)
+            )
+
+        object.__setattr__(self, "agent", agent)
+        object.__setattr__(self, "session_manager", session_manager)
+        object.__setattr__(self, "settings", settings)
+        object.__setattr__(self, "capability_runtime", capability_runtime)
+        object.__setattr__(self, "foundation", resolved_foundation)
+        object.__setattr__(self, "maintenance", resolved_maintenance)
+        object.__setattr__(self, "product", resolved_product)
+
+
+def _legacy_composition_inputs(
+    values: dict[str, Any],
+) -> tuple[SessionFoundationInputs, SessionMaintenanceInputs, SessionProductInputs]:
+    """Translate the former flat keyword record into phase inputs."""
+
+    remaining = dict(values)
+
+    def take(name: str) -> Any:
+        try:
+            return remaining.pop(name)
+        except KeyError as exc:
+            raise TypeError(
+                f"legacy SessionCompositionPorts is missing {name!r}"
+            ) from exc
+
+    foundation = SessionFoundationInputs(
+        resource_loader=take("resource_loader"),
+        get_resource_bundle=take("get_resource_bundle"),
+        tool_registry=take("tool_registry"),
+        allowed_tool_names=take("allowed_tool_names"),
+        active_tool_names=take("active_tool_names"),
+        default_activate_new_tools=take("default_activate_new_tools"),
+        show_empty_tool_prompt=take("show_empty_tool_prompt"),
+        base_prompt=take("base_prompt"),
+        diagnostics_service=take("diagnostics_service"),
+        tool_exec_service=take("tool_exec_service"),
+        approval_resolver=take("approval_resolver"),
+        tool_policy_evaluator=take("tool_policy_evaluator"),
+        apply_context=take("apply_context"),
+        refresh_agent_messages=take("refresh_agent_messages"),
+        dispatch_event=take("dispatch_event"),
+        record_runtime_exception=take("record_runtime_exception"),
+        before_bash=take("before_bash"),
+        get_bash_definition=take("get_bash_definition"),
+        create_bash_call_id=take("create_bash_call_id"),
+        get_resource_watch_paths=take("get_resource_watch_paths"),
+        prepare_resource_refresh=take("prepare_resource_refresh"),
+        rebuild_prompt_and_tools_view=take("rebuild_prompt_and_tools_view"),
+        set_resource_bundle=take("set_resource_bundle"),
+        record_extension_runtime_diagnostic=take(
+            "record_extension_runtime_diagnostic"
+        ),
+    )
+    maintenance = SessionMaintenanceInputs(
+        execute_compaction=take("execute_compaction"),
+        before_compaction=take("before_compaction"),
+        after_compaction=take("after_compaction"),
+        sleep_for_retry=take("sleep_for_retry"),
+    )
+    product = SessionProductInputs(
+        model_registry=take("model_registry"),
+        api_provider_registry=take("api_provider_registry"),
+        extension_runner=take("extension_runner"),
+        session_start_event=take("session_start_event"),
+        footer_data_provider=take("footer_data_provider"),
+        command_controller=take("command_controller"),
+        extension_provider_controller=take("extension_provider_controller"),
+        extension_replacement_controller=take("extension_replacement_controller"),
+        extension_runtime_binding_factory=take(
+            "extension_runtime_binding_factory"
+        ),
+        extension_bridge=take("extension_bridge"),
+        get_context_usage=take("get_context_usage"),
+        package_controller=take("package_controller"),
+        execute_branch_summary=take("execute_branch_summary"),
+        before_agent_start_system_prompt_options=take(
+            "before_agent_start_system_prompt_options"
+        ),
+    )
+    if remaining:
+        unexpected = ", ".join(sorted(remaining))
+        raise TypeError(
+            f"legacy SessionCompositionPorts received unexpected arguments: {unexpected}"
+        )
+    return foundation, maintenance, product
 
 
 @dataclass(frozen=True)
 class SessionComposition:
-    """All standard runtime objects assembled for one Product session."""
+    """Phase-oriented assembly result for one Product session.
+
+    Compatibility properties keep the established flat read API while the
+    stored shape exposes the actual lifetime and ownership groups.
+    """
 
     capability_runtime: CapabilityCompositionRuntime
-    diagnostics_bridge: SessionDiagnosticsRuntime
-    tool_controller: SessionToolController
-    resource_refresh_runtime: SessionResourceRefreshRuntime
-    resource_watch_controller: ResourceChangeWatcher
-    navigation_runtime: AgentTranscriptNavigationRuntime
-    compaction_capability: AgentTranscriptCompactionCapability
-    compaction_runtime: AgentTranscriptCompactionRuntime
-    bash_runtime: BashExecutionRuntime
+    foundation: _FoundationRuntimes
+    maintenance: _MaintenanceRuntimes
+    product: _ProductBindings
     package_controller: SessionPackageController | None
     command_controller: SessionCommandController[Any]
     extension_event_sink: ExtensionAgentEventRuntime
-    retry_runtime: AgentTranscriptRetryRuntime
     session_runtime: SessionRuntime
-    extension_input_runtime: ExtensionInputRuntime
-    extension_message_controller: ExtensionInputAdapter
-    extension_provider_controller: ExtensionProviderRuntime
-    extension_replacement_controller: ExtensionReplacementRuntime
-    extension_runtime_binding_factory: ExtensionRuntimeBindingFactory
     extension_bridge: AgentSessionExtensionBridge
-    selection_runtime: AgentTranscriptSelectionRuntime
-    model_binding: SessionModelBinding
-    identity_binding: SessionIdentityBinding
-    maintenance_binding: SessionMaintenanceBinding
-    extension_binding: SessionExtensionBinding
-    session_inspector: AgentSessionInspector
+
+    @property
+    def diagnostics_bridge(self) -> SessionDiagnosticsRuntime:
+        return self.foundation.diagnostics_bridge
+
+    @property
+    def tool_controller(self) -> SessionToolController:
+        return self.foundation.tool_controller
+
+    @property
+    def resource_refresh_runtime(self) -> SessionResourceRefreshRuntime:
+        return self.foundation.resource_refresh_runtime
+
+    @property
+    def resource_watch_controller(self) -> ResourceChangeWatcher:
+        return self.foundation.resource_watch_controller
+
+    @property
+    def navigation_runtime(self) -> AgentTranscriptNavigationRuntime:
+        return self.foundation.navigation_runtime
+
+    @property
+    def bash_runtime(self) -> BashExecutionRuntime:
+        return self.foundation.bash_runtime
+
+    @property
+    def compaction_capability(self) -> AgentTranscriptCompactionCapability:
+        return self.maintenance.compaction_capability
+
+    @property
+    def compaction_runtime(self) -> AgentTranscriptCompactionRuntime:
+        return self.maintenance.compaction_runtime
+
+    @property
+    def retry_runtime(self) -> AgentTranscriptRetryRuntime:
+        return self.maintenance.retry_runtime
+
+    @property
+    def extension_input_runtime(self) -> ExtensionInputRuntime:
+        return self.product.extension_composition.input_runtime
+
+    @property
+    def extension_message_controller(self) -> ExtensionInputAdapter:
+        return self.product.extension_composition.message_controller
+
+    @property
+    def extension_provider_controller(self) -> ExtensionProviderRuntime:
+        return self.product.extension_composition.provider_controller
+
+    @property
+    def extension_replacement_controller(self) -> ExtensionReplacementRuntime:
+        return self.product.extension_composition.replacement_controller
+
+    @property
+    def extension_runtime_binding_factory(self) -> ExtensionRuntimeBindingFactory:
+        return self.product.extension_composition.runtime_binding_factory
+
+    @property
+    def selection_runtime(self) -> AgentTranscriptSelectionRuntime:
+        return self.product.selection_runtime
+
+    @property
+    def model_binding(self) -> SessionModelBinding:
+        return self.product.model_binding
+
+    @property
+    def identity_binding(self) -> SessionIdentityBinding:
+        return self.product.identity_binding
+
+    @property
+    def maintenance_binding(self) -> SessionMaintenanceBinding:
+        return self.product.maintenance_binding
+
+    @property
+    def extension_binding(self) -> SessionExtensionBinding:
+        return self.product.extension_composition.binding
+
+    @property
+    def session_inspector(self) -> AgentSessionInspector:
+        return self.product.session_inspector
 
 
 @dataclass(frozen=True)
@@ -323,9 +533,9 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
     session = ports.session_manager
     foundation = _build_foundation_runtimes(ports)
     maintenance = _build_maintenance_runtimes(ports)
-    command_controller = ports.command_controller(foundation.diagnostics_bridge)
+    command_controller = ports.product.command_controller(foundation.diagnostics_bridge)
     extension_event_sink = ExtensionAgentEventRuntime(
-        get_extension_runtime=lambda: ports.extension_runner,
+        get_extension_runtime=lambda: ports.product.extension_runner,
         get_cwd=session.get_cwd,
     )
 
@@ -349,13 +559,13 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             session_id=session.get_header().conversation_id,
             append_message=session.append_message,
             commit_application_message=session.commit_application_message,
-            refresh_context=lambda: ports.apply_context(
+            refresh_context=lambda: ports.foundation.apply_context(
                 session.build_session_context()
             ),
             set_commit_observer=session.set_commit_observer,
         ),
         turn_policy=TurnPolicyPort(
-            get_extension_runner=lambda: ports.extension_runner,
+            get_extension_runner=lambda: ports.product.extension_runner,
             get_cwd=session.get_cwd,
             extract_extension_command_invocation=(
                 command_controller.extract_extension_command_invocation
@@ -366,7 +576,9 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
                 command_controller.raise_if_queued_extension_command
             ),
             preflight_user_input_async=command_controller.preflight_user_input_async,
-            before_agent_start_system_prompt_options=ports.before_agent_start_system_prompt_options,
+            before_agent_start_system_prompt_options=(
+                ports.product.before_agent_start_system_prompt_options
+            ),
             sync_extension_diagnostics=(
                 foundation.diagnostics_bridge.sync_extension_diagnostics
             ),
@@ -397,37 +609,14 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
     )
     return SessionComposition(
         capability_runtime=ports.capability_runtime,
-        diagnostics_bridge=foundation.diagnostics_bridge,
-        tool_controller=foundation.tool_controller,
-        resource_refresh_runtime=foundation.resource_refresh_runtime,
-        resource_watch_controller=foundation.resource_watch_controller,
-        navigation_runtime=foundation.navigation_runtime,
-        compaction_capability=maintenance.compaction_capability,
-        compaction_runtime=maintenance.compaction_runtime,
-        bash_runtime=foundation.bash_runtime,
-        package_controller=ports.package_controller,
+        foundation=foundation,
+        maintenance=maintenance,
+        product=bindings,
+        package_controller=ports.product.package_controller,
         command_controller=command_controller,
         extension_event_sink=extension_event_sink,
-        retry_runtime=maintenance.retry_runtime,
         session_runtime=session_runtime,
-        extension_input_runtime=bindings.extension_composition.input_runtime,
-        extension_message_controller=bindings.extension_composition.message_controller,
-        extension_provider_controller=(
-            bindings.extension_composition.provider_controller
-        ),
-        extension_replacement_controller=(
-            bindings.extension_composition.replacement_controller
-        ),
-        extension_runtime_binding_factory=(
-            bindings.extension_composition.runtime_binding_factory
-        ),
-        extension_bridge=ports.extension_bridge,
-        selection_runtime=bindings.selection_runtime,
-        model_binding=bindings.model_binding,
-        identity_binding=bindings.identity_binding,
-        maintenance_binding=bindings.maintenance_binding,
-        extension_binding=bindings.extension_composition.binding,
-        session_inspector=bindings.session_inspector,
+        extension_bridge=ports.product.extension_bridge,
     )
 
 
@@ -435,32 +624,34 @@ def _build_foundation_runtimes(
     ports: SessionCompositionPorts,
 ) -> _FoundationRuntimes:
     session = ports.session_manager
+    inputs = ports.foundation
+    product = ports.product
     diagnostics_bridge = SessionDiagnosticsRuntime(
-        diagnostics_service=ports.diagnostics_service,
+        diagnostics_service=inputs.diagnostics_service,
         get_scope=lambda: SessionDiagnosticScope(
             session_id=session.get_header().conversation_id,
             entry_id=session.get_leaf_id(),
         ),
-        get_extension_diagnostics=lambda: ports.extension_runner,
+        get_extension_diagnostics=lambda: product.extension_runner,
         recorded_extension_diagnostics=(
-            len(ports.extension_runner.get_diagnostics())
-            if ports.extension_runner is not None
+            len(product.extension_runner.get_diagnostics())
+            if product.extension_runner is not None
             else 0
         ),
     )
     tool_controller = _build_tool_controller(ports, diagnostics_bridge)
     resource_refresh_runtime = SessionResourceRefreshRuntime(
-        get_resource_loader=lambda: ports.resource_loader,
-        get_resource_bundle=ports.get_resource_bundle,
+        get_resource_loader=lambda: inputs.resource_loader,
+        get_resource_bundle=inputs.get_resource_bundle,
         get_cwd=session.get_cwd,
-        get_extension_runtime=lambda: ports.extension_runner,
+        get_extension_runtime=lambda: product.extension_runner,
         get_settings=lambda: cast(
             ResourceSettingsPort | None,
             ports.settings.get_settings_manager(),
         ),
-        set_resource_bundle=ports.set_resource_bundle,
-        rebuild_prompt_and_tools_view=ports.rebuild_prompt_and_tools_view,
-        record_refresh_failure=lambda error: ports.record_extension_runtime_diagnostic(
+        set_resource_bundle=inputs.set_resource_bundle,
+        rebuild_prompt_and_tools_view=inputs.rebuild_prompt_and_tools_view,
+        record_refresh_failure=lambda error: inputs.record_extension_runtime_diagnostic(
             DiagnosticDraft(
                 code="extension_resource_refresh_failed",
                 message=f"Extension resource refresh failed: {error}",
@@ -469,37 +660,37 @@ def _build_foundation_runtimes(
         sync_extension_diagnostics=lambda: (
             diagnostics_bridge.sync_extension_diagnostics(phase="resource_loading")
         ),
-        prepare_resource_refresh=ports.prepare_resource_refresh,
+        prepare_resource_refresh=inputs.prepare_resource_refresh,
         skill_activation_runtime=ports.capability_runtime.skill_activation,
     )
     resource_watch_controller = ResourceChangeWatcher(
-        get_paths=ports.get_resource_watch_paths,
+        get_paths=inputs.get_resource_watch_paths,
         on_change=lambda: _reload_resources_from_watch(
             resource_refresh_runtime,
-            ports.extension_runner,
+            product.extension_runner,
             lambda: resource_refresh_runtime.refresh_async(reason="reload"),
         ),
     )
     navigation_runtime = AgentTranscriptNavigationRuntime(
         session=session,
-        apply_context=lambda: ports.apply_context(session.build_session_context()),
-        dispatch_event=ports.dispatch_event,
-        on_failure=lambda error: ports.record_runtime_exception(
+        apply_context=lambda: inputs.apply_context(session.build_session_context()),
+        dispatch_event=inputs.dispatch_event,
+        on_failure=lambda error: inputs.record_runtime_exception(
             code="branch_summary_failed", exc=error
         ),
     )
     bash_runtime = BashExecutionRuntime(
         BashExecutionPorts(
             get_cwd=session.get_cwd,
-            get_definition=ports.get_bash_definition,
+            get_definition=inputs.get_bash_definition,
             execute_definition=tool_controller.execute_tool_definition,
-            create_call_id=ports.create_bash_call_id,
+            create_call_id=inputs.create_bash_call_id,
             append_record=session.append_message,
-            refresh_context=ports.refresh_agent_messages,
-            before_execute=ports.before_bash,
+            refresh_context=inputs.refresh_agent_messages,
+            before_execute=inputs.before_bash,
             operations=(
-                ExecServiceBashOperations(ports.tool_exec_service)
-                if ports.tool_exec_service is not None
+                ExecServiceBashOperations(inputs.tool_exec_service)
+                if inputs.tool_exec_service is not None
                 else None
             ),
         )
@@ -519,6 +710,8 @@ def _build_maintenance_runtimes(
 ) -> _MaintenanceRuntimes:
     agent = ports.agent
     session = ports.session_manager
+    foundation = ports.foundation
+    maintenance = ports.maintenance
     compaction_capability = _resolve_compaction_capability(session)
 
     def get_compaction_policy() -> TranscriptCompactionPolicy:
@@ -529,19 +722,19 @@ def _build_maintenance_runtimes(
         get_policy=get_compaction_policy,
         get_model=lambda: agent.model,
         get_context_messages=lambda: list(session.build_session_context().messages),
-        refresh_context=ports.refresh_agent_messages,
+        refresh_context=foundation.refresh_agent_messages,
         prepare_compaction=compaction_capability.prepare,
         execute_compaction=lambda preparation, custom_instructions: _execute_compaction(
-            ports.execute_compaction,
+            maintenance.execute_compaction,
             agent,
             preparation,
             custom_instructions,
         ),
-        dispatch_event=ports.dispatch_event,
+        dispatch_event=foundation.dispatch_event,
         has_queued_messages=agent.has_queued_messages,
-        before_compaction=ports.before_compaction,
-        after_compaction=ports.after_compaction,
-        record_runtime_exception=ports.record_runtime_exception,
+        before_compaction=maintenance.before_compaction,
+        after_compaction=maintenance.after_compaction,
+        record_runtime_exception=foundation.record_runtime_exception,
         product_id=ports.capability_runtime.profile.product_id,
         session_id=session.get_header().conversation_id,
     )
@@ -550,9 +743,9 @@ def _build_maintenance_runtimes(
         get_messages=lambda: list(agent.state.messages),
         set_messages=agent.state.set_messages,
         get_context_window=lambda: agent.model.context_window,
-        dispatch_event=ports.dispatch_event,
-        record_runtime_exception=ports.record_runtime_exception,
-        sleep_for_retry=ports.sleep_for_retry,
+        dispatch_event=foundation.dispatch_event,
+        record_runtime_exception=foundation.record_runtime_exception,
+        sleep_for_retry=maintenance.sleep_for_retry,
         is_context_overflow_fn=is_context_overflow,
     )
     return _MaintenanceRuntimes(
@@ -572,17 +765,19 @@ def _build_product_bindings(
 ) -> _ProductBindings:
     agent = ports.agent
     session = ports.session_manager
+    foundation_inputs = ports.foundation
+    product = ports.product
     selection_runtime = AgentTranscriptSelectionRuntime(
         session=session,
         get_model=lambda: agent.model,
         set_model=lambda model: setattr(agent, "model", model),
         get_thinking_level=lambda: agent.thinking_level,
         set_thinking_level_value=lambda level: setattr(agent, "thinking_level", level),
-        get_model_catalog=lambda: ports.model_registry,
+        get_model_catalog=lambda: product.model_registry,
     )
 
     async def refresh_extension_runtime(reason: str) -> None:
-        await ports.extension_bridge.refresh(reason=reason)
+        await product.extension_bridge.refresh(reason=reason)
 
     async def apply_model_selection(
         selection: object,
@@ -593,7 +788,7 @@ def _build_product_bindings(
             selection_runtime,
             selection,
             agent,
-            ports.extension_runner,
+            product.extension_runner,
             refresh_extension_runtime,
             session.get_cwd,
             source=source,
@@ -603,14 +798,14 @@ def _build_product_bindings(
         AgentSessionExtensionCompositionPorts(
             agent=agent,
             session=session,
-            model_registry=ports.model_registry,
-            api_provider_registry=ports.api_provider_registry,
-            extension_runner=ports.extension_runner,
-            provider_controller=ports.extension_provider_controller,
-            replacement_controller=ports.extension_replacement_controller,
-            runtime_binding_factory=ports.extension_runtime_binding_factory,
-            bridge=ports.extension_bridge,
-            session_start_event=ports.session_start_event,
+            model_registry=product.model_registry,
+            api_provider_registry=product.api_provider_registry,
+            extension_runner=product.extension_runner,
+            provider_controller=product.extension_provider_controller,
+            replacement_controller=product.extension_replacement_controller,
+            runtime_binding_factory=product.extension_runtime_binding_factory,
+            bridge=product.extension_bridge,
+            session_start_event=product.session_start_event,
             tool_controller=foundation.tool_controller,
             command_controller=command_controller,
             selection_runtime=selection_runtime,
@@ -618,12 +813,12 @@ def _build_product_bindings(
             navigation_runtime=foundation.navigation_runtime,
             resource_refresh_runtime=foundation.resource_refresh_runtime,
             resource_watch_controller=foundation.resource_watch_controller,
-            footer_data_provider=ports.footer_data_provider,
-            get_context_usage=ports.get_context_usage,
+            footer_data_provider=product.footer_data_provider,
+            get_context_usage=product.get_context_usage,
             set_model=apply_model_selection,
             set_session_name=lambda name: _set_session_name(
                 session,
-                ports.dispatch_event,
+                foundation_inputs.dispatch_event,
                 name,
             ),
             compact=partial(
@@ -631,8 +826,10 @@ def _build_product_bindings(
                 session_runtime,
                 maintenance.compaction_runtime,
             ),
-            execute_branch_summary=ports.execute_branch_summary,
-            record_runtime_diagnostic=ports.record_extension_runtime_diagnostic,
+            execute_branch_summary=product.execute_branch_summary,
+            record_runtime_diagnostic=(
+                foundation_inputs.record_extension_runtime_diagnostic
+            ),
             sync_extension_diagnostics=(
                 foundation.diagnostics_bridge.sync_extension_diagnostics
             ),
@@ -657,8 +854,8 @@ def _build_product_bindings(
         available_thinking_levels_callback=selection_runtime.get_available_thinking_levels,
         available_models_callback=selection_runtime.get_available_models,
         available_model_details_callback=lambda: (
-            list(ports.model_registry.ai_registry.list_models())
-            if ports.model_registry is not None
+            list(product.model_registry.ai_registry.list_models())
+            if product.model_registry is not None
             else []
         ),
         get_scoped_models_callback=selection_runtime.get_scoped_models,
@@ -668,7 +865,7 @@ def _build_product_bindings(
         get_session_id=lambda: session.get_session_record().session_id,
         get_session_name=lambda: session.get_session_record().metadata.name,
         set_session_name_callback=lambda name: _set_session_name(
-            session, ports.dispatch_event, name
+            session, foundation_inputs.dispatch_event, name
         ),
     )
     maintenance_binding = SessionMaintenanceBinding(
@@ -725,35 +922,36 @@ def _build_tool_controller(
 ) -> SessionToolController:
     from loushang.harness.session.tool_controller import ToolController
 
+    inputs = ports.foundation
     return ToolController(
         agent=ports.agent,
         get_cwd=ports.session_manager.get_cwd,
-        tool_registry=ports.tool_registry,
+        tool_registry=inputs.tool_registry,
         allowed_tool_names=(
-            set(ports.allowed_tool_names)
-            if ports.allowed_tool_names is not None
+            set(inputs.allowed_tool_names)
+            if inputs.allowed_tool_names is not None
             else None
         ),
         initial_active_tool_names=list(
-            ports.active_tool_names or [tool.name for tool in ports.agent.tools]
+            inputs.active_tool_names or [tool.name for tool in ports.agent.tools]
         ),
         default_activate_new_tools=(
-            ports.active_tool_names is None
-            if ports.default_activate_new_tools is None
-            else ports.default_activate_new_tools
+            inputs.active_tool_names is None
+            if inputs.default_activate_new_tools is None
+            else inputs.default_activate_new_tools
         ),
-        show_empty_tool_prompt=ports.show_empty_tool_prompt,
-        base_prompt=ports.base_prompt,
-        get_resource_bundle=ports.get_resource_bundle,
-        get_diagnostics_service=lambda: ports.diagnostics_service,
+        show_empty_tool_prompt=inputs.show_empty_tool_prompt,
+        base_prompt=inputs.base_prompt,
+        get_resource_bundle=inputs.get_resource_bundle,
+        get_diagnostics_service=lambda: inputs.diagnostics_service,
         get_exec_service=(
-            (lambda: ports.tool_exec_service)
-            if ports.tool_exec_service is not None
+            (lambda: inputs.tool_exec_service)
+            if inputs.tool_exec_service is not None
             else None
         ),
-        get_approval_resolver=lambda: ports.approval_resolver,
-        policy_evaluator=ports.tool_policy_evaluator,
-        emit_tool_audit_event=ports.dispatch_event,
+        get_approval_resolver=lambda: inputs.approval_resolver,
+        policy_evaluator=inputs.tool_policy_evaluator,
+        emit_tool_audit_event=inputs.dispatch_event,
         resource_activation_runtime=ports.capability_runtime.resource_runtime,
         prompt_section_composer=ports.capability_runtime.prompt_section_composer,
     )
@@ -964,6 +1162,9 @@ __all__ = [
     "ProductCompactionExecutor",
     "SessionComposition",
     "SessionCompositionPorts",
+    "SessionFoundationInputs",
+    "SessionMaintenanceInputs",
+    "SessionProductInputs",
     "compose_session_runtime",
     "sleep_for_retry",
 ]

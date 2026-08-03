@@ -59,7 +59,10 @@ from loushang.harness.session.composition import (
     ProductCompactionExecutor,
     SessionCompositionPorts,
     SessionExtensionCompositionPort,
+    SessionFoundationInputs,
+    SessionMaintenanceInputs,
     SessionModelCatalogPort,
+    SessionProductInputs,
     compose_session_runtime,
 )
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
@@ -255,13 +258,15 @@ class AgentProductSession(AgentSessionAdapterMixin):
             get_ui_context=lambda: self._extension_bridge.ui_context,
             exec_command=self._exec_command_from_extension,
         )
-        composition = compose_session_runtime(self._composition_ports(
-            allowed_tool_names=allowed_tool_names,
-            active_tool_names=active_tool_names,
-            default_activate_new_tools=default_activate_new_tools,
-            show_empty_tool_prompt=show_empty_tool_prompt,
-            capability_runtime=capability_runtime,
-        ))
+        composition = compose_session_runtime(
+            self._composition_ports(
+                allowed_tool_names=allowed_tool_names,
+                active_tool_names=active_tool_names,
+                default_activate_new_tools=default_activate_new_tools,
+                show_empty_tool_prompt=show_empty_tool_prompt,
+                capability_runtime=capability_runtime,
+            )
+        )
         initialize_composed_session(
             self,
             composition,
@@ -337,52 +342,68 @@ class AgentProductSession(AgentSessionAdapterMixin):
             agent=self.agent,
             session_manager=self.session_manager,
             settings=self._settings_controller,
-            model_registry=self.model_registry,
-            api_provider_registry=self.api_provider_registry,
-            resource_loader=self._resource_loader,
-            get_resource_bundle=lambda: self.resource_bundle,
-            extension_runner=self._extension_runner,
-            tool_registry=self._tool_registry,
-            allowed_tool_names=allowed_tool_names,
-            active_tool_names=active_tool_names,
-            default_activate_new_tools=default_activate_new_tools,
-            show_empty_tool_prompt=show_empty_tool_prompt,
-            base_prompt=self._base_prompt,
-            diagnostics_service=self.diagnostics_service,
-            session_start_event=self._session_start_event,
-            footer_data_provider=self.footer_data_provider,
-            tool_exec_service=self._tool_exec_service,
-            approval_resolver=self._approval_runtime.resolver,
-            tool_policy_evaluator=self._tool_policy_evaluator,
             capability_runtime=capability_runtime,
-            apply_context=self._apply_agent_transcript_context,
-            refresh_agent_messages=self._refresh_agent_messages,
-            dispatch_event=self._dispatch_event,
-            record_runtime_exception=self._record_runtime_exception,
-            before_bash=self._before_bash,
-            get_bash_definition=self._get_bash_definition,
-            create_bash_call_id=self._create_bash_call_id,
-            command_controller=build_command_controller,
-            extension_provider_controller=self._extension_provider_controller,
-            extension_replacement_controller=self._extension_replacement_controller,
-            extension_runtime_binding_factory=self._extension_runtime_binding_factory,
-            extension_bridge=self._extension_bridge,
-            get_context_usage=lambda: self.get_context_usage(),
-            package_controller=self._package_controller,
-            get_resource_watch_paths=self._resource_watch_paths,
-            prepare_resource_refresh=self._prepare_resource_refresh,
-            rebuild_prompt_and_tools_view=self._rebuild_prompt_and_tools_view,
-            set_resource_bundle=self._set_resource_bundle,
-            record_extension_runtime_diagnostic=self._record_extension_runtime_diagnostic,
-            execute_compaction=self._execute_product_compaction,
-            execute_branch_summary=lambda entries, signal: self._branch_summary_runner(
-                custom_instructions=None,
-                replace_instructions=False,
-            )(entries, signal),
-            before_compaction=self._before_product_compaction,
-            after_compaction=self._after_product_compaction,
-            before_agent_start_system_prompt_options=self._before_agent_start_system_prompt_options,
-            sleep_for_retry=self._retry_sleep,
+            foundation=SessionFoundationInputs(
+                resource_loader=self._resource_loader,
+                get_resource_bundle=lambda: self.resource_bundle,
+                tool_registry=self._tool_registry,
+                allowed_tool_names=allowed_tool_names,
+                active_tool_names=active_tool_names,
+                default_activate_new_tools=default_activate_new_tools,
+                show_empty_tool_prompt=show_empty_tool_prompt,
+                base_prompt=self._base_prompt,
+                diagnostics_service=self.diagnostics_service,
+                tool_exec_service=self._tool_exec_service,
+                approval_resolver=self._approval_runtime.resolver,
+                tool_policy_evaluator=self._tool_policy_evaluator,
+                apply_context=self._apply_agent_transcript_context,
+                refresh_agent_messages=self._refresh_agent_messages,
+                dispatch_event=self._dispatch_event,
+                record_runtime_exception=self._record_runtime_exception,
+                before_bash=self._before_bash,
+                get_bash_definition=self._get_bash_definition,
+                create_bash_call_id=self._create_bash_call_id,
+                get_resource_watch_paths=self._resource_watch_paths,
+                prepare_resource_refresh=self._prepare_resource_refresh,
+                rebuild_prompt_and_tools_view=self._rebuild_prompt_and_tools_view,
+                set_resource_bundle=self._set_resource_bundle,
+                record_extension_runtime_diagnostic=(
+                    self._record_extension_runtime_diagnostic
+                ),
+            ),
+            maintenance=SessionMaintenanceInputs(
+                execute_compaction=self._execute_product_compaction,
+                before_compaction=self._before_product_compaction,
+                after_compaction=self._after_product_compaction,
+                sleep_for_retry=self._retry_sleep,
+            ),
+            product=SessionProductInputs(
+                model_registry=self.model_registry,
+                api_provider_registry=self.api_provider_registry,
+                extension_runner=self._extension_runner,
+                session_start_event=self._session_start_event,
+                footer_data_provider=self.footer_data_provider,
+                command_controller=build_command_controller,
+                extension_provider_controller=self._extension_provider_controller,
+                extension_replacement_controller=(
+                    self._extension_replacement_controller
+                ),
+                extension_runtime_binding_factory=(
+                    self._extension_runtime_binding_factory
+                ),
+                extension_bridge=self._extension_bridge,
+                get_context_usage=lambda: self.get_context_usage(),
+                package_controller=self._package_controller,
+                execute_branch_summary=lambda entries, signal: (
+                    self._branch_summary_runner(
+                        custom_instructions=None,
+                        replace_instructions=False,
+                    )(entries, signal)
+                ),
+                before_agent_start_system_prompt_options=(
+                    self._before_agent_start_system_prompt_options
+                ),
+            ),
         )
 
     def get_context_usage(self):
@@ -466,7 +487,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
         *,
         custom_instructions: str | None,
         replace_instructions: bool,
-    ) -> Callable[[Sequence[object], CancellationSignal], Awaitable[BranchSummaryOutput]]:
+    ) -> Callable[
+        [Sequence[object], CancellationSignal], Awaitable[BranchSummaryOutput]
+    ]:
         async def run(
             entries: Sequence[object], signal: CancellationSignal
         ) -> BranchSummaryOutput:
