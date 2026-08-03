@@ -11,6 +11,17 @@ is the Wave R evidence for this ledger. It distinguishes shared mechanisms that
 are already adopted from actual Coding duplicates; only the latter may support a
 future migration LOC claim.
 
+## Closure Status
+
+Status: complete through Wave 7, Slice Z as of 2026-08-03.
+
+This ledger is now a closed historical delivery record for the current
+Coding-to-Harness migration. The implemented ownership map is maintained in
+[Harness Current Owner Map](current-owner-map.md); source and architecture
+gates remain authoritative over both documents. New ownership work requires a
+new accepted boundary or migration record rather than reopening the completed
+wave sequence in this ledger.
+
 ## Ownership Rules
 
 Move an implementation out of `loushang.coding` when it implements a mechanism,
@@ -332,7 +343,7 @@ do not import Coding, and no RPC/CLI wire fields changed in this wave. The
 lifecycle contract is verified with independent Harness/Channel fakes plus the
 existing Coding settings and CLI regressions.
 
-### Wave 6, Slice B: Generic Product CLI Surfaces (In Progress)
+### Wave 6, Slice B: Generic Product CLI Surfaces (Complete)
 
 The detailed boundary is [Product CLI Lifecycle Boundary](product-cli-lifecycle-boundary.md).
 This slice extracts only object-shape and lifecycle mechanisms. It does not move
