@@ -15,10 +15,6 @@ from loushang.harness.resources.types import (
     ThemeDescriptor,
 )
 
-_MAX_SKILL_NAME_LENGTH = 64
-
-_MAX_SKILL_DESCRIPTION_LENGTH = 1024
-
 _IGNORE_FILE_NAMES = (".gitignore", ".ignore", ".fdignore")
 
 DEFAULT_CONTEXT_FILE_NAMES = ("AGENTS.md", "AGENTS.MD")

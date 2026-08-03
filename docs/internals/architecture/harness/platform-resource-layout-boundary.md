@@ -126,8 +126,16 @@ The product-neutral runtime now lives under `loushang.harness.resources`:
   reload, queries, and the standard workspace resource-root mode;
 - `_loader_pipeline` owns discovery-to-resolution orchestration, diagnostic and
   merge-decision aggregation, and `ResourceSnapshot` assembly;
-- `_loader_discovery` owns filesystem, package, built-in, context, and temporary
-  candidate discovery plus source-specific filtering;
+- `_loader_discovery_context` owns context-file ancestor traversal, descriptor
+  construction, diagnostics, and nearest-context selection;
+- `_loader_descriptor_parsing` owns source-neutral prompt/skill frontmatter
+  projection, descriptor construction, and skill validation without I/O;
+- `_loader_discovery_filesystem` owns filesystem directory traversal and reads,
+  skill ignore rules, extension entry lookup, and theme JSON validation;
+- `_loader_discovery` owns external-package, built-in, and temporary source
+  coordination plus source-specific filtering;
+- `_loader_package_policy` owns external-package root/filter normalization,
+  root diagnostics, filtering, and per-root resource accounting;
 - `_loader_resolution` owns collision handling and winner/active-candidate
   decisions without importing discovery;
 - `_loader_precedence` is the single owner of the source priority table, rank,

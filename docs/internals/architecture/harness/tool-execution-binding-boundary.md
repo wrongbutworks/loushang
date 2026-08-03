@@ -379,6 +379,7 @@ harness.tools.core
 
 harness.tools.execution
   ToolExecutionHost
+  private structural definition port (name + execution binding)
   DirectExecution
   AuthorizedExecution
   PreparedToolAction
@@ -408,6 +409,11 @@ Product
   supplies Product-specific action facts when required
   does not own Policy, Approval, or Gateway dispatch
 ```
+
+The dependency is deliberately one-way: `harness.tools.core` imports the
+execution binding types stored by `ToolDefinition`, while
+`harness.tools.execution` dispatches through its private structural port and
+does not import `ToolDefinition`, including under `TYPE_CHECKING`.
 
 `ToolRegistry` stores definitions and may be bound to a host supplied by its
 execution scope. It does not select Policy, retain Approval, construct a
