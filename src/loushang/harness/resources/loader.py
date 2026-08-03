@@ -9,13 +9,15 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._loader_discovery import (
+    _normalize_runtime_paths,
+    _normalize_user_resource_roots,
+    _resolve_prompt_input,
+)
+from loushang.harness.resources._loader_package_policy import (
     _count_package_descriptors,
     _count_package_diagnostics,
     _normalize_package_roots,
     _normalize_package_source_filters,
-    _normalize_runtime_paths,
-    _normalize_user_resource_roots,
-    _resolve_prompt_input,
 )
 from loushang.harness.resources._loader_pipeline import (
     _discover_snapshot,
