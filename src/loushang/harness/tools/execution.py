@@ -5,16 +5,13 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import ToolCall
 from loushang.harness.authorization import EffectiveExecutionProfile
 from loushang.harness.effects import ToolEffect
 from loushang.harness.policy import ToolPolicySubject
-
-if TYPE_CHECKING:
-    from loushang.harness.tools.core import ToolDefinition
 
 ToolUpdateCallback = Callable[[object], Awaitable[None] | None]
 
@@ -202,6 +199,16 @@ class AuthorizedExecution:
 ExecutionBinding = DirectExecution | AuthorizedExecution
 
 
+class _ExecutableToolDefinition(Protocol):
+    """Structural port consumed by the execution host."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def execution(self) -> ExecutionBinding: ...
+
+
 class ToolAuthorizationGateway(Protocol):
     async def execute(
         self,
@@ -219,7 +226,7 @@ class ToolExecutionHost:
 
     async def dispatch(
         self,
-        definition: ToolDefinition,
+        definition: _ExecutableToolDefinition,
         call: ToolCall,
         context: ToolCallContext,
     ) -> AgentToolResult[Any]:
