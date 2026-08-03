@@ -25,12 +25,12 @@ from loushang.coding.cli.__main__ import (
     build_builtin_tool_registry,
     run_cli,
 )
-from loushang.coding.cli.multiagent import (
+from loushang.coding.cli.multiagent import run_coding_multiagent_command
+from loushang.harness.cli.multiagent import (
     MultiAgentCliUsageError,
     MultiAgentRunCommand,
     extract_multiagent_argv,
     parse_multiagent_command,
-    run_coding_multiagent_command,
 )
 
 
