@@ -161,7 +161,7 @@ def test_exec_service_rejects_invalid_backend_result() -> None:
     asyncio.run(scenario())
 
 
-def test_exec_service_runs_subprocess_and_preserves_interleaved_chunks(
+def test_exec_service_runs_subprocess_and_preserves_per_stream_order(
     tmp_path: Path,
 ) -> None:
     updates: list[tuple[str, str]] = []
@@ -193,18 +193,21 @@ def test_exec_service_runs_subprocess_and_preserves_interleaved_chunks(
         assert result.exit_code == 0
         assert result.stdout == "out1\nout2\n"
         assert result.stderr == "err1\n"
-        assert tuple((chunk.stream, chunk.text) for chunk in result.output_chunks) == (
-            ("stdout", "out1\n"),
-            ("stderr", "err1\n"),
-            ("stdout", "out2\n"),
+        observed = tuple(
+            (chunk.stream, chunk.text) for chunk in result.output_chunks
         )
+        # stdout and stderr are independent pipes. Preserve the order within each
+        # stream, while treating their merged order as the host's observation order.
+        assert tuple(text for stream, text in observed if stream == "stdout") == (
+            "out1\n",
+            "out2\n",
+        )
+        assert tuple(text for stream, text in observed if stream == "stderr") == (
+            "err1\n",
+        )
+        assert updates == list(observed)
 
     asyncio.run(scenario())
-    assert updates == [
-        ("stdout", "out1\n"),
-        ("stderr", "err1\n"),
-        ("stdout", "out2\n"),
-    ]
 
 
 def test_exec_service_accepts_a_process_that_exits_without_reading_stdin(
