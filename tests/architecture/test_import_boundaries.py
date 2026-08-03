@@ -1175,15 +1175,24 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
 
 
 def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:
-    prompt_input_source = Path("src/loushang/harness/host/prompt_input.py").read_text(
-        encoding="utf-8"
-    )
+    prompt_input_path = Path("src/loushang/harness/host/prompt_input.py")
+    image_payload_path = Path("src/loushang/harness/tools/workspace/image_payload.py")
+    read_tool_path = Path("src/loushang/harness/tools/workspace/read.py")
+    prompt_input_source = prompt_input_path.read_text(encoding="utf-8")
     agent_args_source = Path("src/loushang/harness/cli/agent_args.py").read_text(
         encoding="utf-8"
     )
     cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    prompt_input_imports = _absolute_imports(prompt_input_path)
+    image_payload_imports = _absolute_imports(image_payload_path)
+    read_tool_imports = _absolute_imports(read_tool_path)
 
     assert "loushang.coding" not in prompt_input_source
+    assert "loushang.harness.tools.workspace.image_payload" in prompt_input_imports
+    assert "loushang.harness.tools.workspace.read" not in prompt_input_imports
+    assert "loushang.harness.tools.workspace.image_payload" in read_tool_imports
+    assert "loushang.harness.tools.workspace.read" not in image_payload_imports
+    assert "loushang.harness.host" not in image_payload_imports
     assert "resolve_prompt_input" in agent_args_source
     assert "resolve_agent_prompt_input" in cli_source
     assert "_process_file_args" not in cli_source

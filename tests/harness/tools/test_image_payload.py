@@ -5,6 +5,13 @@ import tomllib
 from pathlib import Path
 from types import ModuleType
 
+from loushang.harness.tools.workspace.image_payload import (
+    PillowReadImageResizer,
+    detect_image_dimensions,
+    detect_supported_image_mime_type,
+    image_exceeds_inline_limits,
+)
+
 
 class _FakeImage:
     mode = "RGB"
@@ -76,11 +83,45 @@ def _install_fake_pillow(
     return opened_images
 
 
+def test_detect_supported_image_mime_type_requires_matching_suffix_and_magic() -> None:
+    cases = (
+        (Path("photo.jpg"), b"\xff\xd8\xffpayload", "image/jpeg"),
+        (Path("photo.png"), b"\x89PNG\r\n\x1a\npayload", "image/png"),
+        (Path("photo.gif"), b"GIF89apayload", "image/gif"),
+        (Path("photo.webp"), b"RIFF\x00\x00\x00\x00WEBP", "image/webp"),
+    )
+
+    for path, payload, expected in cases:
+        assert detect_supported_image_mime_type(path, payload) == expected
+    assert (
+        detect_supported_image_mime_type(Path("mislabeled.png"), b"\xff\xd8\xffpayload")
+        is None
+    )
+
+
+def test_detect_image_dimensions_and_inline_limit_share_one_policy() -> None:
+    png_payload = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x03\x00\x00\x00\x05"
+
+    assert detect_image_dimensions("image/png", png_payload) == (3, 5)
+    assert image_exceeds_inline_limits(b"encoded", (2000, 1)) is False
+    assert image_exceeds_inline_limits(b"encoded", (2001, 1)) is True
+
+
+def test_workspace_facade_and_legacy_read_module_reexport_owner_type() -> None:
+    from loushang.harness.tools.workspace import (
+        PillowReadImageResizer as facade_resizer,
+    )
+    from loushang.harness.tools.workspace.read import (
+        PillowReadImageResizer as legacy_resizer,
+    )
+
+    assert facade_resizer is PillowReadImageResizer
+    assert legacy_resizer is PillowReadImageResizer
+
+
 def test_pillow_resizer_progressively_reduces_dimensions_until_payload_fits(
     monkeypatch,
 ) -> None:
-    from loushang.harness.tools.workspace import PillowReadImageResizer
-
     _install_fake_pillow(monkeypatch, _FakeImage(16, 16))
     resizer = PillowReadImageResizer(
         max_width=8,
@@ -100,8 +141,6 @@ def test_pillow_resizer_progressively_reduces_dimensions_until_payload_fits(
 
 
 def test_pillow_resizer_applies_exif_transpose_before_resizing(monkeypatch) -> None:
-    from loushang.harness.tools.workspace import PillowReadImageResizer
-
     opened = _FakeImage(16, 8)
     transposed = _FakeImage(8, 16)
     _install_fake_pillow(monkeypatch, opened, transpose_to=transposed)
@@ -123,13 +162,11 @@ def test_pillow_resizer_applies_exif_transpose_before_resizing(monkeypatch) -> N
 
 
 def test_default_pillow_resizer_backend_is_available_from_runtime_dependency() -> None:
-    from loushang.harness.tools.workspace import PillowReadImageResizer
-
     assert PillowReadImageResizer().is_available() is True
 
 
 def test_pillow_is_declared_as_runtime_dependency() -> None:
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = Path(__file__).resolve().parents[3]
     pyproject = tomllib.loads(
         (project_root / "pyproject.toml").read_text(encoding="utf-8")
     )
