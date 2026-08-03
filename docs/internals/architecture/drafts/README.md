@@ -26,6 +26,7 @@ Current live references:
 
 ## Documents
 
+- [Loushang Future Target Architecture v3](future-loushang-architecture-v3.md)
 - [Application Service Refactor](application-service-refactor.md)
 - [Loushang Runtime Architecture](loushang-runtime-architecture.md)
 - [Loushang Work / Method / Channel / Harness Architecture](loushang-work-method-channel-harness-architecture.md)
