@@ -80,9 +80,13 @@ split internally. The implemented dependency direction is:
 
 ```text
 resource loader facade -> package policy
-resource loader facade -> snapshot pipeline -> context discovery
-                                            -> other source discovery -> package policy
-                                            -> resolution -> precedence policy
+resource loader facade -> snapshot pipeline
+                            -> context discovery
+                            -> other source coordinator
+                                 -> filesystem discovery -> descriptor parsing
+                                 -> descriptor parsing
+                                 -> package policy
+                            -> resolution -> precedence policy
 
 runtime profile facade -> types + admission + resolution + binding + standard slots
 admission / resolution / binding / standard slots -> profile types
@@ -92,6 +96,9 @@ typed settings patch -> settings schema codec field rules
 settings schema codec / typed settings patch -> Agent settings types
 
 workspace read tool + Host prompt input -> workspace image payload owner
+
+tool definition owner -> execution bindings
+session execution scope -> tool execution host -> structural definition port
 ```
 
 Context-file ancestor traversal, configured filename precedence, descriptor
@@ -99,14 +106,25 @@ construction, and nearest-context selection belong to
 `harness.resources._loader_discovery_context`. Package-root and filter
 normalization, descriptor-selection patterns, root diagnostics, and per-root
 resource accounting belong to `harness.resources._loader_package_policy`.
-Filesystem, external-package scanning, temporary, and built-in source discovery
-remain in `_loader_discovery`; external-package scanning consumes the package
-policy without moving the shared filesystem scanners. The snapshot pipeline
-calls both discovery paths but does not depend directly on package policy.
-Context discovery and package policy do not depend on discovery coordination,
-resolution, the pipeline, or the public loader facade. Resolution never imports
-either discovery owner or package policy, live profile binding never imports
-profile resolution, and internal leaf modules never import their public facade.
+Source-neutral prompt/skill frontmatter projection, descriptor construction,
+and skill metadata validation belong to
+`harness.resources._loader_descriptor_parsing`; it performs no filesystem or
+package-resource I/O.
+Filesystem directory traversal and reads, recursive skill discovery and ignore
+rules, extension entry lookup, and theme JSON validation belong to
+`harness.resources._loader_discovery_filesystem`. External-package,
+temporary-path, and built-in package coordination remain in
+`_loader_discovery`; the coordinator consumes filesystem discovery,
+descriptor parsing, and package policy. The snapshot pipeline calls the source
+coordinator and context discovery but does not depend directly on those leaf
+owners. Context discovery, filesystem discovery, descriptor parsing, and
+package policy do not depend on discovery coordination, resolution, the
+pipeline, or the public loader facade.
+Resolution never imports any discovery owner or package policy, live profile
+binding never imports profile resolution, and internal leaf modules never
+import their public facade. The tool execution host consumes a private
+structural definition port; `harness.tools.execution` does not import the
+`ToolDefinition` owner in `harness.tools.core`.
 The Agent settings manager depends only on the explicit codec/patch ports
 enforced by the architecture tests, not on field-level serializer helpers.
 Image MIME validation, header dimensions, base64 encoding, inline limits, and
@@ -123,9 +141,10 @@ policy remains with Host prompt input and the read tool.
 - no Session-module import from the Session public barrel;
 - one-way Harness, Work, and Channel dependencies;
 - explicit Agent/AI import allowlists for optional profiles;
-- one-way resource loader, context discovery, package policy, runtime profile,
-  and Agent settings internals with an exact manager-to-codec/patch import
-  allowlist;
+- one-way resource loader, context discovery, descriptor parsing, package
+  policy, runtime profile, and Agent settings internals with an exact
+  manager-to-codec/patch import allowlist;
+- one-way tool-definition-to-execution dependencies;
 - one shared workspace image-payload owner consumed by Host prompt input and
   the read tool;
 - Product-neutral Harnesstui and shared runtime owners.
