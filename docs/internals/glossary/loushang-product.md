@@ -268,6 +268,14 @@ A named runtime or domain concern, such as a conversation store, memory
 provider, compaction planner, tool definition, command descriptor, deck
 renderer, or artifact handler.
 
+### Product Capability Requirement
+
+An opaque Product-level request for a named capability, declared by an admitted
+Skill, Method, Work plan, Session operation, or Product default. A requirement
+does not name executable handlers, select a Harness implementation, grant
+authority, or imply activation. The Active Product resolves it through its
+admitted capability catalog and policy.
+
 ### Capability Slot
 
 A Product-declared location at which one or more implementations of a
@@ -303,6 +311,11 @@ is required, use the PPT Product and an explicit Product Handoff.
 
 The Product-owned activation of an admitted Product Capability Bundle or
 Capability Pack for a specific runtime scope.
+
+A Product may define `disabled`, `on_demand`, or `always` mount policy. Scoped
+mounts from Product defaults, manual selection, Skills, and Method/Work steps are
+additive and independently owned; releasing one scope must not remove another
+scope's request. A Capability Mount is unrelated to an AppService control lease.
 
 For example, Coding may mount `ppt-authoring` while remaining the Active
 Product. The Product Session should snapshot continuity-critical mounted

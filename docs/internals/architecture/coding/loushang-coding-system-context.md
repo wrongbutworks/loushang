@@ -111,7 +111,9 @@
 - guidance
 - work product 模板
 
-`method` 不直接承担 coding runtime，而是为 `coding` 提供方法层资产、编译与投影。`coding` 通过 `CodingDomainApp` 把 method plan/prepared turn 应用到 coding turn。
+`method` 不直接承担 coding runtime，而是为 `coding` 提供方法层资产、编译与投影。当前兼容路径通过薄的
+`CodingDomainApp` facade 把 method plan/prepared turn 应用到 coding turn；v3 目标由 Coding Product 的 Work
+Preparer 和 Product Work Executor 吸收该职责，不保留独立的 DomainApp runtime。
 
 ### loushang-work
 

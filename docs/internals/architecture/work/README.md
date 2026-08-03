@@ -87,6 +87,12 @@ plan identity 之前，调用方不得跨 run 复用会产生歧义的 `plan_id`
 | `WorkOutcome` | 可结构化验证的业务结果、失败或取消结论 |
 | `WorkPlanRevision` | 保留原始计划与证据链的显式计划修订，而不是静默改写历史 |
 
+Target `WorkPlanSpec` may carry opaque Product capability requirement facts that
+were bound by the Product work preparer. Work preserves and correlates those
+facts with the run/step but does not resolve Product Capability Bundles,
+Capability Packs, tool definitions, or authorization. The Product executor
+performs that resolution before invoking Harness.
+
 目标语义关系是：
 
 ```text
