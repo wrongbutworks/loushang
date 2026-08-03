@@ -1,21 +1,22 @@
 """Shared image payload inspection and resizing.
 
-This module owns image-format validation, dimension inspection, inline payload
-limits, and the default Pillow resize policy.  Workspace consumers such as the
-read tool and prompt-input assembly depend on this owner instead of depending
-on one another.
+This module owns image-format validation, dimension inspection, encoding,
+inline payload limits, resize preparation, and the default Pillow resize
+policy. Workspace consumers such as the read tool and prompt-input assembly
+depend on this owner instead of depending on one another.
 """
 
 from __future__ import annotations
 
 import base64
+import inspect
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Protocol, TypeVar, cast
 
-from .runtime import MaybeAwaitable
+from .runtime import MaybeAwaitable, resolve_maybe_awaitable
 
 MAX_INLINE_IMAGE_BASE64_BYTES = int(4.5 * 1024 * 1024)
 MAX_INLINE_IMAGE_DIMENSION = 2000
@@ -30,6 +31,23 @@ class ReadImageResizeResult:
     original_dimensions: tuple[int, int] | None
     dimensions: tuple[int, int] | None
     was_resized: bool
+
+
+@dataclass(frozen=True)
+class PreparedImagePayload:
+    """Inspected and optionally resized payload ready for consumer projection."""
+
+    payload: bytes
+    mime_type: str
+    base64_payload: bytes
+    original_dimensions: tuple[int, int] | None
+    dimensions: tuple[int, int] | None
+    exceeds_inline_limits: bool
+    resize_attempted: bool
+    resize_succeeded: bool
+    resize_unavailable: bool
+    was_resized: bool
+    dimension_note: str | None
 
 
 class ReadImageResizer(Protocol):
@@ -175,6 +193,124 @@ def image_exceeds_inline_limits(
     if dimensions is None:
         return False
     return max(dimensions) > MAX_INLINE_IMAGE_DIMENSION
+
+
+async def prepare_image_payload(
+    payload: bytes,
+    *,
+    mime_type: str,
+    image_resizer: ReadImageResizer,
+    resize_if_needed: bool,
+) -> PreparedImagePayload:
+    """Inspect, encode, and optionally resize an image payload asynchronously."""
+
+    prepared = _inspect_image_payload(payload, mime_type=mime_type)
+    if not resize_if_needed or not prepared.exceeds_inline_limits:
+        return prepared
+    if _image_resizer_is_unavailable(image_resizer):
+        return replace(
+            prepared,
+            resize_attempted=True,
+            resize_unavailable=True,
+        )
+    resize_result = await resolve_maybe_awaitable(
+        image_resizer.resize_image(
+            payload,
+            mime_type=mime_type,
+            dimensions=prepared.dimensions,
+        )
+    )
+    return _apply_resize_result(prepared, resize_result)
+
+
+def prepare_image_payload_sync(
+    payload: bytes,
+    *,
+    mime_type: str,
+    image_resizer: ReadImageResizer,
+    resize_if_needed: bool,
+) -> PreparedImagePayload:
+    """Inspect, encode, and optionally resize with a synchronous resizer."""
+
+    prepared = _inspect_image_payload(payload, mime_type=mime_type)
+    if not resize_if_needed or not prepared.exceeds_inline_limits:
+        return prepared
+    if _image_resizer_is_unavailable(image_resizer):
+        return replace(
+            prepared,
+            resize_attempted=True,
+            resize_unavailable=True,
+        )
+    resize_result = image_resizer.resize_image(
+        payload,
+        mime_type=mime_type,
+        dimensions=prepared.dimensions,
+    )
+    if inspect.isawaitable(resize_result):
+        close = getattr(resize_result, "close", None)
+        if callable(close):
+            close()
+        raise TypeError("synchronous image preparation requires a synchronous resizer")
+    return _apply_resize_result(prepared, resize_result)
+
+
+def _inspect_image_payload(
+    payload: bytes,
+    *,
+    mime_type: str,
+) -> PreparedImagePayload:
+    dimensions = detect_image_dimensions(mime_type, payload)
+    encoded = base64.b64encode(payload)
+    return PreparedImagePayload(
+        payload=payload,
+        mime_type=mime_type,
+        base64_payload=encoded,
+        original_dimensions=dimensions,
+        dimensions=dimensions,
+        exceeds_inline_limits=image_exceeds_inline_limits(encoded, dimensions),
+        resize_attempted=False,
+        resize_succeeded=False,
+        resize_unavailable=False,
+        was_resized=False,
+        dimension_note=None,
+    )
+
+
+def _image_resizer_is_unavailable(image_resizer: ReadImageResizer) -> bool:
+    is_available = getattr(image_resizer, "is_available", None)
+    return bool(callable(is_available) and not is_available())
+
+
+def _apply_resize_result(
+    prepared: PreparedImagePayload,
+    resize_result: ReadImageResizeResult | None,
+) -> PreparedImagePayload:
+    if resize_result is None:
+        return replace(prepared, resize_attempted=True)
+    payload = resize_result.payload
+    mime_type = resize_result.mime_type
+    dimensions = resize_result.dimensions or detect_image_dimensions(mime_type, payload)
+    original_dimensions = (
+        resize_result.original_dimensions or prepared.original_dimensions
+    )
+    encoded = base64.b64encode(payload)
+    return PreparedImagePayload(
+        payload=payload,
+        mime_type=mime_type,
+        base64_payload=encoded,
+        original_dimensions=original_dimensions,
+        dimensions=dimensions,
+        exceeds_inline_limits=image_exceeds_inline_limits(encoded, dimensions),
+        resize_attempted=True,
+        resize_succeeded=True,
+        resize_unavailable=False,
+        was_resized=resize_result.was_resized,
+        dimension_note=format_image_dimension_note(
+            original_dimensions=original_dimensions,
+            dimensions=dimensions,
+            was_resized=resize_result.was_resized,
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -395,10 +531,13 @@ __all__ = [
     "MAX_INLINE_IMAGE_BASE64_BYTES",
     "MAX_INLINE_IMAGE_DIMENSION",
     "PillowReadImageResizer",
+    "PreparedImagePayload",
     "ReadImageResizer",
     "ReadImageResizeResult",
     "detect_image_dimensions",
     "detect_supported_image_mime_type",
     "format_image_dimension_note",
     "image_exceeds_inline_limits",
+    "prepare_image_payload",
+    "prepare_image_payload_sync",
 ]
