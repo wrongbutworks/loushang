@@ -13,6 +13,7 @@ QueueMode = Literal["all", "one-at-a-time"]
 DoubleEscapeAction = Literal["fork", "tree", "none"]
 TreeFilterMode = Literal["default", "no-tools", "user-only", "labeled-only", "all"]
 ExternalToolPolicy = Literal["never", "auto", "required"]
+CapabilityMountMode = Literal["disabled", "on_demand", "always"]
 HeadlessApprovalMode = Literal["allow", "deny"]
 StatusLineAutoValue = Literal["auto", "true", "false"]
 StatusLineSeparator = Literal["pipe", "dot"]
@@ -149,6 +150,7 @@ class ControlConfig:
     editor_padding_x: int = 0
     autocomplete_max_visible: int = 5
     keybindings: dict[str, KeybindingValue] = field(default_factory=dict)
+    capabilities: dict[str, CapabilityMountMode] = field(default_factory=dict)
     thinking_budgets: ThinkingBudgetMap | None = None
     compaction: CompactionSettings = field(default_factory=CompactionSettings)
     branch_summary: BranchSummarySettings = field(default_factory=BranchSummarySettings)
@@ -176,6 +178,7 @@ class ControlConfig:
 __all__ = [
     "BranchSummarySettings",
     "CompactionSettings",
+    "CapabilityMountMode",
     "ControlConfig",
     "DoubleEscapeAction",
     "ExternalToolPolicy",
