@@ -47,7 +47,8 @@ description.
   mandatory rebaseline ledger, revised six delivery waves, and closure gates
   for turning Coding into a declarative Product adapter.
 - [Coding Shared-Layer Migration Ledger](coding-shared-layer-migration-ledger.md)
-  records the concrete source-to-owner cutover scope for each delivery wave.
+  is the closed historical record of the concrete source-to-owner cutover
+  completed through Wave 7, Slice Z.
 - [CLI Product Host Collapse](cli-product-host-collapse.md) defines ordered
   standard CLI operation dispatch and shared session/resource/package host
   operations while Products retain grammar, policy, and mode selection.

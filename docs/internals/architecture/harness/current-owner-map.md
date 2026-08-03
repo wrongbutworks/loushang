@@ -88,12 +88,17 @@ admission / resolution / binding / standard slots -> profile types
 Agent settings manager -> typed settings patch + settings schema codec
 typed settings patch -> settings schema codec field rules
 settings schema codec / typed settings patch -> Agent settings types
+
+workspace read tool + Host prompt input -> workspace image payload owner
 ```
 
 Resolution never imports discovery, live profile binding never imports profile
 resolution, and internal leaf modules never import their public facade. The
 Agent settings manager depends only on the explicit codec/patch ports enforced
 by the architecture tests, not on field-level serializer helpers.
+Image MIME validation, header dimensions, inline limits, and default resizing
+belong to `harness.tools.workspace.image_payload`; neither prompt input nor the
+read tool owns a second copy of those rules.
 
 ## Architecture Gates
 
@@ -105,6 +110,8 @@ by the architecture tests, not on field-level serializer helpers.
 - explicit Agent/AI import allowlists for optional profiles;
 - one-way resource loader, runtime profile, and Agent settings internals with
   an exact manager-to-codec/patch import allowlist;
+- one shared workspace image-payload owner consumed by Host prompt input and
+  the read tool;
 - Product-neutral Harnesstui and shared runtime owners.
 
 New boundaries must update this map when they change current ownership. A
