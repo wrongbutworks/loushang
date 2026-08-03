@@ -3,15 +3,20 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
+from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
 from loushang.harness.multiagent import (
     AgentCaller,
     AgentInputMessage,
     AgentPath,
     AgentTypeRegistry,
     AgentTypeSpec,
+    ForkedHistory,
+    ForkTier,
     HostCaller,
     MultiAgentControl,
+    SubagentContextPlan,
     SubagentRoundResult,
 )
 from loushang.harness.multiagent.run_handle import RoundMode
@@ -22,8 +27,13 @@ from loushang.harness.session.multiagent import (
     SessionMultiAgentRuntime,
     SessionSubagentDriver,
     SessionSubagentRequest,
+    agent_input_application_message,
+    bind_agent_session_multiagent,
     compose_multiagent_before_release,
+    install_agent_forked_history,
+    project_agent_round_result,
 )
+from loushang.harness.transcript import ApplicationMessage
 
 NOW = datetime(2026, 7, 26, tzinfo=UTC)
 HOST = HostCaller()
@@ -638,3 +648,108 @@ def test_before_release_hook_closes_children_then_calls_existing_hook() -> None:
         assert factory.drivers[child.path].dispose_calls == 1
 
     asyncio.run(scenario())
+
+
+def test_standard_agent_session_binding_reuses_the_root_input_queue() -> None:
+    queue: HostInputQueue[ApplicationMessage] = HostInputQueue()
+    session = SimpleNamespace(
+        runtime=SimpleNamespace(
+            queue=SimpleNamespace(input_queue=queue),
+            is_active=False,
+        )
+    )
+
+    runtime = bind_agent_session_multiagent(
+        session,
+        child_factory=_Factory(),
+        agent_types=AgentTypeRegistry((AgentTypeSpec(name="reviewer"),)),
+    )
+    asyncio.run(
+        runtime.send_message(
+            caller=HOST,
+            target=AgentPath.root(),
+            text="Review this.",
+        )
+    )
+
+    assert queue.texts("follow_up") == ["Review this."]
+    assert session.multiagent_runtime is runtime
+    assert session.multiagent_input.queue is queue
+
+
+def test_agent_input_projection_preserves_routing_metadata() -> None:
+    control = _control()
+    child = control.spawn(
+        caller=HOST,
+        parent_path=AgentPath.root(),
+        name="reviewer",
+        agent_type="reviewer",
+    )
+
+    payload = agent_input_application_message(
+        AgentInputMessage(
+            message_id="completion:notice-1",
+            sender=AgentCaller(child.ref),
+            recipient_ref=control.root_ref,
+            kind="mailbox",
+            text="Done.",
+            references=("artifact:1",),
+        )
+    )
+
+    assert payload.custom_type == "harness.multiagent.completion_notice"
+    assert payload.delivery_mode == "next_turn"
+    assert payload.details == {
+        "sender": str(child.path),
+        "recipient": "/root",
+        "references": ["artifact:1"],
+    }
+
+
+def test_standard_agent_history_and_round_projection_are_product_neutral() -> None:
+    user = UserMessage(role="user", content="Review.", timestamp=0)
+    state = SimpleNamespace(messages=())
+    state.set_messages = lambda messages: setattr(state, "messages", tuple(messages))
+    session = SimpleNamespace(agent=SimpleNamespace(state=state))
+    plan = SubagentContextPlan(
+        system_prompt="Review carefully.",
+        model=None,
+        history=ForkedHistory(
+            requested_tier=ForkTier.all(),
+            effective_tier=ForkTier.all(),
+            watermark=None,
+            messages=(user,),
+        ),
+    )
+    install_agent_forked_history(session, plan)
+
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            TextPart(type="text", text="No blockers."),
+            ToolCall(type="toolCall", id="tool-1", name="read", arguments={}),
+        ],
+        api="test",
+        provider="test",
+        model="test",
+        response_id=None,
+        usage=Usage(
+            input=8,
+            output=3,
+            cache_read=2,
+            cache_write=0,
+            total_tokens=13,
+            cost=None,
+        ),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=0,
+    )
+    result = project_agent_round_result((user, assistant))
+
+    assert state.messages == (user,)
+    assert result.status == "completed"
+    assert result.final_message == "No blockers."
+    assert result.latest_input_tokens == 10
+    assert result.output_tokens == 3
+    assert result.tool_uses == 1

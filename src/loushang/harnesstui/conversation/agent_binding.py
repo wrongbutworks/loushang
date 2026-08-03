@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import time
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
@@ -9,7 +10,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Literal, Protocol, TextIO, TypeAlias
 
-from loushang.agent.types import AgentToolResult
+from loushang.agent.types import AgentToolResult, ImagePart
 from loushang.harness.events import normalize_event_select
 from loushang.harness.host.mode import ModeConfig
 from loushang.harness.host.rpc import run_rpc_host
@@ -37,6 +38,7 @@ from loushang.harness.transcript import (
     STANDARD_AGENT_TRANSCRIPT_KINDS,
     THINKING_SELECTION_KIND,
 )
+from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.harnesstui.conversation.history import (
     ConversationHistoryProjector,
     HistoryRecordDisposition,
@@ -89,6 +91,23 @@ from loushang.tui.transcript import DisplayRecord, ToolExecutionRecord
 AgentToolTranscriptProjection: TypeAlias = ToolTranscriptProjectionBinding[
     Mapping[str, Any], object
 ]
+
+
+def agent_image_parts_from_prompt_attachments(
+    attachments: tuple[PromptImageAttachment, ...],
+) -> tuple[ImagePart, ...] | None:
+    """Convert neutral TUI attachments at the standard Agent boundary."""
+
+    if not attachments:
+        return None
+    return tuple(
+        ImagePart(
+            type="image",
+            data=base64.b64encode(attachment.bytes).decode("ascii"),
+            mime_type=attachment.mime_type,
+        )
+        for attachment in attachments
+    )
 
 
 class AgentPlainPromptRenderer(PlainConversationProjectionPort, Protocol):
@@ -725,6 +744,7 @@ __all__ = [
     "AgentPlainPromptRenderer",
     "AgentPlainPromptSession",
     "STANDARD_AGENT_HISTORY_DISPOSITIONS",
+    "agent_image_parts_from_prompt_attachments",
     "agent_tool_block_to_record",
     "build_agent_plain_conversation_projection",
     "build_agent_plain_event_projection",

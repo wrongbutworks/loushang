@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Generic, Literal, Protocol, TypeVar
+from typing import Any, Generic, Literal, Protocol, TypeVar, cast
 
+from loushang.ai.types import (
+    AssistantMessage,
+    Message,
+    TextPart,
+    ToolCall,
+    ToolResultMessage,
+    UserMessage,
+)
 from loushang.harness.multiagent.context import SubagentContextPlan
 from loushang.harness.multiagent.control import MultiAgentControl
 from loushang.harness.multiagent.run_handle import (
@@ -25,19 +33,24 @@ from loushang.harness.multiagent.types import (
     AgentPath,
     AgentRecord,
     AgentRef,
+    AgentTypeRegistry,
     AgentTypeSpec,
     ControlCaller,
     HostCaller,
     MultiAgentError,
+    TerminalStatus,
 )
 from loushang.harness.runtime.execution import HostRuntime
 from loushang.harness.runtime.input_queue import HostInputQueue
+from loushang.harness.tools.multiagent import MultiAgentToolPack
+from loushang.harness.transcript.types import ApplicationMessage
 
 PayloadT = TypeVar("PayloadT")
 SessionT = TypeVar("SessionT")
 
 NoticeWakePolicy = Literal["queue_only", "wake_if_idle", "discard"]
 InputActivityKind = Literal["message", "completion_notice", "steered", "cleared"]
+_AGENT_HISTORY_MESSAGE_TYPES = (UserMessage, AssistantMessage, ToolResultMessage)
 
 
 @dataclass(frozen=True, slots=True)
@@ -585,6 +598,162 @@ class SessionMultiAgentRuntime:
             raise RuntimeError("session multi-agent runtime is disposed")
 
 
+def build_agent_session_input_facade(
+    session: object,
+) -> AgentInputFacade[ApplicationMessage]:
+    """Bind standard multi-agent input to one structurally compatible Agent session."""
+
+    bound = cast(Any, session)
+    queue = bound.runtime.queue
+    mailbox = getattr(queue, "queue_mailbox_message", None)
+    submit_mailbox = (
+        cast(Callable[[ApplicationMessage], object], mailbox)
+        if callable(mailbox)
+        else queue.input_queue.append_next_turn
+    )
+    return AgentInputFacade(
+        queue=queue.input_queue,
+        build_payload=agent_input_application_message,
+        submit_mailbox=submit_mailbox,
+    )
+
+
+def bind_agent_session_multiagent(
+    session: object,
+    *,
+    child_factory: SessionSubagentFactory,
+    agent_types: AgentTypeRegistry,
+    register_tools: bool = False,
+) -> SessionMultiAgentRuntime:
+    """Bind the shared control plane to one standard live Agent session."""
+
+    bound = cast(Any, session)
+    if getattr(bound, "multiagent_runtime", None) is not None:
+        raise RuntimeError("Agent multi-agent runtime is already installed")
+    input_facade = build_agent_session_input_facade(bound)
+    runtime = SessionMultiAgentRuntime(
+        control=MultiAgentControl(agent_types=agent_types),
+        child_factory=child_factory,
+        root_input=input_facade,
+        root_is_active=lambda: bool(bound.runtime.is_active),
+        notice_wake_policy="queue_only",
+    )
+    bound.multiagent_input = input_facade
+    bound.multiagent_runtime = runtime
+    if register_tools:
+        pack = MultiAgentToolPack(
+            runtime=runtime,
+            caller=AgentCaller(runtime.control.root_ref),
+        )
+        bound.register_runtime_tools(
+            pack.definitions(),
+            activate=True,
+            source_info={"pack": "harness.multiagent"},
+        )
+        bound.multiagent_tool_pack = pack
+    return runtime
+
+
+def agent_input_application_message(message: AgentInputMessage) -> ApplicationMessage:
+    """Project routed multi-agent input into the standard Agent transcript shape."""
+
+    sender = (
+        str(message.sender.ref.path)
+        if isinstance(message.sender, AgentCaller)
+        else "host"
+    )
+    return ApplicationMessage(
+        application_message_id=message.message_id,
+        custom_type=(
+            "harness.multiagent.completion_notice"
+            if message.message_id.startswith("completion:")
+            else "harness.multiagent.message"
+        ),
+        content=message.text,
+        timestamp=0.0,
+        display=False,
+        details={
+            "sender": sender,
+            "recipient": str(message.recipient_ref.path),
+            "references": list(message.references),
+        },
+        origin="harness.multiagent",
+        delivery_mode=("next_turn" if message.kind == "mailbox" else message.kind),
+    )
+
+
+def install_agent_forked_history(
+    session: object,
+    plan: SubagentContextPlan[Any] | None,
+    *,
+    invalid_message: str = "Agent history must contain canonical Agent messages",
+) -> None:
+    """Install a validated, canonical Agent history on a child session."""
+
+    if plan is None or not plan.history.messages:
+        return
+    messages: list[Message] = []
+    for message in plan.history.messages:
+        if not isinstance(message, _AGENT_HISTORY_MESSAGE_TYPES):
+            raise TypeError(invalid_message)
+        messages.append(message)
+    cast(Any, session).agent.state.set_messages(messages)
+
+
+def project_agent_round_result(
+    messages: Sequence[Message],
+    *,
+    missing_response: str = "Child agent produced no assistant response.",
+    completed_response: str = "Child agent completed.",
+    summary_limit: int = 1000,
+) -> SubagentRoundResult:
+    """Project canonical Agent messages into one multi-agent round result."""
+
+    assistant_messages = tuple(
+        message for message in messages if isinstance(message, AssistantMessage)
+    )
+    if not assistant_messages:
+        return SubagentRoundResult(status="failed", final_message=missing_response)
+
+    final = assistant_messages[-1]
+    text = _assistant_text(final)
+    status: TerminalStatus
+    if final.stop_reason == "aborted":
+        status = "interrupted"
+    elif final.error_message is not None or final.stop_reason == "error":
+        status = "failed"
+    else:
+        status = "completed"
+    final_message = final.error_message or text or completed_response
+    return SubagentRoundResult(
+        status=status,
+        final_message=final_message,
+        summary=_summary(final_message, limit=summary_limit),
+        latest_input_tokens=(
+            int(final.usage.input or 0) + int(final.usage.cache_read or 0)
+        ),
+        output_tokens=sum(
+            int(message.usage.output or 0) for message in assistant_messages
+        ),
+        tool_uses=sum(
+            isinstance(part, ToolCall)
+            for message in assistant_messages
+            for part in message.content
+        ),
+    )
+
+
+def _assistant_text(message: AssistantMessage) -> str:
+    return "".join(
+        part.text for part in message.content if isinstance(part, TextPart)
+    ).strip()
+
+
+def _summary(value: str, *, limit: int) -> str:
+    normalized = " ".join(value.split())
+    return normalized if len(normalized) <= limit else f"{normalized[: limit - 1]}…"
+
+
 def completion_notice_to_message(
     notice: AgentCompletionNotice,
     *,
@@ -658,7 +827,12 @@ __all__ = [
     "SessionSubagentFactory",
     "SessionSubagentRequest",
     "SessionTreeCloseResult",
+    "agent_input_application_message",
+    "bind_agent_session_multiagent",
+    "build_agent_session_input_facade",
     "completion_notice_to_message",
     "compose_multiagent_before_release",
+    "install_agent_forked_history",
+    "project_agent_round_result",
     "standard_completion_notice_text",
 ]

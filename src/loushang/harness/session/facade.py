@@ -307,8 +307,8 @@ class SessionControlPort(Protocol):
     def request_resource_refresh(self) -> None: ...
 
 
-def require_active_session_control(runtime: object) -> SessionControlPort:
-    """Resolve the standard control port from an active Product runtime."""
+def require_active_session(runtime: object) -> object:
+    """Resolve the active Session published by a Product runtime."""
 
     getter = getattr(runtime, "get_current_session", None)
     if not callable(getter):
@@ -316,6 +316,13 @@ def require_active_session_control(runtime: object) -> SessionControlPort:
     session = getter()
     if session is None:
         raise RuntimeError("Session runtime requires an active session")
+    return session
+
+
+def require_active_session_control(runtime: object) -> SessionControlPort:
+    """Resolve the standard control port from an active Product runtime."""
+
+    session = require_active_session(runtime)
     control = getattr(session, "session_control", None)
     if control is None:
         raise TypeError("Active session must expose session_control")
@@ -787,5 +794,6 @@ __all__ = [
     "SessionToolsPort",
     "SessionTranscriptPort",
     "SessionViewPort",
+    "require_active_session",
     "require_active_session_control",
 ]
