@@ -2,7 +2,8 @@
 
 ## Status
 
-Status: implemented on `harness/control-plane-runtime`; integration pending.
+Status: implemented and integrated. The original implementation branch was
+`harness/control-plane-runtime`.
 
 The extension-routing portions of this document remain current. Its
 tool-shaped Policy and boolean Approval target is superseded by
