@@ -161,7 +161,8 @@ artifact 引用、diff review、显式批准 apply 与 discard。
 
 1. **技术一期**：session-owned 控制树、异步协作 tools、消息驱动唤醒、
    Coding Git workspace lease、事实驱动的跨产品 TUI；无 LRU 回收。
-2. **调度一期**：Work-backed durable execution、checkpoint、orphan
-   recovery 与 attach/cancel。
-3. **后续**：LRU 驻留回收、远端执行（channel 承载 transport）、Method
-   编译的 stage 级派生、验收和工作产品调度。
+2. **调度一期**：Work-owned 业务履约与 Host-owned execution backend
+   显式关联，增加 checkpoint、orphan recovery 与 attach/cancel。
+3. **后续**：LRU 驻留回收、plugin / remote-worker backend 及其独立
+   worker transport、Method 编译的 stage 级派生、验收和工作产品调度；
+   Channel 不作为受管 worker 的 transport。

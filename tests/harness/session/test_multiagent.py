@@ -17,6 +17,7 @@ from loushang.harness.multiagent import (
     HostCaller,
     MultiAgentControl,
     SubagentContextPlan,
+    SubagentDisposeResult,
     SubagentRoundResult,
 )
 from loushang.harness.multiagent.run_handle import RoundMode
@@ -24,7 +25,9 @@ from loushang.harness.runtime import HostInputQueue
 from loushang.harness.runtime.execution import HostRuntime
 from loushang.harness.session.multiagent import (
     AgentInputFacade,
+    AgentInputWaitOutcome,
     SessionMultiAgentRuntime,
+    SessionSubagentBinding,
     SessionSubagentDriver,
     SessionSubagentRequest,
     agent_input_application_message,
@@ -71,8 +74,9 @@ class _Driver:
                 )
             )
 
-    async def dispose(self) -> None:
+    async def dispose(self) -> SubagentDisposeResult:
         self.dispose_calls += 1
+        return SubagentDisposeResult()
 
     def complete(self, message: str = "Done.", *, summary: str | None = None) -> None:
         self.pending[-1].set_result(
@@ -89,31 +93,62 @@ class _Factory:
         self.drivers: dict[AgentPath, _Driver] = {}
         self.requests: list[SessionSubagentRequest] = []
 
-    async def create_driver(self, request: SessionSubagentRequest) -> _Driver:
+    async def create(self, request: SessionSubagentRequest) -> SessionSubagentBinding:
         self.requests.append(request)
         driver = _Driver()
         self.drivers[request.record.path] = driver
-        return driver
+        return SessionSubagentBinding(driver=driver)
 
 
 class _FailingFactory:
-    async def create_driver(
+    async def create(
         self,
         _request: SessionSubagentRequest,
-    ) -> _Driver:
+    ) -> SessionSubagentBinding:
         raise RuntimeError("child construction failed")
 
 
 class _WorkspaceFactory:
     def __init__(self) -> None:
         self.driver = _Driver()
-        self.driver.workspace_ref = "coding-worktree:reviewer"
 
-    async def create_driver(
+    async def create(
         self,
         _request: SessionSubagentRequest,
-    ) -> _Driver:
-        return self.driver
+    ) -> SessionSubagentBinding:
+        return SessionSubagentBinding(
+            driver=self.driver,
+            workspace_ref="coding-worktree:reviewer",
+        )
+
+
+class _InputActivity:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int | None, float | None]] = []
+
+    async def wait_for_activity(
+        self,
+        *,
+        after_sequence: int | None = None,
+        timeout: float | None = None,
+    ) -> AgentInputWaitOutcome:
+        self.calls.append((after_sequence, timeout))
+        return AgentInputWaitOutcome(None, timed_out=True)
+
+
+class _InputActivityFactory:
+    def __init__(self) -> None:
+        self.driver = _Driver()
+        self.input_activity = _InputActivity()
+
+    async def create(
+        self,
+        _request: SessionSubagentRequest,
+    ) -> SessionSubagentBinding:
+        return SessionSubagentBinding(
+            driver=self.driver,
+            input_activity=self.input_activity,
+        )
 
 
 def _control() -> MultiAgentControl:
@@ -420,6 +455,38 @@ def test_spawn_projects_the_product_workspace_before_the_first_round() -> None:
             "workspace",
             "status_changed",
         ]
+        await _yield_until(lambda: bool(factory.driver.pending))
+        factory.driver.complete()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_spawn_binds_an_input_activity_port_without_concrete_facade_checks() -> None:
+    async def scenario() -> None:
+        control = _control()
+        factory = _InputActivityFactory()
+        runtime = SessionMultiAgentRuntime(
+            control=control,
+            child_factory=factory,
+            notice_wake_policy="discard",
+        )
+
+        child = await runtime.spawn_child(
+            caller=HOST,
+            parent_path=AgentPath.root(),
+            name="reviewer",
+            agent_type="reviewer",
+            initial_prompt="Review.",
+        )
+        outcome = await runtime.wait_for_input(
+            caller=AgentCaller(child.ref),
+            after_sequence=7,
+            timeout=0.5,
+        )
+
+        assert outcome.timed_out is True
+        assert factory.input_activity.calls == [(7, 0.5)]
         await _yield_until(lambda: bool(factory.driver.pending))
         factory.driver.complete()
         await runtime.dispose()
