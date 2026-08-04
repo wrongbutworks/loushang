@@ -124,6 +124,66 @@ Product bindings retain domain language, prompts, model and provider policy,
 tool selection, artifact content, validation, event vocabulary, and
 presentation decisions. They do not reimplement AppService, Work, or Harness.
 
+### 4. Match remote Agent contracts to interaction semantics
+
+Remote placement does not imply a persistent Agent session. A remote Agent may
+be exposed as one of three progressively stronger capabilities:
+
+| Interaction semantics | Minimum contract | Architectural treatment |
+|---|---|---|
+| One-shot invocation | `invoke(request) -> result` | Ordinary admitted Harness tool/capability; not multiagent |
+| One-shot asynchronous job | `submit(request) -> RunRef`, `await_result`, `cancel` | Job/delegation capability; no addressable collaboration actor |
+| Stateful collaboration | `spawn`, `send`, `wait`, `list`, `interrupt`, `close` | Multiagent collaboration port with follow-up and steering semantics |
+
+An execution may have progress without requiring one stateful server process,
+and an asynchronous `RunRef` does not imply an attachable Agent session. Job
+state may live in a queue or store and be served by interchangeable instances.
+V3 therefore does not define one universal provider containing `invoke`,
+`submit`, `attach`, `send`, `inspect`, `cancel`, and `close`.
+
+The LSP analogy applies only to the local-client/remote-service boundary. The
+model calls a stable admitted tool; its handler invokes an injected capability
+client; a transport adapter calls the remote service. The model-visible tool
+schema is not the wire protocol. The client adds protocol version, request and
+caller identity, idempotency, authorization scope, and event cursor fields that
+the model must not control.
+
+```text
+local Agent
+  -> admitted tool
+  -> capability client
+  -> stdio JSON-RPC | IPC | HTTP | gRPC | A2A adapter
+  -> remote capability service
+```
+
+The first collaboration implementation chooses one backend for a Session or
+capability profile: either the current local `SessionMultiAgentRuntime` or one
+remote collaboration service behind the same tool façade. It does not require
+per-child mixing of local, plugin, and remote placement in one logical tree.
+That simpler choice keeps the remote service free to own its child tree and
+mailbox while the local Host retains capability admission, authority, bounded
+result projection, and Product interaction routing.
+
+An internal `AgentExecutionPort` is optional and deferred. It is justified only
+when the Host must transparently mix physical backends inside one logical tree
+or provide attach, lease, fencing, checkpoint, orphan detection, and recovery
+under one local control model. It is then extracted from at least two proven
+backends. A remote `invoke` client, an asynchronous job service, or a
+Session-level remote collaboration adapter does not by itself require that
+port.
+
+AppService is not a dependency of the capability client. Product/Host
+composition admits and injects the client. Channel is not its worker transport,
+and Work participates only when the invocation is also an accepted durable
+business commitment. A2A may be one adapter for an independent external Agent;
+a Loushang-controlled service may use a smaller worker protocol without
+changing the tool contract. See
+[Remote Agent Capability Boundary](../harness/multiagent/remote-agent-capability-boundary.md).
+The implemented local CLI P0 is documented in
+[One-Shot Agent Invocation Tool Boundary](../harness/agent-invocation-tool-boundary.md):
+it proves the admitted-tool path without introducing an execution provider,
+job lifecycle, or new multi-agent runtime abstraction.
+
 ## Client And Process Profiles
 
 ### Embedded TUI profile
@@ -438,6 +498,8 @@ The v3 target does not require:
 - a public P2P relay in the first AppService release;
 - a base App protocol for MethodPlan/MethodStep state before a Product needs to
   render, inspect, or steer it;
+- treating every remote Agent call as a stateful collaboration Session;
+- one universal remote-Agent interface or a mandatory `AgentExecutionPort`;
 - Product imports inside AppService; or
 - one generic Product profile capable of arbitrary runtime injection.
 
@@ -475,6 +537,10 @@ Two capabilities have independent gates rather than mandatory phase numbers:
 - Before exposing Method progress, inspection, or steering, a Product identifies
   a consuming surface and defines the minimum Product-facing projection and
   compatibility contract.
+- A remote Agent starts with the weakest sufficient contract: `invoke`, then an
+  asynchronous job only when execution outlives one tool call, then
+  collaboration only when steering or follow-up is required. Transparent mixed
+  placement and a common execution port require a separate proven need.
 
 Each phase must preserve the embedded fast path, Product neutrality, Work and
 Harness dependency direction, and a single lifecycle owner for every pending
@@ -489,3 +555,5 @@ interaction.
 - [Channel Architecture](../channel/README.md)
 - [Work Architecture](../work/README.md)
 - [Method Architecture](../method/README.md)
+- [Remote Agent Capability Boundary](../harness/multiagent/remote-agent-capability-boundary.md)
+- [One-Shot Agent Invocation Tool Boundary](../harness/agent-invocation-tool-boundary.md)

@@ -9,12 +9,14 @@ from loushang.harness.multiagent import (
     AgentTypeRegistry,
     AgentTypeSpec,
     MultiAgentControl,
+    SubagentDisposeResult,
     SubagentRoundResult,
 )
 from loushang.harness.runtime import HostInputQueue
 from loushang.harness.session.multiagent import (
     AgentInputFacade,
     SessionMultiAgentRuntime,
+    SessionSubagentBinding,
     SessionSubagentRequest,
 )
 from loushang.harness.tools.multiagent import (
@@ -44,18 +46,18 @@ class _Driver:
     def abort(self) -> None:
         return None
 
-    async def dispose(self) -> None:
-        return None
+    async def dispose(self) -> SubagentDisposeResult:
+        return SubagentDisposeResult()
 
 
 class _Factory:
     def __init__(self) -> None:
         self.drivers: dict[AgentPath, _Driver] = {}
 
-    async def create_driver(self, request: SessionSubagentRequest) -> _Driver:
+    async def create(self, request: SessionSubagentRequest) -> SessionSubagentBinding:
         driver = _Driver()
         self.drivers[request.record.path] = driver
-        return driver
+        return SessionSubagentBinding(driver=driver)
 
 
 def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> None:
@@ -96,8 +98,7 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
 
         definitions = {definition.name: definition for definition in pack.definitions()}
         tools = {
-            name: registry.materialize_tool(name)
-            for name in MULTIAGENT_TOOL_NAMES
+            name: registry.materialize_tool(name) for name in MULTIAGENT_TOOL_NAMES
         }
         assert "failed call creates no child" in definitions["spawn_agent"].description
         assert "free open-agent capacity" in definitions["close_agent"].description

@@ -83,6 +83,11 @@ from .grep import (
     GrepToolOptions,
     create_grep_tool_definition,
 )
+from .image_payload import (
+    PillowReadImageResizer,
+    ReadImageResizer,
+    ReadImageResizeResult,
+)
 from .ls import LsToolDetails, LsToolInput, LsToolOptions, create_ls_tool_definition
 from .operations import (
     LOCAL_TOOL_OPERATIONS,
@@ -107,9 +112,6 @@ from .presentation import (
     render_tool_result_text,
 )
 from .read import (
-    PillowReadImageResizer,
-    ReadImageResizer,
-    ReadImageResizeResult,
     ReadToolDetails,
     ReadToolInput,
     ReadToolOptions,

@@ -7,19 +7,17 @@ the input protocol and image payload construction remain shared.
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
 from loushang.ai.types import ImagePart
-from loushang.harness.tools.workspace.path_utils import resolve_tool_path
-from loushang.harness.tools.workspace.read import (
+from loushang.harness.tools.workspace.image_payload import (
     PillowReadImageResizer,
-    detect_image_dimensions,
-    format_image_dimension_note,
-    image_exceeds_inline_limits,
+    detect_supported_image_mime_type,
+    prepare_image_payload_sync,
 )
+from loushang.harness.tools.workspace.path_utils import resolve_tool_path
 
 
 @dataclass(frozen=True)
@@ -84,47 +82,31 @@ def _process_file_args(
         payload = path.read_bytes()
         if not payload:
             continue
-        mime_type = _detect_supported_image_mime_type(path, payload)
+        mime_type = detect_supported_image_mime_type(path, payload)
         if mime_type is not None:
-            original_dimensions = detect_image_dimensions(mime_type, payload)
-            dimensions = original_dimensions
-            encoded = base64.b64encode(payload)
-            dimension_note: str | None = None
-            if auto_resize_images and image_exceeds_inline_limits(encoded, dimensions):
-                resize_result = PillowReadImageResizer().resize_image(
-                    payload,
-                    mime_type=mime_type,
-                    dimensions=dimensions,
+            prepared = prepare_image_payload_sync(
+                payload,
+                mime_type=mime_type,
+                image_resizer=PillowReadImageResizer(),
+                resize_if_needed=auto_resize_images,
+            )
+            if prepared.resize_attempted and not prepared.resize_succeeded:
+                text_parts.append(
+                    f'<file name="{path}">'
+                    "[Image omitted: could not be resized below the inline image size limit.]"
+                    "</file>\n"
                 )
-                if resize_result is None:
-                    text_parts.append(
-                        f'<file name="{path}">'
-                        "[Image omitted: could not be resized below the inline image size limit.]"
-                        "</file>\n"
-                    )
-                    continue
-                payload = resize_result.payload
-                mime_type = resize_result.mime_type
-                dimensions = resize_result.dimensions or detect_image_dimensions(
-                    mime_type, payload
-                )
-                original_dimensions = (
-                    resize_result.original_dimensions or original_dimensions
-                )
-                encoded = base64.b64encode(payload)
-                dimension_note = format_image_dimension_note(
-                    original_dimensions=original_dimensions,
-                    dimensions=dimensions,
-                    was_resized=resize_result.was_resized,
-                )
+                continue
             images.append(
                 ImagePart(
                     type="image",
-                    data=encoded.decode("ascii"),
-                    mime_type=mime_type,
+                    data=prepared.base64_payload.decode("ascii"),
+                    mime_type=prepared.mime_type,
                 )
             )
-            text_parts.append(f'<file name="{path}">{dimension_note or ""}</file>\n')
+            text_parts.append(
+                f'<file name="{path}">{prepared.dimension_note or ""}</file>\n'
+            )
             continue
         try:
             content = payload.decode("utf-8")
@@ -132,26 +114,6 @@ def _process_file_args(
             raise RuntimeError(f"Could not read file {path}: {error}") from error
         text_parts.append(f'<file name="{path}">\n{content}\n</file>\n')
     return "".join(text_parts), images
-
-
-def _detect_supported_image_mime_type(path: Path, payload: bytes) -> str | None:
-    suffix = path.suffix.lower()
-    if suffix in {".jpg", ".jpeg"} and payload.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if suffix == ".png" and payload.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if suffix == ".gif" and (
-        payload.startswith(b"GIF87a") or payload.startswith(b"GIF89a")
-    ):
-        return "image/gif"
-    if (
-        suffix == ".webp"
-        and len(payload) >= 12
-        and payload.startswith(b"RIFF")
-        and payload[8:12] == b"WEBP"
-    ):
-        return "image/webp"
-    return None
 
 
 def _read_stdin_prompt(stdin: TextIO) -> str | None:

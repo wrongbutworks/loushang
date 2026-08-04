@@ -72,7 +72,7 @@ loushang.harness.session/
 | `context.py` | fresh/fork context plans, transcript watermark, deterministic history rebuild, admitted tool names, approval-provenance bubbling | transcript repository and `ApprovalRequest` |
 | `control.py` | spawn, message routing, lifecycle transitions, close, authority checks, fact publication | registry and immutable facts |
 | `run_handle.py` | one owned task per round, wake-up, interrupt/await, dispose-before-close | `HostRuntime` and `run_agent()` through a narrow round driver |
-| `session/multiagent.py` | live handle ownership, `AgentInputFacade`, session tree operations, completion-notice policy, lifecycle-hook composition | `HostRuntime`, `HostInputQueue`, and session lifecycle hooks |
+| `session/multiagent.py` | live handle ownership, `AgentInputFacade`, explicit `SessionSubagentBinding`, session tree operations, completion-notice policy, lifecycle-hook composition | `HostRuntime`, `HostInputQueue`, and session lifecycle hooks |
 
 `LifecycleProjection` and `Limits` remain responsibility names rather than
 mandatory files. `AgentInputFacade` lives in the thin session adapter because
@@ -94,21 +94,51 @@ prepared `run_agent(AgentRunSpec)`/session round through
 `SubagentRoundDriver`. It does **not** introduce an `AgentExecutionPort`
 merely to hide that one implementation.
 
-When a real Work-backed execution implementation exists, the stable use of
-that session path will be used to extract the following internal protocol:
+`SessionSubagentFactory.create()` returns a typed `SessionSubagentBinding`:
+the round driver, an optional input-activity port, and an optional initial
+workspace reference. Driver disposal returns `SubagentDisposeResult`, including
+an optional released-workspace snapshot and cleanup error. These explicit
+values replace attribute probing while preserving the current session-owned
+execution structure. They are in-process composition contracts, not remote
+protocol objects.
+
+Remote placement does not automatically add a second multiagent runtime. The
+remote seam follows the weakest interaction contract that satisfies the use
+case:
 
 ```text
-AgentExecutionPort
-  start(spec) -> ExecutionRef
-  attach(execution_ref) -> ExecutionHandle
-  cancel(execution_ref)
-  subscribe(execution_ref, listener)
+one-shot capability
+  invoke(request) -> result
+
+asynchronous job
+  submit(request) -> RunRef
+  await_result(run_ref)
+  cancel(run_ref)
+
+continuous collaboration
+  spawn / send / wait / list / interrupt / close
 
 ```
 
-It is a deferred extraction, not a phase-one public interface. The later
-`WorkAgentExecutionPort` is implemented by `loushang.work` over its durable
-`WorkRuntime` and `EventLogBackend`.
+The first two are ordinary Harness capabilities and do not enter
+`harness.multiagent` merely because the implementation uses an Agent remotely.
+For continuous collaboration, `MultiAgentToolPack` remains the model-visible
+façade and its injected live collaboration seam binds either the current local
+`SessionMultiAgentRuntime` or one remote collaboration client for the Session /
+capability profile. Tool schema and remote wire protocol remain distinct.
+
+An `AgentExecutionPort` remains a deferred, optional extraction rather than a
+phase-one public interface. A remote client alone does not justify it. Harness
+extracts the smallest proven internal port only when at least two physical
+backends must participate transparently in the same logical tree or share
+attach, lease, fencing, checkpoint, orphan and recovery semantics. Host
+infrastructure supplies those physical backends. `loushang.work` does not
+implement the port: Work owns accepted business lifecycle and durable facts;
+a Product `WorkDomainExecutor` maps business steps to Harness execution and
+maps execution facts back to `WorkEvent` values.
+
+See [Remote Agent Capability Boundary](remote-agent-capability-boundary.md) for
+the client/server dependency direction and state model.
 
 Workspace isolation is independently useful, so its internal protocol is
 defined now but optional on every spawn:

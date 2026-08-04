@@ -14,6 +14,7 @@ from loushang.harness.multiagent import (
     AgentTypeSpec,
     HostCaller,
     MultiAgentControl,
+    SubagentDisposeResult,
     SubagentRoundResult,
     SubagentRunHandle,
     WorkspaceLeaseSnapshot,
@@ -33,6 +34,7 @@ class _Driver:
         self.abort_error: Exception | None = None
         self.dispose_calls = 0
         self.dispose_error: Exception | None = None
+        self.dispose_result = SubagentDisposeResult()
 
     def deliver(self, message: AgentInputMessage) -> None:
         self.messages.append(message)
@@ -53,10 +55,11 @@ class _Driver:
         if self.abort_error is not None:
             raise self.abort_error
 
-    async def dispose(self) -> None:
+    async def dispose(self) -> SubagentDisposeResult:
         self.dispose_calls += 1
         if self.dispose_error is not None:
             raise self.dispose_error
+        return self.dispose_result
 
     def complete(
         self,
@@ -242,12 +245,14 @@ def test_close_projects_the_released_workspace_before_closing_the_record() -> No
         control = _control()
         record = _record(control)
         driver = _Driver()
-        driver.released_workspace = WorkspaceLeaseSnapshot(
-            workspace_ref="coding-worktree:worker",
-            artifact_refs=("git-artifact:worker",),
-            change_set_ref="git-branch:worker",
-            changed=True,
-            retained=True,
+        driver.dispose_result = SubagentDisposeResult(
+            released_workspace=WorkspaceLeaseSnapshot(
+                workspace_ref="coding-worktree:worker",
+                artifact_refs=("git-artifact:worker",),
+                change_set_ref="git-branch:worker",
+                changed=True,
+                retained=True,
+            )
         )
         handle = SubagentRunHandle(ref=record.ref, control=control, driver=driver)
 

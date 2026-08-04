@@ -26,17 +26,19 @@ from loushang.harness.multiagent import (
     ForkedHistory,
     ForkTier,
     SubagentContextPlan,
+    SubagentDisposeResult,
     SubagentRoundResult,
     WorkspaceLease,
     WorkspaceLeasePort,
     WorkspaceLeaseRequest,
     WorkspaceLeaseSnapshot,
 )
-from loushang.harness.multiagent.run_handle import RoundMode, SubagentRoundDriver
+from loushang.harness.multiagent.run_handle import RoundMode
 from loushang.harness.session import BootstrapServices
 from loushang.harness.session.multiagent import (
     AgentInputFacade,
     SessionMultiAgentRuntime,
+    SessionSubagentBinding,
     SessionSubagentFactory,
     SessionSubagentRequest,
     bind_agent_session_multiagent,
@@ -311,10 +313,10 @@ class CodingSubagentFactory(SessionSubagentFactory):
         self._runtime_builder = runtime_builder
         self._workspace_leases = workspace_leases
 
-    async def create_driver(
+    async def create(
         self,
         request: SessionSubagentRequest,
-    ) -> SubagentRoundDriver:
+    ) -> SessionSubagentBinding:
         workspace_lease: WorkspaceLease | None = None
         runtime: AgentSessionRuntime | None = None
         child_approval_resolver: ActorBoundApprovalResolver | None = None
@@ -359,9 +361,7 @@ class CodingSubagentFactory(SessionSubagentFactory):
                 allowed_tools=allowed_tools,
                 execution_profile_ceiling=coding_workspace_execution_profile(
                     child_cwd,
-                    writable=_sandbox_workspace_is_writable(
-                        request.agent_type.name
-                    ),
+                    writable=_sandbox_workspace_is_writable(request.agent_type.name),
                 ),
                 approval_actor_id=str(request.record.ref),
                 workspace_ref=(
@@ -399,9 +399,7 @@ class CodingSubagentFactory(SessionSubagentFactory):
         except BaseException:
             try:
                 if child_approval_resolver is not None:
-                    child_approval_resolver.end_session(
-                        "Child session creation failed"
-                    )
+                    child_approval_resolver.end_session("Child session creation failed")
             finally:
                 try:
                     if runtime is not None:
@@ -413,13 +411,20 @@ class CodingSubagentFactory(SessionSubagentFactory):
                     ):
                         await self._workspace_leases.release(workspace_lease)
             raise
-        return _CodingSubagentDriver(
+        driver = _CodingSubagentDriver(
             runtime=runtime,
             session=session,
             approval_resolver=child_approval_resolver,
             delegated_execution_profile=delegated_execution_profile,
             workspace_lease=workspace_lease,
             workspace_leases=self._workspace_leases,
+        )
+        return SessionSubagentBinding(
+            driver=driver,
+            input_activity=driver.input_facade,
+            workspace_ref=(
+                workspace_lease.workspace_ref if workspace_lease is not None else None
+            ),
         )
 
 
@@ -474,15 +479,6 @@ class _CodingSubagentDriver:
         self.delegated_execution_profile = delegated_execution_profile
         self._workspace_lease = workspace_lease
         self._workspace_leases = workspace_leases
-        self.released_workspace: WorkspaceLeaseSnapshot | None = None
-
-    @property
-    def workspace_ref(self) -> str | None:
-        return (
-            self._workspace_lease.workspace_ref
-            if self._workspace_lease is not None
-            else None
-        )
 
     def deliver(self, message: AgentInputMessage) -> None:
         if self._rounds_started == 0 and self._initial_message is None:
@@ -532,20 +528,33 @@ class _CodingSubagentDriver:
             self._approval_resolver.close_session("Child agent interrupted")
         self._session.abort()
 
-    async def dispose(self) -> None:
-        runtime_error: Exception | None = None
+    async def dispose(self) -> SubagentDisposeResult:
+        errors: list[Exception] = []
+        released_workspace: WorkspaceLeaseSnapshot | None = None
         if self._approval_resolver is not None:
             self._approval_resolver.end_session("Child agent closed")
         try:
             await self._runtime.dispose_session_runtime()
         except Exception as error:
-            runtime_error = error
+            errors.append(error)
         if self._workspace_lease is not None and self._workspace_leases is not None:
-            self.released_workspace = await self._workspace_leases.release(
-                self._workspace_lease
-            )
-        if runtime_error is not None:
-            raise runtime_error
+            try:
+                released_workspace = await self._workspace_leases.release(
+                    self._workspace_lease
+                )
+            except Exception as error:
+                errors.append(error)
+        dispose_error: Exception | None
+        if len(errors) == 1:
+            dispose_error = errors[0]
+        elif errors:
+            dispose_error = ExceptionGroup("Coding child disposal failed", errors)
+        else:
+            dispose_error = None
+        return SubagentDisposeResult(
+            released_workspace=released_workspace,
+            dispose_error=dispose_error,
+        )
 
 
 def _resolve_system_prompt(request: SessionSubagentRequest) -> str:
@@ -554,11 +563,17 @@ def _resolve_system_prompt(request: SessionSubagentRequest) -> str:
     return _coding_role_system_prompt(request.agent_type.name)
 
 
-def _coding_role_system_prompt(agent_type: str) -> str:
+def coding_agent_type_system_prompt(agent_type: str) -> str:
+    """Return Coding's complete system prompt for one admitted agent type."""
+
     role_prompt = _ROLE_PROMPTS.get(agent_type)
     if role_prompt is None:
         raise ValueError(f"Coding has no system prompt for agent type {agent_type!r}")
     return f"{DEFAULT_CODING_SYSTEM_PROMPT}\n\n{role_prompt}"
+
+
+def _coding_role_system_prompt(agent_type: str) -> str:
+    return coding_agent_type_system_prompt(agent_type)
 
 
 def _resolve_allowed_tools(request: SessionSubagentRequest) -> tuple[str, ...]:
@@ -590,6 +605,7 @@ def _select_tool_registry(
 
 __all__ = [
     "CodingSubagentFactory",
+    "coding_agent_type_system_prompt",
     "coding_multiagent_system_prompt",
     "coding_recipe_context_plan",
     "coding_read_only_agent_types",

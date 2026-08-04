@@ -28,10 +28,10 @@ depend on `loushang.coding`, `loushang.work`, `loushang.method`,
 | `conversation` | Product-neutral conversation identity, records, repository/catalog and replay contracts | Agent/AI message schema or Product-specific payload meaning |
 | `transcript` | optional Agent/AI transcript profile, codecs, file/session lifecycle, context rebuild, compaction/retry/navigation mechanisms | Product compaction prompts, semantic summary policy, Product store selection |
 | `context` | context items, packing, deterministic budget/accounting records, summary evaluation foundations | Product salience policy or model-specific estimation decisions |
-| `tools` / `approval` / `policy` / `sandbox` | tool authoring and hosted execution mechanics, action policy evaluation, approval lifecycle, effects and containment ports | Product risk defaults, Product approval wording, arbitrary Product commands |
+| `tools` / `approval` / `policy` / `sandbox` | tool authoring and hosted execution mechanics, action policy evaluation, approval lifecycle, effects, execution-scope process-start authorization, and optional containment binding | Product risk defaults, executable/catalog admission, Product approval wording, arbitrary Product commands |
 | `resources` / `extensions` / `capabilities` | resource discovery and precedence, package materialization mechanics, extension runtime, capability composition | Product-owned built-in content, trust decisions, activation policy |
 | `host` / `cli` / `events` / `presentation` | Product-neutral host lifecycle, RPC/JSON projection, runtime event contracts and reusable presentation | AppService tenancy, Channel protocol, Product grammar or final UI composition |
-| `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, workspace and execution primitives | Product-specific recovery UX, business audit retention, Product artifact semantics |
+| `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, one-shot execution, and bounded session-owned process primitives | Product-specific recovery UX, business audit retention, protocol/server selection, Product artifact semantics |
 
 ## Dependency Direction
 
@@ -79,8 +79,16 @@ Compatibility facades remain stable while large implementation pipelines are
 split internally. The implemented dependency direction is:
 
 ```text
-resource loader facade -> snapshot pipeline -> discovery + resolution
-                                            -> precedence policy
+resource loader facade -> package policy
+resource loader facade -> snapshot pipeline
+                            -> context discovery
+                            -> built-in discovery -> descriptor parsing
+                            -> temporary discovery -> filesystem discovery
+                                                       -> descriptor parsing
+                            -> other source coordinator
+                                 -> filesystem discovery -> descriptor parsing
+                                 -> package policy
+                            -> resolution -> precedence policy
 
 runtime profile facade -> types + admission + resolution + binding + standard slots
 admission / resolution / binding / standard slots -> profile types
@@ -88,12 +96,54 @@ admission / resolution / binding / standard slots -> profile types
 Agent settings manager -> typed settings patch + settings schema codec
 typed settings patch -> settings schema codec field rules
 settings schema codec / typed settings patch -> Agent settings types
+
+workspace read tool + Host prompt input -> workspace image payload owner
+
+tool definition owner -> execution bindings
+session execution scope -> tool execution host -> structural definition port
 ```
 
-Resolution never imports discovery, live profile binding never imports profile
-resolution, and internal leaf modules never import their public facade. The
-Agent settings manager depends only on the explicit codec/patch ports enforced
-by the architecture tests, not on field-level serializer helpers.
+Context-file ancestor traversal, configured filename precedence, descriptor
+construction, and nearest-context selection belong to
+`harness.resources._loader_discovery_context`. Package-root and filter
+normalization, descriptor-selection patterns, root diagnostics, and per-root
+resource accounting belong to `harness.resources._loader_package_policy`.
+Source-neutral prompt/skill frontmatter projection, descriptor construction,
+and skill metadata validation belong to
+`harness.resources._loader_descriptor_parsing`; it performs no filesystem or
+package-resource I/O.
+Filesystem directory traversal and reads, recursive skill discovery and ignore
+rules, extension entry lookup, and theme JSON validation belong to
+`harness.resources._loader_discovery_filesystem`. External-package and
+project/user source coordination remain in `_loader_discovery`; the coordinator
+consumes filesystem discovery and package policy. Temporary runtime-path
+resolution, single-file/directory dispatch, source metadata, and path diagnostics
+belong to `harness.resources._loader_discovery_temporary`. Built-in package
+traversal, logical package paths, resource reads, and built-in category
+diagnostics belong to `harness.resources._loader_discovery_builtin`. The snapshot
+pipeline calls the source coordinator, context discovery, built-in discovery,
+and temporary discovery directly but does not depend directly on their leaf
+policies. Context discovery, built-in discovery, temporary discovery,
+filesystem discovery, descriptor parsing, and package policy do not depend on
+discovery coordination, resolution, the pipeline, or the public loader facade.
+Loader option normalization and system-prompt source resolution remain with the
+public loader owner rather than discovery coordination. The loader projects its
+normalized state into one immutable pipeline-owned discovery request. The
+pipeline owns candidate-source aggregation, including the single expression of
+temporary, built-in, external-package, user-global, and project-local candidate
+order; discovery diagnostic order remains an explicit, separate contract.
+Resolution never imports any discovery owner or package policy, live profile
+binding never imports profile resolution, and internal leaf modules never
+import their public facade. The tool execution host consumes a private
+structural definition port; `harness.tools.execution` does not import the
+`ToolDefinition` owner in `harness.tools.core`.
+The Agent settings manager depends only on the explicit codec/patch ports
+enforced by the architecture tests, not on field-level serializer helpers.
+Image MIME validation, header dimensions, base64 encoding, inline limits, and
+resize preparation belong to `harness.tools.workspace.image_payload`; neither
+prompt input nor the read tool owns a second copy of those rules or the
+inspect/resize/recompute sequence. Consumer-specific omission and presentation
+policy remains with Host prompt input and the read tool.
 
 ## Architecture Gates
 
@@ -103,8 +153,12 @@ by the architecture tests, not on field-level serializer helpers.
 - no Session-module import from the Session public barrel;
 - one-way Harness, Work, and Channel dependencies;
 - explicit Agent/AI import allowlists for optional profiles;
-- one-way resource loader, runtime profile, and Agent settings internals with
-  an exact manager-to-codec/patch import allowlist;
+- one-way resource loader, context/built-in/temporary/filesystem discovery,
+  descriptor parsing, package policy, runtime profile, and Agent settings
+  internals with an exact manager-to-codec/patch import allowlist;
+- one-way tool-definition-to-execution dependencies;
+- one shared workspace image-payload owner consumed by Host prompt input and
+  the read tool;
 - Product-neutral Harnesstui and shared runtime owners.
 
 New boundaries must update this map when they change current ownership. A

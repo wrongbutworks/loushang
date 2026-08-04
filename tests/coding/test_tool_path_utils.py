@@ -88,12 +88,16 @@ def test_resolve_tool_path_finds_existing_macos_screenshot_lowercase_am_pm_varia
 
 
 def test_resolve_tool_path_finds_existing_nfd_unicode_variant(tmp_path: Path) -> None:
+    import os
+
     target = tmp_path / "file\u0065\u0301.txt"
     target.write_text("accented payload", encoding="utf-8")
 
     resolved = resolve_tool_path("file\u00e9.txt", cwd=str(tmp_path))
 
-    assert resolved == target.resolve()
+    # macOS APFS treats NFC/NFD as the same file, so string equality on the
+    # normalization form is not portable; compare by file identity.
+    assert os.path.samefile(resolved, target)
 
 
 def test_resolve_tool_path_finds_existing_curly_quote_variant(tmp_path: Path) -> None:
@@ -108,12 +112,14 @@ def test_resolve_tool_path_finds_existing_curly_quote_variant(tmp_path: Path) ->
 def test_resolve_tool_path_finds_existing_combined_nfd_and_curly_quote_variant(
     tmp_path: Path,
 ) -> None:
+    import os
+
     target = tmp_path / "Capture d\u2019e\u0301cran.txt"
     target.write_text("combined payload", encoding="utf-8")
 
     resolved = resolve_tool_path("Capture d'\u00e9cran.txt", cwd=str(tmp_path))
 
-    assert resolved == target.resolve()
+    assert os.path.samefile(resolved, target)
 
 
 def test_resolve_tool_path_rejects_empty_string() -> None:

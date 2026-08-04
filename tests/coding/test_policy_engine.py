@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 
 def _bash_tool(
     *,
@@ -450,7 +452,9 @@ def test_policy_engine_compatibility_paths_use_last_execution_path(tmp_path) -> 
     (tmp_path / "cat").symlink_to("/bin/bash")
     engine = PolicyEngine()
     dangerous_env = (("PATH", "/usr/bin"), ("PATH", str(tmp_path)))
-    safe_env = tuple(reversed(dangerous_env))
+    # /usr/bin/cat does not exist on macOS (cat lives in /bin); include /bin so
+    # the "safe" PATH resolves a real cat on every platform.
+    safe_env = (("PATH", str(tmp_path)), ("PATH", "/usr/bin:/bin"))
 
     action = _evaluate_action(
         engine,
@@ -780,7 +784,7 @@ def test_bash_policy_evaluates_configured_shell_path(tmp_path) -> None:
 
 def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -> None:
     import asyncio
-    from shutil import copy2
+    from shutil import copyfile
 
     import pytest
 
@@ -804,7 +808,9 @@ def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -
     (tmp_path / "runner").symlink_to("/usr/bin/env")
     copied_shell_dir = tmp_path / "copied-shell"
     copied_shell_dir.mkdir()
-    copy2("/bin/bash", copied_shell_dir / "bash")
+    # copyfile (not copy2) avoids copying platform file flags; on macOS copy2
+    # triggers chflags PermissionError when reproducing /bin/bash attributes.
+    copyfile("/bin/bash", copied_shell_dir / "bash")
 
     for index, (command, cwd) in enumerate(
         (
@@ -816,9 +822,6 @@ def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -
             (["bash", "/proc/thread-self/fd/0"], str(tmp_path)),
             (["bash", "/proc/self/root/dev/stdin"], str(tmp_path)),
             (["bash", "/proc/thread-self/root/dev/stdin"], str(tmp_path)),
-            (["bash", "/proc/self/root/../dev/stdin"], str(tmp_path)),
-            (["bash", "/proc/thread-self/root/../dev/stdin"], str(tmp_path)),
-            (["bash", "/proc/self/root/../../dev/stdin"], str(tmp_path)),
             (["bash", "../dev/stdin"], "/tmp"),
             (["bash", "../dev/fd/0"], "/tmp"),
             (["bash", "../proc/self/fd/0"], "/tmp"),
@@ -853,6 +856,17 @@ def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -
                 ["/bin/busybox", "ash", "-c", "rm -rf /tmp/demo"],
                 str(tmp_path),
             ),
+        )
+        + (
+            # /proc/self/root/.. paths only exist on Linux; on macOS /proc does
+            # not exist, so these resolve to a missing path and are not stdin.
+            (
+                (["bash", "/proc/self/root/../dev/stdin"], str(tmp_path)),
+                (["bash", "/proc/thread-self/root/../dev/stdin"], str(tmp_path)),
+                (["bash", "/proc/self/root/../../dev/stdin"], str(tmp_path)),
+            )
+            if sys.platform.startswith("linux")
+            else ()
         )
     ):
         with pytest.raises(PermissionError):

@@ -1175,15 +1175,33 @@ def test_rpc_host_package_has_leaf_first_internal_dependencies() -> None:
 
 
 def test_prompt_input_runtime_is_harness_owned_and_coding_adopts_it() -> None:
-    prompt_input_source = Path("src/loushang/harness/host/prompt_input.py").read_text(
-        encoding="utf-8"
-    )
+    prompt_input_path = Path("src/loushang/harness/host/prompt_input.py")
+    image_payload_path = Path("src/loushang/harness/tools/workspace/image_payload.py")
+    read_tool_path = Path("src/loushang/harness/tools/workspace/read.py")
+    prompt_input_source = prompt_input_path.read_text(encoding="utf-8")
+    read_tool_source = read_tool_path.read_text(encoding="utf-8")
     agent_args_source = Path("src/loushang/harness/cli/agent_args.py").read_text(
         encoding="utf-8"
     )
     cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    prompt_input_imports = _absolute_imports(prompt_input_path)
+    image_payload_imports = _absolute_imports(image_payload_path)
+    read_tool_imports = _absolute_imports(read_tool_path)
 
     assert "loushang.coding" not in prompt_input_source
+    assert "loushang.harness.tools.workspace.image_payload" in prompt_input_imports
+    assert "loushang.harness.tools.workspace.read" not in prompt_input_imports
+    assert "loushang.harness.tools.workspace.image_payload" in read_tool_imports
+    assert "loushang.harness.tools.workspace.read" not in image_payload_imports
+    assert "loushang.harness.host" not in image_payload_imports
+    assert "prepare_image_payload_sync" in prompt_input_source
+    assert "prepare_image_payload(" in read_tool_source
+    assert "base64.b64encode" not in prompt_input_source
+    assert "base64.b64encode" not in read_tool_source
+    assert ".resize_image(" not in prompt_input_source
+    assert ".resize_image(" not in read_tool_source
+    assert "_resize_image_payload" not in read_tool_source
+    assert "_image_resize_unavailable" not in read_tool_source
     assert "resolve_prompt_input" in agent_args_source
     assert "resolve_agent_prompt_input" in cli_source
     assert "_process_file_args" not in cli_source
@@ -2136,6 +2154,48 @@ def test_harness_slice1_symbols_are_not_top_level_exports() -> None:
     assert slice1_symbols.isdisjoint(set(harness.__all__))
 
 
+def test_agent_delegate_declares_authorized_process_execution() -> None:
+    from loushang.ai.types import ToolCall
+    from loushang.harness.effects import ProcessEffect
+    from loushang.harness.tools.agent_delegate import AgentDelegateToolPack
+    from loushang.harness.tools.execution import AuthorizedExecution, ToolCallContext
+
+    class Adapter:
+        admitted_agent_types = ("reviewer",)
+
+        def prepare(self, request, *, default_cwd, model):
+            from loushang.harness.tools.agent_delegate import PreparedAgentInvocation
+            from loushang.harness.workspace.exec import ExecRequest
+
+            del model
+            return PreparedAgentInvocation(
+                request=request,
+                exec_request=ExecRequest(
+                    command=("/usr/bin/loushang", "--mode", "print"),
+                    cwd=default_cwd,
+                    stdin=request.task,
+                    effective_environment=(("PATH", "/usr/bin"),),
+                ),
+                allowed_tools=("read",),
+            )
+
+        def project(self, prepared, result):
+            raise AssertionError("not used")
+
+    definition = AgentDelegateToolPack(adapter=Adapter()).definition()
+    assert isinstance(definition.execution, AuthorizedExecution)
+    prepared = definition.execution.action_adapter.prepare(
+        ToolCall(
+            type="toolCall",
+            id="call-1",
+            name="delegate_agent",
+            arguments={"agent_type": "reviewer", "task": "review"},
+        ),
+        ToolCallContext(tool_call_id="call-1", cwd="/workspace"),
+    )
+    assert isinstance(prepared.effects[0], ProcessEffect)
+
+
 def test_harness_workspace_symbols_are_not_top_level_exports() -> None:
     import loushang.harness as harness
 
@@ -3078,7 +3138,13 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         runtime_root / "_profile_binding.py",
         runtime_root / "_profile_resolution.py",
         runtime_root / "_profile_types.py",
+        resource_root / "_loader_descriptor_parsing.py",
         resource_root / "_loader_discovery.py",
+        resource_root / "_loader_discovery_builtin.py",
+        resource_root / "_loader_discovery_context.py",
+        resource_root / "_loader_discovery_filesystem.py",
+        resource_root / "_loader_discovery_temporary.py",
+        resource_root / "_loader_package_policy.py",
         resource_root / "_loader_pipeline.py",
         resource_root / "_loader_precedence.py",
         resource_root / "_loader_resolution.py",
@@ -3114,23 +3180,110 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
             "loushang.harness.runtime._profile_resolution",
         ),
         resource_root / "_loader_precedence.py": (
+            "loushang.harness.resources._loader_descriptor_parsing",
             "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
+            "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_discovery_filesystem",
+            "loushang.harness.resources._loader_discovery_temporary",
+            "loushang.harness.resources._loader_package_policy",
             "loushang.harness.resources._loader_pipeline",
             "loushang.harness.resources._loader_resolution",
             "loushang.harness.resources.loader",
         ),
+        resource_root / "_loader_descriptor_parsing.py": (
+            "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
+            "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_discovery_filesystem",
+            "loushang.harness.resources._loader_discovery_temporary",
+            "loushang.harness.resources._loader_package_policy",
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources._loader_precedence",
+            "loushang.harness.resources._loader_resolution",
+            "loushang.harness.resources.loader",
+        ),
         resource_root / "_loader_discovery.py": (
+            "loushang.harness.resources._loader_descriptor_parsing",
+            "loushang.harness.resources._loader_discovery_builtin",
+            "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_discovery_temporary",
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources._loader_precedence",
+            "loushang.harness.resources._loader_resolution",
+            "loushang.harness.resources.loader",
+        ),
+        resource_root / "_loader_discovery_builtin.py": (
+            "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_discovery_filesystem",
+            "loushang.harness.resources._loader_discovery_temporary",
+            "loushang.harness.resources._loader_package_policy",
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources._loader_precedence",
+            "loushang.harness.resources._loader_resolution",
+            "loushang.harness.resources.loader",
+        ),
+        resource_root / "_loader_discovery_context.py": (
+            "loushang.harness.resources._loader_descriptor_parsing",
+            "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
+            "loushang.harness.resources._loader_discovery_filesystem",
+            "loushang.harness.resources._loader_discovery_temporary",
+            "loushang.harness.resources._loader_package_policy",
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources._loader_precedence",
+            "loushang.harness.resources._loader_resolution",
+            "loushang.harness.resources.loader",
+        ),
+        resource_root / "_loader_discovery_filesystem.py": (
+            "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
+            "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_package_policy",
+            "loushang.harness.resources._loader_discovery_temporary",
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources._loader_precedence",
+            "loushang.harness.resources._loader_resolution",
+            "loushang.harness.resources.loader",
+        ),
+        resource_root / "_loader_discovery_temporary.py": (
+            "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
+            "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_package_policy",
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources._loader_precedence",
+            "loushang.harness.resources._loader_resolution",
+            "loushang.harness.resources.loader",
+        ),
+        resource_root / "_loader_package_policy.py": (
+            "loushang.harness.resources._loader_descriptor_parsing",
+            "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
+            "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_discovery_filesystem",
+            "loushang.harness.resources._loader_discovery_temporary",
             "loushang.harness.resources._loader_pipeline",
             "loushang.harness.resources._loader_precedence",
             "loushang.harness.resources._loader_resolution",
             "loushang.harness.resources.loader",
         ),
         resource_root / "_loader_resolution.py": (
+            "loushang.harness.resources._loader_descriptor_parsing",
             "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
+            "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_discovery_filesystem",
+            "loushang.harness.resources._loader_discovery_temporary",
+            "loushang.harness.resources._loader_package_policy",
             "loushang.harness.resources._loader_pipeline",
             "loushang.harness.resources.loader",
         ),
         resource_root / "_loader_pipeline.py": (
+            "loushang.harness.resources._loader_descriptor_parsing",
+            "loushang.harness.resources._loader_discovery_filesystem",
+            "loushang.harness.resources._loader_package_policy",
             "loushang.harness.resources.loader",
         ),
         settings_root / "types.py": (
@@ -3182,10 +3335,133 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
     assert "loushang.harness.resources._loader_pipeline" in _absolute_imports(
         resource_root / "loader.py"
     )
+    assert "loushang.harness.resources._loader_package_policy" in _absolute_imports(
+        resource_root / "loader.py"
+    )
+    assert "loushang.harness.resources._loader_package_policy" in _absolute_imports(
+        resource_root / "_loader_discovery.py"
+    )
+    assert (
+        "loushang.harness.resources._loader_descriptor_parsing"
+        not in _absolute_imports(resource_root / "_loader_discovery.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_discovery_filesystem"
+        in _absolute_imports(resource_root / "_loader_discovery.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_descriptor_parsing"
+        in _absolute_imports(resource_root / "_loader_discovery_temporary.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_discovery_filesystem"
+        in _absolute_imports(resource_root / "_loader_discovery_temporary.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_discovery_context"
+        in _absolute_imports(resource_root / "_loader_pipeline.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_discovery_builtin"
+        in _absolute_imports(resource_root / "_loader_pipeline.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_discovery_temporary"
+        in _absolute_imports(resource_root / "_loader_pipeline.py")
+    )
+    pipeline_text = (resource_root / "_loader_pipeline.py").read_text(
+        encoding="utf-8"
+    )
+    loader_text = (resource_root / "loader.py").read_text(encoding="utf-8")
+    assert "class _ResourceDiscoveryRequest:" in pipeline_text
+    assert "class _ResourceDiscoveries:" in pipeline_text
+    assert (
+        "def _discover_snapshot(request: _ResourceDiscoveryRequest)"
+        in pipeline_text
+    )
+    assert "class _ResourceDiscoveryRequest:" not in loader_text
+    assert "snapshot = _discover_snapshot(request)" in loader_text
+    assert "def _discover_context_descriptors" not in (
+        resource_root / "_loader_discovery.py"
+    ).read_text(encoding="utf-8")
+    assert "def _discover_context_descriptors" in (
+        resource_root / "_loader_discovery_context.py"
+    ).read_text(encoding="utf-8")
+    assert "def _normalize_package_roots" not in (
+        resource_root / "_loader_discovery.py"
+    ).read_text(encoding="utf-8")
+    assert "def _normalize_package_roots" in (
+        resource_root / "_loader_package_policy.py"
+    ).read_text(encoding="utf-8")
+    assert "def _filter_package_descriptors" not in (
+        resource_root / "_loader_discovery.py"
+    ).read_text(encoding="utf-8")
+    assert "def _filter_package_descriptors" in (
+        resource_root / "_loader_package_policy.py"
+    ).read_text(encoding="utf-8")
+    assert "def _prompt_descriptor_from_text" not in (
+        resource_root / "_loader_discovery.py"
+    ).read_text(encoding="utf-8")
+    assert "def _skill_descriptor_from_text" in (
+        resource_root / "_loader_descriptor_parsing.py"
+    ).read_text(encoding="utf-8")
+    assert "def _discover_skills_from_dir" not in (
+        resource_root / "_loader_discovery.py"
+    ).read_text(encoding="utf-8")
+    assert "def _discover_skills_from_dir" in (
+        resource_root / "_loader_discovery_filesystem.py"
+    ).read_text(encoding="utf-8")
+    assert "def _discover_built_in_resources" not in (
+        resource_root / "_loader_discovery.py"
+    ).read_text(encoding="utf-8")
+    assert "def _discover_built_in_resources" in (
+        resource_root / "_loader_discovery_builtin.py"
+    ).read_text(encoding="utf-8")
+    assert "def _discover_temporary_resources" not in (
+        resource_root / "_loader_discovery.py"
+    ).read_text(encoding="utf-8")
+    assert "def _discover_temporary_resources" in (
+        resource_root / "_loader_discovery_temporary.py"
+    ).read_text(encoding="utf-8")
+    assert "def _normalize_runtime_paths" not in (
+        resource_root / "_loader_discovery.py"
+    ).read_text(encoding="utf-8")
+    assert "def _normalize_runtime_paths" in (
+        resource_root / "loader.py"
+    ).read_text(encoding="utf-8")
+    assert (
+        "loushang.harness.resources._loader_descriptor_parsing"
+        not in _absolute_imports(resource_root / "loader.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_discovery_filesystem"
+        not in _absolute_imports(resource_root / "loader.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_discovery_builtin"
+        not in _absolute_imports(resource_root / "loader.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_discovery"
+        not in _absolute_imports(resource_root / "loader.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_discovery_temporary"
+        not in _absolute_imports(resource_root / "loader.py")
+    )
     assert "loushang.harness.resources._loader_precedence" in _absolute_imports(
         resource_root / "_loader_resolution.py"
     )
     assert patch_module in _absolute_imports(manager_path)
+
+
+def test_harness_tool_execution_does_not_import_tool_definition_owner() -> None:
+    tool_root = Path("src/loushang/harness/tools")
+    core_module = "loushang.harness.tools.core"
+    execution_module = "loushang.harness.tools.execution"
+
+    assert execution_module in _absolute_imports(tool_root / "core.py")
+    assert core_module not in _absolute_imports(tool_root / "execution.py")
 
 
 def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
@@ -5113,11 +5389,99 @@ def test_harness_workspace_execution_boundary_is_documented() -> None:
     assert "`loushang.harness.workspace.truncation`" in inventory_text
     assert "workspace execution implementation complete" in inventory_text
 
+
+def test_process_hosting_core_keeps_product_and_bindings_outside_workspace() -> None:
+    process_root = Path("src/loushang/harness/workspace/process")
+    forbidden_prefixes = (
+        "loushang.coding",
+        "loushang.harness.sandbox",
+        "loushang.harness.tools",
+        "loushang.harnesstui",
+    )
+    offenders: list[str] = []
+    for path in sorted(process_root.rglob("*.py")):
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, forbidden_prefixes):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+    design_path = Path(
+        "docs/internals/architecture/harness/process-hosting-boundary.md"
+    )
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Process Hosting Boundary",
+        "Long-lived Sandbox ownership is intentionally not claimed by the H1 core",
+        "H2 provides:",
+        "Deferred to Coding H3",
+        "There is no public `ProcessBackend`",
+    }
+    assert (
+        sorted(
+            phrase for phrase in required_phrases if phrase not in design_text
+        )
+        == []
+    )
+
     coding_exec_text = Path(
         "docs/internals/architecture/coding/component-interfaces/exec.md"
     ).read_text(encoding="utf-8")
     assert "`loushang.harness.workspace.exec`" in coding_exec_text
     assert "compatibility" in coding_exec_text
+
+
+def test_process_hosting_h2_keeps_authorization_sandbox_and_product_directional() -> None:
+    launcher_path = Path("src/loushang/harness/tools/process_hosting.py")
+    launcher_imports = set(_absolute_imports(launcher_path))
+    for forbidden in (
+        "loushang.coding",
+        "loushang.harness.sandbox",
+        "loushang.harnesstui",
+    ):
+        assert not any(
+            imported == forbidden or imported.startswith(f"{forbidden}.")
+            for imported in launcher_imports
+        )
+
+    containment_path = Path("src/loushang/harness/sandbox/process.py")
+    containment_imports = set(_absolute_imports(containment_path))
+    for forbidden in (
+        "loushang.coding",
+        "loushang.harness.tools",
+        "loushang.harnesstui",
+    ):
+        assert not any(
+            imported == forbidden or imported.startswith(f"{forbidden}.")
+            for imported in containment_imports
+        )
+
+    sandbox_protocols = Path(
+        "src/loushang/harness/sandbox/protocols.py"
+    ).read_text(encoding="utf-8")
+    assert "ProcessLaunchRequest" not in sandbox_protocols
+    assert "plan_hosted_process" not in sandbox_protocols
+
+    coding_disposal = Path(
+        "src/loushang/coding/session/agent_session.py"
+    ).read_text(encoding="utf-8")
+    assert "ProcessHost" not in coding_disposal
+    assert "ScopeBoundProcessLauncher" not in coding_disposal
+
+    design_text = " ".join(
+        Path(
+            "docs/internals/architecture/harness/process-hosting-boundary.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    for phrase in (
+        "private complete-launch fingerprint",
+        "Required containment fails before spawn",
+        "Host, remaining containment plans, then the one-shot Sandbox binding/backend",
+        "does not widen the public `SandboxBackend` Protocol",
+    ):
+        assert phrase in design_text
 
 
 def test_coding_agent_product_construction_uses_shared_binding() -> None:

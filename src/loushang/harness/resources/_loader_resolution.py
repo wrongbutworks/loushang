@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._loader_precedence import (
     _candidate_sort_key,
@@ -19,7 +21,7 @@ from loushang.harness.resources.types import (
 
 
 def _resolve_candidates(
-    candidates: list[DescriptorT],
+    candidates: Sequence[DescriptorT],
     *,
     resource_type: str,
 ) -> tuple[list[DescriptorT], list[DiagnosticDraft], list[ResourceMergeDecision]]:
@@ -115,7 +117,7 @@ def _resolve_candidates(
 
 
 def _resolve_strict_named_candidates(
-    candidates: list[DescriptorT],
+    candidates: Sequence[DescriptorT],
     *,
     resource_type: str,
 ) -> tuple[list[DescriptorT], list[DiagnosticDraft], list[ResourceMergeDecision]]:
@@ -289,7 +291,7 @@ def _collision_path_metadata(
 
 
 def _resolve_extension_candidates(
-    candidates: list[ExtensionDescriptor],
+    candidates: Sequence[ExtensionDescriptor],
     *,
     resource_type: str,
 ) -> tuple[
