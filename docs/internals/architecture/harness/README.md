@@ -297,7 +297,11 @@ description.
   [control](multiagent/control-boundary.md),
   [registry](multiagent/registry-boundary.md),
   [limits and projection](multiagent/limits-and-projection-boundary.md),
-  [tool surface](multiagent/tool-surface-boundary.md).
+  [tool surface](multiagent/tool-surface-boundary.md). The proposed
+  [remote Agent capability boundary](multiagent/remote-agent-capability-boundary.md)
+  keeps one-shot invocation, asynchronous jobs, and persistent collaboration
+  as separate contracts and defers a common execution port until mixed
+  placement or recovery proves it necessary.
 - [Workspace Execution Boundary](workspace-execution-boundary.md) defines
   harness-owned truncation, exec records, backend protocols, process execution,
   and coding compatibility ownership.

@@ -102,26 +102,43 @@ values replace attribute probing while preserving the current session-owned
 execution structure. They are in-process composition contracts, not remote
 protocol objects.
 
-When a second physical execution backend exists, the stable use of that session
-path and the new backend will be used to extract the smallest proven internal
-port. Conceptually it may have this shape:
+Remote placement does not automatically add a second multiagent runtime. The
+remote seam follows the weakest interaction contract that satisfies the use
+case:
 
 ```text
-AgentExecutionPort
-  launch(spec) -> AgentExecutionRef
-  attach(execution_ref) -> ExecutionHandle
-  deliver(execution_ref, message)
-  cancel(execution_ref)
-  subscribe(execution_ref, listener)
+one-shot capability
+  invoke(request) -> result
+
+asynchronous job
+  submit(request) -> RunRef
+  await_result(run_ref)
+  cancel(run_ref)
+
+continuous collaboration
+  spawn / send / wait / list / interrupt / close
 
 ```
 
-It is a deferred extraction, not a phase-one public interface. Harness owns the
-port as the consumer; Host infrastructure supplies in-process, plugin, or
-remote-worker backends. `loushang.work` does not implement this physical
-execution port. Work owns accepted business lifecycle and durable facts; a
-Product `WorkDomainExecutor` maps those business steps to Harness execution and
+The first two are ordinary Harness capabilities and do not enter
+`harness.multiagent` merely because the implementation uses an Agent remotely.
+For continuous collaboration, `MultiAgentToolPack` remains the model-visible
+façade and its injected live collaboration seam binds either the current local
+`SessionMultiAgentRuntime` or one remote collaboration client for the Session /
+capability profile. Tool schema and remote wire protocol remain distinct.
+
+An `AgentExecutionPort` remains a deferred, optional extraction rather than a
+phase-one public interface. A remote client alone does not justify it. Harness
+extracts the smallest proven internal port only when at least two physical
+backends must participate transparently in the same logical tree or share
+attach, lease, fencing, checkpoint, orphan and recovery semantics. Host
+infrastructure supplies those physical backends. `loushang.work` does not
+implement the port: Work owns accepted business lifecycle and durable facts;
+a Product `WorkDomainExecutor` maps business steps to Harness execution and
 maps execution facts back to `WorkEvent` values.
+
+See [Remote Agent Capability Boundary](remote-agent-capability-boundary.md) for
+the client/server dependency direction and state model.
 
 Workspace isolation is independently useful, so its internal protocol is
 defined now but optional on every spawn:
