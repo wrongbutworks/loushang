@@ -204,8 +204,8 @@ def _supports_structured_output_mapping(adapter: object) -> bool:
 
 def _resolve_pairing_mode(options) -> PairingMode:
     if options is None:
-        return "strict"
-    pairing_mode = getattr(options, "pairing_mode", "strict")
+        return "repair"
+    pairing_mode = getattr(options, "pairing_mode", "repair")
     if pairing_mode == "repair":
         return "repair"
     return "strict"

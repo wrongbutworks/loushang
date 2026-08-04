@@ -244,9 +244,14 @@ def test_public_stream_suppresses_cache_key_when_retention_is_none() -> None:
     assert provider.request.options.cache_key is None
 
 
-def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
+def test_stream_defaults_to_repair_pairing_and_exposes_strict_option(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Default pairing repairs missing tool results; strict remains opt-in.
+
+    The default changed from strict to repair so restored/interrupted
+    transcripts recover automatically instead of failing the whole request.
+    """
     _patch_resolved_request(monkeypatch)
     monkeypatch.setattr("loushang.ai.messages.resolve_model_api", lambda _model: "faux")
     monkeypatch.setattr(
@@ -276,20 +281,7 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
         timestamp=0.0,
     )
 
-    with pytest.raises(ValueError, match="Missing tool results before next message"):
-        asyncio.run(
-            stream(
-                _Model(),
-                {
-                    "messages": [
-                        assistant,
-                        UserMessage(role="user", content="next", timestamp=0.0),
-                    ]
-                },
-                CallOptions(),
-            )
-        )
-
+    # Default (CallOptions()) now repairs the missing tool result.
     asyncio.run(
         stream(
             _Model(),
@@ -299,7 +291,7 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
                     UserMessage(role="user", content="next", timestamp=0.0),
                 ]
             },
-            CallOptions(pairing_mode="repair"),
+            CallOptions(),
         )
     )
 
@@ -313,6 +305,21 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
     assert isinstance(synthetic, ToolResultMessage)
     assert synthetic.tool_call_id == "call_1"
     assert synthetic.is_error is True
+
+    # Explicit strict still rejects the malformed transcript.
+    with pytest.raises(ValueError, match="Missing tool results before next message"):
+        asyncio.run(
+            stream(
+                _Model(),
+                {
+                    "messages": [
+                        assistant,
+                        UserMessage(role="user", content="next", timestamp=0.0),
+                    ]
+                },
+                CallOptions(pairing_mode="strict"),
+            )
+        )
 
 
 def test_complete_raises_typed_error_for_stream_error(

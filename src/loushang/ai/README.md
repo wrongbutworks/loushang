@@ -142,8 +142,10 @@ register_api_provider(custom_adapter)
 `timeout_seconds` 是一次 attempt 的完整 deadline，覆盖请求创建、首包和完整消费。
 `idle_timeout_seconds` 只约束流式 raw part 之间的空闲时间。
 
-`pairing_mode` 默认是 `strict`。只有调用方显式选择 `repair` 时，归一化层才修复
-历史 tool-call/tool-result transcript。
+`pairing_mode` 默认是 `repair`。默认修复历史 tool-call/tool-result transcript 中
+缺失的结果（例如一次运行在工具调用后、结果写回前被中断），补入 synthetic
+error result 并继续，而不是让整个请求失败。需要严格校验（例如新会话的
+消息流）时，调用方可显式选择 `strict`。
 
 `cache_key` 是不透明协议缓存键，不代表 Loushang session。当前只有声明支持的 adapter
 消费它；`cache_retention="none"` 会移除该键。

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from typing import Literal, cast
@@ -223,6 +224,28 @@ def _create_agent_session(
                 "child approval actor must match its delegated execution profile"
             )
     services = services or create_services()
+    # Restored sessions carry historical transcript.  A previous run may have
+    # been interrupted between a tool call and its result, leaving an unpaired
+    # toolCall in the transcript.  Force repair pairing for such sessions so
+    # resume recovers automatically instead of raising
+    # "Missing tool results before next message".  New sessions have no
+    # history and stay on the (global) default.
+    if len(session_manager.get_entries()) > 0:
+        base_factory = agent_factory
+
+        def _resume_agent_factory(**kwargs: object) -> Agent:
+            from loushang.ai.options import CallOptions
+
+            call_options = kwargs.get("call_options")
+            if call_options is None:
+                kwargs["call_options"] = CallOptions(pairing_mode="repair")
+            else:
+                kwargs["call_options"] = replace(
+                    call_options, pairing_mode="repair"
+                )
+            return base_factory(**kwargs)
+
+        agent_factory = _resume_agent_factory
     multiagent_types = None
     resolved_append_system_prompt = tuple(append_system_prompt or ())
     if enable_multiagent:
