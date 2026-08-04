@@ -3098,6 +3098,7 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         runtime_root / "_profile_types.py",
         resource_root / "_loader_descriptor_parsing.py",
         resource_root / "_loader_discovery.py",
+        resource_root / "_loader_discovery_builtin.py",
         resource_root / "_loader_discovery_context.py",
         resource_root / "_loader_discovery_filesystem.py",
         resource_root / "_loader_package_policy.py",
@@ -3138,6 +3139,7 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         resource_root / "_loader_precedence.py": (
             "loushang.harness.resources._loader_descriptor_parsing",
             "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
             "loushang.harness.resources._loader_discovery_context",
             "loushang.harness.resources._loader_discovery_filesystem",
             "loushang.harness.resources._loader_package_policy",
@@ -3147,6 +3149,7 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         ),
         resource_root / "_loader_descriptor_parsing.py": (
             "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
             "loushang.harness.resources._loader_discovery_context",
             "loushang.harness.resources._loader_discovery_filesystem",
             "loushang.harness.resources._loader_package_policy",
@@ -3156,7 +3159,18 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
             "loushang.harness.resources.loader",
         ),
         resource_root / "_loader_discovery.py": (
+            "loushang.harness.resources._loader_discovery_builtin",
             "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources._loader_precedence",
+            "loushang.harness.resources._loader_resolution",
+            "loushang.harness.resources.loader",
+        ),
+        resource_root / "_loader_discovery_builtin.py": (
+            "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_discovery_filesystem",
+            "loushang.harness.resources._loader_package_policy",
             "loushang.harness.resources._loader_pipeline",
             "loushang.harness.resources._loader_precedence",
             "loushang.harness.resources._loader_resolution",
@@ -3165,6 +3179,7 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         resource_root / "_loader_discovery_context.py": (
             "loushang.harness.resources._loader_descriptor_parsing",
             "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
             "loushang.harness.resources._loader_discovery_filesystem",
             "loushang.harness.resources._loader_package_policy",
             "loushang.harness.resources._loader_pipeline",
@@ -3174,6 +3189,7 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         ),
         resource_root / "_loader_discovery_filesystem.py": (
             "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
             "loushang.harness.resources._loader_discovery_context",
             "loushang.harness.resources._loader_package_policy",
             "loushang.harness.resources._loader_pipeline",
@@ -3184,6 +3200,7 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         resource_root / "_loader_package_policy.py": (
             "loushang.harness.resources._loader_descriptor_parsing",
             "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
             "loushang.harness.resources._loader_discovery_context",
             "loushang.harness.resources._loader_discovery_filesystem",
             "loushang.harness.resources._loader_pipeline",
@@ -3194,6 +3211,7 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         resource_root / "_loader_resolution.py": (
             "loushang.harness.resources._loader_descriptor_parsing",
             "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
             "loushang.harness.resources._loader_discovery_context",
             "loushang.harness.resources._loader_discovery_filesystem",
             "loushang.harness.resources._loader_package_policy",
@@ -3273,6 +3291,10 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         "loushang.harness.resources._loader_discovery_context"
         in _absolute_imports(resource_root / "_loader_pipeline.py")
     )
+    assert (
+        "loushang.harness.resources._loader_discovery_builtin"
+        in _absolute_imports(resource_root / "_loader_pipeline.py")
+    )
     assert "def _discover_context_descriptors" not in (
         resource_root / "_loader_discovery.py"
     ).read_text(encoding="utf-8")
@@ -3303,12 +3325,22 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
     assert "def _discover_skills_from_dir" in (
         resource_root / "_loader_discovery_filesystem.py"
     ).read_text(encoding="utf-8")
+    assert "def _discover_built_in_resources" not in (
+        resource_root / "_loader_discovery.py"
+    ).read_text(encoding="utf-8")
+    assert "def _discover_built_in_resources" in (
+        resource_root / "_loader_discovery_builtin.py"
+    ).read_text(encoding="utf-8")
     assert (
         "loushang.harness.resources._loader_descriptor_parsing"
         not in _absolute_imports(resource_root / "loader.py")
     )
     assert (
         "loushang.harness.resources._loader_discovery_filesystem"
+        not in _absolute_imports(resource_root / "loader.py")
+    )
+    assert (
+        "loushang.harness.resources._loader_discovery_builtin"
         not in _absolute_imports(resource_root / "loader.py")
     )
     assert "loushang.harness.resources._loader_precedence" in _absolute_imports(

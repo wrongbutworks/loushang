@@ -661,7 +661,7 @@ def test_default_resource_loader_applies_skill_ignore_files(tmp_path) -> None:
 def test_default_resource_loader_prefers_project_local_prompt_when_built_in_candidate_collides(
     tmp_path, monkeypatch
 ) -> None:
-    import loushang.harness.resources._loader_discovery as discovery_module
+    import loushang.harness.resources._loader_discovery_builtin as discovery_module
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )

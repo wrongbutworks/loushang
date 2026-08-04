@@ -82,6 +82,7 @@ split internally. The implemented dependency direction is:
 resource loader facade -> package policy
 resource loader facade -> snapshot pipeline
                             -> context discovery
+                            -> built-in discovery -> descriptor parsing
                             -> other source coordinator
                                  -> filesystem discovery -> descriptor parsing
                                  -> descriptor parsing
@@ -113,13 +114,16 @@ package-resource I/O.
 Filesystem directory traversal and reads, recursive skill discovery and ignore
 rules, extension entry lookup, and theme JSON validation belong to
 `harness.resources._loader_discovery_filesystem`. External-package,
-temporary-path, and built-in package coordination remain in
-`_loader_discovery`; the coordinator consumes filesystem discovery,
-descriptor parsing, and package policy. The snapshot pipeline calls the source
-coordinator and context discovery but does not depend directly on those leaf
-owners. Context discovery, filesystem discovery, descriptor parsing, and
-package policy do not depend on discovery coordination, resolution, the
-pipeline, or the public loader facade.
+temporary-path, and project/user source coordination remain in
+`_loader_discovery`; the coordinator consumes filesystem discovery, descriptor
+parsing, and package policy. Built-in package traversal, logical package paths,
+resource reads, and built-in category diagnostics belong to
+`harness.resources._loader_discovery_builtin`. The snapshot pipeline calls the
+source coordinator, context discovery, and built-in discovery directly but
+does not depend directly on their leaf policies. Context discovery, built-in
+discovery, filesystem discovery, descriptor parsing, and package policy do not
+depend on discovery coordination, resolution, the pipeline, or the public
+loader facade.
 Resolution never imports any discovery owner or package policy, live profile
 binding never imports profile resolution, and internal leaf modules never
 import their public facade. The tool execution host consumes a private
@@ -141,9 +145,9 @@ policy remains with Host prompt input and the read tool.
 - no Session-module import from the Session public barrel;
 - one-way Harness, Work, and Channel dependencies;
 - explicit Agent/AI import allowlists for optional profiles;
-- one-way resource loader, context discovery, descriptor parsing, package
-  policy, runtime profile, and Agent settings internals with an exact
-  manager-to-codec/patch import allowlist;
+- one-way resource loader, context/built-in/filesystem discovery, descriptor
+  parsing, package policy, runtime profile, and Agent settings internals with
+  an exact manager-to-codec/patch import allowlist;
 - one-way tool-definition-to-execution dependencies;
 - one shared workspace image-payload owner consumed by Host prompt input and
   the read tool;
