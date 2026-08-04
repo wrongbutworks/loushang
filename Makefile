@@ -246,7 +246,6 @@ example-ai-advanced-tool-result-roundtrip:
 
 build-binary: bootstrap
 	uv pip install --python .venv/bin/python pyinstaller
-	. .venv/bin/activate && uv run python scripts/generate_loushang_spec.py
 	. .venv/bin/activate && uv run python -m PyInstaller --clean loushang.spec
 
 install-binary: build-binary
