@@ -152,6 +152,7 @@ Harness may own neutral workspace mechanics:
 - file operation request/result shapes;
 - process execution request/result shapes;
 - stream event records;
+- bounded session-owned process launch/handle records and lifecycle mechanics;
 - workspace tool protocols;
 - reusable concrete workspace tool definitions and their neutral renderers.
 

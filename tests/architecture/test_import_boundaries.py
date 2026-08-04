@@ -5389,6 +5389,40 @@ def test_harness_workspace_execution_boundary_is_documented() -> None:
     assert "`loushang.harness.workspace.truncation`" in inventory_text
     assert "workspace execution implementation complete" in inventory_text
 
+
+def test_process_hosting_h1_keeps_product_and_h2_bindings_outside_workspace() -> None:
+    process_root = Path("src/loushang/harness/workspace/process")
+    forbidden_prefixes = (
+        "loushang.coding",
+        "loushang.harness.sandbox",
+        "loushang.harness.tools",
+        "loushang.harnesstui",
+    )
+    offenders: list[str] = []
+    for path in sorted(process_root.rglob("*.py")):
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, forbidden_prefixes):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+    design_path = Path(
+        "docs/internals/architecture/harness/process-hosting-boundary.md"
+    )
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Process Hosting Boundary",
+        "Long-lived Sandbox ownership is intentionally not claimed by the H1 core",
+        "Deferred to H2",
+        "There is no public `ProcessBackend`",
+    }
+    assert (
+        sorted(
+            phrase for phrase in required_phrases if phrase not in design_text
+        )
+        == []
+    )
+
     coding_exec_text = Path(
         "docs/internals/architecture/coding/component-interfaces/exec.md"
     ).read_text(encoding="utf-8")
