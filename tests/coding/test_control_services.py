@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
+from pathlib import Path
 
 from loushang.ai.model import Capabilities, Model
 
@@ -151,7 +152,7 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(
     )
     assert (
         session.agent.system_prompt
-        == f"Be precise.\n\n{_runtime_footer('/tmp/project')}"
+        == f"Be precise.\n\n{_runtime_footer(str(Path('/tmp/project').resolve()))}"
     )
     assert session.agent.thinking_level == "high"
 

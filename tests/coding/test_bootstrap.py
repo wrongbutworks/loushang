@@ -1797,6 +1797,8 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
 def test_create_agent_session_passes_resource_loader_into_agent_session(
     tmp_path,
 ) -> None:
+    from pathlib import Path
+
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
@@ -1824,7 +1826,8 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
     )
 
     assert session._resource_loader is loader
-    assert loader.discover_calls == ["/tmp/project"]
+    # /tmp is a symlink to /private/tmp on macOS; assert the resolved form.
+    assert loader.discover_calls == [str(Path("/tmp/project").resolve())]
 
 
 def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> None:

@@ -15,7 +15,9 @@ def test_executable_source_identity_projects_stable_runtime_details(
 
     details = coding_runtime_identity(cwd=tmp_path)
 
-    assert details["entrypoint"] == "/tmp/bin/loushang"
+    # entrypoint is resolved (symlinks expanded, e.g. /tmp -> /private/tmp on macOS);
+    # python_executable and argv0 keep the caller-supplied form.
+    assert details["entrypoint"] == str(Path("/tmp/bin/loushang").resolve())
     assert details["python_executable"] == "/tmp/python"
     assert details["argv0"] == "/tmp/bin/loushang"
     assert details["cwd"] == str(tmp_path)
