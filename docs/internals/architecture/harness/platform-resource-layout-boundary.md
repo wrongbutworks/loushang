@@ -124,10 +124,23 @@ The product-neutral runtime now lives under `loushang.harness.resources`:
   summaries;
 - `loader` is the stable public facade and owns loader state, runtime options,
   reload, queries, and the standard workspace resource-root mode;
-- `_loader_pipeline` owns discovery-to-resolution orchestration, diagnostic and
-  merge-decision aggregation, and `ResourceSnapshot` assembly;
-- `_loader_discovery` owns filesystem, package, built-in, context, and temporary
-  candidate discovery plus source-specific filtering;
+- `_loader_pipeline` owns the immutable loader-to-pipeline discovery request,
+  candidate-source ordering, discovery-to-resolution orchestration, diagnostic
+  and merge-decision aggregation, and `ResourceSnapshot` assembly;
+- `_loader_discovery_context` owns context-file ancestor traversal, descriptor
+  construction, diagnostics, and nearest-context selection;
+- `_loader_descriptor_parsing` owns source-neutral prompt/skill frontmatter
+  projection, descriptor construction, and skill validation without I/O;
+- `_loader_discovery_filesystem` owns filesystem directory traversal and reads,
+  skill ignore rules, extension entry lookup, and theme JSON validation;
+- `_loader_discovery_builtin` owns built-in package traversal, logical package
+  paths and reads, category discovery, and built-in diagnostics;
+- `_loader_discovery_temporary` owns temporary runtime-path resolution,
+  single-file/directory dispatch, source metadata, and path diagnostics;
+- `_loader_discovery` owns external-package and project/user source coordination
+  plus source-specific filtering;
+- `_loader_package_policy` owns external-package root/filter normalization,
+  root diagnostics, filtering, and per-root resource accounting;
 - `_loader_resolution` owns collision handling and winner/active-candidate
   decisions without importing discovery;
 - `_loader_precedence` is the single owner of the source priority table, rank,

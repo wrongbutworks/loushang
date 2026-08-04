@@ -161,7 +161,7 @@ def test_exec_service_rejects_invalid_backend_result() -> None:
     asyncio.run(scenario())
 
 
-def test_exec_service_runs_subprocess_and_preserves_interleaved_chunks(
+def test_exec_service_runs_subprocess_and_preserves_per_stream_order(
     tmp_path: Path,
 ) -> None:
     updates: list[tuple[str, str]] = []
@@ -193,18 +193,21 @@ def test_exec_service_runs_subprocess_and_preserves_interleaved_chunks(
         assert result.exit_code == 0
         assert result.stdout == "out1\nout2\n"
         assert result.stderr == "err1\n"
-        assert tuple((chunk.stream, chunk.text) for chunk in result.output_chunks) == (
-            ("stdout", "out1\n"),
-            ("stderr", "err1\n"),
-            ("stdout", "out2\n"),
+        observed = tuple(
+            (chunk.stream, chunk.text) for chunk in result.output_chunks
         )
+        # stdout and stderr are independent pipes. Preserve the order within each
+        # stream, while treating their merged order as the host's observation order.
+        assert tuple(text for stream, text in observed if stream == "stdout") == (
+            "out1\n",
+            "out2\n",
+        )
+        assert tuple(text for stream, text in observed if stream == "stderr") == (
+            "err1\n",
+        )
+        assert updates == list(observed)
 
     asyncio.run(scenario())
-    assert updates == [
-        ("stdout", "out1\n"),
-        ("stderr", "err1\n"),
-        ("stdout", "out2\n"),
-    ]
 
 
 def test_exec_service_accepts_a_process_that_exits_without_reading_stdin(
@@ -283,6 +286,42 @@ def test_exec_service_rolls_capture_without_losing_artifact(tmp_path: Path) -> N
         assert (
             Path(result.stdout_artifact_path).read_text(encoding="utf-8") == full_output
         )
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("capture_full_output", [True, False])
+def test_exec_service_discards_unretained_output_artifacts(
+    tmp_path: Path,
+    capture_full_output: bool,
+) -> None:
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+
+    async def scenario() -> None:
+        result = await ExecService().execute(
+            ExecRequest(
+                command=[
+                    "/usr/bin/env",
+                    "python3",
+                    "-c",
+                    "for i in range(400): print(f'line-{i:04d}')",
+                ],
+                cwd=str(tmp_path),
+                preview_max_lines=2,
+                preview_max_bytes=1024,
+                artifact_dir=str(artifact_dir),
+                capture_full_output=capture_full_output,
+                retain_output_artifacts=False,
+                rolling_max_bytes=512,
+            )
+        )
+
+        assert result.stdout_preview == "line-0398\nline-0399\n"
+        assert result.stdout_truncated is True
+        assert result.stdout_artifact_path is None
+        assert result.stderr_artifact_path is None
+        assert list(artifact_dir.iterdir()) == []
 
     asyncio.run(scenario())
 

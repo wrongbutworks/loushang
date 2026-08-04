@@ -274,7 +274,10 @@ ToolSurfaceAdapter
 - **事件持久化与 replay**：multiagent 只发射技术事实；持久化属装配层
   或 work
 - **UI 面板**：属 harnesstui / 产品 UI，消费 LifecycleProjection 的事实
-- **远端子 agent transport**：未来扩展，由 channel 承载
+- **远端 Agent client / wire transport**：由 Product/Host 装配并注入；
+  Channel 不承载 Agent RPC。一次性 capability 与异步 job 不进入
+  multiagent，持续协作 adapter 也不成为 multiagent 内核组件，见
+  [Remote Agent Capability Boundary](remote-agent-capability-boundary.md)
 
 ## Open Questions（留待拍板 / 组件设计）
 

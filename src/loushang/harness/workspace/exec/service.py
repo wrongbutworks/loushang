@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
-import signal as signal_module
 import tempfile
 from collections.abc import Awaitable
 from contextlib import suppress
@@ -11,6 +10,10 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Protocol, TextIO
 
+from loushang.harness.workspace._local_process import (
+    kill_local_process,
+    spawn_local_process,
+)
 from loushang.harness.workspace.truncation import truncate_tail
 
 from .types import (
@@ -71,27 +74,27 @@ class LocalExecBackend:
         on_update: ExecUpdateCallback | None = None,
     ) -> ExecResult:
         assert request.effective_environment is not None
+        assert request.cwd is not None
         env = dict(request.effective_environment)
 
-        process = await asyncio.create_subprocess_exec(
-            *request.command,
+        process = await spawn_local_process(
+            command=request.command,
             cwd=request.cwd,
-            env=env,
-            start_new_session=True,
-            stdin=asyncio.subprocess.PIPE if request.stdin is not None else None,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            environment=env,
+            pipe_stdin=request.stdin is not None,
         )
 
         stdout_capture = _StreamCapture(
             stream_name="stdout",
             capture_full_output=request.capture_full_output,
+            retain_output_artifact=request.retain_output_artifacts,
             rolling_max_bytes=request.rolling_max_bytes,
             artifact_dir=request.artifact_dir,
         )
         stderr_capture = _StreamCapture(
             stream_name="stderr",
             capture_full_output=request.capture_full_output,
+            retain_output_artifact=request.retain_output_artifacts,
             rolling_max_bytes=request.rolling_max_bytes,
             artifact_dir=request.artifact_dir,
         )
@@ -226,6 +229,7 @@ class LocalExecBackend:
 class _StreamCapture:
     stream_name: str
     capture_full_output: bool
+    retain_output_artifact: bool
     rolling_max_bytes: int
     artifact_dir: str | None
     chunks: list[str] = field(default_factory=list)
@@ -274,6 +278,8 @@ class _StreamCapture:
         if self._artifact_handle is not None:
             self._artifact_handle.close()
             self._artifact_handle = None
+        if not self.retain_output_artifact:
+            self.discard_artifact()
 
     def discard_artifact(self) -> None:
         if self._artifact_path is None:
@@ -351,18 +357,7 @@ class _OutputCapture:
 
 
 def _kill_process(process: asyncio.subprocess.Process) -> None:
-    try:
-        if process.pid is not None:
-            os.killpg(process.pid, signal_module.SIGKILL)
-        else:
-            process.kill()
-    except ProcessLookupError:
-        return
-    except OSError:
-        try:
-            process.kill()
-        except ProcessLookupError:
-            return
+    kill_local_process(process)
 
 
 async def _wait_for_abort(signal: object | None) -> None:
@@ -394,6 +389,15 @@ def _build_preview_from_capture(
     max_bytes: int,
 ):
     if capture.capture_full_output:
+        if not capture.retain_output_artifact:
+            return (
+                truncate_tail(
+                    capture.content,
+                    max_lines=max_lines,
+                    max_bytes=max_bytes,
+                ),
+                None,
+            )
         return _build_preview(
             capture.content,
             max_lines=max_lines,

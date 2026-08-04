@@ -133,7 +133,7 @@ class _FailingRuntime(_Runtime):
 
 
 class _UnusedFactory:
-    async def create_driver(self, request: SessionSubagentRequest):
+    async def create(self, request: SessionSubagentRequest):
         raise AssertionError(f"unexpected child construction: {request.record.path}")
 
 
@@ -400,7 +400,8 @@ def test_factory_projects_explorer_bash_into_the_child_runtime(tmp_path: Path) -
     )
 
     async def scenario() -> None:
-        driver = await factory.create_driver(_request(spec=spec))
+        binding = await factory.create(_request(spec=spec))
+        driver = binding.driver
         await driver.dispose()
 
     asyncio.run(scenario())
@@ -424,9 +425,7 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
         InteractiveApprovalResolver,
     )
 
-    session = _Session(
-        responses=[_assistant("Done.", input_tokens=1, output_tokens=1)]
-    )
+    session = _Session(responses=[_assistant("Done.", input_tokens=1, output_tokens=1)])
     captured: dict[str, object] = {}
 
     def build_runtime(**kwargs: object) -> _Runtime:
@@ -446,7 +445,8 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
         approval_resolver=root_resolver,
     )
 
-    driver = asyncio.run(factory.create_driver(request))
+    binding = asyncio.run(factory.create(request))
+    driver = binding.driver
     bound = captured["approval_resolver"]
     assert isinstance(bound, ActorBoundApprovalResolver)
     assert bound.resolver is root_resolver
@@ -456,9 +456,7 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
     assert delegated.actor_ref == request.record.ref
     assert delegated.allowed_tools == ("read",)
     assert delegated.approval_actor_id == bound.actor_id
-    assert delegated.execution_profile_ceiling.readable_roots == (
-        tmp_path.resolve(),
-    )
+    assert delegated.execution_profile_ceiling.readable_roots == (tmp_path.resolve(),)
     assert delegated.execution_profile_ceiling.writable_roots == ()
     assert driver.delegated_execution_profile is delegated
     grant = root_resolver.grant_store.issue(
@@ -477,15 +475,18 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
 
     asyncio.run(driver.dispose())
 
-    assert root_resolver.grant_store.find(
-        ApprovalRequest(
-            tool_name="bash",
-            arguments={"command": "git push origin main"},
-            action_id="child-push-after-close",
-            actor_id=bound.actor_id,
-            session_grant=grant.proposal,
+    assert (
+        root_resolver.grant_store.find(
+            ApprovalRequest(
+                tool_name="bash",
+                arguments={"command": "git push origin main"},
+                action_id="child-push-after-close",
+                actor_id=bound.actor_id,
+                session_grant=grant.proposal,
+            )
         )
-    ) is None
+        is None
+    )
 
 
 @pytest.mark.parametrize(
@@ -680,7 +681,8 @@ def test_factory_builds_a_non_persistent_child_and_uses_existing_session_rounds(
 
     async def scenario() -> None:
         request = _request(spec=spec)
-        driver = await factory.create_driver(request)
+        binding = await factory.create(request)
+        driver = binding.driver
         initial = AgentInputMessage(
             message_id="initial",
             sender=HostCaller(),
@@ -762,7 +764,7 @@ def test_factory_installs_forked_history_and_cannot_widen_tools(
         tool_registry=_tool_registry("read", "grep"),
         runtime_builder=build_runtime,
     )
-    asyncio.run(factory.create_driver(_request(spec=spec, context_plan=plan)))
+    asyncio.run(factory.create(_request(spec=spec, context_plan=plan)))
 
     assert session.agent.state.messages == [history_message]
     assert captured["system_prompt"] == "Bounded reviewer prompt"
@@ -776,7 +778,7 @@ def test_factory_installs_forked_history_and_cannot_widen_tools(
         allowed_tools=("write",),
     )
     with pytest.raises(ValueError, match="non-admitted Coding tools: write"):
-        asyncio.run(factory.create_driver(_request(spec=spec, context_plan=widened)))
+        asyncio.run(factory.create(_request(spec=spec, context_plan=widened)))
 
 
 def test_failed_child_creation_disposes_the_non_persistent_runtime(
@@ -794,7 +796,7 @@ def test_failed_child_creation_disposes_the_non_persistent_runtime(
     spec = AgentTypeSpec(name="reviewer", allowed_tools=("read",))
 
     with pytest.raises(RuntimeError, match="child session failed"):
-        asyncio.run(factory.create_driver(_request(spec=spec)))
+        asyncio.run(factory.create(_request(spec=spec)))
 
     assert runtime.dispose_calls == 1
 
@@ -830,8 +832,9 @@ def test_factory_runs_isolated_types_in_a_lease_and_reports_changes(
 
     async def scenario() -> None:
         request = _request(spec=spec)
-        driver = await factory.create_driver(request)
-        assert driver.workspace_ref == "git-workspace:test"
+        binding = await factory.create(request)
+        driver = binding.driver
+        assert binding.workspace_ref == "git-workspace:test"
         driver.deliver(
             AgentInputMessage(
                 message_id="initial",
@@ -842,13 +845,13 @@ def test_factory_runs_isolated_types_in_a_lease_and_reports_changes(
             )
         )
         result = await driver.run_round(round_id=1, mode="prompt")
-        await driver.dispose()
+        dispose_result = await driver.dispose()
 
         assert result.workspace_ref == "git-workspace:test"
         assert result.artifact_refs == ("git-artifact:test",)
         assert result.change_set_ref is None
-        assert driver.released_workspace is not None
-        assert driver.released_workspace.retained is True
+        assert dispose_result.released_workspace is not None
+        assert dispose_result.released_workspace.retained is True
 
     asyncio.run(scenario())
 
@@ -857,9 +860,7 @@ def test_factory_runs_isolated_types_in_a_lease_and_reports_changes(
     delegated = captured["delegated_execution_profile"]
     assert isinstance(delegated, DelegatedExecutionProfile)
     assert delegated.workspace_ref == "git-workspace:test"
-    assert delegated.execution_profile_ceiling.writable_roots == (
-        isolated.resolve(),
-    )
+    assert delegated.execution_profile_ceiling.writable_roots == (isolated.resolve(),)
     assert workspace.acquired[0].agent_type == "implementation_worker"
     assert workspace.released == 1
 
@@ -889,8 +890,9 @@ def test_factory_runs_shared_write_worker_in_the_exact_parent_worktree(
 
     async def scenario() -> None:
         request = _request(spec=spec)
-        driver = await factory.create_driver(request)
-        assert driver.workspace_ref is None
+        binding = await factory.create(request)
+        driver = binding.driver
+        assert binding.workspace_ref is None
         driver.deliver(
             AgentInputMessage(
                 message_id="initial",
@@ -914,9 +916,7 @@ def test_factory_runs_shared_write_worker_in_the_exact_parent_worktree(
     delegated = captured["delegated_execution_profile"]
     assert isinstance(delegated, DelegatedExecutionProfile)
     assert delegated.workspace_ref is None
-    assert delegated.execution_profile_ceiling.writable_roots == (
-        tmp_path.resolve(),
-    )
+    assert delegated.execution_profile_ceiling.writable_roots == (tmp_path.resolve(),)
     assert "sharing the parent Coding session's current worktree" in str(
         captured["system_prompt"]
     )
@@ -942,7 +942,7 @@ def test_factory_rejects_an_admitted_tool_missing_from_the_product_registry(
         ValueError,
         match="Coding child tools are not registered and enabled: grep",
     ):
-        asyncio.run(factory.create_driver(_request(spec=spec)))
+        asyncio.run(factory.create(_request(spec=spec)))
 
 
 def test_factory_releases_isolated_workspace_when_preflight_fails(
@@ -977,7 +977,7 @@ def test_factory_releases_isolated_workspace_when_preflight_fails(
         ValueError,
         match="Coding child tools are not registered and enabled: write",
     ):
-        asyncio.run(factory.create_driver(_request(spec=spec)))
+        asyncio.run(factory.create(_request(spec=spec)))
 
     assert workspace.released == 1
     assert runtime_built is False

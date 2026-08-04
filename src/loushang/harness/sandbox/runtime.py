@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 from loushang.harness.authorization import (
@@ -7,14 +8,21 @@ from loushang.harness.authorization import (
     constrain_execution_profile,
 )
 from loushang.harness.environment import HostEnvironmentProbe
+from loushang.harness.tools.process_hosting import (
+    ProcessExecutionScope,
+    ScopeBoundProcessLauncher,
+)
 from loushang.harness.workspace.exec import (
     ExecRequest,
     ExecService,
     ExecUpdateCallback,
 )
+from loushang.harness.workspace.process import AuthorizedProcessLauncher
+from loushang.harness.workspace.process.host import ProcessHost
 
 from .binding import SandboxExecutionBinding, bind_sandbox_execution
 from .exec_backend import SandboxScopeRequestFactory
+from .process import HostedProcessContainmentPlanner
 from .registry import SandboxBackendRegistry
 from .service import SandboxDiagnosticSink
 from .types import SandboxSettings, SandboxStatus
@@ -26,16 +34,62 @@ class SandboxExecutionRuntime:
 
     binding: SandboxExecutionBinding
     exec_service: ExecService
+    _process_host: ProcessHost
+    _process_containment: HostedProcessContainmentPlanner
     _closed: bool = False
+    _process_launcher: ScopeBoundProcessLauncher | None = None
+    _close_task: asyncio.Task[None] | None = None
 
     def status(self) -> SandboxStatus:
+        override = self._process_containment.status_override()
+        if override is not None:
+            return override
         return self.binding.status()
 
+    def bind_process_launcher(
+        self,
+        scope: ProcessExecutionScope,
+    ) -> AuthorizedProcessLauncher:
+        if self._closed or self._close_task is not None:
+            raise RuntimeError("sandbox execution runtime is closing")
+        if self._process_launcher is not None:
+            raise RuntimeError("process launcher is already bound for this runtime")
+        launcher = ScopeBoundProcessLauncher(
+            scope=scope,
+            host=self._process_host,
+            containment=self._process_containment,
+        )
+        self._process_launcher = launcher
+        return launcher
+
     async def close(self) -> None:
-        if self._closed:
-            return
+        task = self._close_task
+        if task is None:
+            task = asyncio.create_task(
+                self._close_owned(),
+                name="harness-sandbox-execution-runtime-close",
+            )
+            self._close_task = task
+        await _await_close_before_propagating_cancellation(task)
+
+    async def _close_owned(self) -> None:
+        errors: list[BaseException] = []
+        for close in (
+            self._process_host.close,
+            self._process_containment.close,
+            self.binding.close,
+        ):
+            try:
+                await close()
+            except BaseException as exc:
+                errors.append(exc)
         self._closed = True
-        await self.binding.close()
+        if not errors:
+            return
+        primary = errors[0]
+        for secondary in errors[1:]:
+            primary.add_note(f"later cleanup failure: {secondary}")
+        raise primary
 
 
 def bind_sandbox_execution_runtime(
@@ -70,6 +124,12 @@ def bind_sandbox_execution_runtime(
         scope_request_factory=scope_request_factory,
         diagnostic_sink=diagnostic_sink,
     )
+    process_containment = HostedProcessContainmentPlanner(
+        settings=settings,
+        resolution=binding.resolution,
+        scope_request_factory=scope_request_factory,
+        diagnostic_sink=diagnostic_sink,
+    )
     return SandboxExecutionRuntime(
         binding=binding,
         exec_service=(
@@ -80,6 +140,8 @@ def bind_sandbox_execution_runtime(
                 execution_profile=effective_profile,
             )
         ),
+        _process_host=ProcessHost(),
+        _process_containment=process_containment,
     )
 
 
@@ -101,6 +163,27 @@ class _ExecServiceBackend:
             signal=signal,
             on_update=on_update,
         )
+
+
+async def _await_close_before_propagating_cancellation(
+    task: asyncio.Task[None],
+) -> None:
+    cancellation: asyncio.CancelledError | None = None
+    while True:
+        try:
+            await asyncio.shield(task)
+            break
+        except asyncio.CancelledError as exc:
+            if task.cancelled():
+                raise
+            if cancellation is None:
+                cancellation = exc
+        except BaseException as exc:
+            if cancellation is not None:
+                raise cancellation from exc
+            raise
+    if cancellation is not None:
+        raise cancellation
 
 
 __all__ = ["SandboxExecutionRuntime", "bind_sandbox_execution_runtime"]

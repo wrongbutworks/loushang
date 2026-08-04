@@ -77,6 +77,8 @@ Harness may own:
   tool primitives;
 - reusable concrete tool packs, including workspace read, list, search, write,
   edit, and process execution implementations;
+- execution-scope adapters that route protected long-lived process starts
+  through the same Policy, Approval, effect, audit, and Sandbox ceilings;
 - generic process helpers, output limits, ignore matching, and optional
   external binary resolution used by those packs.
 - allowed/requested/active tool accounting, ordered resolution, activation
@@ -86,6 +88,7 @@ Product adapters own:
 
 - default tool packs;
 - product-specific tool names and descriptions;
+- executable catalog admission and language-server selection;
 - domain-specific coding/design/research/ppt tools;
 - prompt wording around tool use;
 - destructive-operation policy;
@@ -152,6 +155,7 @@ Harness may own neutral workspace mechanics:
 - file operation request/result shapes;
 - process execution request/result shapes;
 - stream event records;
+- bounded session-owned process launch/handle records and lifecycle mechanics;
 - workspace tool protocols;
 - reusable concrete workspace tool definitions and their neutral renderers.
 
@@ -162,6 +166,10 @@ Product adapters own:
 - approval policy around writes and process execution;
 - how file edits are described to users;
 - default workspace tool activation.
+
+The bounded process Host remains policy-free. Products receive a narrow
+authorized launcher assembled above it; they do not receive the concrete Host
+or a public Sandbox process backend.
 
 Use `loushang.harness.workspace` or `loushang.harness.tools.workspace`; do not
 create a top-level `loushang.workspace` package.

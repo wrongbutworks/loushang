@@ -8,17 +8,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
-from loushang.harness.resources._loader_discovery import (
+from loushang.harness.resources._loader_package_policy import (
     _count_package_descriptors,
     _count_package_diagnostics,
     _normalize_package_roots,
     _normalize_package_source_filters,
-    _normalize_runtime_paths,
-    _normalize_user_resource_roots,
-    _resolve_prompt_input,
 )
 from loushang.harness.resources._loader_pipeline import (
     _discover_snapshot,
+    _ResourceDiscoveryRequest,
     _source_kinds_for,
 )
 from loushang.harness.resources._loader_types import (
@@ -42,6 +40,38 @@ if TYPE_CHECKING:
     from loushang.harness.resources.packages.source import PackageSourceConfig
 
 SystemPromptAssembler = Callable[[str | None, ResourceBundle], str | None]
+
+
+def _normalize_user_resource_roots(
+    user_resource_roots: Sequence[str | Path] | None,
+) -> tuple[Path, ...]:
+    if not user_resource_roots:
+        return ()
+    return tuple(Path(root).expanduser().resolve() for root in user_resource_roots)
+
+
+def _normalize_runtime_paths(
+    paths: list[str | Path] | tuple[str | Path, ...] | None,
+) -> tuple[Path, ...]:
+    if not paths:
+        return ()
+    return tuple(Path(path).expanduser() for path in paths)
+
+
+def _resolve_prompt_input(source: str | None, *, cwd: Path) -> str | None:
+    if not source:
+        return None
+    candidate = Path(source).expanduser()
+    if not candidate.is_absolute():
+        candidate = cwd / candidate
+    if not candidate.exists():
+        return source
+    if not candidate.is_file():
+        return source
+    try:
+        return candidate.read_text(encoding="utf-8")
+    except OSError:
+        return source
 
 
 @dataclass(frozen=True)
@@ -232,12 +262,12 @@ class ResourceLoader:
             if self._project_resource_mode == "standard"
             else None
         )
-        snapshot = _discover_snapshot(
-            target,
+        request = _ResourceDiscoveryRequest(
+            cwd=target,
             package_roots=self._package_roots,
             package_source_filters=self._package_source_filters,
             user_resource_roots=self._user_resource_roots,
-            explicit_user_roots=self._explicit_user_resource_roots,
+            explicit_user_roots=frozenset(self._explicit_user_resource_roots),
             additional_extension_paths=self._additional_extension_paths,
             additional_skill_paths=self._additional_skill_paths,
             additional_prompt_template_paths=self._additional_prompt_template_paths,
@@ -251,6 +281,7 @@ class ResourceLoader:
             context_file_names=self._context_file_names,
             project_resource_root=project_resource_root,
         )
+        snapshot = _discover_snapshot(request)
         self._snapshot = snapshot
         self._resolved_system_prompt = _resolve_prompt_input(
             self._system_prompt_source, cwd=Path(cwd)

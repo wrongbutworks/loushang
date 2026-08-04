@@ -30,6 +30,7 @@ from .registry import AgentRegistry, AgentReservation
 from .run_handle import (
     HandleCloseResult,
     HandleDeliveryOutcome,
+    SubagentDisposeResult,
     SubagentRoundDriver,
     SubagentRoundResult,
     SubagentRunHandle,
@@ -104,6 +105,7 @@ __all__ = [
     "RecipeExecutionResult",
     "RecipeRole",
     "RecipeRunRequest",
+    "SubagentDisposeResult",
     "SubagentContextFactory",
     "SubagentContextPlan",
     "SubagentApprovalResolver",

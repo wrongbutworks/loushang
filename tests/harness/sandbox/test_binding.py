@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -13,17 +15,23 @@ from loushang.harness.sandbox import (
     SandboxBackendRegistry,
     SandboxBackendStatus,
     SandboxDiagnostic,
+    SandboxExecutionRuntime,
     SandboxScopeDescriptor,
     SandboxScopeRequest,
     SandboxSettings,
+    SandboxStatus,
     SandboxUnavailableError,
     bind_sandbox_execution,
     bind_sandbox_execution_runtime,
 )
+from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.workspace.exec import (
     ExecRequest,
     ExecResult,
     ExecService,
+)
+from loushang.harness.workspace.process import (
+    ProcessLaunchRequest,
 )
 
 
@@ -170,6 +178,203 @@ def test_disabled_runtime_retains_the_intersected_execution_ceiling(
     assert runtime.status().state == "disabled"
 
 
+def test_disabled_runtime_binds_one_owned_local_process_launcher(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        runtime = bind_sandbox_execution_runtime(base_exec_service=ExecService())
+        ceiling = EffectiveExecutionProfile(
+            readable_roots=(tmp_path,),
+            writable_roots=(tmp_path,),
+        )
+        launcher = runtime.bind_process_launcher(
+            ProcessExecutionScope(execution_profile_ceiling=ceiling)
+        )
+        with pytest.raises(RuntimeError, match="already bound"):
+            runtime.bind_process_launcher(ProcessExecutionScope())
+
+        handle = await launcher.start(
+            ProcessLaunchRequest(
+                command=(
+                    sys.executable,
+                    "-c",
+                    (
+                        "import sys,time; "
+                        "sys.stdout.buffer.write(b'raw-bytes'); "
+                        "sys.stdout.buffer.flush(); time.sleep(60)"
+                    ),
+                ),
+                cwd=str(tmp_path),
+                effective_environment=tuple(os.environ.items()),
+            ),
+            correlation_id="runtime-smoke",
+        )
+        assert await handle.read_stdout() == b"raw-bytes"
+        await runtime.close()
+        assert (await handle.wait()).return_code != 0
+
+    asyncio.run(scenario())
+
+
+def test_hosted_process_required_fails_and_best_effort_degrades_before_spawn(
+    tmp_path: Path,
+) -> None:
+    async def scenario(requirement: str):
+        diagnostics: list[SandboxDiagnostic] = []
+        backend = _Backend()
+        runtime = bind_sandbox_execution_runtime(
+            base_exec_service=ExecService(),
+            settings=SandboxSettings(
+                enabled=True,
+                requirement=requirement,  # type: ignore[arg-type]
+            ),
+            registry=_registry(backend),
+            environment_probe=LocalHostEnvironmentProbe(
+                platform_name="linux",
+                architecture="x86_64",
+                environ={},
+            ),
+            scope_request_factory=_scope_request_factory(tmp_path),
+            diagnostic_sink=diagnostics.append,
+        )
+        launcher = runtime.bind_process_launcher(
+            ProcessExecutionScope(
+                execution_profile_ceiling=EffectiveExecutionProfile(
+                    readable_roots=(tmp_path,),
+                    writable_roots=(tmp_path,),
+                )
+            )
+        )
+        request = ProcessLaunchRequest(
+            command=(sys.executable, "-c", "import time; time.sleep(60)"),
+            cwd=str(tmp_path),
+            effective_environment=tuple(os.environ.items()),
+        )
+        if requirement == "required":
+            with pytest.raises(SandboxUnavailableError, match="cannot host"):
+                await launcher.start(request, correlation_id="required")
+            assert runtime.status().state == "enabled"
+            await runtime.close()
+        else:
+            handle = await launcher.start(request, correlation_id="best-effort")
+            assert runtime.status().state == "degraded"
+            assert [item.code for item in diagnostics] == [
+                "sandbox_process_hosting_degraded"
+            ]
+            await runtime.close()
+            assert (await handle.wait()).return_code != 0
+
+    asyncio.run(scenario("required"))
+    asyncio.run(scenario("best_effort"))
+
+
+def test_runtime_close_delays_cancellation_through_host_and_sandbox_order() -> None:
+    events: list[str] = []
+
+    class _HostOwner:
+        def __init__(self) -> None:
+            self.entered = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def close(self) -> None:
+            events.append("host-start")
+            self.entered.set()
+            await self.release.wait()
+            events.append("host-end")
+
+    class _ContainmentOwner:
+        def status_override(self):
+            return None
+
+        async def close(self) -> None:
+            events.append("containment")
+
+    class _BindingOwner:
+        def status(self):
+            return SandboxStatus(state="disabled")
+
+        async def close(self) -> None:
+            events.append("sandbox")
+
+    async def scenario() -> None:
+        host = _HostOwner()
+        runtime = SandboxExecutionRuntime(
+            binding=_BindingOwner(),  # type: ignore[arg-type]
+            exec_service=ExecService(),
+            _process_host=host,  # type: ignore[arg-type]
+            _process_containment=_ContainmentOwner(),  # type: ignore[arg-type]
+        )
+        close_task = asyncio.create_task(runtime.close())
+        await host.entered.wait()
+        close_task.cancel()
+        await asyncio.sleep(0)
+        assert close_task.done() is False
+        host.release.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await close_task
+        assert events == ["host-start", "host-end", "containment", "sandbox"]
+        await runtime.close()
+        assert events == ["host-start", "host-end", "containment", "sandbox"]
+
+    asyncio.run(scenario())
+
+
+def test_runtime_close_continues_after_failures_and_preserves_first_error() -> None:
+    events: list[str] = []
+
+    class _FailingOwner:
+        def __init__(self, name: str, error: BaseException) -> None:
+            self.name = name
+            self.error = error
+
+        async def close(self) -> None:
+            events.append(self.name)
+            raise self.error
+
+    class _ContainmentOwner(_FailingOwner):
+        def status_override(self):
+            return None
+
+    class _BindingOwner(_FailingOwner):
+        def status(self):
+            return SandboxStatus(state="disabled")
+
+    async def scenario() -> None:
+        primary = RuntimeError("host failed")
+        runtime = SandboxExecutionRuntime(
+            binding=_BindingOwner(  # type: ignore[arg-type]
+                "sandbox",
+                OSError("sandbox failed"),
+            ),
+            exec_service=ExecService(),
+            _process_host=_FailingOwner(  # type: ignore[arg-type]
+                "host",
+                primary,
+            ),
+            _process_containment=_ContainmentOwner(  # type: ignore[arg-type]
+                "containment",
+                ValueError("containment failed"),
+            ),
+        )
+
+        with pytest.raises(RuntimeError, match="host failed") as captured:
+            await runtime.close()
+        assert captured.value is primary
+        assert captured.value.__notes__ == [
+            "later cleanup failure: containment failed",
+            "later cleanup failure: sandbox failed",
+        ]
+        assert events == ["host", "containment", "sandbox"]
+
+        with pytest.raises(RuntimeError) as repeated:
+            await runtime.close()
+        assert repeated.value is primary
+        assert events == ["host", "containment", "sandbox"]
+
+    asyncio.run(scenario())
+
+
 def test_degraded_runtime_falls_back_through_the_injected_execution_service(
     tmp_path: Path,
 ) -> None:
@@ -194,9 +399,7 @@ def test_degraded_runtime_falls_back_through_the_injected_execution_service(
     )
 
     result = asyncio.run(
-        runtime.exec_service.execute(
-            ExecRequest(command=("tool",), cwd=str(tmp_path))
-        )
+        runtime.exec_service.execute(ExecRequest(command=("tool",), cwd=str(tmp_path)))
     )
 
     assert result.stdout == "injected"
