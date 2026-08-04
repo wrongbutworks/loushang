@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
-import signal as signal_module
 import tempfile
 from collections.abc import Awaitable
 from contextlib import suppress
@@ -11,6 +10,10 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Protocol, TextIO
 
+from loushang.harness.workspace._local_process import (
+    kill_local_process,
+    spawn_local_process,
+)
 from loushang.harness.workspace.truncation import truncate_tail
 
 from .types import (
@@ -71,16 +74,14 @@ class LocalExecBackend:
         on_update: ExecUpdateCallback | None = None,
     ) -> ExecResult:
         assert request.effective_environment is not None
+        assert request.cwd is not None
         env = dict(request.effective_environment)
 
-        process = await asyncio.create_subprocess_exec(
-            *request.command,
+        process = await spawn_local_process(
+            command=request.command,
             cwd=request.cwd,
-            env=env,
-            start_new_session=True,
-            stdin=asyncio.subprocess.PIPE if request.stdin is not None else None,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            environment=env,
+            pipe_stdin=request.stdin is not None,
         )
 
         stdout_capture = _StreamCapture(
@@ -356,18 +357,7 @@ class _OutputCapture:
 
 
 def _kill_process(process: asyncio.subprocess.Process) -> None:
-    try:
-        if process.pid is not None:
-            os.killpg(process.pid, signal_module.SIGKILL)
-        else:
-            process.kill()
-    except ProcessLookupError:
-        return
-    except OSError:
-        try:
-            process.kill()
-        except ProcessLookupError:
-            return
+    kill_local_process(process)
 
 
 async def _wait_for_abort(signal: object | None) -> None:

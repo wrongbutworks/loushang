@@ -31,7 +31,7 @@ depend on `loushang.coding`, `loushang.work`, `loushang.method`,
 | `tools` / `approval` / `policy` / `sandbox` | tool authoring and hosted execution mechanics, action policy evaluation, approval lifecycle, effects and containment ports | Product risk defaults, Product approval wording, arbitrary Product commands |
 | `resources` / `extensions` / `capabilities` | resource discovery and precedence, package materialization mechanics, extension runtime, capability composition | Product-owned built-in content, trust decisions, activation policy |
 | `host` / `cli` / `events` / `presentation` | Product-neutral host lifecycle, RPC/JSON projection, runtime event contracts and reusable presentation | AppService tenancy, Channel protocol, Product grammar or final UI composition |
-| `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, workspace and execution primitives | Product-specific recovery UX, business audit retention, Product artifact semantics |
+| `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, one-shot execution, and bounded session-owned process primitives | Product-specific recovery UX, business audit retention, protocol/server selection, Product artifact semantics |
 
 ## Dependency Direction
 
