@@ -37,6 +37,7 @@ from loushang.harness.multiagent import (
     MultiAgentControl,
     MultiAgentError,
     RecipeRunRequest,
+    SubagentDisposeResult,
     SubagentRoundResult,
     core_recipe_catalog,
 )
@@ -45,6 +46,7 @@ from loushang.harness.runtime import HostInputQueue
 from loushang.harness.session.multiagent import (
     AgentInputFacade,
     SessionMultiAgentRuntime,
+    SessionSubagentBinding,
     SessionSubagentRequest,
 )
 from loushang.harness.tools.core import ToolDefinition
@@ -209,18 +211,19 @@ class _Driver:
                 )
             )
 
-    async def dispose(self) -> None:
+    async def dispose(self) -> SubagentDisposeResult:
         self.disposed = True
+        return SubagentDisposeResult()
 
 
 class _Factory:
     def __init__(self) -> None:
         self.drivers: dict[str, _Driver] = {}
 
-    async def create_driver(self, request: SessionSubagentRequest) -> _Driver:
+    async def create(self, request: SessionSubagentRequest) -> SessionSubagentBinding:
         driver = _Driver()
         self.drivers[request.record.path.name] = driver
-        return driver
+        return SessionSubagentBinding(driver=driver)
 
 
 @dataclass(slots=True)
@@ -771,21 +774,22 @@ class _ImmediateDriver:
     def abort(self) -> None:
         return None
 
-    async def dispose(self) -> None:
+    async def dispose(self) -> SubagentDisposeResult:
         self.disposed = True
+        return SubagentDisposeResult()
 
 
 class _ImmediateFactory:
     def __init__(self) -> None:
         self.drivers: dict[AgentPath, _ImmediateDriver] = {}
 
-    async def create_driver(
+    async def create(
         self,
         request: SessionSubagentRequest,
-    ) -> _ImmediateDriver:
+    ) -> SessionSubagentBinding:
         driver = _ImmediateDriver(request.record.path)
         self.drivers[request.record.path] = driver
-        return driver
+        return SessionSubagentBinding(driver=driver)
 
 
 class _SharedState:
@@ -2126,17 +2130,16 @@ def _concurrent_child_approval_playback() -> object:
                 payload = await asyncio.wait_for(approval_queue.get(), timeout=1)
                 surface = manager.current
                 assert getattr(surface, "purpose", None) == "approval"
-                assert getattr(
-                    getattr(surface, "content", None),
-                    "action_id",
-                    None,
-                ) == payload["action_id"]
-                actor_id = str(payload["actor_id"])
-                outcome = (
-                    "allow_once"
-                    if actor_id == str(allowed.ref)
-                    else "deny"
+                assert (
+                    getattr(
+                        getattr(surface, "content", None),
+                        "action_id",
+                        None,
+                    )
+                    == payload["action_id"]
                 )
+                actor_id = str(payload["actor_id"])
+                outcome = "allow_once" if actor_id == str(allowed.ref) else "deny"
                 await manager.handle_surface_intent(
                     InputIntent(
                         kind="approval_decision",

@@ -211,8 +211,12 @@ multi-agent 自有的一等数据（候选，最终以组件设计为准）：
 - multi-agent <-> harness：进程内 prepared-run contract
   （`AgentRunSpec` / `run_agent()` / `AgentEventSink`）
 
-multi-agent 不引入网络协议；跨进程 / 远端子 agent 是未来扩展，届时
-由 channel 承载 transport，multi-agent 的契约不变。
+multi-agent 当前不引入网络协议。未来受管的跨进程 / 远端子 agent
+通过 Harness 消费的中立 `AgentExecutionPort` 与 Host 提供的 worker
+backend 承载；worker wire protocol / transport 不属于 Channel。
+`loushang.channel` 只承载其明确接纳的 `WorkOperation`、`WorkEvent` 和
+投影事件。对外部独立 agent 的联邦协作可由单独的 A2A adapter 实现，
+不与受管 worker 执行协议或 Work 协议合并。
 
 ## Key Boundary Decisions（预告，详见 ARD）
 
