@@ -290,6 +290,42 @@ def test_exec_service_rolls_capture_without_losing_artifact(tmp_path: Path) -> N
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("capture_full_output", [True, False])
+def test_exec_service_discards_unretained_output_artifacts(
+    tmp_path: Path,
+    capture_full_output: bool,
+) -> None:
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+
+    async def scenario() -> None:
+        result = await ExecService().execute(
+            ExecRequest(
+                command=[
+                    "/usr/bin/env",
+                    "python3",
+                    "-c",
+                    "for i in range(400): print(f'line-{i:04d}')",
+                ],
+                cwd=str(tmp_path),
+                preview_max_lines=2,
+                preview_max_bytes=1024,
+                artifact_dir=str(artifact_dir),
+                capture_full_output=capture_full_output,
+                retain_output_artifacts=False,
+                rolling_max_bytes=512,
+            )
+        )
+
+        assert result.stdout_preview == "line-0398\nline-0399\n"
+        assert result.stdout_truncated is True
+        assert result.stdout_artifact_path is None
+        assert result.stderr_artifact_path is None
+        assert list(artifact_dir.iterdir()) == []
+
+    asyncio.run(scenario())
+
+
 def test_exec_service_marks_timeout_and_cancellation(tmp_path: Path) -> None:
     async def scenario() -> None:
         timed_out = await ExecService().execute(

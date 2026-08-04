@@ -2154,6 +2154,48 @@ def test_harness_slice1_symbols_are_not_top_level_exports() -> None:
     assert slice1_symbols.isdisjoint(set(harness.__all__))
 
 
+def test_agent_delegate_declares_authorized_process_execution() -> None:
+    from loushang.ai.types import ToolCall
+    from loushang.harness.effects import ProcessEffect
+    from loushang.harness.tools.agent_delegate import AgentDelegateToolPack
+    from loushang.harness.tools.execution import AuthorizedExecution, ToolCallContext
+
+    class Adapter:
+        admitted_agent_types = ("reviewer",)
+
+        def prepare(self, request, *, default_cwd, model):
+            from loushang.harness.tools.agent_delegate import PreparedAgentInvocation
+            from loushang.harness.workspace.exec import ExecRequest
+
+            del model
+            return PreparedAgentInvocation(
+                request=request,
+                exec_request=ExecRequest(
+                    command=("/usr/bin/loushang", "--mode", "print"),
+                    cwd=default_cwd,
+                    stdin=request.task,
+                    effective_environment=(("PATH", "/usr/bin"),),
+                ),
+                allowed_tools=("read",),
+            )
+
+        def project(self, prepared, result):
+            raise AssertionError("not used")
+
+    definition = AgentDelegateToolPack(adapter=Adapter()).definition()
+    assert isinstance(definition.execution, AuthorizedExecution)
+    prepared = definition.execution.action_adapter.prepare(
+        ToolCall(
+            type="toolCall",
+            id="call-1",
+            name="delegate_agent",
+            arguments={"agent_type": "reviewer", "task": "review"},
+        ),
+        ToolCallContext(tool_call_id="call-1", cwd="/workspace"),
+    )
+    assert isinstance(prepared.effects[0], ProcessEffect)
+
+
 def test_harness_workspace_symbols_are_not_top_level_exports() -> None:
     import loushang.harness as harness
 

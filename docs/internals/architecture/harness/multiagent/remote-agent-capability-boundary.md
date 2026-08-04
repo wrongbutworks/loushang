@@ -4,6 +4,11 @@
 > 本文限定远程 Agent 能力如何进入 Harness；它不改变当前已实现的
 > session-owned in-process multiagent 语义。
 
+> Implementation note (2026-08-04): 本地 CLI subprocess 形态的 P0 已按
+> [One-Shot Agent Invocation Tool Boundary](../agent-invocation-tool-boundary.md)
+> 落地。它验证的是普通 admitted tool 的授权、非扩张工具集、取消和有界输出
+> 边界，不代表远端 wire protocol、异步 job 或 collaboration backend 已实现。
+
 ## Decision
 
 “远程”只描述部署位置，不决定交互生命周期。远端 Agent 可以是一次性
@@ -123,8 +128,9 @@ backend，不足以证明需要 `AgentExecutionPort`。它只在 Host 必须透�
 
 ## Delivery Order
 
-1. 先把一次性远端 Agent 作为普通 admitted capability 实现并验证输出、
-   artifact、授权、超时和错误投影。
+1. 先用已实现的本地 CLI subprocess P0 验证普通 admitted capability 的输出、
+   授权、非扩张工具集、超时和错误投影；接入远端时复用 tool 语义，但另行定义
+   client/wire 适配器与远端身份、传输和 artifact 契约。
 2. 任务确实会超出一次 tool call 生命周期时，再增加 `submit / await /
    cancel` 与 `RunRef`；不自动增加 mailbox 或 attach。
 3. 只有需要 steering / follow-up 时，才增加 remote collaboration adapter，

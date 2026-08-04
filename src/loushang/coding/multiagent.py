@@ -563,11 +563,17 @@ def _resolve_system_prompt(request: SessionSubagentRequest) -> str:
     return _coding_role_system_prompt(request.agent_type.name)
 
 
-def _coding_role_system_prompt(agent_type: str) -> str:
+def coding_agent_type_system_prompt(agent_type: str) -> str:
+    """Return Coding's complete system prompt for one admitted agent type."""
+
     role_prompt = _ROLE_PROMPTS.get(agent_type)
     if role_prompt is None:
         raise ValueError(f"Coding has no system prompt for agent type {agent_type!r}")
     return f"{DEFAULT_CODING_SYSTEM_PROMPT}\n\n{role_prompt}"
+
+
+def _coding_role_system_prompt(agent_type: str) -> str:
+    return coding_agent_type_system_prompt(agent_type)
 
 
 def _resolve_allowed_tools(request: SessionSubagentRequest) -> tuple[str, ...]:
@@ -599,6 +605,7 @@ def _select_tool_registry(
 
 __all__ = [
     "CodingSubagentFactory",
+    "coding_agent_type_system_prompt",
     "coding_multiagent_system_prompt",
     "coding_recipe_context_plan",
     "coding_read_only_agent_types",

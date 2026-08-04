@@ -179,6 +179,10 @@ business commitment. A2A may be one adapter for an independent external Agent;
 a Loushang-controlled service may use a smaller worker protocol without
 changing the tool contract. See
 [Remote Agent Capability Boundary](../harness/multiagent/remote-agent-capability-boundary.md).
+The implemented local CLI P0 is documented in
+[One-Shot Agent Invocation Tool Boundary](../harness/agent-invocation-tool-boundary.md):
+it proves the admitted-tool path without introducing an execution provider,
+job lifecycle, or new multi-agent runtime abstraction.
 
 ## Client And Process Profiles
 
@@ -552,3 +556,4 @@ interaction.
 - [Work Architecture](../work/README.md)
 - [Method Architecture](../method/README.md)
 - [Remote Agent Capability Boundary](../harness/multiagent/remote-agent-capability-boundary.md)
+- [One-Shot Agent Invocation Tool Boundary](../harness/agent-invocation-tool-boundary.md)

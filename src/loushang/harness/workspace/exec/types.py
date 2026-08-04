@@ -65,6 +65,7 @@ class ExecRequest:
     artifact_dir: str | None = None
     capture_full_output: bool = True
     rolling_max_bytes: int = 100 * 1024
+    retain_output_artifacts: bool = True
     effective_environment: tuple[tuple[str, str], ...] | None = field(
         default=None,
         repr=False,
