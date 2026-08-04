@@ -213,8 +213,7 @@ class AgentSession(AgentProductSession):
                     primary_error = cleanup_error
                 else:
                     primary_error.add_note(
-                        "process host or sandbox cleanup also failed: "
-                        f"{cleanup_error}"
+                        f"process host or sandbox cleanup also failed: {cleanup_error}"
                     )
         if primary_error is not None:
             raise primary_error
