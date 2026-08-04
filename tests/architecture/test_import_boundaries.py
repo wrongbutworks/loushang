@@ -3327,6 +3327,18 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         "loushang.harness.resources._loader_discovery_temporary"
         in _absolute_imports(resource_root / "_loader_pipeline.py")
     )
+    pipeline_text = (resource_root / "_loader_pipeline.py").read_text(
+        encoding="utf-8"
+    )
+    loader_text = (resource_root / "loader.py").read_text(encoding="utf-8")
+    assert "class _ResourceDiscoveryRequest:" in pipeline_text
+    assert "class _ResourceDiscoveries:" in pipeline_text
+    assert (
+        "def _discover_snapshot(request: _ResourceDiscoveryRequest)"
+        in pipeline_text
+    )
+    assert "class _ResourceDiscoveryRequest:" not in loader_text
+    assert "snapshot = _discover_snapshot(request)" in loader_text
     assert "def _discover_context_descriptors" not in (
         resource_root / "_loader_discovery.py"
     ).read_text(encoding="utf-8")
