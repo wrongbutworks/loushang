@@ -25,7 +25,6 @@ from loushang.harness.policy import ToolPolicySubject
 from loushang.harness.tools.execution import (
     AuthorizedToolAction,
     AuthorizedToolContext,
-    AuthorizedToolHandler,
     PreparedToolAction,
     ToolExecutionHost,
 )
@@ -53,16 +52,19 @@ WorkspaceActionObservation = Callable[
 class WorkspaceToolAuthorizationGateway:
     """Session-owned Policy/Approval gateway for protected tool actions."""
 
-    policy_evaluator: ToolPolicyEvaluator
+    policy_evaluator: ToolPolicyEvaluator | None
     approval_resolver: ApprovalResolver | None = None
     execution_environment: object | None = None
 
     async def execute(
         self,
         prepared: PreparedToolAction,
-        handler: AuthorizedToolHandler,
+        handler: Callable[
+            [AuthorizedToolAction, AuthorizedToolContext],
+            Awaitable[T],
+        ],
         context: AuthorizedToolContext,
-    ) -> Any:
+    ) -> T:
         return await _execute_authorized_tool_action(
             self.policy_evaluator,
             tool_name=prepared.tool_name,

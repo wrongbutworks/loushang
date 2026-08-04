@@ -118,7 +118,8 @@ description.
   `ExecService` integration, and session/child lifecycle.
 - [Process Hosting Boundary](process-hosting-boundary.md) defines the narrow
   session-owned long-lived child-process substrate, fixed lifecycle limits,
-  public contract restraint, and the deferred authorization/Sandbox binding.
+  public contract restraint, execution-scope authorization, private Sandbox
+  containment planning, and ordered Session fallback cleanup.
 - [Context Budget And Accounting Boundary](context-budget-accounting-boundary.md)
   defines deterministic compaction-budget and usage-estimate record ownership
   while keeping message estimation and compaction policy in product adapters.

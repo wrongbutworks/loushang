@@ -18,6 +18,7 @@ from loushang.harness.workspace.exec import (
     ExecResult,
     materialize_exec_request,
 )
+from loushang.harness.workspace.process import ProcessLaunchRequest
 
 
 def _linux_environment() -> HostEnvironment:
@@ -225,6 +226,57 @@ def test_linux_scope_wraps_the_materialized_request_and_common_exec_backend(
         "VISIBLE": "yes",
     }
     assert updates == [ExecOutputChunk(stream="stdout", text="sandboxed\n")]
+
+
+def test_linux_hosted_plan_reuses_the_one_shot_bubblewrap_command_builder(
+    tmp_path: Path,
+) -> None:
+    captured: list[ExecRequest] = []
+
+    async def local_backend(request, **kwargs):
+        del kwargs
+        captured.append(request)
+        return ExecResult(exit_code=0)
+
+    backend = LinuxBubblewrapBackend(
+        bwrap_path=_fake_bwrap(tmp_path),
+        probe_runner=_successful_probe,
+        local_backend=local_backend,
+    )
+    backend.probe(_linux_environment())
+    scope_request = SandboxScopeRequest(
+        cwd=tmp_path,
+        readable_roots=(tmp_path,),
+        writable_roots=(tmp_path,),
+        network="restricted",
+    )
+    environment = (("MODE", "test"),)
+
+    async def scenario() -> None:
+        scope = await backend.open_scope(scope_request)
+        await scope(
+            ExecRequest(
+                command=("server", "--stdio"),
+                cwd=str(tmp_path),
+                effective_environment=environment,
+            )
+        )
+        plan = await backend._plan_hosted_process(
+            ProcessLaunchRequest(
+                command=("server", "--stdio"),
+                cwd=str(tmp_path),
+                effective_environment=environment,
+            ),
+            scope_request,
+        )
+
+        assert plan.request.command == captured[0].command
+        assert plan.request.cwd == str(tmp_path)
+        assert plan.request.effective_environment == environment
+        await plan.close()
+        await scope.close()
+
+    asyncio.run(scenario())
 
 
 def test_linux_scope_allowed_network_does_not_claim_or_add_isolation(

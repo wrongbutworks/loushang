@@ -178,8 +178,19 @@ class AgentSession(AgentProductSession):
         return self._sandbox_runtime.status()
 
     async def _dispose_session_runtime_profile(self) -> None:
+        primary_error: BaseException | None = None
         try:
             await super()._dispose_session_runtime_profile()
-        finally:
-            if self._sandbox_runtime is not None:
+        except BaseException as exc:
+            primary_error = exc
+        if self._sandbox_runtime is not None:
+            try:
                 await self._sandbox_runtime.close()
+            except BaseException as cleanup_error:
+                if primary_error is None:
+                    raise
+                primary_error.add_note(
+                    f"process host or sandbox cleanup also failed: {cleanup_error}"
+                )
+        if primary_error is not None:
+            raise primary_error

@@ -5390,7 +5390,7 @@ def test_harness_workspace_execution_boundary_is_documented() -> None:
     assert "workspace execution implementation complete" in inventory_text
 
 
-def test_process_hosting_h1_keeps_product_and_h2_bindings_outside_workspace() -> None:
+def test_process_hosting_core_keeps_product_and_bindings_outside_workspace() -> None:
     process_root = Path("src/loushang/harness/workspace/process")
     forbidden_prefixes = (
         "loushang.coding",
@@ -5413,7 +5413,8 @@ def test_process_hosting_h1_keeps_product_and_h2_bindings_outside_workspace() ->
     required_phrases = {
         "Harness Process Hosting Boundary",
         "Long-lived Sandbox ownership is intentionally not claimed by the H1 core",
-        "Deferred to H2",
+        "H2 provides:",
+        "Deferred to Coding H3",
         "There is no public `ProcessBackend`",
     }
     assert (
@@ -5428,6 +5429,59 @@ def test_process_hosting_h1_keeps_product_and_h2_bindings_outside_workspace() ->
     ).read_text(encoding="utf-8")
     assert "`loushang.harness.workspace.exec`" in coding_exec_text
     assert "compatibility" in coding_exec_text
+
+
+def test_process_hosting_h2_keeps_authorization_sandbox_and_product_directional() -> None:
+    launcher_path = Path("src/loushang/harness/tools/process_hosting.py")
+    launcher_imports = set(_absolute_imports(launcher_path))
+    for forbidden in (
+        "loushang.coding",
+        "loushang.harness.sandbox",
+        "loushang.harnesstui",
+    ):
+        assert not any(
+            imported == forbidden or imported.startswith(f"{forbidden}.")
+            for imported in launcher_imports
+        )
+
+    containment_path = Path("src/loushang/harness/sandbox/process.py")
+    containment_imports = set(_absolute_imports(containment_path))
+    for forbidden in (
+        "loushang.coding",
+        "loushang.harness.tools",
+        "loushang.harnesstui",
+    ):
+        assert not any(
+            imported == forbidden or imported.startswith(f"{forbidden}.")
+            for imported in containment_imports
+        )
+
+    sandbox_protocols = Path(
+        "src/loushang/harness/sandbox/protocols.py"
+    ).read_text(encoding="utf-8")
+    assert "ProcessLaunchRequest" not in sandbox_protocols
+    assert "plan_hosted_process" not in sandbox_protocols
+
+    coding_disposal = Path(
+        "src/loushang/coding/session/agent_session.py"
+    ).read_text(encoding="utf-8")
+    assert "ProcessHost" not in coding_disposal
+    assert "ScopeBoundProcessLauncher" not in coding_disposal
+
+    design_text = " ".join(
+        Path(
+            "docs/internals/architecture/harness/process-hosting-boundary.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    for phrase in (
+        "private complete-launch fingerprint",
+        "Required containment fails before spawn",
+        "Host, remaining containment plans, then the one-shot Sandbox binding/backend",
+        "does not widen the public `SandboxBackend` Protocol",
+    ):
+        assert phrase in design_text
 
 
 def test_coding_agent_product_construction_uses_shared_binding() -> None:
