@@ -1,0 +1,364 @@
+"""Bounded model-facing semantic queries over the Coding LSP runtime."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Protocol
+from urllib.parse import unquote, urlparse
+
+from loushang.coding.lsp.documents import DocumentSnapshot, LspDocumentManager
+from loushang.coding.lsp.model import (
+    CodeLocation,
+    CodePosition,
+    CodeQueryResult,
+    CodeRange,
+    LspInvalidInputError,
+    LspProtocolError,
+)
+from loushang.coding.lsp.selector import LspSelector
+from loushang.coding.lsp.supervisor import LspRuntimeHandle, LspServerSupervisor
+from loushang.harness.tools.authoring import ToolContext, direct_tool
+from loushang.harness.tools.core import ToolDefinition, tool
+
+INSPECT_SYMBOL_TOOL_NAME = "inspect_symbol"
+MAX_INSPECT_SYMBOL_RESULTS = 50
+
+
+class InspectSymbolRuntime(Protocol):
+    async def inspect_symbol(
+        self,
+        *,
+        path: str,
+        line: int,
+        character: int,
+        query: str = "definition",
+        limit: int = 50,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> CodeQueryResult: ...
+
+
+@dataclass(slots=True)
+class CodingLspTools:
+    selector: LspSelector
+    supervisor: LspServerSupervisor
+    documents: LspDocumentManager
+
+    async def inspect_symbol(
+        self,
+        *,
+        path: str,
+        line: int,
+        character: int,
+        query: str = "definition",
+        limit: int = 50,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> CodeQueryResult:
+        _validate_query_input(
+            line=line,
+            character=character,
+            query=query,
+            limit=limit,
+        )
+        selection = self.selector.select(path)
+        runtime = await self.supervisor.ensure_runtime(
+            selection,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+        document = await self.documents.ensure_document(
+            runtime,
+            selection.file_path,
+            language_id=selection.language_id,
+        )
+        lsp_position = _to_lsp_position(
+            document.content,
+            CodePosition(line=line, character=character),
+        )
+        raw_result = await runtime.client.request(
+            "textDocument/definition",
+            {
+                "textDocument": {"uri": document.uri},
+                "position": lsp_position,
+            },
+        )
+        locations, total, warnings = await self._normalize_locations(
+            raw_result,
+            runtime=runtime,
+            source_document=document,
+            limit=limit,
+        )
+        return CodeQueryResult(
+            items=locations,
+            count=total,
+            truncated=total > len(locations),
+            server_id=selection.definition_id,
+            document_version=document.version,
+            warnings=warnings,
+        )
+
+    async def _normalize_locations(
+        self,
+        raw_result: object,
+        *,
+        runtime: LspRuntimeHandle,
+        source_document: DocumentSnapshot,
+        limit: int,
+    ) -> tuple[tuple[CodeLocation, ...], int, tuple[str, ...]]:
+        if raw_result is None:
+            return (), 0, ()
+        raw_locations = raw_result if isinstance(raw_result, list) else [raw_result]
+        warnings: list[str] = []
+        normalized: list[CodeLocation] = []
+        for raw_location in raw_locations[:limit]:
+            normalized.append(
+                await self._normalize_location(
+                    raw_location,
+                    runtime=runtime,
+                    source_document=source_document,
+                    warnings=warnings,
+                )
+            )
+        return tuple(normalized), len(raw_locations), tuple(dict.fromkeys(warnings))
+
+    async def _normalize_location(
+        self,
+        raw_location: object,
+        *,
+        runtime: LspRuntimeHandle,
+        source_document: DocumentSnapshot,
+        warnings: list[str],
+    ) -> CodeLocation:
+        del runtime  # Runtime identity is retained in the enclosing result.
+        if not isinstance(raw_location, Mapping):
+            raise LspProtocolError("definition result items must be objects")
+        uri = raw_location.get("uri", raw_location.get("targetUri"))
+        raw_range = raw_location.get(
+            "range",
+            raw_location.get("targetSelectionRange", raw_location.get("targetRange")),
+        )
+        if not isinstance(uri, str) or not isinstance(raw_range, Mapping):
+            raise LspProtocolError("definition result is missing a URI or range")
+        lsp_range = _parse_lsp_range(raw_range)
+
+        target_path = _file_uri_path(uri)
+        if target_path is None:
+            warnings.append("definition target uses a non-file URI")
+            return CodeLocation(
+                path=None,
+                uri=uri,
+                range=_fallback_public_range(lsp_range),
+                external=True,
+                readable=False,
+            )
+        target_path = target_path.resolve()
+        workspace_root = self.selector.workspace_root
+        if not target_path.is_relative_to(workspace_root):
+            warnings.append("definition target is outside the Coding workspace")
+            return CodeLocation(
+                path=None,
+                uri=uri,
+                range=_fallback_public_range(lsp_range),
+                external=True,
+                readable=False,
+            )
+
+        try:
+            content = (
+                source_document.content
+                if target_path == source_document.path
+                else await self.documents.read_path(target_path)
+            )
+            public_range = _to_public_range(content, lsp_range)
+        except (OSError, UnicodeError, LspInvalidInputError):
+            warnings.append(
+                "definition target could not be read for position conversion"
+            )
+            return CodeLocation(
+                path=target_path.relative_to(workspace_root).as_posix(),
+                uri=uri,
+                range=_fallback_public_range(lsp_range),
+                readable=False,
+            )
+        return CodeLocation(
+            path=target_path.relative_to(workspace_root).as_posix(),
+            uri=uri,
+            range=public_range,
+        )
+
+
+def create_inspect_symbol_tool_definition(
+    runtime: InspectSymbolRuntime,
+) -> ToolDefinition:
+    """Create the first, definition-only LSP tool over an injected binding."""
+
+    @tool(
+        name=INSPECT_SYMBOL_TOOL_NAME,
+        label="Inspect Symbol",
+        description=(
+            "Resolve a bounded semantic symbol query using the admitted language "
+            "server for a file in the current Coding workspace."
+        ),
+        prompt_snippet=(
+            "- inspect_symbol: Resolve a symbol definition at a one-based source "
+            "position using the workspace language server."
+        ),
+        prompt_guidelines=(
+            "Use inspect_symbol when language-semantic definition resolution is more "
+            "reliable than textual search.",
+        ),
+        schema_overrides={
+            "properties": {
+                "line": {"type": "integer", "minimum": 1},
+                "character": {"type": "integer", "minimum": 1},
+                "query": {"type": "string", "enum": ["definition"]},
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAX_INSPECT_SYMBOL_RESULTS,
+                },
+            }
+        },
+    )
+    async def inspect_symbol(
+        ctx: ToolContext,
+        path: str,
+        line: int,
+        character: int,
+        query: str = "definition",
+        limit: int = 50,
+    ) -> dict[str, object]:
+        result = await runtime.inspect_symbol(
+            path=path,
+            line=line,
+            character=character,
+            query=query,
+            limit=limit,
+            correlation_id=ctx.tool_call_id,
+            signal=ctx.signal,
+        )
+        return asdict(result)
+
+    return direct_tool(inspect_symbol)
+
+
+def _validate_query_input(
+    *,
+    line: int,
+    character: int,
+    query: str,
+    limit: int,
+) -> None:
+    if query != "definition":
+        raise LspInvalidInputError(
+            "the first LSP vertical slice supports query='definition' only"
+        )
+    for name, value in (("line", line), ("character", character)):
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise LspInvalidInputError(f"{name} must be a positive integer")
+    if (
+        not isinstance(limit, int)
+        or isinstance(limit, bool)
+        or not 1 <= limit <= MAX_INSPECT_SYMBOL_RESULTS
+    ):
+        raise LspInvalidInputError(
+            f"limit must be between 1 and {MAX_INSPECT_SYMBOL_RESULTS}"
+        )
+
+
+def _to_lsp_position(content: str, position: CodePosition) -> dict[str, int]:
+    lines = content.split("\n")
+    if position.line > len(lines):
+        raise LspInvalidInputError("line is outside the current document")
+    line = lines[position.line - 1]
+    if line.endswith("\r"):
+        line = line[:-1]
+    offset = position.character - 1
+    if offset > len(line):
+        raise LspInvalidInputError("character is outside the current line")
+    utf16_character = len(line[:offset].encode("utf-16-le")) // 2
+    return {"line": position.line - 1, "character": utf16_character}
+
+
+def _parse_lsp_range(
+    raw_range: Mapping[str, object],
+) -> tuple[tuple[int, int], tuple[int, int]]:
+    def position(name: str) -> tuple[int, int]:
+        raw = raw_range.get(name)
+        if not isinstance(raw, Mapping):
+            raise LspProtocolError(f"LSP range {name!r} must be an object")
+        line = raw.get("line")
+        character = raw.get("character")
+        if (
+            not isinstance(line, int)
+            or isinstance(line, bool)
+            or line < 0
+            or not isinstance(character, int)
+            or isinstance(character, bool)
+            or character < 0
+        ):
+            raise LspProtocolError("LSP positions must be non-negative integers")
+        return line, character
+
+    return position("start"), position("end")
+
+
+def _to_public_range(
+    content: str,
+    value: tuple[tuple[int, int], tuple[int, int]],
+) -> CodeRange:
+    return CodeRange(
+        start=_to_public_position(content, value[0]),
+        end=_to_public_position(content, value[1]),
+    )
+
+
+def _to_public_position(content: str, value: tuple[int, int]) -> CodePosition:
+    line_number, utf16_character = value
+    lines = content.split("\n")
+    if line_number >= len(lines):
+        raise LspProtocolError("LSP result line is outside the target document")
+    line = lines[line_number]
+    if line.endswith("\r"):
+        line = line[:-1]
+    consumed = 0
+    code_points = 0
+    for character in line:
+        if consumed == utf16_character:
+            break
+        width = len(character.encode("utf-16-le")) // 2
+        if consumed + width > utf16_character:
+            raise LspProtocolError("LSP position splits a UTF-16 surrogate pair")
+        consumed += width
+        code_points += 1
+    if consumed != utf16_character:
+        raise LspProtocolError("LSP result character is outside the target line")
+    return CodePosition(line=line_number + 1, character=code_points + 1)
+
+
+def _fallback_public_range(
+    value: tuple[tuple[int, int], tuple[int, int]],
+) -> CodeRange:
+    return CodeRange(
+        start=CodePosition(line=value[0][0] + 1, character=value[0][1] + 1),
+        end=CodePosition(line=value[1][0] + 1, character=value[1][1] + 1),
+    )
+
+
+def _file_uri_path(uri: str) -> Path | None:
+    parsed = urlparse(uri)
+    if parsed.scheme != "file" or parsed.netloc not in {"", "localhost"}:
+        return None
+    return Path(unquote(parsed.path))
+
+
+__all__ = [
+    "CodingLspTools",
+    "INSPECT_SYMBOL_TOOL_NAME",
+    "InspectSymbolRuntime",
+    "MAX_INSPECT_SYMBOL_RESULTS",
+    "create_inspect_symbol_tool_definition",
+]
