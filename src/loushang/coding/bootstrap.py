@@ -337,6 +337,7 @@ def _create_agent_session(
         lsp_runtime: CodingLspRuntime | None = None
         lsp_session: AgentSession | None = None
         if lsp_slot is not None:
+
             async def emit_lsp_audit_event(event: Mapping[str, object]) -> None:
                 if lsp_session is None:
                     raise RuntimeError("Coding LSP session is not yet bound")
@@ -709,9 +710,7 @@ def _create_agent_session_runtime(
     fixed_services = services if services is not None else create_services()
     fixed_lsp_definitions = tuple(lsp_definitions)
     fixed_lsp_environment = (
-        dict(lsp_baseline_environment)
-        if lsp_baseline_environment is not None
-        else None
+        dict(lsp_baseline_environment) if lsp_baseline_environment is not None else None
     )
     return build_agent_product_session_runtime(
         session_dir=Path(session_dir),
