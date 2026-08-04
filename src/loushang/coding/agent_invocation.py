@@ -137,6 +137,7 @@ class CodingCliAgentInvocationAdapter:
                 preview_max_lines=self._preview_max_lines,
                 preview_max_bytes=self._preview_max_bytes,
                 capture_full_output=False,
+                retain_output_artifacts=False,
                 rolling_max_bytes=self._rolling_max_bytes,
             ),
             environ=self._environment,

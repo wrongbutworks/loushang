@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from loushang.agent import AbortController
 from loushang.ai.types import ToolCall
 from loushang.coding.agent_invocation import CodingCliAgentInvocationAdapter
 from loushang.coding.cli.args import parse_args
@@ -65,6 +67,7 @@ def test_coding_cli_invocation_compiles_a_hardened_non_widening_command(
     assert task not in request.command
     assert request.timeout_seconds == 45
     assert request.capture_full_output is False
+    assert request.retain_output_artifacts is False
     assert request.effective_environment == (
         ("PATH", "/usr/bin"),
         ("PROVIDER_TOKEN", "secret"),
@@ -208,7 +211,7 @@ def test_coding_delegate_runs_through_the_real_exec_service(tmp_path: Path) -> N
     workspace.mkdir()
     executable = tmp_path / "loushang"
     executable.write_text(
-        "#!/bin/sh\nIFS= read -r task\nprintf 'child:%s\\n' \"$task\"\n",
+        "#!/bin/sh\ntask=$(cat)\nprintf 'child:%s\\n' \"$task\"\n",
         encoding="utf-8",
     )
     executable.chmod(0o755)
@@ -220,6 +223,7 @@ def test_coding_delegate_runs_through_the_real_exec_service(tmp_path: Path) -> N
     )
     definition = AgentDelegateToolPack(adapter=adapter).definition()
 
+    task = "检查 parser\nreport ✓"
     result = asyncio.run(
         create_workspace_tool_execution_host(policy_evaluator=None).dispatch(
             definition,
@@ -227,7 +231,7 @@ def test_coding_delegate_runs_through_the_real_exec_service(tmp_path: Path) -> N
                 type="toolCall",
                 id="delegate-1",
                 name="delegate_agent",
-                arguments={"agent_type": "reviewer", "task": "inspect parser"},
+                arguments={"agent_type": "reviewer", "task": task},
             ),
             ToolCallContext(
                 tool_call_id="delegate-1",
@@ -237,8 +241,95 @@ def test_coding_delegate_runs_through_the_real_exec_service(tmp_path: Path) -> N
         )
     )
 
-    assert result.content[0].text == "child:inspect parser\n"
+    assert result.content[0].text == f"child:{task}\n"
     assert result.details["exit_code"] == 0
+
+
+def test_coding_delegate_cancels_the_real_subprocess(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    executable = tmp_path / "loushang"
+    executable.write_text("#!/bin/sh\nsleep 30\nprintf never\n", encoding="utf-8")
+    executable.chmod(0o755)
+    adapter = CodingCliAgentInvocationAdapter(
+        workspace_root=workspace,
+        parent_allowed_tools=("read",),
+        executable=executable,
+        environment={"PATH": "/usr/bin:/bin"},
+        timeout_seconds=5,
+    )
+    definition = AgentDelegateToolPack(adapter=adapter).definition()
+    controller = AbortController()
+
+    async def scenario() -> None:
+        async def abort_soon() -> None:
+            await asyncio.sleep(0.05)
+            controller.abort()
+
+        abort_task = asyncio.create_task(abort_soon())
+        with pytest.raises(RuntimeError, match="Delegated agent aborted"):
+            await create_workspace_tool_execution_host(
+                policy_evaluator=None
+            ).dispatch(
+                definition,
+                ToolCall(
+                    type="toolCall",
+                    id="delegate-cancel",
+                    name="delegate_agent",
+                    arguments={"agent_type": "reviewer", "task": "wait"},
+                ),
+                ToolCallContext(
+                    tool_call_id="delegate-cancel",
+                    cwd=str(workspace),
+                    signal=controller.signal,
+                    exec_service=ExecService(),
+                ),
+            )
+        await abort_task
+
+    asyncio.run(scenario())
+
+
+def test_coding_invocation_bounds_large_output_without_leaking_artifacts(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    artifact_dir = tmp_path / "artifacts"
+    workspace.mkdir()
+    artifact_dir.mkdir()
+    executable = tmp_path / "loushang"
+    executable.write_text(
+        "#!/bin/sh\ni=0\nwhile [ $i -lt 400 ]; do "
+        "printf 'line-%04d\\n' \"$i\"; i=$((i + 1)); done\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    adapter = CodingCliAgentInvocationAdapter(
+        workspace_root=workspace,
+        parent_allowed_tools=("read",),
+        executable=executable,
+        environment={"PATH": "/usr/bin:/bin"},
+        preview_max_bytes=1024,
+        preview_max_lines=2,
+        rolling_max_bytes=1024,
+    )
+    prepared = adapter.prepare(
+        AgentInvocationRequest(agent_type="reviewer", task="inspect"),
+        default_cwd=str(workspace),
+        model=None,
+    )
+
+    exec_result = asyncio.run(
+        ExecService().execute(
+            replace(prepared.exec_request, artifact_dir=str(artifact_dir))
+        )
+    )
+    projected = adapter.project(prepared, exec_result)
+
+    assert projected.output_text == "line-0398\nline-0399\n"
+    assert projected.truncated is True
+    assert exec_result.stdout_artifact_path is None
+    assert list(artifact_dir.iterdir()) == []
 
 
 def _flag_value(command: tuple[str, ...], flag: str) -> str:

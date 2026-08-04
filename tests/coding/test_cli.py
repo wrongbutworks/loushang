@@ -1031,6 +1031,43 @@ def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) 
     assert session.multiagent_runtime is not None
 
 
+def test_default_runtime_builder_registers_delegate_only_when_explicitly_selected(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
+
+    registry = ToolRegistry()
+    register_builtin_tools(registry)
+    runtime = default_runtime_builder(
+        args=SimpleNamespace(
+            no_tools=False,
+            tools=(AGENT_DELEGATE_TOOL_NAME, "read"),
+            no_builtin_tools=False,
+            no_session=True,
+        ),
+        cwd=tmp_path,
+        session_dir=tmp_path / "sessions",
+        services=create_services(),
+        tool_registry=registry,
+    )
+
+    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
+
+    assert session.get_active_tool_names() == [AGENT_DELEGATE_TOOL_NAME, "read"]
+    assert {definition.name for definition in session.get_all_tools()} == {
+        AGENT_DELEGATE_TOOL_NAME,
+        "read",
+    }
+
+
 def test_default_runtime_builder_does_not_restore_delegate_when_builtins_disabled(
     tmp_path,
 ) -> None:
@@ -1160,7 +1197,7 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
     assert second.cwd_bound_services_audit.ok is True
     assert "Project B guidance" in second.agent.system_prompt
     assert "## Multi-agent collaboration" in second.agent.system_prompt
-    assert AGENT_DELEGATE_TOOL_NAME in second.get_active_tool_names()
+    assert AGENT_DELEGATE_TOOL_NAME not in second.get_active_tool_names()
     assert set(MULTIAGENT_TOOL_NAMES).issubset(second.get_active_tool_names())
     assert not set(MULTIAGENT_TOOL_NAMES).intersection(
         definition.name for definition in registry.list_definitions()

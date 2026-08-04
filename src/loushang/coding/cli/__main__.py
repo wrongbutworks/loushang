@@ -129,6 +129,7 @@ from loushang.harness.resources.packages import (
 from loushang.harness.resources.packages.security import PackageSecurityPolicy
 from loushang.harness.resources.plugins import is_remote_plugin_source
 from loushang.harness.scenario import run_fake_workflow_cli
+from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
 from loushang.harness.tools.workspace import (
     WorkspaceToolRuntimeSettings,
     workspace_tool_runtime_settings,
@@ -232,7 +233,11 @@ def default_runtime_builder(
         )
     allowed_tool_names, active_tool_names = agent_tool_selection(args)
     runtime_tool_registry = tool_registry.copy()
-    if not getattr(args, "no_builtin_tools", False):
+    if (
+        not getattr(args, "no_builtin_tools", False)
+        and allowed_tool_names is not None
+        and AGENT_DELEGATE_TOOL_NAME in allowed_tool_names
+    ):
         registered_parent_tools = tuple(
             definition.name
             for definition in runtime_tool_registry.list_enabled_definitions()

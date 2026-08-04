@@ -86,12 +86,14 @@ class LocalExecBackend:
         stdout_capture = _StreamCapture(
             stream_name="stdout",
             capture_full_output=request.capture_full_output,
+            retain_output_artifact=request.retain_output_artifacts,
             rolling_max_bytes=request.rolling_max_bytes,
             artifact_dir=request.artifact_dir,
         )
         stderr_capture = _StreamCapture(
             stream_name="stderr",
             capture_full_output=request.capture_full_output,
+            retain_output_artifact=request.retain_output_artifacts,
             rolling_max_bytes=request.rolling_max_bytes,
             artifact_dir=request.artifact_dir,
         )
@@ -226,6 +228,7 @@ class LocalExecBackend:
 class _StreamCapture:
     stream_name: str
     capture_full_output: bool
+    retain_output_artifact: bool
     rolling_max_bytes: int
     artifact_dir: str | None
     chunks: list[str] = field(default_factory=list)
@@ -274,6 +277,8 @@ class _StreamCapture:
         if self._artifact_handle is not None:
             self._artifact_handle.close()
             self._artifact_handle = None
+        if not self.retain_output_artifact:
+            self.discard_artifact()
 
     def discard_artifact(self) -> None:
         if self._artifact_path is None:
@@ -394,6 +399,15 @@ def _build_preview_from_capture(
     max_bytes: int,
 ):
     if capture.capture_full_output:
+        if not capture.retain_output_artifact:
+            return (
+                truncate_tail(
+                    capture.content,
+                    max_lines=max_lines,
+                    max_bytes=max_bytes,
+                ),
+                None,
+            )
         return _build_preview(
             capture.content,
             max_lines=max_lines,

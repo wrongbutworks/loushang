@@ -60,9 +60,12 @@ Coding 不自行执行或绕过 Harness Gateway。
    `--no-prompt-templates`。子进程没有交互式审批通道，外层 Session 的
    Policy、Approval、Sandbox 和取消信号仍然有效。
 6. timeout 与输出上限由 Product 固定，模型不能修改；返回值是有界 plain
-   output，不解析或依赖 TUI JSONL 事件。
+   output，不解析或依赖 TUI JSONL 事件。滚动捕获产生的临时 artifact 由
+   `ExecService` 在投影完成前删除，既不向模型暴露，也不遗留在宿主文件系统。
 7. 可选 `cwd` 必须解析到当前 Session workspace 内；动态 Session cwd 是
    默认根，不能被 runtime builder 的初始目录错误固化。
+8. Coding 默认不注册该工具；只有用户通过显式 `--tools delegate_agent,...`
+   选择时才装配和激活，避免在缺少独立预算控制的 P0 中产生隐含成本与延迟。
 
 `ProcessEffect` 是必要但不充分的保护。真正的不放大来自外层执行授权、Sandbox
 ceiling 和子工具非扩张三者同时成立。
@@ -93,4 +96,5 @@ P0 不提供：
 - Gateway execution profile 和取消信号传到同一请求；
 - cwd 不越界，工具集不放大且不能递归派生；
 - timeout、cancel、非零退出、空输出和截断具有稳定语义；
-- 默认 Coding 装配提供该工具，显式 `--tools` 仍具有最终决定权。
+- 默认 Coding 装配不提供该工具，只有显式 `--tools delegate_agent,...` 才注册；
+- 大输出的滚动捕获不会遗留临时 artifact。
