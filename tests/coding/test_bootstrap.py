@@ -217,6 +217,105 @@ def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
     assert session._approval_resolver is resolver
 
 
+def test_create_agent_session_binds_always_on_lsp_to_sandbox_scope(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp import (
+        INSPECT_SYMBOL_TOOL_NAME,
+        LspServerDefinition,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.sandbox import SandboxExecutionRuntime
+
+    class _NeverLauncher:
+        async def start(self, *args, **kwargs):
+            del args, kwargs
+            raise AssertionError("LSP process startup must remain lazy")
+
+    scopes = []
+
+    def bind_process_launcher(self, scope):
+        del self
+        scopes.append(scope)
+        return _NeverLauncher()
+
+    monkeypatch.setattr(
+        SandboxExecutionRuntime,
+        "bind_process_launcher",
+        bind_process_launcher,
+    )
+    project = tmp_path / "project"
+    project.mkdir()
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(capabilities={"coding.lsp": "always"})
+        )
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project),
+            persist=False,
+        )
+    )
+
+    session = create_agent_session(
+        session_manager=manager,
+        model=_model(),
+        services=services,
+        lsp_definitions=(
+            LspServerDefinition(
+                id="python-test",
+                command=("python-language-server", "--stdio"),
+                language_extensions={"python": (".py",)},
+            ),
+        ),
+        lsp_baseline_environment={"PATH": "/admitted/bin"},
+    )
+
+    assert INSPECT_SYMBOL_TOOL_NAME in session.get_active_tool_names()
+    assert len(scopes) == 1
+    assert scopes[0].audit_sink is not None
+    assert scopes[0].execution_profile_ceiling is getattr(
+        session._sandbox_runtime.exec_service,
+        "execution_profile",
+        None,
+    )
+    asyncio.run(session.dispose())
+
+
+def test_create_agent_session_requires_explicit_lsp_environment(tmp_path) -> None:
+    import pytest
+
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.lsp import LspServerDefinition
+    from loushang.coding.session_manager import SessionManager
+
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+    )
+
+    with pytest.raises(ValueError, match="lsp_baseline_environment"):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            lsp_definitions=(
+                LspServerDefinition(
+                    id="python-test",
+                    command=("python-language-server", "--stdio"),
+                    language_extensions={"python": (".py",)},
+                ),
+            ),
+        )
+
+
 def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> None:
     from loushang.coding import CreateAgentSessionResult, create_agent_session_result
     from loushang.coding.bootstrap import create_services

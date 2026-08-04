@@ -4,22 +4,17 @@
 
 ## Status
 
-Proposed supporting boundary.
+Supporting design record. H1-H2 are implemented and accepted in the canonical
+Harness [Process Hosting Boundary](../../harness/process-hosting-boundary.md).
 
-This document identifies the Product-neutral Harness changes required by the
-proposed `coding.lsp` capability. It is intentionally stored with the Coding
-LSP proposal while that proposal is being reviewed. Current Harness source,
-the Harness current owner map, and accepted Harness boundary documents remain
-authoritative.
+This document preserves the rationale connecting that Product-neutral Harness
+foundation to `coding.lsp`. Current Harness source, the Harness current owner
+map, and accepted Harness boundary documents are authoritative. Coding consumes
+the resulting narrow public port and must not copy the infrastructure into
+`loushang.coding.lsp`.
 
-When implementation begins, the generic runtime work belongs on the Harness
-lane and must gain an accepted Harness boundary record. Coding implementation
-must consume the resulting narrow port; it must not copy the infrastructure
-into `loushang.coding.lsp`.
-
-Acceptance is independent across lanes: merging this proposed Coding design
-does not accept or make authoritative the Harness Foundation. H1-H2 require
-their own Harness-lane boundary review before implementation/integration.
+Acceptance remains independent across lanes: this Coding design does not widen
+or supersede the accepted Harness Process Hosting boundary.
 
 ## Decision
 

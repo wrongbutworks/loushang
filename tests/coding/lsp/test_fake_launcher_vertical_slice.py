@@ -649,6 +649,7 @@ def test_shutdown_rejects_new_requests_and_waits_for_graceful_exit(
             ProcessLaunchRequest(
                 command=("fake-language-server",),
                 cwd=str(tmp_path.resolve()),
+                effective_environment=(),
             ),
             correlation_id="client-test",
         )
@@ -690,6 +691,7 @@ def test_shutdown_timeout_uses_terminate_fallback(tmp_path: Path) -> None:
             ProcessLaunchRequest(
                 command=("fake-language-server",),
                 cwd=str(tmp_path.resolve()),
+                effective_environment=(),
             ),
             correlation_id="client-test",
         )

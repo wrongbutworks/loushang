@@ -5484,6 +5484,31 @@ def test_process_hosting_h2_keeps_authorization_sandbox_and_product_directional(
         assert phrase in design_text
 
 
+def test_coding_lsp_h3_consumes_only_public_process_hosting_ports() -> None:
+    lsp_root = Path("src/loushang/coding/lsp")
+    forbidden_prefixes = (
+        "loushang.harness.workspace.process.host",
+        "loushang.harness.workspace.process.local",
+        "loushang.harness.sandbox.process",
+    )
+    offenders: list[str] = []
+    for path in sorted(lsp_root.rglob("*.py")):
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, forbidden_prefixes):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+        source = path.read_text(encoding="utf-8")
+        if "create_subprocess_exec" in source or "ScopeBoundProcessLauncher" in source:
+            offenders.append(f"{path.as_posix()} contains a private spawn binding")
+
+    assert offenders == []
+
+    ports_text = Path("src/loushang/coding/lsp/ports.py").read_text(
+        encoding="utf-8"
+    )
+    assert "loushang.harness.workspace.process" in ports_text
+    assert "class ProcessLaunchRequest" not in ports_text
+
+
 def test_coding_agent_product_construction_uses_shared_binding() -> None:
     coding_path = Path("src/loushang/coding/bootstrap.py")
     imports = set(_absolute_imports(coding_path))

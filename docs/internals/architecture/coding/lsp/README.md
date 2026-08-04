@@ -4,11 +4,11 @@
 
 ## Status
 
-Proposed architecture package.
+Architecture package under staged implementation.
 
-This package designs the `coding.lsp` Product capability. It does not describe
-an already implemented runtime. Current code and accepted Coding/Harness ARDs
-remain authoritative until this proposal is accepted and implemented.
+This package defines the target `coding.lsp` Product capability. Individual
+delivery slices may exist before the complete target is accepted. Current code
+and accepted Coding/Harness ARDs remain authoritative for implemented behavior.
 
 ## Architecture Method
 
@@ -33,8 +33,10 @@ Read the documents in that order:
 6. [Component Boundaries](component-boundaries.md)
 
 The adjacent [Harness Foundation](harness-foundation.md) design records the
-Product-neutral Process Hosting, authorization/sandbox-lifetime, and session
-cleanup required before production active LSP. Its separate committed
+rationale for the Product-neutral Process Hosting, authorization/sandbox-
+lifetime, and session cleanup used by active LSP. The canonical accepted
+Harness boundary is [Process Hosting](../../harness/process-hosting-boundary.md).
+Its separate committed
 workspace-mutation contract supports the later passive diagnostic loop; it is
 not a prerequisite for active semantic queries. The design does not move LSP
 protocol semantics into Harness.

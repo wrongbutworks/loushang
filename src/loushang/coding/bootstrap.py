@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -9,11 +9,23 @@ from typing import Literal, cast
 from loushang.agent import Agent, StreamFn, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+from loushang.coding.capabilities import (
+    CODING_LSP_CAPABILITY,
+    coding_capability_mount_mode,
+)
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
+from loushang.coding.lsp.model import LspServerDefinition
+from loushang.coding.lsp.ports import WorkspaceTextReader
+from loushang.coding.lsp.runtime import (
+    CodingLspRuntime,
+    DeferredCodingLspRuntime,
+    bind_coding_lsp_runtime,
+)
+from loushang.coding.lsp.tool_pack import register_coding_lsp_tools
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.resource_runtime import (
@@ -71,6 +83,7 @@ from loushang.harness.session import (
     prepare_agent_session_services as prepare_standard_agent_session_services,
 )
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
@@ -205,6 +218,9 @@ def _create_agent_session(
     enable_multiagent: bool = False,
     sandbox_workspace_writable: bool = True,
     delegated_execution_profile: DelegatedExecutionProfile | None = None,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
 ) -> AgentSession:
     enable_multiagent_tools = (
         enable_multiagent
@@ -224,6 +240,22 @@ def _create_agent_session(
                 "child approval actor must match its delegated execution profile"
             )
     services = services or create_services()
+    resolved_lsp_definitions = tuple(lsp_definitions)
+    if resolved_lsp_definitions and lsp_baseline_environment is None:
+        raise ValueError(
+            "lsp_baseline_environment is required when LSP definitions are supplied"
+        )
+    lsp_mode = coding_capability_mount_mode(
+        services.settings_manager,
+        CODING_LSP_CAPABILITY,
+    )
+    lsp_slot = (
+        DeferredCodingLspRuntime()
+        if resolved_lsp_definitions
+        and lsp_mode != "disabled"
+        and normalize_no_tools(no_tools) != "all"
+        else None
+    )
     # Restored sessions carry historical transcript.  A previous run may have
     # been interrupted between a tool call and its result, leaving an unpaired
     # toolCall in the transcript.  Force repair pairing for such sessions so
@@ -241,7 +273,7 @@ def _create_agent_session(
                 kwargs["call_options"] = CallOptions(pairing_mode="repair")
             else:
                 kwargs["call_options"] = replace(
-                    call_options, pairing_mode="repair"
+                    cast(CallOptions, call_options), pairing_mode="repair"
                 )
             return base_factory(**kwargs)
 
@@ -262,9 +294,17 @@ def _create_agent_session(
             )
     session_tool_registry = (
         tool_registry.copy()
-        if enable_multiagent_tools and tool_registry is not None
+        if (enable_multiagent_tools or lsp_slot is not None)
+        and tool_registry is not None
         else tool_registry
     )
+    if lsp_slot is not None:
+        session_tool_registry = session_tool_registry or WorkspaceToolRegistry()
+        register_coding_lsp_tools(
+            session_tool_registry,
+            runtime=lsp_slot,
+            mode=lsp_mode,
+        )
     resolved_package_materializer = (
         package_materializer or _default_package_materializer(session_manager)
     )
@@ -294,6 +334,32 @@ def _create_agent_session(
                 else None
             ),
         )
+        lsp_runtime: CodingLspRuntime | None = None
+        lsp_session: AgentSession | None = None
+        if lsp_slot is not None:
+            async def emit_lsp_audit_event(event: Mapping[str, object]) -> None:
+                if lsp_session is None:
+                    raise RuntimeError("Coding LSP session is not yet bound")
+                await lsp_session.emit_product_tool_audit_event(event)
+
+            lsp_runtime = bind_coding_lsp_runtime(
+                workspace_root=session_manager.get_cwd(),
+                definitions=resolved_lsp_definitions,
+                process_launcher_binder=sandbox_runtime,
+                execution_scope=ProcessExecutionScope(
+                    policy_evaluator=tool_policy_evaluator,
+                    approval_resolver=approval_resolver,
+                    audit_sink=emit_lsp_audit_event,
+                    execution_profile_ceiling=getattr(
+                        sandbox_runtime.exec_service,
+                        "execution_profile",
+                        None,
+                    ),
+                ),
+                read_text=lsp_read_text or _read_lsp_workspace_text,
+                baseline_environment=dict(lsp_baseline_environment or {}),
+            )
+            lsp_slot.bind(lsp_runtime)
         child_session = AgentSession(
             agent=agent,
             session_manager=session_manager,
@@ -320,8 +386,10 @@ def _create_agent_session(
             tool_policy_evaluator=tool_policy_evaluator,
             capability_runtime=capability_runtime,
             sandbox_runtime=sandbox_runtime,
+            lsp_runtime=lsp_runtime,
             delegated_execution_profile=delegated_execution_profile,
         )
+        lsp_session = child_session
         return child_session
 
     result = _CODING_AGENT_PRODUCT_CONSTRUCTION.construct(
@@ -421,6 +489,9 @@ def create_agent_session(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
 ) -> AgentSession:
     return _create_agent_session(
         session_manager=session_manager,
@@ -443,6 +514,9 @@ def create_agent_session(
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
         sandbox_workspace_writable=True,
+        lsp_definitions=lsp_definitions,
+        lsp_baseline_environment=lsp_baseline_environment,
+        lsp_read_text=lsp_read_text,
     )
 
 
@@ -466,6 +540,9 @@ def create_agent_session_from_services(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
 ) -> CreateAgentSessionResult:
     extension_flag_values = (
         agent_services.extension_runner.get_flag_values()
@@ -492,6 +569,9 @@ def create_agent_session_from_services(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
+        lsp_definitions=lsp_definitions,
+        lsp_baseline_environment=lsp_baseline_environment,
+        lsp_read_text=lsp_read_text,
     )
 
 
@@ -516,6 +596,9 @@ def create_agent_session_result(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
 ) -> CreateAgentSessionResult:
     resolved_services = services or create_services()
     session = create_agent_session(
@@ -538,6 +621,9 @@ def create_agent_session_result(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
+        lsp_definitions=lsp_definitions,
+        lsp_baseline_environment=lsp_baseline_environment,
+        lsp_read_text=lsp_read_text,
     )
     return build_standard_agent_session_result(
         session,
@@ -558,6 +644,10 @@ def _default_package_materializer(
         ),
         backend=GitPackageMaterializerBackend(),
     )
+
+
+def _read_lsp_workspace_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
 
 
 def _source_identity_startup_check(cwd: str) -> StartupCheckResult:
@@ -612,8 +702,17 @@ def _create_agent_session_runtime(
     enable_multiagent: bool = False,
     sandbox_workspace_writable: bool = True,
     delegated_execution_profile: DelegatedExecutionProfile | None = None,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
 ) -> AgentSessionRuntime:
     fixed_services = services if services is not None else create_services()
+    fixed_lsp_definitions = tuple(lsp_definitions)
+    fixed_lsp_environment = (
+        dict(lsp_baseline_environment)
+        if lsp_baseline_environment is not None
+        else None
+    )
     return build_agent_product_session_runtime(
         session_dir=Path(session_dir),
         runtime_factory=AgentSessionRuntime,
@@ -639,6 +738,9 @@ def _create_agent_session_runtime(
                 enable_multiagent=enable_multiagent,
                 sandbox_workspace_writable=sandbox_workspace_writable,
                 delegated_execution_profile=delegated_execution_profile,
+                lsp_definitions=fixed_lsp_definitions,
+                lsp_baseline_environment=fixed_lsp_environment,
+                lsp_read_text=lsp_read_text,
             )
         ),
         session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),
@@ -673,6 +775,9 @@ def create_agent_session_runtime(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
 ) -> AgentSessionRuntime:
     return _create_agent_session_runtime(
         session_dir=session_dir,
@@ -694,4 +799,7 @@ def create_agent_session_runtime(
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
         sandbox_workspace_writable=True,
+        lsp_definitions=lsp_definitions,
+        lsp_baseline_environment=lsp_baseline_environment,
+        lsp_read_text=lsp_read_text,
     )
