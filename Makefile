@@ -246,6 +246,7 @@ example-ai-advanced-tool-result-roundtrip:
 
 build-binary: bootstrap
 	uv pip install --python .venv/bin/python pyinstaller
+	. .venv/bin/activate && uv run python -c "from PyInstaller.utils.hooks import collect_data_files, collect_submodules; assert callable(collect_data_files) and callable(collect_submodules); print('spec deps OK')"
 	. .venv/bin/activate && uv run python -m PyInstaller --clean loushang.spec
 
 install-binary: build-binary
