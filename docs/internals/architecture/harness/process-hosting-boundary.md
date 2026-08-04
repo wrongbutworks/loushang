@@ -2,7 +2,7 @@
 
 ## Status
 
-Status: accepted for `lane/harness`.
+Status: H1 and H2 accepted for `lane/harness`.
 
 This document defines the Product-neutral substrate for session-owned,
 long-lived child processes. It does not make LSP a Harness concern.
@@ -37,7 +37,8 @@ narrow launcher binding.
 identifiers, and OS signaling remain Harness internals. There is no public
 `ProcessBackend`, transport API, process event family, Host snapshot, daemon,
 or RPC service. H1 publishes `AuthorizedProcessLauncher` only as the consumer
-port; the concrete execution-scope binding remains an H2 concern.
+port. H2 provides its execution-scope binding without publishing the concrete
+launcher or Host.
 
 The launch request contains only the complete executable argv, an absolute
 cwd, and a frozen effective environment. It cannot carry caller-selected
@@ -66,22 +67,35 @@ These are correctness requirements, not optional Product policy.
 ## Authorization And Sandbox Boundary
 
 Process Hosting itself does not display or request approval. Interactive
-approval is not an intrinsic cost of a Coding LSP launch. A later
-execution-scope-bound launcher will apply the effective execution profile and
-Sandbox decision before delegating to `ProcessHost`; a Product may configure
-catalog-admitted built-in language servers for automatic authorization within
-that ceiling.
+approval is not an intrinsic cost of a Coding LSP launch. H2 binds one immutable
+`ProcessExecutionScope` containing Policy, Approval, audit, and the effective
+execution-profile ceiling. Every `start()` becomes a `process.host.start`
+protected action with a `ProcessEffect`; automatic authorization for a
+catalog-admitted built-in server is a Product/Host policy choice within that
+ceiling, not a bypass around the gateway.
 
-The later binding must not let a Product call `ProcessHost` directly. It must
-freeze executable, argv, cwd, and effective environment once, resolve the current
-execution/Sandbox profile in Harness, and fail before OS spawn when
-required containment is unavailable. Harness does not validate Coding catalog
-admission and must not import Coding to do so.
+The concrete launcher freezes executable argv, cwd, and the complete effective
+environment before Policy. Approval and audit receive argv plus a private
+complete-launch fingerprint, never environment values. After authorization it
+revalidates actor, launch fingerprint, abort state, and cwd admission before
+asking Sandbox for a containment plan and delegating to `ProcessHost`. A Product
+receives only `AuthorizedProcessLauncher`; it cannot call the Host directly.
+Harness does not validate Coding catalog admission and does not import Coding.
 
-Long-lived Sandbox ownership is intentionally not claimed by the H1 core. Its
-private H2 seam must produce wrapped spawn material plus an owned cleanup and
-must close that scope on natural exit, failed publication, launch cancellation,
-Host close, and Sandbox-runtime fallback.
+Long-lived Sandbox ownership is intentionally not claimed by the H1 core. H2
+implements the private seam as wrapped spawn material plus an owned idempotent
+cleanup. A Sandbox backend may support hosted processes through a private
+capability; this does not widen the public `SandboxBackend` Protocol. Required
+containment fails before spawn. Best-effort containment falls back locally,
+marks runtime status degraded, and emits one diagnostic.
+
+The Process Host owns normal per-child cleanup. `SandboxExecutionRuntime` is the
+Session fallback owner and closes in this order: Host, remaining containment
+plans, then the one-shot Sandbox binding/backend. Cleanup continues after an
+earlier failure, concurrent close calls share one task, and caller cancellation
+is delayed until owned cleanup settles. Coding first disposes Product-owned
+protocol capabilities, then invokes this fallback; a Product disposal error
+remains primary if fallback cleanup also fails.
 
 ## Relationship To One-Shot Exec
 
@@ -98,7 +112,7 @@ H1 provides the neutral records, internal `ProcessHost`, local spawner, shared
 OS helpers, private containment lifecycle seam, Fake Spawner tests, and a real
 raw-stdio smoke test.
 
-Deferred to H2:
+H2 provides:
 
 - the execution-scope-bound authorized launcher;
 - long-lived Sandbox containment planning and scope ownership;
@@ -107,7 +121,7 @@ Deferred to H2:
 - audit correlation and a private complete-launch fingerprint;
 - Coding adapter cleanup that preserves the primary Product disposal error.
 
-Deferred to Coding:
+Deferred to Coding H3:
 
 - binding the production launcher into the H3 LSP capability;
 - LSP framing and protocol handlers;
