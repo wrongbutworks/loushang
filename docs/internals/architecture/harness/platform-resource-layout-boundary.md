@@ -134,8 +134,10 @@ The product-neutral runtime now lives under `loushang.harness.resources`:
   skill ignore rules, extension entry lookup, and theme JSON validation;
 - `_loader_discovery_builtin` owns built-in package traversal, logical package
   paths and reads, category discovery, and built-in diagnostics;
-- `_loader_discovery` owns external-package, project/user, and temporary source
-  coordination plus source-specific filtering;
+- `_loader_discovery_temporary` owns temporary runtime-path resolution,
+  single-file/directory dispatch, source metadata, and path diagnostics;
+- `_loader_discovery` owns external-package and project/user source coordination
+  plus source-specific filtering;
 - `_loader_package_policy` owns external-package root/filter normalization,
   root diagnostics, filtering, and per-root resource accounting;
 - `_loader_resolution` owns collision handling and winner/active-candidate
