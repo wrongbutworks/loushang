@@ -9,6 +9,7 @@
 # loushang.* submodule is included explicitly via collect_submodules().
 # Platform-conditional stdlib imports (fcntl/termios/tty/msvcrt) are listed
 # as well.
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 datas = []
 datas += collect_data_files('loushang')
@@ -29,7 +30,7 @@ a = Analysis(
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
-    hooksconfig={{}},
+    hooksconfig={},
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
