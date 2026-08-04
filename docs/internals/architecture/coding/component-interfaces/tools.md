@@ -50,6 +50,31 @@
 - approval UI 与用户交互
 - mode / RPC / export 的 rendered event projection
 
+## Optional Capability Packs
+
+- `coding.arch` 定位为标准安装、高频可用、默认按需激活，并允许用户通过 CLI 或 Coding 配置设为常驻的架构能力包。
+- `coding.arch` 不属于 `CODING_BUILTIN_TOOL_PACK`；安装表示工具定义可用，`disabled` / `on_demand` / `always`
+  激活策略决定当前 session 是否允许和默认激活该工具集合。
+- `coding.arch` 是包含 Architecture Skill、工具能力和相关资源的 Coding Product Capability Bundle id，也是 Skill 或
+  Method 使用的 opaque Product capability requirement。Coding Product binding 再将它解析为 family-specific Capability
+  Packs；具体 tool-family pack 使用独立限定 id（例如 `coding.arch.tools`）并由 `CODING_ARCH_TOOL_PACK` 描述。Method
+  资产不直接依赖 Harness ToolPack 类型或取得执行权限。
+- 架构 Skill 负责匹配架构分析、架构设计和重构规划任务；具体工具保持事实导向和窄接口，通过命名 ToolPack 组合，不使用泛化的
+  “分析架构”工具替代可验证的结构化查询。
+- CLI 或 Coding 配置的显式常驻选择应增量加入默认工具集合，不得替换 builtin tools，也不得绕过 `--no-tools`、session
+  allowlist、delegated execution profile、policy 或 approval 边界。
+- Coding CLI 使用通用 `--capability CAPABILITY=MODE` 形式覆盖当前进程，例如
+  `--capability coding.arch=always`；配置文件使用 `capabilities` 映射，例如
+  `{"capabilities": {"coding.arch": "always"}}`。CLI 覆盖只写入 session 配置层，不持久化修改 project/global
+  配置；未配置 `coding.arch` 时默认值为 `on_demand`。
+- `on_demand` 表示工具定义已 admission、可由 `/tools` 或等价 Session API 手动激活，但不进入默认 Agent tools/prompt；
+  `always` 表示增量加入默认激活集合；`disabled` 表示不向该 Session registry 注册该能力的工具定义。
+- `inspect_import_graph` 只接受当前 Coding workspace 内的 root（包括解析 symlink 后的 canonical path），所有 query
+  都受硬上限约束；工具返回 analyzer/cache 的可验证事实，不输出主观架构判断。
+- 高频查询复用语言 provider 输出的版本化逐文件事实缓存，而不缓存 AST 或主观架构结论。CLI 默认在
+  `LOUSHANG_HOME/cache/coding/arch` 使用磁盘缓存；长驻工具复用进程内缓存。内容指纹负责单文件失效，文件集合变化则使依赖
+  模块索引的事实整体失效；缓存损坏或版本不兼容必须安全退化为重新分析。
+
 ## Reference Implementation Alignment
 
 - 语义上对齐 `reference CLI` 的 built-in tool registry / tool definition layer

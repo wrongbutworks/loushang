@@ -72,7 +72,7 @@ loushang.harness.session/
 | `context.py` | fresh/fork context plans, transcript watermark, deterministic history rebuild, admitted tool names, approval-provenance bubbling | transcript repository and `ApprovalRequest` |
 | `control.py` | spawn, message routing, lifecycle transitions, close, authority checks, fact publication | registry and immutable facts |
 | `run_handle.py` | one owned task per round, wake-up, interrupt/await, dispose-before-close | `HostRuntime` and `run_agent()` through a narrow round driver |
-| `session/multiagent.py` | live handle ownership, `AgentInputFacade`, session tree operations, completion-notice policy, lifecycle-hook composition | `HostRuntime`, `HostInputQueue`, and session lifecycle hooks |
+| `session/multiagent.py` | live handle ownership, `AgentInputFacade`, explicit `SessionSubagentBinding`, session tree operations, completion-notice policy, lifecycle-hook composition | `HostRuntime`, `HostInputQueue`, and session lifecycle hooks |
 
 `LifecycleProjection` and `Limits` remain responsibility names rather than
 mandatory files. `AgentInputFacade` lives in the thin session adapter because
@@ -94,21 +94,34 @@ prepared `run_agent(AgentRunSpec)`/session round through
 `SubagentRoundDriver`. It does **not** introduce an `AgentExecutionPort`
 merely to hide that one implementation.
 
-When a real Work-backed execution implementation exists, the stable use of
-that session path will be used to extract the following internal protocol:
+`SessionSubagentFactory.create()` returns a typed `SessionSubagentBinding`:
+the round driver, an optional input-activity port, and an optional initial
+workspace reference. Driver disposal returns `SubagentDisposeResult`, including
+an optional released-workspace snapshot and cleanup error. These explicit
+values replace attribute probing while preserving the current session-owned
+execution structure. They are in-process composition contracts, not remote
+protocol objects.
+
+When a second physical execution backend exists, the stable use of that session
+path and the new backend will be used to extract the smallest proven internal
+port. Conceptually it may have this shape:
 
 ```text
 AgentExecutionPort
-  start(spec) -> ExecutionRef
+  launch(spec) -> AgentExecutionRef
   attach(execution_ref) -> ExecutionHandle
+  deliver(execution_ref, message)
   cancel(execution_ref)
   subscribe(execution_ref, listener)
 
 ```
 
-It is a deferred extraction, not a phase-one public interface. The later
-`WorkAgentExecutionPort` is implemented by `loushang.work` over its durable
-`WorkRuntime` and `EventLogBackend`.
+It is a deferred extraction, not a phase-one public interface. Harness owns the
+port as the consumer; Host infrastructure supplies in-process, plugin, or
+remote-worker backends. `loushang.work` does not implement this physical
+execution port. Work owns accepted business lifecycle and durable facts; a
+Product `WorkDomainExecutor` maps those business steps to Harness execution and
+maps execution facts back to `WorkEvent` values.
 
 Workspace isolation is independently useful, so its internal protocol is
 defined now but optional on every spawn:

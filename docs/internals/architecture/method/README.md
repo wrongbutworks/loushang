@@ -51,9 +51,13 @@ Work   = Business intent enactment and authoritative runtime facts
 - work log persistence
 - Native TUI rendering or playback
 
-Coding-specific method usage is bridged through `loushang.coding.domain`.
-When a method is enacted, `loushang.work` owns the resulting run, plan, step,
-outcome, event-log, replay, artifact-reference, and deviation facts.
+Current Coding-specific method usage is bridged through
+`loushang.coding.domain`. This is a compatibility facade over the shared Method
+runtime, not a separate long-term DomainApp execution layer. In the v3 target,
+the Coding Product work preparer consumes the Method plan and its Product work
+executor binds each admitted step to Harness. When a method is enacted,
+`loushang.work` owns the resulting run, plan, step, outcome, event-log, replay,
+artifact-reference, and deviation facts.
 
 ## Relation To Agent Harness And Products
 
@@ -84,6 +88,19 @@ artifact types, content, loading, rendering, validation, and materialization.
 
 Therefore the shared work layer should prefer a lightweight `ArtifactRef` over a
 shared abstract `Artifact` base class.
+
+## Capability Boundary
+
+Method resources may describe an opaque Product capability requirement, but
+they do not select a Harness tool pack, register executable tools, or grant
+runtime authority. A Product work preparer interprets the requirement in its
+domain and carries it into the run-specific Work contract; the Product executor
+then resolves it through admitted Product capabilities before invoking Harness.
+
+`MethodApplicability.capabilities` remains an applicability and matching fact.
+It must not silently become a runtime authorization or ToolPack activation
+field. A stable execution-requirement schema should be added only with the
+Product/Work projection that consumes it.
 
 ## Field Mapping
 

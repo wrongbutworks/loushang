@@ -295,6 +295,34 @@ Agent owns the execution loop and calls AI. Harness and Agent coordinate tool
 execution through admitted tools and sandbox policy; the AI layer remains
 independent of Harness and Product code.
 
+### Product capability requirements and scoped activation
+
+Method and Skill resources may declare opaque Product capability requirements,
+such as `coding.arch`. They do not name Harness `ToolPackDefinition` values,
+register executable handlers, or grant themselves execution authority. For
+structured work, the Product work preparer carries the requirement into the
+run-specific Work contract and the Product executor resolves it through the
+Product's admitted capability catalog. For a lightweight Session turn, the
+Product conversation binding performs the equivalent resolution without
+creating a Work run.
+
+A Product capability may resolve to an admitted Product Capability Bundle and
+one or more family-specific Capability Packs, including a named tool pack. The
+Product retains the mapping, mount defaults, and policy; Harness retains
+contribution resolution, allow-list enforcement, live tool rebinding, sandbox
+and approval integration, and scoped activation mechanics. A Product may expose
+`disabled`, `on_demand`, and `always` mount modes, but no mode may override host
+admission, delegated execution restrictions, Session allow-lists, or tool
+policy.
+
+Scoped activation is additive and owner-aware. Manual selection, Product
+defaults, a Skill invocation, and a Method/Work step may independently request
+the same capability. Releasing one activation removes only that owner's request;
+completion, failure, cancellation, and runtime disposal must all release their
+owned activation idempotently. This capability activation scope is distinct
+from the AppService control lease that selects which attached client may mutate
+a Session.
+
 ### Method visibility in clients
 
 V3 does not add `MethodPlanStatus` or `MethodStepStatus` to the base App

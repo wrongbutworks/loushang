@@ -12,6 +12,7 @@ from loushang.harness.config.agent._settings_codec import (
     _REMOVED_SETTING_MESSAGES,
     _bool_value,
     _bounded_int,
+    _deserialize_capability_mounts,
     _deserialize_double_escape_action,
     _deserialize_keybindings,
     _deserialize_queue_mode,
@@ -31,6 +32,7 @@ from loushang.harness.config.agent._settings_codec import (
 )
 from loushang.harness.config.agent.types import (
     BranchSummarySettings,
+    CapabilityMountMode,
     CompactionSettings,
     DoubleEscapeAction,
     ImageSettings,
@@ -84,6 +86,7 @@ class AgentSettingsUpdate:
     editor_padding_x: float | int | Unset = UNSET
     autocomplete_max_visible: float | int | Unset = UNSET
     keybindings: Mapping[str, object] | Unset = UNSET
+    capabilities: Mapping[str, CapabilityMountMode] | Unset = UNSET
     thinking_budgets: ThinkingBudgetMap | None | Unset = UNSET
     compaction: CompactionSettings | Unset = UNSET
     branch_summary: BranchSummarySettings | Unset = UNSET
@@ -197,6 +200,8 @@ def build_settings_patch(update: AgentSettingsUpdate) -> dict[str, Any]:
         patch["keybindings"] = _serialize_keybindings(
             _deserialize_keybindings(update.keybindings)
         )
+    if update.capabilities is not UNSET:
+        patch["capabilities"] = _deserialize_capability_mounts(update.capabilities)
     if update.thinking_budgets is not UNSET:
         patch["thinking_budgets"] = _thinking_budgets(update.thinking_budgets)
     if update.compaction is not UNSET:

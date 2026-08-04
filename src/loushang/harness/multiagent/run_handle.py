@@ -56,6 +56,14 @@ class SubagentRoundResult:
         object.__setattr__(self, "artifact_refs", tuple(self.artifact_refs))
 
 
+@dataclass(frozen=True, slots=True)
+class SubagentDisposeResult:
+    """Explicit resources and errors produced while disposing one child."""
+
+    released_workspace: WorkspaceLeaseSnapshot | None = None
+    dispose_error: Exception | None = None
+
+
 class SubagentRoundDriver(Protocol):
     """Narrow adapter over an existing Product session/HostRuntime.
 
@@ -76,7 +84,7 @@ class SubagentRoundDriver(Protocol):
 
     def abort(self) -> None: ...
 
-    async def dispose(self) -> None: ...
+    async def dispose(self) -> SubagentDisposeResult: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,6 +320,7 @@ class SubagentRunHandle:
 
     async def _close_owned(self) -> HandleCloseResult:
         dispose_error: Exception | None = None
+        dispose_result = SubagentDisposeResult()
         try:
             await self.interrupt()
         except Exception as error:
@@ -323,15 +332,20 @@ class SubagentRunHandle:
             # still owned by a live round.
             await asyncio.shield(active_task)
         try:
-            await self._driver.dispose()
+            dispose_result = await self._driver.dispose()
+            if not isinstance(dispose_result, SubagentDisposeResult):
+                raise TypeError(
+                    "SubagentRoundDriver.dispose() must return SubagentDisposeResult"
+                )
         except Exception as error:
             if dispose_error is None:
                 dispose_error = error
-        released_workspace = getattr(self._driver, "released_workspace", None)
-        if isinstance(released_workspace, WorkspaceLeaseSnapshot):
+        if dispose_result.dispose_error is not None and dispose_error is None:
+            dispose_error = dispose_result.dispose_error
+        if dispose_result.released_workspace is not None:
             self._control.record_workspace_snapshot(
                 self.ref,
-                released_workspace,
+                dispose_result.released_workspace,
             )
         transition = self._control.commit_closed(self.ref)
         record = transition.record
@@ -384,6 +398,7 @@ __all__ = [
     "HandleDeliveryOutcome",
     "MonotonicClock",
     "RoundMode",
+    "SubagentDisposeResult",
     "SubagentRoundDriver",
     "SubagentRoundResult",
     "SubagentRunHandle",

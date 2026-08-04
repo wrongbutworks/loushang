@@ -28,6 +28,7 @@ from loushang.harness.config.agent._settings_patch import (
 )
 from loushang.harness.config.agent.types import (
     BranchSummarySettings,
+    CapabilityMountMode,
     CompactionSettings,
     ControlConfig,
     DoubleEscapeAction,
@@ -180,6 +181,7 @@ class SettingsManager:
         editor_padding_x: float | int | Unset = UNSET,
         autocomplete_max_visible: float | int | Unset = UNSET,
         keybindings: Mapping[str, object] | Unset = UNSET,
+        capabilities: Mapping[str, CapabilityMountMode] | Unset = UNSET,
         thinking_budgets: ThinkingBudgetMap | None | Unset = UNSET,
         compaction: CompactionSettings | Unset = UNSET,
         branch_summary: BranchSummarySettings | Unset = UNSET,
@@ -225,6 +227,7 @@ class SettingsManager:
                 editor_padding_x=editor_padding_x,
                 autocomplete_max_visible=autocomplete_max_visible,
                 keybindings=keybindings,
+                capabilities=capabilities,
                 thinking_budgets=thinking_budgets,
                 compaction=compaction,
                 branch_summary=branch_summary,

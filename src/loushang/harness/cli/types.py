@@ -77,7 +77,7 @@ class CliArgumentSpec:
         """Return the argparse keyword arguments for this declarative spec."""
 
         kwargs: dict[str, object] = {"dest": self.dest, "action": self.action}
-        if self.action == "store" and self.type is not None:
+        if self.action in {"store", "append"} and self.type is not None:
             kwargs["type"] = self.type
         if self.nargs is not None:
             kwargs["nargs"] = self.nargs

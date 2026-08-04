@@ -7,11 +7,23 @@ owned by the Coding application.
 
 from __future__ import annotations
 
+from loushang.coding.capabilities import parse_capability_mount
 from loushang.harness.cli import STANDARD_CLI_PROFILE, CliArgumentSpec, CliProfile
 
 CODING_CLI_PROFILE: CliProfile = STANDARD_CLI_PROFILE.augment(
     profile_id="coding",
     root_arguments=(
+        CliArgumentSpec(
+            "coding.capability",
+            ("--capability",),
+            "capability",
+            owner="product",
+            action="append",
+            type=parse_capability_mount,
+            default=[],
+            metavar="CAPABILITY=MODE",
+            help=("Set a Product capability mount to disabled, on_demand, or always."),
+        ),
         CliArgumentSpec(
             "coding.method",
             ("--method",),

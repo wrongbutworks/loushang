@@ -1,5 +1,6 @@
 from loushang.harness.config.agent import (
     BranchSummarySettings,
+    CapabilityMountMode,
     CompactionSettings,
     ControlConfig,
     HeadlessApprovalMode,
@@ -19,6 +20,7 @@ from loushang.harness.config.agent import (
 
 __all__ = [
     "BranchSummarySettings",
+    "CapabilityMountMode",
     "CompactionSettings",
     "ControlConfig",
     "HeadlessApprovalMode",

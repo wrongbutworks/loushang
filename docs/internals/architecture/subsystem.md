@@ -271,8 +271,9 @@ Artifact 分层规则：
 - 通用边界协议定义
 - 通用 terminal UI primitives
 
-`coding` 可以直接依赖 `loushang.harness` 和 `work` 处理普通 coding turn；只有
-结构化 / guided 工作需要通过 `method`。
+`coding` 可以直接依赖 `loushang.harness` 处理轻量 coding turn；只有被受理为持久
+业务承诺的工作才进入 `work`，其中需要结构化 / guided 方法的工作再选择性消费
+`method`。
 
 ## Layer Relationship
 
@@ -307,19 +308,29 @@ loushang.agent
 跨产品工作抽象链路为：
 
 ```text
-loushang.work
-  <- loushang.coding / loushang.design / loushang.research / loushang.ppt / loushang.cowork
+loushang.method
+  -> Product Work Preparer, only for structured work
+  -> loushang.work
 
-loushang.work
-  <- loushang.method
-  <- product adapters, only for structured work
+loushang.coding / loushang.design / loushang.research / loushang.ppt / loushang.cowork
+  -> Product Work Preparer
+  -> loushang.work
 ```
 
 长期目标边界为：
 
 ```text
-external host/client -> loushang.channel -> loushang.work -> domain app
+external host/client
+  -> embedded host or AppService
+      -> Product Session binding -> loushang.harness
+      -> Product Work Preparer -> loushang.work
+           -> Product Work Executor -> loushang.harness
 ```
+
+轻量 Session turn 与受理后的 structured Work 是显式不同的路径；并非所有
+Product turn 都必须经过 `channel`、`work` 或 `method`。`channel` 是可选的
+operation/event 边界，不是 Product runtime 的统一入口。Product 本身承担领域
+语义，长期目标不再引入独立的 `DomainApp` runtime。
 
 其中：
 
@@ -329,7 +340,8 @@ external host/client -> loushang.channel -> loushang.work -> domain app
   adapter / command substrate
 - `harnesstui` 提供跨产品的 Harness/TUI conversation interaction 与
   presentation composition；可依赖 `harness` 和 `tui`，不可依赖 `coding`
-- `channel` 提供目标边界通信和已注入 Product host 的 transport runtime
+- `channel` 提供选定的 operation/event、订阅、关联和回放边界，不承担通用
+  Product 路由或 transport/runtime 总线职责
 - `tui` 提供通用终端交互原语
 - `method` 提供可选的方法组织与 plan/projection
 - `work` 提供业务 work acceptance、运行终态、事件、日志与 projection
@@ -358,12 +370,11 @@ product packages -> harness
 product packages -> agent
   # only through stable agent primitives when bypassing harness is justified
 
-method -> work
 product packages -> work
 channel -> work
 
 product packages -> method
-  # optional and only for structured work
+  # optional and only for structured work; Product binds Method output to Work
 
 product TUI adapters -> tui
 

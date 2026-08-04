@@ -11,11 +11,17 @@ from loushang.ai.model import (
     parse_model_selection_reference,
 )
 from loushang.ai.model.registry import get_default_model_registry
+from loushang.coding.arch.tool import INSPECT_IMPORT_GRAPH_TOOL_NAME
+from loushang.coding.arch.tool_pack import register_coding_arch_tools
 from loushang.coding.bootstrap import (
     BootstrapServices,
     create_agent_session_runtime,
     create_agent_session_services,
     create_services,
+)
+from loushang.coding.capabilities import (
+    CODING_ARCH_CAPABILITY,
+    coding_capability_mount_mode,
 )
 from loushang.coding.cli.args import CliArgs, ExtensionFlag, help_text, parse_args
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
@@ -192,6 +198,13 @@ def build_builtin_tool_registry(
         if callable(get_external_tool_policy)
         else None,
     )
+    register_coding_arch_tools(
+        registry,
+        mode=coding_capability_mount_mode(
+            settings_manager,
+            CODING_ARCH_CAPABILITY,
+        ),
+    )
     return registry
 
 
@@ -205,6 +218,17 @@ def default_runtime_builder(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: object | None = None,
 ):
+    if not any(
+        definition.name == INSPECT_IMPORT_GRAPH_TOOL_NAME
+        for definition in tool_registry.list_definitions()
+    ):
+        register_coding_arch_tools(
+            tool_registry,
+            mode=coding_capability_mount_mode(
+                getattr(services, "settings_manager", None),
+                CODING_ARCH_CAPABILITY,
+            ),
+        )
     allowed_tool_names, active_tool_names = agent_tool_selection(args)
     resource_loader_options = configure_agent_resource_loader(
         services.resource_loader,
@@ -498,6 +522,11 @@ async def _run_coding_pre_runtime_operation(
     workflow_runner: Any,
 ) -> int | None:
     args = context.args
+    if args.capability_modes:
+        settings_manager = getattr(context.services, "settings_manager", None)
+        apply_overrides = getattr(settings_manager, "apply_overrides", None)
+        if callable(apply_overrides):
+            apply_overrides({"capabilities": dict(args.capability_modes)})
     diagnostics_result = run_diagnostics_export_operation(
         requested=args.diag_export,
         project_root=context.project_root,

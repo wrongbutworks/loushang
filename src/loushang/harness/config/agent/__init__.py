@@ -8,6 +8,7 @@ from loushang.harness.config.agent.manager import (
 )
 from loushang.harness.config.agent.types import (
     BranchSummarySettings,
+    CapabilityMountMode,
     CompactionSettings,
     ControlConfig,
     DoubleEscapeAction,
@@ -34,6 +35,7 @@ from loushang.harness.config.agent.types import (
 
 __all__ = [
     "BranchSummarySettings",
+    "CapabilityMountMode",
     "CompactionSettings",
     "ControlConfig",
     "DoubleEscapeAction",

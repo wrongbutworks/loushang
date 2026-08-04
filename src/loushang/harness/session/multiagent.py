@@ -22,6 +22,7 @@ from loushang.harness.multiagent.run_handle import (
     HandleCloseResult,
     HandleDeliveryOutcome,
     RoundMode,
+    SubagentDisposeResult,
     SubagentRoundDriver,
     SubagentRoundResult,
     SubagentRunHandle,
@@ -64,6 +65,15 @@ class AgentInputActivity:
 class AgentInputWaitOutcome:
     activity: AgentInputActivity | None
     timed_out: bool = False
+
+
+class AgentInputActivityPort(Protocol):
+    async def wait_for_activity(
+        self,
+        *,
+        after_sequence: int | None = None,
+        timeout: float | None = None,
+    ) -> AgentInputWaitOutcome: ...
 
 
 MessagePayloadBuilder = Callable[[AgentInputMessage], PayloadT]
@@ -203,8 +213,9 @@ class SessionSubagentDriver(Generic[PayloadT]):
     def abort(self) -> None:
         self._host.abort()
 
-    async def dispose(self) -> None:
+    async def dispose(self) -> SubagentDisposeResult:
         await self._host.dispose()
+        return SubagentDisposeResult()
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,11 +226,24 @@ class SessionSubagentRequest:
     context_plan: SubagentContextPlan[Any] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SessionSubagentBinding:
+    """Explicit Product binding for one session-owned child agent."""
+
+    driver: SubagentRoundDriver
+    input_activity: AgentInputActivityPort | None = None
+    workspace_ref: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.workspace_ref is not None and not self.workspace_ref.strip():
+            raise ValueError("workspace_ref must be non-empty when provided")
+
+
 class SessionSubagentFactory(Protocol):
-    async def create_driver(
+    async def create(
         self,
         request: SessionSubagentRequest,
-    ) -> SubagentRoundDriver: ...
+    ) -> SessionSubagentBinding: ...
 
 
 class RootAgentInput(Protocol):
@@ -259,7 +283,7 @@ class SessionMultiAgentRuntime:
         self._root_notice_wake = root_notice_wake
         self._notice_wake_policy = notice_wake_policy
         self._handles: dict[AgentRef, SubagentRunHandle] = {}
-        self._inputs: dict[AgentRef, AgentInputFacade[Any]] = {}
+        self._inputs: dict[AgentRef, AgentInputActivityPort] = {}
         if isinstance(root_input, AgentInputFacade):
             self._inputs[control.root_ref] = root_input
         self._operation_lock = asyncio.Lock()
@@ -297,7 +321,7 @@ class SessionMultiAgentRuntime:
                 raise RuntimeError("spawn admission lost its parent or agent type")
             driver: SubagentRoundDriver | None = None
             try:
-                driver = await self._child_factory.create_driver(
+                binding = await self._child_factory.create(
                     SessionSubagentRequest(
                         record=record,
                         parent=parent,
@@ -305,21 +329,20 @@ class SessionMultiAgentRuntime:
                         context_plan=context_plan,
                     )
                 )
+                driver = binding.driver
                 handle = SubagentRunHandle(
                     ref=record.ref,
                     control=self.control,
                     driver=driver,
                 )
                 self._handles[record.ref] = handle
-                workspace_ref = getattr(driver, "workspace_ref", None)
-                if isinstance(workspace_ref, str) and workspace_ref:
+                if binding.workspace_ref is not None:
                     self.control.bind_workspace(
                         record.ref,
-                        workspace_ref=workspace_ref,
+                        workspace_ref=binding.workspace_ref,
                     )
-                input_facade = getattr(driver, "input_facade", None)
-                if isinstance(input_facade, AgentInputFacade):
-                    self._inputs[record.ref] = input_facade
+                if binding.input_activity is not None:
+                    self._inputs[record.ref] = binding.input_activity
                 intent = self.control.route_message(
                     caller=caller,
                     target=record.path,
@@ -818,12 +841,14 @@ def compose_multiagent_before_release(
 
 __all__ = [
     "AgentInputActivity",
+    "AgentInputActivityPort",
     "AgentInputFacade",
     "AgentInputWaitOutcome",
     "NoticeWakePolicy",
     "RootAgentInput",
     "SessionMultiAgentRuntime",
     "SessionSubagentDriver",
+    "SessionSubagentBinding",
     "SessionSubagentFactory",
     "SessionSubagentRequest",
     "SessionTreeCloseResult",
