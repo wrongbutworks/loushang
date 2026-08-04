@@ -90,7 +90,11 @@ class CallOptions:
     idle_timeout_seconds: float | int | None = None
     retry: RetryOptions | None = None
     trace: object | None = None
-    pairing_mode: PairingMode = "strict"
+    # Default to repair so interrupted/partial transcripts (e.g. a run killed
+    # mid-tool-call) recover automatically instead of failing the whole request.
+    # Callers that need strict validation (e.g. new-session message flow) can
+    # set pairing_mode="strict" explicitly.
+    pairing_mode: PairingMode = "repair"
     reasoning: ReasoningOptions | None = None
     tool_choice: ToolChoice | None = None
     output: StructuredOutputOptions | None = None
