@@ -106,6 +106,10 @@ description.
   authorized bindings, typed common effects, a session-owned authorization
   gateway, and the migration that removes raw tool execution bypasses without
   changing permission behavior.
+- [One-Shot Agent Invocation Tool Boundary](agent-invocation-tool-boundary.md)
+  records the implemented `delegate_agent` P0: a finite authorized subprocess
+  tool, Coding-owned CLI semantics, non-widening child tools, bounded output,
+  and the evidence gates before jobs or multi-agent semantics are introduced.
 - [Harness Tool Authoring](tool-authoring-guide.md) is the short developer guide
   for pure tools, common filesystem actions, and custom action adapters.
 - [Sandbox Runtime Boundary](sandbox-runtime-boundary.md) defines the optional,
