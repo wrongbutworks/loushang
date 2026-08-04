@@ -8,11 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
-from loushang.harness.resources._loader_discovery import (
-    _normalize_runtime_paths,
-    _normalize_user_resource_roots,
-    _resolve_prompt_input,
-)
 from loushang.harness.resources._loader_package_policy import (
     _count_package_descriptors,
     _count_package_diagnostics,
@@ -44,6 +39,38 @@ if TYPE_CHECKING:
     from loushang.harness.resources.packages.source import PackageSourceConfig
 
 SystemPromptAssembler = Callable[[str | None, ResourceBundle], str | None]
+
+
+def _normalize_user_resource_roots(
+    user_resource_roots: Sequence[str | Path] | None,
+) -> tuple[Path, ...]:
+    if not user_resource_roots:
+        return ()
+    return tuple(Path(root).expanduser().resolve() for root in user_resource_roots)
+
+
+def _normalize_runtime_paths(
+    paths: list[str | Path] | tuple[str | Path, ...] | None,
+) -> tuple[Path, ...]:
+    if not paths:
+        return ()
+    return tuple(Path(path).expanduser() for path in paths)
+
+
+def _resolve_prompt_input(source: str | None, *, cwd: Path) -> str | None:
+    if not source:
+        return None
+    candidate = Path(source).expanduser()
+    if not candidate.is_absolute():
+        candidate = cwd / candidate
+    if not candidate.exists():
+        return source
+    if not candidate.is_file():
+        return source
+    try:
+        return candidate.read_text(encoding="utf-8")
+    except OSError:
+        return source
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,6 @@ from loushang.harness.resources._loader_discovery import (
     _apply_resource_switches,
     _discover_external_package_resources,
     _discover_project_resources,
-    _discover_temporary_resources,
     _discover_user_global_resources,
 )
 from loushang.harness.resources._loader_discovery_builtin import (
@@ -18,6 +17,9 @@ from loushang.harness.resources._loader_discovery_builtin import (
 )
 from loushang.harness.resources._loader_discovery_context import (
     _discover_context_descriptors,
+)
+from loushang.harness.resources._loader_discovery_temporary import (
+    _discover_temporary_resources,
 )
 from loushang.harness.resources._loader_resolution import (
     _resolve_candidates,
