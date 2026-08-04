@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1650" viewBox="0 0 1800 1650" role="img" aria-labelledby="title desc">
   <title id="title">楼上（Loushang）未来目标架构 v3</title>
-  <desc id="desc">Product TUI 启动时在本地 Product Runtime 与 AppService Client 之间选择 backend；本地嵌入会话不自动迁移，需要 attach 与 resume 时使用 AppService；App Contract 与窄 Channel 边界并列使用 Transport，客户端命令向下，事件、快照与 interaction request 向上；Hosted Product Runtime 按 Session 或 Work 构造独立 instance；轻量 session turn 直达 Harness，持久业务承诺经 Work，标准 Channel SubmitCodingTurn 同时使用 Channel 与 Work。</desc>
+  <desc id="desc">Product TUI 启动时在本地 Product Runtime 与 AppService Client 之间选择 backend；本地嵌入会话不自动迁移，需要 attach 与 resume 时使用 AppService；App Contract 与窄 Channel 边界并列使用 Transport，客户端命令向下，事件、快照与 interaction request 向上；Hosted Product Runtime 按 Session 或 Work 构造独立 instance；轻量 session turn 直达 Harness，持久业务承诺经 Work；远端 Agent 按一次 invoke、异步 job 或持续 collaboration 的实际语义接入，不因远程而默认有状态。</desc>
   <defs>
     <linearGradient id="pageBg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#f8fafc"/>
@@ -183,11 +183,12 @@
   <rect x="1330" y="922" width="280" height="40" rx="11" fill="#ffffff" stroke="#94a3b8"/>
   <text x="1470" y="948" text-anchor="middle" class="pill">Live Session Routing Table</text>
   <rect x="1330" y="974" width="280" height="40" rx="11" fill="#ffffff" stroke="#94a3b8"/>
-  <text x="1470" y="1000" text-anchor="middle" class="pill">Execution Dispatcher / Workers</text>
+  <text x="1470" y="1000" text-anchor="middle" class="pill">Remote Capability / Job / Workers</text>
   <rect x="1330" y="1026" width="280" height="40" rx="11" fill="#ffffff" stroke="#94a3b8"/>
   <text x="1470" y="1052" text-anchor="middle" class="pill">Bounded Delivery Buffer</text>
-  <text x="1470" y="1087" text-anchor="middle" class="tiny">usage / cost attribution</text>
-  <text x="1470" y="1105" text-anchor="middle" class="tiny">同 Session 串行；不同 Session 并行</text>
+  <text x="1470" y="1080" text-anchor="middle" class="tiny">invoke · submit/await · optional managed execution</text>
+  <text x="1470" y="1095" text-anchor="middle" class="tiny">服务实例不因远程而默认有状态</text>
+  <text x="1470" y="1110" text-anchor="middle" class="tiny">usage/cost · 同 Session 串行</text>
   <path d="M1240 959 H1300" class="arrow"/>
   <text x="1268" y="947" text-anchor="middle" class="tiny">admit / activate</text>
   <path d="M1300 1080 H1265 V1075 H1240" class="arrow"/>
@@ -255,6 +256,9 @@
   <text x="1505" y="1442" text-anchor="middle" class="box-title-sm">Agent + AI / Tool Kernel</text>
   <text x="1505" y="1468" text-anchor="middle" class="copy">Agent → AI</text>
   <text x="1505" y="1490" text-anchor="middle" class="small">Harness / Agent → Tools → Sandbox</text>
+
+  <path d="M1290 1456 H1670 V994 H1640" class="arrow-dashed"/>
+  <text x="1658" y="1255" text-anchor="middle" class="tiny" transform="rotate(-90 1658 1255)">injected capability client（optional）</text>
 
   <!-- Runtime routes -->
   <path d="M302 1318 V1390 H1060 V1410" class="arrow-green"/>

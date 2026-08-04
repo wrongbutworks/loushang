@@ -75,8 +75,9 @@ multi-agent 不知道 method 的存在；method/work 通过**装配层**消费 m
 - `loushang.work`：业务权威终态。agent 树的生命周期事实以事件形式输出给
   装配层，由装配层（或 work 自身）投影为 WorkEvent；multi-agent 不写
   work event log。
-- `loushang.channel`：边界 transport。子 agent 事件经装配层投影后才可能
-  进入 channel；multi-agent 不产生 RuntimeEventView。
+- `loushang.channel`：明确接纳的 Work/runtime-view operation 与 event
+  delivery 边界。子 agent 事件经装配层投影后才可能进入 Channel；
+  multi-agent 不产生 RuntimeEventView，也不把 Channel 当作 Agent RPC。
 - `loushang.tui` / `loushang.harnesstui`：UI 呈现，消费装配层的事件投影。
 - `loushang.ai`：模型调用。multi-agent 不直接调用 ai；模型能力经
   harness → agent → ai 链路到达。
@@ -182,7 +183,7 @@ harness 的 run 语义。
 - 业务编排：stage 流程、acceptance 判定、artifact 语义（属 method/work）
 - agent 类型的业务定义与编译（类型对 multi-agent 只是记录；method 角色
   编译属 method，产品默认类型属产品装配层）
-- 边界 transport / 多客户端订阅（属 channel）
+- 明确接纳的 Work/runtime-view delivery 与多客户端订阅（属 channel）
 - UI 呈现（属 tui / harnesstui）
 - 模型调用、provider 差异（属 ai）
 
@@ -212,11 +213,22 @@ multi-agent 自有的一等数据（候选，最终以组件设计为准）：
   （`AgentRunSpec` / `run_agent()` / `AgentEventSink`）
 
 multi-agent 当前不引入网络协议。未来受管的跨进程 / 远端子 agent
-通过 Harness 消费的中立 `AgentExecutionPort` 与 Host 提供的 worker
-backend 承载；worker wire protocol / transport 不属于 Channel。
-`loushang.channel` 只承载其明确接纳的 `WorkOperation`、`WorkEvent` 和
-投影事件。对外部独立 agent 的联邦协作可由单独的 A2A adapter 实现，
-不与受管 worker 执行协议或 Work 协议合并。
+也不预设为可 attach 的有状态 runtime。一次性远端 agent 是普通 admitted
+tool/capability：`invoke -> result`，不进入 multi-agent；长时但不可交互的
+执行按需增加 `submit / await / cancel` job contract；只有需要 steering、
+follow-up 和持续寻址时，才由当前协作工具 façade 绑定 remote collaboration
+client。
+
+第一版 collaboration backend 按 Session / capability profile 在本地与一个
+远端服务间二选一，不要求同一 agent 树逐 child 混合 placement。只有真实的
+混合 placement、attach、lease、fencing 和恢复需求出现，并且至少两个物理
+backend 证明共同契约后，才提炼内部 `AgentExecutionPort`。
+
+tool schema 与 worker wire protocol / transport 是两个边界，后者不属于
+Channel。`loushang.channel` 只承载其明确接纳的 `WorkOperation`、
+`WorkEvent` 和投影事件。对外部独立 agent 的联邦协作可由单独的 A2A
+adapter 实现，不与受管 worker 执行协议或 Work 协议合并。完整决策见
+[Remote Agent Capability Boundary](remote-agent-capability-boundary.md)。
 
 ## Key Boundary Decisions（预告，详见 ARD）
 
@@ -228,6 +240,8 @@ backend 承载；worker wire protocol / transport 不属于 Channel。
 4. 审批冒泡统一路由到 root 交互出口，channel 无关
 5. 一期全异步执行（无同步 spawn）、消息驱动恢复、open / closed 区分——见
    [ARD-002](./ARD-002-async-execution-and-recovery.md)
+6. 远程只决定 placement，不决定生命周期；按 `invoke`、job、collaboration
+   的最小交互语义渐进，不预建万能 runtime provider
 
 边界纪律：`harness.multiagent` 不得依赖 method / work / channel / tui，
 不得包含产品 agent 类型定义——类型注册表是装配层注入的参数，不是
