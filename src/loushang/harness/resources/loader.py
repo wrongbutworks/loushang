@@ -16,6 +16,7 @@ from loushang.harness.resources._loader_package_policy import (
 )
 from loushang.harness.resources._loader_pipeline import (
     _discover_snapshot,
+    _ResourceDiscoveryRequest,
     _source_kinds_for,
 )
 from loushang.harness.resources._loader_types import (
@@ -261,12 +262,12 @@ class ResourceLoader:
             if self._project_resource_mode == "standard"
             else None
         )
-        snapshot = _discover_snapshot(
-            target,
+        request = _ResourceDiscoveryRequest(
+            cwd=target,
             package_roots=self._package_roots,
             package_source_filters=self._package_source_filters,
             user_resource_roots=self._user_resource_roots,
-            explicit_user_roots=self._explicit_user_resource_roots,
+            explicit_user_roots=frozenset(self._explicit_user_resource_roots),
             additional_extension_paths=self._additional_extension_paths,
             additional_skill_paths=self._additional_skill_paths,
             additional_prompt_template_paths=self._additional_prompt_template_paths,
@@ -280,6 +281,7 @@ class ResourceLoader:
             context_file_names=self._context_file_names,
             project_resource_root=project_resource_root,
         )
+        snapshot = _discover_snapshot(request)
         self._snapshot = snapshot
         self._resolved_system_prompt = _resolve_prompt_input(
             self._system_prompt_source, cwd=Path(cwd)

@@ -127,7 +127,11 @@ policies. Context discovery, built-in discovery, temporary discovery,
 filesystem discovery, descriptor parsing, and package policy do not depend on
 discovery coordination, resolution, the pipeline, or the public loader facade.
 Loader option normalization and system-prompt source resolution remain with the
-public loader owner rather than discovery coordination.
+public loader owner rather than discovery coordination. The loader projects its
+normalized state into one immutable pipeline-owned discovery request. The
+pipeline owns candidate-source aggregation, including the single expression of
+temporary, built-in, external-package, user-global, and project-local candidate
+order; discovery diagnostic order remains an explicit, separate contract.
 Resolution never imports any discovery owner or package policy, live profile
 binding never imports profile resolution, and internal leaf modules never
 import their public facade. The tool execution host consumes a private

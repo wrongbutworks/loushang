@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
 def _discover_user_global_resources(
     user_resource_roots: tuple[Path, ...],
     *,
-    explicit_roots: set[Path] | None = None,
+    explicit_roots: Collection[Path] | None = None,
 ) -> _SourceDiscovery:
     prompts: list[PromptFragmentDescriptor] = []
     skills: list[SkillDescriptor] = []
@@ -140,7 +141,7 @@ def _discover_project_resources(root: Path) -> _SourceDiscovery:
 def _discover_external_package_resources(
     package_roots: tuple[Path, ...],
     *,
-    package_source_filters: dict[Path, PackageSourceConfig] | None = None,
+    package_source_filters: Mapping[Path, PackageSourceConfig] | None = None,
 ) -> _SourceDiscovery:
     prompts: list[PromptFragmentDescriptor] = []
     skills: list[SkillDescriptor] = []
