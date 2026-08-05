@@ -198,6 +198,33 @@ def test_project_config_cannot_introduce_untrusted_executable(tmp_path: Path) ->
     assert "user-level" in snapshot.records[0].detail
 
 
+def test_config_rejects_timeout_too_large_to_convert(tmp_path: Path) -> None:
+    user_config = tmp_path / "user-lsp.json"
+    _write_config(
+        user_config,
+        [
+            {
+                "id": "overflowing-timeout",
+                "command": ["custom-lsp"],
+                "language_extensions": {"python": [".py"]},
+                "startup_timeout_seconds": 10**400,
+            }
+        ],
+    )
+
+    snapshot = discover_lsp_catalog(
+        workspace_root=tmp_path,
+        baseline_environment={"PATH": "/tools"},
+        global_config_path=user_config,
+        project_config_path=False,
+        include_product_defaults=False,
+    )
+
+    assert snapshot.admitted_count == 0
+    assert snapshot.records[0].definition_id == "overflowing-timeout"
+    assert snapshot.records[0].state == "rejected"
+
+
 def test_product_defaults_report_unavailable_without_installing_or_starting(
     tmp_path: Path,
 ) -> None:

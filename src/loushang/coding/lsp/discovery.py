@@ -348,7 +348,7 @@ def _load_config(path: Path, *, source: str) -> tuple[_Declaration, ...]:
     for index, value in enumerate(servers):
         try:
             declarations.append(_parse_declaration(value, source=source))
-        except (TypeError, ValueError) as exc:
+        except (OverflowError, TypeError, ValueError) as exc:
             definition_id = (
                 value.get("id")
                 if isinstance(value, Mapping) and isinstance(value.get("id"), str)
