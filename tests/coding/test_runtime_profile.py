@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from dataclasses import replace
 
 import pytest
@@ -157,6 +158,47 @@ def test_persistent_session_accepts_snapshot_without_auxiliary_side_question(
                 CODING_CAPABILITY_PROFILE_METADATA_KEY: capability_snapshot,
             },
         )
+        write_session_file(manager.session_file, header, manager.get_entries())
+        await manager.dispose_runtime_profile()
+
+        resumed = await SessionManager.load(manager.session_file, persist=True)
+        await resumed.dispose_runtime_profile()
+
+    asyncio.run(scenario())
+
+
+def test_persistent_session_accepts_legacy_capability_semantic_snapshot(
+    tmp_path,
+) -> None:
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=True,
+        )
+        assert manager.session_file is not None
+        await manager.append_message(
+            UserMessage(role="user", content="materialize", timestamp=0.0)
+        )
+        metadata = deepcopy(dict(manager.header.metadata))
+        for metadata_key in (
+            CODING_RUNTIME_PROFILE_METADATA_KEY,
+            CODING_CAPABILITY_PROFILE_METADATA_KEY,
+        ):
+            snapshot = metadata[metadata_key]
+            assert isinstance(snapshot, dict)
+            capabilities = snapshot["capabilities"]
+            assert isinstance(capabilities, list)
+            for capability in capabilities:
+                assert isinstance(capability, dict)
+                capability.pop("variationSemantic")
+                if capability["slot"] in {
+                    "prompt.sections",
+                    "tool.packs",
+                    "command.packs",
+                }:
+                    capability["shape"] = "ordered"
+        header = replace(manager.header, metadata=metadata)
         write_session_file(manager.session_file, header, manager.get_entries())
         await manager.dispose_runtime_profile()
 

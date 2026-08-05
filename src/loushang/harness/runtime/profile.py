@@ -32,6 +32,7 @@ from loushang.harness.runtime._profile_standard import (
     TOOL_PACKS_SLOT,
     standard_agent_session_slots,
     standard_capability_composition_slots,
+    standard_runtime_capability_slots,
 )
 from loushang.harness.runtime._profile_types import (
     ProductRuntimePlan,
@@ -42,6 +43,7 @@ from loushang.harness.runtime._profile_types import (
     RuntimeCapabilitySelection,
     RuntimeCapabilityShape,
     RuntimeCapabilitySlot,
+    RuntimeCapabilityVariationSemantic,
     RuntimeProfileDiagnostic,
     RuntimeProfileLayer,
     RuntimeProfileResolutionError,
@@ -70,6 +72,7 @@ __all__ = [
     "RuntimeCapabilitySelection",
     "RuntimeCapabilityShape",
     "RuntimeCapabilitySlot",
+    "RuntimeCapabilityVariationSemantic",
     "RuntimeProfileBinder",
     "RuntimeProfileBinding",
     "RuntimeProfileBindings",
@@ -92,4 +95,5 @@ __all__ = [
     "TOOL_PACKS_SLOT",
     "standard_agent_session_slots",
     "standard_capability_composition_slots",
+    "standard_runtime_capability_slots",
 ]

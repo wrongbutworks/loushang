@@ -30,6 +30,7 @@ from loushang.harness.runtime import (
     RuntimeProfileSnapshot,
     SealedRuntimeCapabilityError,
     standard_capability_composition_slots,
+    standard_runtime_capability_slots,
 )
 
 
@@ -150,6 +151,41 @@ def test_resolver_rejects_undeclared_and_unauthorized_layers_with_diagnostics() 
     }
 
 
+def test_exclusive_replacement_uses_runtime_profile_precedence() -> None:
+    profile = RuntimeProfileResolver().resolve(
+        _agent_plan(),
+        layers=(
+            RuntimeProfileLayer(
+                source="session",
+                layer_id="session:compact",
+                selections=(
+                    RuntimeCapabilitySelection(
+                        slot="context.compaction",
+                        implementation="session-compact",
+                        implementation_version=1,
+                    ),
+                ),
+            ),
+            RuntimeProfileLayer(
+                source="extension",
+                layer_id="extension:compact",
+                selections=(
+                    RuntimeCapabilitySelection(
+                        slot="context.compaction",
+                        implementation="extension-compact",
+                        implementation_version=1,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    selected = profile.capability("context.compaction").selections
+    assert len(selected) == 1
+    assert selected[0].selection.implementation == "session-compact"
+    assert selected[0].source == "session"
+
+
 def test_ordered_replaces_same_identity_while_append_only_keeps_every_contribution() -> (
     None
 ):
@@ -159,6 +195,7 @@ def test_ordered_replaces_same_identity_while_append_only_keeps_every_contributi
         scope="session",
         refresh_boundary="sealed",
         allowed_sources=frozenset({"product", "extension"}),
+        variation_semantic="aggregate_contribution",
     )
     append_slot = RuntimeCapabilitySlot(
         key="audit.observers",
@@ -166,10 +203,19 @@ def test_ordered_replaces_same_identity_while_append_only_keeps_every_contributi
         scope="session",
         refresh_boundary="sealed",
         allowed_sources=frozenset({"product", "extension"}),
+        variation_semantic="aggregate_contribution",
+    )
+    interceptor_slot = RuntimeCapabilitySlot(
+        key="policy.interceptors",
+        shape="ordered",
+        scope="session",
+        refresh_boundary="sealed",
+        allowed_sources=frozenset({"product", "extension"}),
+        variation_semantic="ordered_interception",
     )
     plan = ProductRuntimePlan(
         product_id="research",
-        slots=(ordered_slot, append_slot),
+        slots=(ordered_slot, append_slot, interceptor_slot),
         defaults=(
             RuntimeCapabilitySelection(
                 slot="prompt.sections",
@@ -180,6 +226,11 @@ def test_ordered_replaces_same_identity_while_append_only_keeps_every_contributi
             RuntimeCapabilitySelection(
                 slot="audit.observers",
                 implementation="history",
+                implementation_version=1,
+            ),
+            RuntimeCapabilitySelection(
+                slot="policy.interceptors",
+                implementation="authorization",
                 implementation_version=1,
             ),
         ),
@@ -203,6 +254,11 @@ def test_ordered_replaces_same_identity_while_append_only_keeps_every_contributi
                         implementation="history",
                         implementation_version=1,
                     ),
+                    RuntimeCapabilitySelection(
+                        slot="policy.interceptors",
+                        implementation="tracing",
+                        implementation_version=1,
+                    ),
                 ),
             ),
         ),
@@ -212,6 +268,68 @@ def test_ordered_replaces_same_identity_while_append_only_keeps_every_contributi
         "title": "Cited sources"
     }
     assert len(profile.capability("audit.observers").selections) == 2
+    assert [
+        selection.selection.implementation
+        for selection in profile.capability("policy.interceptors").selections
+    ] == ["authorization", "tracing"]
+
+
+def test_failed_external_replacement_does_not_implicitly_bind_product_baseline() -> (
+    None
+):
+    created: list[str] = []
+
+    def create_product(
+        selection: RuntimeCapabilitySelection,
+        context: object | None,
+    ) -> str:
+        del context
+        created.append(selection.implementation)
+        return selection.implementation
+
+    plan = ProductRuntimePlan(
+        product_id="research",
+        slots=(CONVERSATION_STORE_SLOT,),
+        defaults=(
+            RuntimeCapabilitySelection(
+                slot="conversation.store",
+                implementation="product-store",
+                implementation_version=1,
+            ),
+        ),
+    )
+    profile = RuntimeProfileResolver().resolve(
+        plan,
+        layers=(
+            RuntimeProfileLayer(
+                source="oem",
+                layer_id="oem:store",
+                selections=(
+                    RuntimeCapabilitySelection(
+                        slot="conversation.store",
+                        implementation="oem-store",
+                        implementation_version=1,
+                    ),
+                ),
+            ),
+        ),
+    )
+    binder = RuntimeProfileBinder(
+        RuntimeCapabilityRegistry(
+            (
+                RuntimeCapabilityImplementation(
+                    slot="conversation.store",
+                    implementation="product-store",
+                    implementation_version=1,
+                    create=create_product,
+                ),
+            )
+        )
+    )
+
+    with pytest.raises(RuntimeCapabilityBindingError, match="oem-store"):
+        binder.bind_sync(profile)
+    assert created == []
 
 
 def test_binder_refreshes_turn_safe_slots_and_invalidates_prior_leases() -> None:
@@ -460,6 +578,60 @@ def test_snapshot_rejects_boolean_versions_instead_of_treating_them_as_integers(
         )
 
 
+def test_snapshot_records_variation_semantics_and_reads_legacy_capabilities() -> None:
+    profile_snapshot = RuntimeProfileResolver().resolve(_agent_plan()).snapshot()
+    payload = profile_snapshot.to_json()
+
+    capabilities = payload["capabilities"]
+    assert isinstance(capabilities, list)
+    assert isinstance(capabilities[0], dict)
+    assert capabilities[0]["variationSemantic"] == "exclusive_replacement"
+    assert RuntimeProfileSnapshot.from_json(payload) == profile_snapshot
+
+    legacy_payload = profile_snapshot.to_json()
+    legacy_capabilities = legacy_payload["capabilities"]
+    assert isinstance(legacy_capabilities, list)
+    for capability in legacy_capabilities:
+        assert isinstance(capability, dict)
+        capability.pop("variationSemantic")
+    legacy_snapshot = RuntimeProfileSnapshot.from_json(legacy_payload)
+    assert all(
+        capability.variation_semantic is None
+        for capability in legacy_snapshot.capabilities
+    )
+
+
+def test_variable_slots_require_shape_compatible_variation_semantics() -> None:
+    with pytest.raises(ValueError, match="must declare a variation semantic"):
+        RuntimeCapabilitySlot(
+            key="replaceable",
+            shape="single",
+            scope="session",
+            refresh_boundary="sealed",
+            allowed_sources=frozenset({"product", "oem"}),
+        )
+
+    with pytest.raises(ValueError, match="single or exclusive"):
+        RuntimeCapabilitySlot(
+            key="invalid-replacement",
+            shape="ordered",
+            scope="session",
+            refresh_boundary="sealed",
+            allowed_sources=frozenset({"product"}),
+            variation_semantic="exclusive_replacement",
+        )
+
+    with pytest.raises(ValueError, match="ordered or append_only"):
+        RuntimeCapabilitySlot(
+            key="invalid-aggregate",
+            shape="single",
+            scope="session",
+            refresh_boundary="sealed",
+            allowed_sources=frozenset({"product"}),
+            variation_semantic="aggregate_contribution",
+        )
+
+
 def test_sync_binder_rejects_async_factories_without_creating_an_event_loop() -> None:
     slot = RuntimeCapabilitySlot(
         key="pure",
@@ -544,6 +716,28 @@ def test_capability_composition_slots_have_deliberate_source_boundaries() -> Non
     assert slots["continuity.provider_packs"].allowed_sources == frozenset(
         {"product", "oem"}
     )
+    assert slots["prompt.sections"].shape == "single"
+    assert slots["tool.packs"].shape == "single"
+    assert slots["command.packs"].shape == "single"
+
+
+def test_standard_slots_have_one_explicit_variation_semantic() -> None:
+    slots = {slot.key: slot for slot in standard_runtime_capability_slots()}
+
+    assert {
+        key: slot.variation_semantic for key, slot in slots.items()
+    } == {
+        "conversation.store": "exclusive_replacement",
+        "agent.transcript_profile": "exclusive_replacement",
+        "context.compaction": "exclusive_replacement",
+        "resource.runtime": "exclusive_replacement",
+        "prompt.sections": "exclusive_replacement",
+        "skill.activation": "exclusive_replacement",
+        "tool.packs": "exclusive_replacement",
+        "command.packs": "exclusive_replacement",
+        "interaction.side_question": "exclusive_replacement",
+        "continuity.provider_packs": "aggregate_contribution",
+    }
 
 
 def test_admission_requires_an_explicit_grant_and_slot_permission() -> None:
