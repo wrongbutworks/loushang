@@ -174,8 +174,9 @@ Own one initialized JSON-RPC/LSP connection to one process.
 Events are delivered through injected callbacks or an event sink. The client
 does not import higher-level components.
 
-In P0, `publishDiagnostics` is recognized and discarded without payload
-retention. The H4 binding routes it to `diagnostics`.
+H4.1 routes `publishDiagnostics` through a bounded synchronous callback to
+`diagnostics`. Client closure also invokes a non-blocking lifecycle callback so
+runtime-local diagnostic state is released on graceful exit or failure.
 
 ### Out Of Scope
 
@@ -283,15 +284,15 @@ parsing language syntax, and presenting diagnostics.
 
 ### Role
 
-Maintain current code-diagnostic state and bounded model-delivery deltas.
+Maintain bounded current code-diagnostic state. H4.2 adds model-delivery deltas.
 
 ### Owns
 
 - replacement sets keyed by runtime, canonical document, and accepted version;
 - normalization, deduplication, severity mapping, and stale rejection;
-- per-document, per-turn, and total-memory limits;
-- pending-delivery markers and bounded expiry;
-- distinction between current state and newly deliverable delta.
+- per-document and total-memory limits;
+- H4.2 pending-delivery markers, per-turn limits, and bounded expiry;
+- H4.2 distinction between current state and newly deliverable delta.
 
 ### Depends On
 
@@ -303,13 +304,13 @@ Maintain current code-diagnostic state and bounded model-delivery deltas.
 
 - `replace_publication(runtime, uri, version, diagnostics)`
 - `clear_runtime(key)`
-- `mark_delivered(delivery_id)`
-- `expire(now)`
+- H4.2 `mark_delivered(delivery_id)`
+- H4.2 `expire(now)`
 
 ### Queries
 
 - `current(path=None)`
-- `pending_delta(budget) -> DiagnosticDelivery`
+- H4.2 `pending_delta(budget) -> DiagnosticDelivery`
 - `snapshot()`
 
 ### Events

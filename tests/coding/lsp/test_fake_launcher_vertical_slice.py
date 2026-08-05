@@ -245,6 +245,29 @@ class FakeLspServer:
         self._response_tasks.add(task)
         task.add_done_callback(self._response_tasks.discard)
 
+    async def publish_diagnostics(
+        self,
+        *,
+        uri: str,
+        diagnostics: list[object],
+        version: int | None = None,
+    ) -> None:
+        params: dict[str, object] = {
+            "uri": uri,
+            "diagnostics": diagnostics,
+        }
+        if version is not None:
+            params["version"] = version
+        await self.stdout.put(
+            _frame(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/publishDiagnostics",
+                    "params": params,
+                }
+            )
+        )
+
     def methods(self) -> list[str]:
         return [
             method
@@ -1062,6 +1085,7 @@ def test_runtime_status_is_read_only_and_explicit_stop_allows_replacement(
         assert ready_server.request_count == 2
         assert ready_server.timeout_count == 0
         assert ready_server.replacement_count == 0
+        assert ready_server.accepted_diagnostic_publications == 0
         assert ready_server.discarded_diagnostic_publications == 1
         assert ready_server.last_request_duration_ms is not None
         assert ready_server.last_error is None
@@ -1105,6 +1129,167 @@ def test_runtime_status_is_read_only_and_explicit_stop_allows_replacement(
         disposed = binding.status()
         assert disposed.disposed is True
         assert disposed.servers[0].state == "stopped"
+
+    asyncio.run(scenario())
+
+
+def test_passive_diagnostics_are_versioned_replaced_bounded_and_released(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        files = {source.resolve(): "value = 1\n"}
+        launcher = FakeLauncher(definition_result=None)
+        binding = _binding(tmp_path, launcher, files)
+
+        await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            correlation_id="diagnostic-open",
+        )
+        server = launcher.handles[0].server
+        diagnostic = {
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 5},
+            },
+            "severity": 1,
+            "message": "invalid value",
+            "source": "fake",
+        }
+
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            version=1,
+            diagnostics=[diagnostic],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].current_diagnostic_count == 1:
+                break
+            await asyncio.sleep(0)
+        ready = binding.status().servers[0]
+        assert ready.diagnostic_document_count == 1
+        assert ready.current_diagnostic_count == 1
+        assert ready.accepted_diagnostic_publications == 1
+        assert ready.discarded_diagnostic_publications == 1
+
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            version=0,
+            diagnostics=[],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].discarded_diagnostic_publications == 2:
+                break
+            await asyncio.sleep(0)
+        stale = binding.status().servers[0]
+        assert stale.current_diagnostic_count == 1
+        assert stale.accepted_diagnostic_publications == 1
+        assert stale.discarded_diagnostic_publications == 2
+
+        files[source.resolve()] = "value = 2\n"
+        changed = await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            correlation_id="diagnostic-change",
+        )
+        assert changed.document_version == 2
+        assert binding.status().servers[0].current_diagnostic_count == 0
+
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            version=2,
+            diagnostics=[diagnostic, {**diagnostic, "message": "second"}],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].current_diagnostic_count == 2:
+                break
+            await asyncio.sleep(0)
+        assert binding.status().servers[0].current_diagnostic_count == 2
+        assert binding.status().servers[0].accepted_diagnostic_publications == 2
+
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            version=2,
+            diagnostics=[],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].current_diagnostic_count == 0:
+                break
+            await asyncio.sleep(0)
+        assert binding.status().servers[0].diagnostic_document_count == 0
+        assert binding.status().servers[0].accepted_diagnostic_publications == 3
+
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            diagnostics=[diagnostic],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].current_diagnostic_count == 1:
+                break
+            await asyncio.sleep(0)
+        assert await binding.stop(
+            definition_id="fake-python",
+            workspace_root=tmp_path,
+        )
+        stopped = binding.status().servers[0]
+        assert stopped.diagnostic_document_count == 0
+        assert stopped.current_diagnostic_count == 0
+        await binding.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_passive_diagnostics_are_released_when_server_stdout_closes(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        launcher = FakeLauncher(definition_result=None)
+        binding = _binding(tmp_path, launcher, {source.resolve(): "value = 1\n"})
+        await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            correlation_id="diagnostic-before-crash",
+        )
+        server = launcher.handles[0].server
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            version=1,
+            diagnostics=[
+                {
+                    "range": {
+                        "start": {"line": 0, "character": 0},
+                        "end": {"line": 0, "character": 1},
+                    },
+                    "message": "before crash",
+                }
+            ],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].current_diagnostic_count == 1:
+                break
+            await asyncio.sleep(0)
+        assert binding.status().servers[0].current_diagnostic_count == 1
+
+        await server.stdout.put(None)
+        for _ in range(100):
+            status = binding.status().servers[0]
+            if status.state == "failed":
+                break
+            await asyncio.sleep(0)
+        failed = binding.status().servers[0]
+        assert failed.state == "failed"
+        assert failed.diagnostic_document_count == 0
+        assert failed.current_diagnostic_count == 0
+        await binding.dispose()
 
     asyncio.run(scenario())
 

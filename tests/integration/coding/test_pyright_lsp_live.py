@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from loushang.coding.lsp import (
+    CodingLspRuntime,
     LspServerDefinition,
+    LspServerRuntimeStatus,
     bind_coding_lsp_runtime,
     default_lsp_environment,
 )
@@ -21,7 +25,16 @@ from loushang.harness.sandbox import SandboxSettings
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.workspace.exec import ExecService
 
-_PYRIGHT = shutil.which("pyright-langserver")
+
+def _resolve_pyright() -> str | None:
+    configured = os.environ.get("LOUSHANG_TEST_PYRIGHT_LANGSERVER")
+    if configured is None:
+        return shutil.which("pyright-langserver")
+    candidate = Path(configured).expanduser().resolve()
+    return str(candidate) if candidate.is_file() else None
+
+
+_PYRIGHT = _resolve_pyright()
 
 pytestmark = [
     pytest.mark.live,
@@ -43,20 +56,42 @@ class _NoApprovalResolver:
         raise AssertionError("an admitted Pyright launch must not request approval")
 
 
-def test_installed_pyright_definition_outline_and_shutdown(tmp_path: Path) -> None:
+async def _wait_for_diagnostic_state(
+    runtime: CodingLspRuntime,
+    predicate: Callable[[LspServerRuntimeStatus], bool],
+    *,
+    timeout_seconds: float = 15,
+) -> LspServerRuntimeStatus:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    last_status: LspServerRuntimeStatus | None = None
+    while loop.time() < deadline:
+        status = runtime.status()
+        if status.servers:
+            last_status = status.servers[0]
+            if predicate(last_status):
+                return last_status
+        await asyncio.sleep(0.05)
+    raise AssertionError(
+        f"Pyright diagnostic state did not converge; last status: {last_status!r}"
+    )
+
+
+def test_installed_pyright_semantics_diagnostics_and_shutdown(tmp_path: Path) -> None:
     async def scenario() -> None:
         assert _PYRIGHT is not None
         project = tmp_path / "project"
         project.mkdir()
         (project / "pyproject.toml").write_text(
-            "[project]\nname = \"lsp-live-smoke\"\nversion = \"0.0.0\"\n",
+            '[project]\nname = "lsp-live-smoke"\nversion = "0.0.0"\n',
             encoding="utf-8",
         )
         source = project / "main.py"
         source.write_text(
             "def target(value: int) -> int:\n"
             "    return value\n\n"
-            "result = target(1)\n",
+            "result = target(1)\n"
+            'broken: int = "not an int"\n',
             encoding="utf-8",
         )
         sandbox_runtime = bind_coding_sandbox_runtime(
@@ -105,9 +140,36 @@ def test_installed_pyright_definition_outline_and_shutdown(tmp_path: Path) -> No
             assert definition.count >= 1
             assert any(item.path == "main.py" for item in definition.items)
             assert any(item.name == "target" for item in outline.items)
-            status = runtime.status()
-            assert status.ready_count == 1
-            assert status.servers[0].open_document_count == 1
+            diagnosed = await _wait_for_diagnostic_state(
+                runtime,
+                lambda server: (
+                    server.accepted_diagnostic_publications >= 1
+                    and server.current_diagnostic_count >= 1
+                ),
+            )
+            assert diagnosed.diagnostic_document_count == 1
+            assert diagnosed.open_document_count == 1
+
+            source.write_text(
+                "def target(value: int) -> int:\n"
+                "    return value\n\n"
+                "result = target(1)\n"
+                "broken: int = 1\n",
+                encoding="utf-8",
+            )
+            await runtime.document_outline(
+                path="main.py",
+                correlation_id="pyright-live-diagnostic-fix",
+            )
+            cleared = await _wait_for_diagnostic_state(
+                runtime,
+                lambda server: (
+                    server.accepted_diagnostic_publications
+                    > diagnosed.accepted_diagnostic_publications
+                    and server.current_diagnostic_count == 0
+                ),
+            )
+            assert cleared.diagnostic_document_count == 0
         finally:
             await runtime.close()
             await sandbox_runtime.close()

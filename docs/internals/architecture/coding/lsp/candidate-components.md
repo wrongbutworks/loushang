@@ -79,13 +79,13 @@ also translates committed workspace mutations into `didOpen`, `didChange`,
 
 ### `diagnostics`
 
-H4 consumes diagnostic publications, validates source runtime and version,
-replaces the current set for a document, computes bounded deltas, deduplicates
-delivery, and expires stale state. It owns `CodeDiagnostic`, not Harness
-operational diagnostic records.
+H4.1 consumes diagnostic publications, validates source runtime and version,
+and replaces the bounded current set for a document. H4.2 computes delivery
+deltas, deduplicates delivery, and expires pending state. The component owns
+`CodeDiagnostic`, not Harness operational diagnostic records.
 
-P0 does not instantiate this component; its client recognizes and discards
-`publishDiagnostics` without retaining the payload.
+The ordinary H4.1 binding instantiates this component. It does not expose a
+diagnostic query tool or inject model context.
 
 ### `tools`
 

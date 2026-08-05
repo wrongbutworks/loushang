@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from loushang.coding.lsp.catalog import LspCatalog
+from loushang.coding.lsp.diagnostics import DiagnosticInbox
 from loushang.coding.lsp.documents import LspDocumentManager
 from loushang.coding.lsp.model import (
     CodeQueryResult,
@@ -49,15 +50,21 @@ class CodingLspBinding:
             workspace_root=root,
             read_text=read_text,
         )
+        diagnostics = DiagnosticInbox(
+            workspace_root=root,
+            document_lookup=documents.snapshot_for_uri,
+        )
         supervisor = LspServerSupervisor(
             catalog=catalog,
             launcher=launcher,
             baseline_environment=baseline_environment,
             open_document_count=documents.open_document_count,
             release_runtime_documents=documents.release_runtime,
+            diagnostics=diagnostics,
         )
         self._workspace_root = root
         self._catalog = catalog
+        self._diagnostics = diagnostics
         self._supervisor = supervisor
         self._tools = CodingLspTools(
             selector=selector,

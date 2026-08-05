@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from loushang.coding.lsp.catalog import LspCatalog
 from loushang.coding.lsp.client import LspClient
+from loushang.coding.lsp.diagnostics import DiagnosticInbox
 from loushang.coding.lsp.model import (
     LspProtocolError,
     LspServerKey,
@@ -46,6 +47,7 @@ class LspServerSupervisor:
         baseline_environment: Mapping[str, str],
         open_document_count: Callable[[int], int] | None = None,
         release_runtime_documents: Callable[[int], None] | None = None,
+        diagnostics: DiagnosticInbox | None = None,
     ) -> None:
         self._catalog = catalog
         self._launcher = launcher
@@ -62,12 +64,14 @@ class LspServerSupervisor:
         self._start_counts: dict[LspServerKey, int] = {}
         self._request_counts: dict[LspServerKey, int] = {}
         self._timeout_counts: dict[LspServerKey, int] = {}
+        self._accepted_diagnostic_counts: dict[LspServerKey, int] = {}
         self._diagnostic_counts: dict[LspServerKey, int] = {}
         self._last_request_durations: dict[LspServerKey, float] = {}
         self._open_document_count = open_document_count or (lambda _runtime_id: 0)
-        self._release_runtime_documents = (
-            release_runtime_documents or (lambda _runtime_id: None)
+        self._release_runtime_documents = release_runtime_documents or (
+            lambda _runtime_id: None
         )
+        self._diagnostics = diagnostics
 
     async def ensure_runtime(
         self,
@@ -165,14 +169,27 @@ class LspServerSupervisor:
             client = runtime.client if runtime is not None else None
             request_count = self._request_counts.get(key, 0)
             timeout_count = self._timeout_counts.get(key, 0)
+            accepted_diagnostic_count = self._accepted_diagnostic_counts.get(key, 0)
             diagnostic_count = self._diagnostic_counts.get(key, 0)
             last_duration = self._last_request_durations.get(key)
             if client is not None:
                 request_count += client.request_count
                 timeout_count += client.timeout_count
+                accepted_diagnostic_count += client.accepted_diagnostic_publications
                 diagnostic_count += client.discarded_diagnostic_publications
                 if client.last_request_duration_ms is not None:
                     last_duration = client.last_request_duration_ms
+            diagnostic_document_count = 0
+            current_diagnostic_count = 0
+            if (
+                runtime is not None
+                and state == "ready"
+                and self._diagnostics is not None
+            ):
+                (
+                    diagnostic_document_count,
+                    current_diagnostic_count,
+                ) = self._diagnostics.counts(runtime.runtime_id)
             last_error = self._last_errors.get(key)
             if state == "failed" and last_error is None:
                 last_error = (
@@ -196,7 +213,10 @@ class LspServerSupervisor:
                     request_count=request_count,
                     timeout_count=timeout_count,
                     replacement_count=max(self._start_counts.get(key, 0) - 1, 0),
+                    accepted_diagnostic_publications=accepted_diagnostic_count,
                     discarded_diagnostic_publications=diagnostic_count,
+                    diagnostic_document_count=diagnostic_document_count,
+                    current_diagnostic_count=current_diagnostic_count,
                     last_request_duration_ms=last_duration,
                     last_error=last_error,
                 )
@@ -286,6 +306,17 @@ class LspServerSupervisor:
                 request_timeout_seconds=definition.request_timeout_seconds,
                 shutdown_timeout_seconds=definition.shutdown_timeout_seconds,
                 settings=definition.settings,
+                on_publish_diagnostics=(
+                    lambda params: (
+                        self._diagnostics is not None
+                        and self._replace_diagnostics(
+                            runtime_id=runtime_id,
+                            server_id=key.definition_id,
+                            params=params,
+                        )
+                    )
+                ),
+                on_close=lambda: self._release_diagnostics(runtime_id),
             )
             await client.initialize(
                 root_uri=key.workspace_root.as_uri(),
@@ -313,6 +344,8 @@ class LspServerSupervisor:
             if client is not None:
                 self._accumulate_client(key, client)
                 self._release_runtime_documents(runtime_id)
+            if self._diagnostics is not None:
+                self._diagnostics.release_runtime(runtime_id)
             async with self._lock:
                 if self._states.get(key) == "starting":
                     if isinstance(exc, asyncio.CancelledError) or self._disposed:
@@ -330,14 +363,46 @@ class LspServerSupervisor:
 
     def _retire_runtime(self, runtime: LspRuntimeHandle) -> None:
         self._accumulate_client(runtime.key, runtime.client)
+        if self._diagnostics is not None:
+            self._diagnostics.release_runtime(runtime.runtime_id)
         self._release_runtime_documents(runtime.runtime_id)
 
+    def _replace_diagnostics(
+        self,
+        *,
+        runtime_id: int,
+        server_id: str,
+        params: Mapping[str, object],
+    ) -> bool:
+        diagnostics = self._diagnostics
+        if diagnostics is None:
+            return False
+        return diagnostics.replace_publication(
+            runtime_id=runtime_id,
+            server_id=server_id,
+            uri=params.get("uri"),
+            version=params.get("version"),
+            diagnostics=params.get("diagnostics"),
+        )
+
+    def _release_diagnostics(self, runtime_id: int) -> None:
+        if self._diagnostics is not None:
+            self._diagnostics.release_runtime(runtime_id)
+
     def _accumulate_client(self, key: LspServerKey, client: LspClient) -> None:
-        self._request_counts[key] = self._request_counts.get(key, 0) + client.request_count
-        self._timeout_counts[key] = self._timeout_counts.get(key, 0) + client.timeout_count
+        self._request_counts[key] = (
+            self._request_counts.get(key, 0) + client.request_count
+        )
+        self._timeout_counts[key] = (
+            self._timeout_counts.get(key, 0) + client.timeout_count
+        )
         self._diagnostic_counts[key] = (
             self._diagnostic_counts.get(key, 0)
             + client.discarded_diagnostic_publications
+        )
+        self._accepted_diagnostic_counts[key] = (
+            self._accepted_diagnostic_counts.get(key, 0)
+            + client.accepted_diagnostic_publications
         )
         if client.last_request_duration_ms is not None:
             self._last_request_durations[key] = client.last_request_duration_ms
@@ -368,6 +433,7 @@ class LspServerSupervisor:
             self._start_counts.pop(candidate, None)
             self._request_counts.pop(candidate, None)
             self._timeout_counts.pop(candidate, None)
+            self._accepted_diagnostic_counts.pop(candidate, None)
             self._diagnostic_counts.pop(candidate, None)
             self._last_request_durations.pop(candidate, None)
 
