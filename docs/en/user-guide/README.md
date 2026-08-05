@@ -105,8 +105,15 @@ open-document, request, timeout, replacement, and discarded-publication counts.
 It is read-only and does not start a Server. `/lsp stop` gracefully shuts down
 the exact Session-owned Server; the next semantic query may start a replacement.
 Embedding code can use `session.get_lsp_status()` and
-`await session.stop_lsp_server(...)` over the same bounded snapshot. The Session
-command is discoverable through the normal TUI and RPC command catalogs.
+`await session.stop_lsp_server(...)` over the same bounded snapshot. The TUI
+executes the same Session command directly. RPC clients can discover it with
+`get_commands` and execute it without a model turn:
+
+```json
+{"id":"lsp-status","type":"execute_command","command":"lsp","args":"status"}
+```
+
+The response carries the command's structured result under `data.result`.
 
 Contributors with `pyright-langserver` already on `PATH` can run the optional
 real-server gate with `uv run pytest
