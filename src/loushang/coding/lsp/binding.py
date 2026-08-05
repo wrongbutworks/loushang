@@ -7,7 +7,11 @@ from pathlib import Path
 
 from loushang.coding.lsp.catalog import LspCatalog
 from loushang.coding.lsp.documents import LspDocumentManager
-from loushang.coding.lsp.model import CodeQueryResult, LspServerDefinition
+from loushang.coding.lsp.model import (
+    CodeQueryResult,
+    DocumentOutlineResult,
+    LspServerDefinition,
+)
 from loushang.coding.lsp.ports import (
     AuthorizedProcessLauncher,
     PathExists,
@@ -70,6 +74,23 @@ class CodingLspBinding:
             line=line,
             character=character,
             query=query,
+            limit=limit,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+
+    async def document_outline(
+        self,
+        *,
+        path: str,
+        depth: int = 4,
+        limit: int = 200,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> DocumentOutlineResult:
+        return await self._tools.document_outline(
+            path=path,
+            depth=depth,
             limit=limit,
             correlation_id=correlation_id,
             signal=signal,

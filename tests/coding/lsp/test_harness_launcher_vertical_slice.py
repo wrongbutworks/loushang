@@ -46,6 +46,7 @@ def test_real_harness_launcher_drives_lsp_query_and_graceful_cleanup(
         )
         lsp_runtime = None
         result = None
+        outline = None
         try:
             lsp_runtime = bind_coding_lsp_runtime(
                 workspace_root=project,
@@ -82,6 +83,10 @@ def test_real_harness_launcher_drives_lsp_query_and_graceful_cleanup(
                 character=7,
                 correlation_id="real-lsp-query-1",
             )
+            outline = await lsp_runtime.document_outline(
+                path="main.py",
+                correlation_id="real-lsp-query-2",
+            )
         finally:
             if lsp_runtime is not None:
                 await lsp_runtime.close()
@@ -93,11 +98,16 @@ def test_real_harness_launcher_drives_lsp_query_and_graceful_cleanup(
         assert result.items[0].path == "main.py"
         assert result.items[0].range.start.line == 1
         assert result.items[0].range.start.character == 1
+        assert outline is not None
+        assert outline.count == 1
+        assert outline.items[0].name == "target"
+        assert outline.items[0].kind_name == "variable"
         assert method_log.read_text(encoding="utf-8").splitlines() == [
             "initialize",
             "initialized",
             "textDocument/didOpen",
             "textDocument/definition",
+            "textDocument/documentSymbol",
             "shutdown",
             "exit",
         ]

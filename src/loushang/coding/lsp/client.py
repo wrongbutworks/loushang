@@ -87,6 +87,10 @@ class LspClient:
                                 "didSave": False,
                             },
                             "definition": {"dynamicRegistration": False},
+                            "documentSymbol": {
+                                "dynamicRegistration": False,
+                                "hierarchicalDocumentSymbolSupport": True,
+                            },
                         },
                         "workspace": {
                             "configuration": True,

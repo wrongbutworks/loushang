@@ -67,6 +67,23 @@ def _definition_result(message: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _outline_result() -> list[dict[str, object]]:
+    return [
+        {
+            "name": "target",
+            "kind": 13,
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 10},
+            },
+            "selectionRange": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 6},
+            },
+        }
+    ]
+
+
 def main() -> int:
     while True:
         message = _read_message()
@@ -86,6 +103,7 @@ def main() -> int:
                         "capabilities": {
                             "positionEncoding": "utf-16",
                             "definitionProvider": True,
+                            "documentSymbolProvider": True,
                             "textDocumentSync": 2,
                         }
                     },
@@ -97,6 +115,14 @@ def main() -> int:
                     "jsonrpc": "2.0",
                     "id": request_id,
                     "result": _definition_result(message),
+                }
+            )
+        elif method == "textDocument/documentSymbol":
+            _write_message(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": _outline_result(),
                 }
             )
         elif method == "shutdown":

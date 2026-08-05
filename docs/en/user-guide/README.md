@@ -75,6 +75,41 @@ loushang --tools bash,write -p "Inspect this project."
 loushang --no-tools -p "Explain the repository from context only."
 ```
 
+### LSP Semantic Tools
+
+`coding.lsp` is an optional, high-frequency Coding capability that provides
+`inspect_symbol` and `document_outline`. It defaults to `on_demand`; make the
+tools part of the agent's default tool set for one invocation with:
+
+```bash
+loushang --capability coding.lsp=always
+loushang lsp status
+loushang lsp doctor
+```
+
+Servers still start lazily on the first semantic query. `status` and `doctor`
+only inspect configuration and executable availability; they do not start or
+install a server. Loushang probes installed Pyright, TypeScript Language Server,
+rust-analyzer, gopls, and clangd defaults.
+
+Declare a custom server in `~/.loushang/coding/lsp.json`:
+
+```json
+{
+  "servers": [
+    {
+      "id": "python-custom",
+      "command": ["my-language-server", "--stdio"],
+      "language_extensions": {"python": [".py", ".pyi"]}
+    }
+  ]
+}
+```
+
+Project `.loushang/lsp.json` may tune a Product default or a server already
+declared by the user. Until the general workspace-trust mechanism exists, a
+repository config cannot introduce a new executable or environment override.
+
 ## Extensions
 
 Extensions are Python files that can register lifecycle hooks, tools, dynamic resources, commands, and flags. Start with the runnable extension examples in [examples/coding/extensions](../../../examples/coding/extensions/).

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from loushang.coding.lsp import (
+    DOCUMENT_OUTLINE_TOOL_NAME,
     INSPECT_SYMBOL_TOOL_NAME,
     CodingLspRuntime,
     DeferredCodingLspRuntime,
@@ -71,14 +72,16 @@ def test_deferred_runtime_and_tool_pack_preserve_mount_policy() -> None:
     register_coding_lsp_tools(on_demand, runtime=slot, mode="on_demand")
 
     assert [item.name for item in on_demand.list_definitions()] == [
-        INSPECT_SYMBOL_TOOL_NAME
+        INSPECT_SYMBOL_TOOL_NAME,
+        DOCUMENT_OUTLINE_TOOL_NAME,
     ]
     assert on_demand.list_enabled_definitions() == []
 
     always = WorkspaceToolRegistry()
     register_coding_lsp_tools(always, runtime=slot, mode="always")
     assert [item.name for item in always.list_enabled_definitions()] == [
-        INSPECT_SYMBOL_TOOL_NAME
+        INSPECT_SYMBOL_TOOL_NAME,
+        DOCUMENT_OUTLINE_TOOL_NAME,
     ]
 
     with pytest.raises(RuntimeError, match="not bound"):
@@ -87,6 +90,14 @@ def test_deferred_runtime_and_tool_pack_preserve_mount_policy() -> None:
                 path="main.py",
                 line=1,
                 character=1,
+                correlation_id="before-session",
+            )
+        )
+
+    with pytest.raises(RuntimeError, match="not bound"):
+        asyncio.run(
+            slot.document_outline(
+                path="main.py",
                 correlation_id="before-session",
             )
         )
