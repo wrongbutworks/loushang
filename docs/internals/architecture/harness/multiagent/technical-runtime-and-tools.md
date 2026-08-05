@@ -190,9 +190,9 @@ rules remain in `harness.multiagent.context`.
 
 Harness defines the `SessionSubagentFactory` contract but intentionally does
 not provide a factory that creates an arbitrary Product child. Coding, PPT,
-Design, and OEM Products must explicitly bind their own factory because only
-the Product knows how to construct its transcript/session, select its model and
-tools, route approvals, and interpret its workspace. A disabled or absent
+Design, and OEM-defined Products must explicitly bind their own factory because
+only the Product knows how to construct its transcript/session, select its model
+and tools, route approvals, and interpret its workspace. A disabled or absent
 binding therefore fails closed. A shared callback-driven factory may be
 extracted only after at least two Product implementations demonstrate the same
 stable construction seam.

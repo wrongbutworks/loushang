@@ -9,7 +9,7 @@ Implemented on `harness/session-adapter-collapse`.
 `loushang.harness.transcript.ProductTranscriptSession` is the reusable
 Product-facing wrapper around a bound `AgentTranscriptLifecycleSession`. It
 owns the repetitive session surface shared by Coding, Research, Design, PPT,
-and OEM Products:
+and OEM-defined Products:
 
 - create, open, load, recent-resume, in-memory, and selected-path fork;
 - current transcript metadata, records, context, tree, labels, diagnostics,

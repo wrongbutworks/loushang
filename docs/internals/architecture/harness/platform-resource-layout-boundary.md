@@ -88,6 +88,32 @@ example, Coding may register `loushang.coding.resources`; Design may register
 `loushang.design.resources`. The package slot and loading machinery are shared,
 while the prompt, skill, theme, and extension content remains product-owned.
 
+## Package, Plugin, And Extension Roles
+
+Canonical terminology comes from the
+[Product And OEM Glossary](../../glossary/loushang-product.md). Within the
+resource runtime, the three concepts remain separate:
+
+- a **Resource Package** is the distribution or materialization root for
+  resources;
+- a **Plugin** is a manifest-backed optional identity and activation view that
+  may resolve to a package root;
+- an **Extension** is executable or declarative behavior described by a
+  resource descriptor and admitted into an extension surface.
+
+The standard projection is:
+
+```text
+plugin source -> plugin manifest -> resource package root -> resource descriptors
+                                                        -> extension descriptors
+```
+
+A configured package root does not require a Plugin manifest. A Plugin may
+contain only prompts, Skills, themes, or assets and therefore no Extension.
+Package installation, Plugin enablement, descriptor discovery, Extension
+admission, and Extension activation are distinct state transitions. None of
+the first three grants execution authority.
+
 ## Responsibility Split
 
 Harness owns:

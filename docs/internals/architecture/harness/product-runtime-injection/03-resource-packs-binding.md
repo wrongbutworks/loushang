@@ -12,8 +12,8 @@ trust policy, and executable adapters.
 The five capability-composition slots already describe how a Product selects
 resource activation and capability-pack mechanics. This binding removes the
 remaining Coding-private registry and wrapper around those neutral mechanisms
-so Research, PPT, Design, Cowork, and OEM Products can bind the same runtime
-without copying factory or validation logic.
+so Research, PPT, Design, Cowork, and OEM-defined Products can bind the same
+runtime without copying factory or validation logic.
 
 This is not a new resource discovery system, extension container, or global
 service locator. Resource discovery, package materialization, manifest trust,

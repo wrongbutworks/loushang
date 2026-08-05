@@ -33,8 +33,8 @@ writer; it must not fall back to an unrestricted `repr()` in the archive.
 `.loushang/diagnostics` output default, `loushang-diag-*` name, README,
 camelCase manifest, latest debug/trace/session artifacts, and standard
 diagnostic serialization. These are shared Loushang host contracts rather than
-Coding semantics. Research, Design, PPT, OEM products, and extensions can use
-the default profile or inject another `DiagnosticBundleProfile`.
+Coding semantics. Research, Design, PPT, OEM-configured Products, and Extensions
+can use the default profile or inject another `DiagnosticBundleProfile`.
 
 The removed `loushang.coding.diag_export` facade is not retained. Coding CLI
 calls the Harness operation directly, preserving the existing archive schema.

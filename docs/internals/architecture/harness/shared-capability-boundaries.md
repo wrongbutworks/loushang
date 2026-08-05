@@ -11,8 +11,35 @@ The guiding rule is:
 harness provides mechanism
 product adapter provides defaults and semantics
 OEM layer overrides product policy
-extensions contribute optional capabilities
+extensions contribute optional providers or capability items through declared surfaces
 ```
+
+Canonical Product, OEM, Capability, Package, Plugin, and Extension terms are
+defined in the
+[Product And OEM Glossary](../../glossary/loushang-product.md).
+
+## Harness Capability Meaning
+
+A **Harness Capability** is a Product-neutral Capability whose public contract,
+reusable mechanism, or explicitly overridable platform default is owned by
+Harness. `Shared capability` describes cross-Product reuse; it does not define
+a Plugin surface, installation unit, global singleton, mandatory activation,
+or common Product configuration.
+
+Ownership and binding remain separate:
+
+```text
+Harness owns a Product-neutral capability contract or mechanism
+  -> Product declares whether and how its runtime consumes it
+     -> OEM may vary only Product-declared overlay points
+        -> admitted Plugins may contribute only through declared surfaces
+```
+
+A Product-owned Capability can consume Harness Capabilities without moving its
+domain semantics into Harness. An Extension can contribute a provider or item
+to an admitted Capability Slot without owning that Capability, Product, or
+lifecycle. The composition rules for those slots are defined by the
+[Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md).
 
 ## Layer Model
 
@@ -60,7 +87,7 @@ are explicitly overridable. It must not choose domain content, activation,
 trust, or projection policy on a product's behalf.
 
 This product kernel is what differentiates `coding`, `design`, `research`,
-`ppt`, `cowork`, and OEM products. Product bootstrap and wiring should become
+`ppt`, `cowork`, and OEM-defined Products. Product bootstrap and wiring should become
 small as Harness grows, but these semantics must not migrate merely to reduce
 the number of lines in a product package.
 
@@ -71,7 +98,7 @@ Harness may own:
 - tool definition value types that are not product-specific;
 - schema inference and normalization helpers;
 - registry/resolution interfaces;
-- contribution records from packages or extensions;
+- contribution records from Resource Packages or Extensions;
 - availability metadata and diagnostics;
 - wrapper engines that adapt neutral tool call inputs to `loushang.agent`
   tool primitives;
@@ -389,15 +416,23 @@ remediation, session projection, and UI behavior.
 
 ## OEM Override Model
 
-OEMs override product behaviour through three mechanisms, plus the packaging
-boundary that makes them distributable as a single unit:
+The canonical composition rules are defined by the
+[Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md).
+In particular, `override` is an umbrella term: every surface must declare
+Aggregate Contribution, Ordered Interception/Decoration, Resource Overlay, or
+Exclusive Replacement semantics. Product and OEM variation cannot bypass a
+Harness invariant enforcement layer.
+
+OEMs vary Product behavior through three mechanisms. An OEM Package is the
+separate distribution boundary that may carry the corresponding Profile,
+overlays, and Plugins:
 
 | Mechanism | How it works | Examples |
 | --- | --- | --- |
 | Protocol injection | OEM supplies an implementation of a Harness-defined protocol; Harness calls it without knowing the product or OEM identity | `PolicyEvaluator`, `ApprovalResolver`, `ExtensionPolicyResolver` |
 | Resource overlay | OEM directories are discovered alongside built-in and product directories; same-key files shadow lower-precedence layers | `skills/*/SKILL.md`, `methods/*/METHOD.md`, `prompts/*.md`, `themes/*.json` |
 | Extension registration | OEM ships extensions that declare `ExtensionSurfaceDescriptor` records; product/OEM policy gates activation | tools, commands, model providers, channel adapters, hooks |
-| Plugin packaging | An OEM plugin manifest (`loushang-plugin.json`) bundles resource roots, extensions, and configuration overrides into one distributable unit | `PluginManager → PluginResolver → ResourceDescriptors` |
+| OEM Package with Plugin contributions | The OEM Package distributes OEM Profile/configuration and resource roots; optional `loushang-plugin.json` manifests identify independently activated Plugin contributions | OEM Package → `PluginManager → PluginResolver → ResourceDescriptors` |
 
 ### Override Layer Order
 
@@ -412,8 +447,8 @@ harness provides mechanism
 A mechanism belongs to Harness and cannot be overridden by OEM (e.g. the
 agent loop, the channel envelope protocol, the contribution inventory index).
 An OEM may override product defaults, product resource content, and product
-activation policy. An OEM may add new capabilities through extensions. An OEM
-must not replace Harness mechanisms.
+activation policy. An OEM may contribute optional providers or capability items
+through admitted Extensions. An OEM must not replace Harness mechanisms.
 
 ### Dimensions OEMs Can Override
 
@@ -422,7 +457,7 @@ others — they are orthogonal replaceability points:
 
 | Dimension | Override method | Harness stability contract |
 | --- | --- | --- |
-| Product (coding / ppt / research / …) | Ship an OEM product adapter that reuses the shared harness | Product adapters depend on Harness protocols, not internals |
+| Product (coding / ppt / research / …) | Ship an OEM-defined Product Adapter with a distinct Product identity that reuses Harness | Product adapters depend on Harness protocols, not internals |
 | Channel (TUI / WebUI / SDK / bot / …) | Register an OEM channel adapter | `ChannelEnvelope(WorkOperation/WorkEvent/RuntimeEventView)` schema, additive evolution |
 | Method (bugfix / tdd / review / …) | Override method resources in OEM directories | `methods/*/METHOD.md` format and loader mechanics |
 | Skill (debugging / refactoring / …) | Override skill resources | `skills/*/SKILL.md` format and activation settings |
@@ -447,7 +482,7 @@ others — they are orthogonal replaceability points:
 The shared contribution flow should be:
 
 ```text
-extension/package contributes neutral records
+Extension or Resource Package contributes neutral records
   -> harness validates and normalizes contribution shape
   -> product adapter decides applicability
   -> OEM layer may override activation/policy

@@ -44,19 +44,20 @@ manifest/runtime projection live in
 `loushang.coding.extensions.contributions` module is removed; Coding imports
 the Harness owner directly.
 
-## Compatibility
+## Canonical Imports And Compatibility
 
-The Coding extension package may expose selected Harness values as part of its
-product API, but shared implementations are imported from their owners:
+The removed Coding Extension package does not expose compatibility aliases.
+Consumers import the Harness owner directly:
 
 ```python
-from loushang.coding.extensions import ExtensionInventory
-from loushang.coding.extensions import ExtensionSurfaceDescriptor
-from loushang.harness.extensions.contributions import ContributionRegistry
+from loushang.harness.contributions import ExtensionInventory
+from loushang.harness.contributions import ExtensionSurfaceDescriptor
+from loushang.harness.contributions import ContributionRegistry
 ```
 
-Harness-owned classes keep their harness `__module__`; Coding does not define a
-second implementation or a legacy submodule import path.
+The generic contribution names and Extension-shaped names refer to the same
+Harness-owned classes. They keep their Harness `__module__`; no Product defines
+a second implementation or legacy submodule import path.
 
 Existing constructor fields, registry methods, insertion ordering, duplicate
 visibility, exception attributes, and error text remain unchanged. No broad
@@ -101,7 +102,7 @@ The migration must prove:
 - descriptor values and frozen-record behavior remain unchanged;
 - registry insertion order and all indexes remain unchanged;
 - duplicate keys remain visible and `get()` preserves its exception contract;
-- accepted Coding paths share Harness class identity;
+- generic and Extension-shaped Harness names share class identity;
 - `LoadedExtension` projection produces Harness-owned records;
 - Coding internal consumers import the Harness owner directly;
 - extension runtime behavior and focused Coding tests remain unchanged;

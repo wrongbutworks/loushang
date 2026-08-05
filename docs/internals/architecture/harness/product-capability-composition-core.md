@@ -27,6 +27,24 @@ Coding is the compatibility adapter. Product-neutral Harness fixtures using
 research and design vocabulary provide the independent contract probe; a
 second production Product is not required by the neutrality evidence gate.
 
+## Bound Behavior Semantics
+
+The values bound through Capability Slots use the behavioral semantics from the
+[Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md):
+
+- command and tool packs are Aggregate Contributions after Product admission;
+- prompt sections are an ordered aggregate whose ordering is supplied by the
+  Product and recorded in the prepared result;
+- injected prompt parsing, expansion, activation, and callback behavior is
+  Protocol Injection at the Product composition root;
+- same-name resource or tool behavior follows the owning catalog's documented
+  precedence and conflict contract; it is not a general last-write-wins rule.
+
+This core does not publish a universal exclusive-provider registry. A Product
+that exposes Exclusive Replacement behavior must declare its Runtime
+Capability Shape, selection, fallback, lifecycle, and diagnostic behavior
+explicitly.
+
 ## Harness Ownership
 
 ### Commands

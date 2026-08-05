@@ -40,9 +40,9 @@ shared picker:
   already active Coding runtime.
 
 Moving those assumptions into Harness would make PPT, Design, Research, and
-mixed OEM products pretend to be Coding. Moving the whole picker into Coding
-would duplicate search, pagination, focus, preview, and activation mechanics in
-every product.
+Products composed by a mixed OEM Profile pretend to be Coding. Moving the whole
+picker into Coding would duplicate search, pagination, focus, preview, and
+activation mechanics in every product.
 
 The design therefore needs to answer a broader question:
 
