@@ -67,6 +67,38 @@ loushang --tools bash,write -p "Inspect this project."
 loushang --no-tools -p "Explain the repository from context only."
 ```
 
+### LSP 语义工具
+
+`coding.lsp` 是可选的高频 Coding 能力，提供 `inspect_symbol` 和
+`document_outline`。默认是 `on_demand`；要让它们进入当前 agent 的默认工具集：
+
+```bash
+loushang --capability coding.lsp=always
+loushang lsp status
+loushang lsp doctor
+```
+
+Server 仍只会在第一次语义查询时惰性启动；`status` 和 `doctor` 只检查配置与可执行文件，
+不会启动或安装任何 Server。Loushang 会探测已安装的 Pyright、TypeScript Language
+Server、rust-analyzer、gopls 和 clangd。
+
+自定义 Server 写入 `~/.loushang/coding/lsp.json`：
+
+```json
+{
+  "servers": [
+    {
+      "id": "python-custom",
+      "command": ["my-language-server", "--stdio"],
+      "language_extensions": {"python": [".py", ".pyi"]}
+    }
+  ]
+}
+```
+
+项目的 `.loushang/lsp.json` 可以调整产品默认或用户已声明的 Server，但在通用 workspace
+trust 机制完成前，不能从仓库配置引入新的可执行文件或环境变量。
+
 ## 扩展
 
 扩展是可以注册生命周期 hooks、工具、动态资源、命令和 flags 的 Python 文件。可以先阅读 [examples/coding/extensions](../../../examples/coding/extensions/) 中的可运行扩展示例。

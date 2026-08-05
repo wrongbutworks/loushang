@@ -10,6 +10,7 @@ from loushang.coding.compaction.adapter import (
 from loushang.coding.compaction.adapter import (
     execute_coding_compaction as _execute_coding_compaction,
 )
+from loushang.coding.lsp.runtime import CodingLspRuntime
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -122,9 +123,11 @@ class AgentSession(AgentProductSession):
         tool_policy_evaluator: PolicyEvaluator | None = None,
         capability_runtime: CapabilityCompositionRuntime | None = None,
         sandbox_runtime: SandboxExecutionRuntime | None = None,
+        lsp_runtime: CodingLspRuntime | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
     ) -> None:
         self._sandbox_runtime = sandbox_runtime
+        self._lsp_runtime = lsp_runtime
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
         resolved_capability_runtime = (
@@ -177,20 +180,40 @@ class AgentSession(AgentProductSession):
             return SandboxStatus(state="disabled")
         return self._sandbox_runtime.status()
 
+    async def emit_product_tool_audit_event(
+        self,
+        event: Mapping[str, object],
+    ) -> None:
+        """Route a Product-owned runtime action through the session event stream."""
+
+        await self._dispatch_event(dict(event))
+
     async def _dispose_session_runtime_profile(self) -> None:
         primary_error: BaseException | None = None
         try:
             await super()._dispose_session_runtime_profile()
         except BaseException as exc:
             primary_error = exc
+        lsp_runtime = getattr(self, "_lsp_runtime", None)
+        if lsp_runtime is not None:
+            try:
+                await lsp_runtime.close()
+            except BaseException as cleanup_error:
+                if primary_error is None:
+                    primary_error = cleanup_error
+                else:
+                    primary_error.add_note(
+                        f"Coding LSP cleanup also failed: {cleanup_error}"
+                    )
         if self._sandbox_runtime is not None:
             try:
                 await self._sandbox_runtime.close()
             except BaseException as cleanup_error:
                 if primary_error is None:
-                    raise
-                primary_error.add_note(
-                    f"process host or sandbox cleanup also failed: {cleanup_error}"
-                )
+                    primary_error = cleanup_error
+                else:
+                    primary_error.add_note(
+                        f"process host or sandbox cleanup also failed: {cleanup_error}"
+                    )
         if primary_error is not None:
             raise primary_error

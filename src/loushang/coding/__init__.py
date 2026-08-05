@@ -20,7 +20,7 @@ from loushang.coding.bootstrap import (
     create_agent_session_services,
     create_services,
 )
-from loushang.coding.capabilities import CODING_ARCH_CAPABILITY
+from loushang.coding.capabilities import CODING_ARCH_CAPABILITY, CODING_LSP_CAPABILITY
 from loushang.coding.prompt import assemble_system_prompt
 from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
@@ -69,6 +69,7 @@ __all__ = [
     "CODING_BUILTIN_TOOL_PACK",
     "CODING_ARCH_CAPABILITY",
     "CODING_ARCH_TOOL_PACK",
+    "CODING_LSP_CAPABILITY",
     "CODING_TOOL_NAMES",
     "CapabilityMountMode",
     "CompactionDecision",

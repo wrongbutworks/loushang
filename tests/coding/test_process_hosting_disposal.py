@@ -64,3 +64,33 @@ def test_coding_disposal_propagates_cleanup_failure_without_product_failure(
         asyncio.run(session._dispose_session_runtime_profile())
 
     assert events == ["product", "host-sandbox"]
+
+
+def test_coding_disposes_lsp_before_process_host_and_sandbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    async def dispose_product(_self: object) -> None:
+        events.append("product")
+
+    class _LspRuntime:
+        async def close(self) -> None:
+            events.append("lsp")
+
+    class _SandboxRuntime:
+        async def close(self) -> None:
+            events.append("host-sandbox")
+
+    monkeypatch.setattr(
+        AgentProductSession,
+        "_dispose_session_runtime_profile",
+        dispose_product,
+    )
+    session = object.__new__(AgentSession)
+    session._lsp_runtime = _LspRuntime()  # type: ignore[assignment]
+    session._sandbox_runtime = _SandboxRuntime()  # type: ignore[assignment]
+
+    asyncio.run(session._dispose_session_runtime_profile())
+
+    assert events == ["product", "lsp", "host-sandbox"]

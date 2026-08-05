@@ -8,9 +8,11 @@ from typing import cast
 from loushang.harness.config.agent import CapabilityMountMode
 
 CODING_ARCH_CAPABILITY = "coding.arch"
+CODING_LSP_CAPABILITY = "coding.lsp"
 
 _CODING_CAPABILITY_DEFAULTS: Mapping[str, CapabilityMountMode] = {
     CODING_ARCH_CAPABILITY: "on_demand",
+    CODING_LSP_CAPABILITY: "on_demand",
 }
 
 
@@ -48,6 +50,7 @@ def parse_capability_mount(value: str) -> tuple[str, CapabilityMountMode]:
 
 __all__ = [
     "CODING_ARCH_CAPABILITY",
+    "CODING_LSP_CAPABILITY",
     "coding_capability_mount_mode",
     "parse_capability_mount",
 ]

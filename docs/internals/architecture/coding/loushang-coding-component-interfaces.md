@@ -148,3 +148,4 @@ Package, Plugin, and Extension contracts are owned by Harness.
 - [Loushang Coding Component Dependencies](loushang-coding-component-dependencies.md)
 - [Loushang Coding Development Priority And Stability Strategy](loushang-coding-development-priority-and-stability-strategy.md)
 - [Component Interface Notes](component-interfaces/README.md)
+- [Proposed Coding LSP Capability Architecture](lsp/README.md)
