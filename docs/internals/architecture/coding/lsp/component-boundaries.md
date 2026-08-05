@@ -25,7 +25,8 @@ Provide immutable, transport-independent values shared by LSP components.
 
 - `LspServerDefinition`, provenance, and catalog generation values;
 - `LspServerSelection` and `LspServerKey`;
-- code positions, ranges, locations, symbols, and query result envelopes;
+- code positions, ranges, locations, bounded hover payloads, symbols, and query
+  result envelopes;
 - `CodeDiagnostic` and capability/runtime status values;
 - stable error categories for unavailable, denied, timeout, crash, protocol,
   stale, invalid-input, and result-truncated outcomes.

@@ -15,6 +15,7 @@ from loushang.coding.lsp.discovery import (
 )
 from loushang.coding.lsp.documents import DocumentSnapshot, LspDocumentManager
 from loushang.coding.lsp.model import (
+    CodeHover,
     CodeLocation,
     CodePosition,
     CodeQueryResult,
@@ -53,6 +54,7 @@ from loushang.coding.lsp.tools import (
     INSPECT_SYMBOL_TOOL_NAME,
     MAX_DOCUMENT_OUTLINE_DEPTH,
     MAX_DOCUMENT_OUTLINE_RESULTS,
+    MAX_HOVER_CONTENT_CHARACTERS,
     MAX_INSPECT_SYMBOL_RESULTS,
     CodingLspTools,
     create_document_outline_tool_definition,
@@ -61,6 +63,7 @@ from loushang.coding.lsp.tools import (
 
 __all__ = [
     "AuthorizedProcessLauncher",
+    "CodeHover",
     "CodeLocation",
     "CodePosition",
     "CodeQueryResult",
@@ -91,6 +94,7 @@ __all__ = [
     "LspServerSupervisor",
     "LspUnavailableError",
     "MAX_INSPECT_SYMBOL_RESULTS",
+    "MAX_HOVER_CONTENT_CHARACTERS",
     "MAX_DOCUMENT_OUTLINE_DEPTH",
     "MAX_DOCUMENT_OUTLINE_RESULTS",
     "ProcessExit",

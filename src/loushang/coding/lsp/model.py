@@ -9,7 +9,7 @@ from pathlib import Path, PurePath
 from types import MappingProxyType
 from typing import Literal
 
-LspQuery = Literal["definition"]
+LspQuery = Literal["definition", "references", "hover", "implementation"]
 
 
 class LspError(RuntimeError):
@@ -165,8 +165,17 @@ class CodeLocation:
 
 
 @dataclass(frozen=True, slots=True)
+class CodeHover:
+    """One bounded hover payload normalized away from LSP wire variants."""
+
+    contents: str
+    kind: Literal["markdown", "plaintext"]
+    range: CodeRange | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CodeQueryResult:
-    items: tuple[CodeLocation, ...]
+    items: tuple[CodeLocation | CodeHover, ...]
     count: int
     truncated: bool
     server_id: str
@@ -267,6 +276,7 @@ def _freeze_json_value(value: object) -> object:
 
 
 __all__ = [
+    "CodeHover",
     "CodeLocation",
     "CodePosition",
     "CodeQueryResult",

@@ -5,11 +5,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 from urllib.parse import unquote, urlparse
 
 from loushang.coding.lsp.documents import DocumentSnapshot, LspDocumentManager
 from loushang.coding.lsp.model import (
+    CodeHover,
     CodeLocation,
     CodePosition,
     CodeQueryResult,
@@ -27,9 +28,24 @@ from loushang.harness.tools.core import ToolDefinition, tool
 INSPECT_SYMBOL_TOOL_NAME = "inspect_symbol"
 DOCUMENT_OUTLINE_TOOL_NAME = "document_outline"
 MAX_INSPECT_SYMBOL_RESULTS = 50
+MAX_HOVER_CONTENT_CHARACTERS = 12_000
 MAX_DOCUMENT_OUTLINE_DEPTH = 8
 MAX_DOCUMENT_OUTLINE_RESULTS = 200
 _MAX_OUTLINE_PROTOCOL_SYMBOLS = 2_000
+_MAX_HOVER_CONTENT_PARTS = 64
+
+_QUERY_METHODS = {
+    "definition": "textDocument/definition",
+    "references": "textDocument/references",
+    "hover": "textDocument/hover",
+    "implementation": "textDocument/implementation",
+}
+_QUERY_CAPABILITIES = {
+    "definition": "definitionProvider",
+    "references": "referencesProvider",
+    "hover": "hoverProvider",
+    "implementation": "implementationProvider",
+}
 
 _SYMBOL_KIND_NAMES = (
     "file",
@@ -69,6 +85,7 @@ class InspectSymbolRuntime(Protocol):
         line: int,
         character: int,
         query: str = "definition",
+        include_declaration: bool = True,
         limit: int = 50,
         correlation_id: str,
         signal: object | None = None,
@@ -98,6 +115,7 @@ class CodingLspTools:
         line: int,
         character: int,
         query: str = "definition",
+        include_declaration: bool = True,
         limit: int = 50,
         correlation_id: str,
         signal: object | None = None,
@@ -106,6 +124,7 @@ class CodingLspTools:
             line=line,
             character=character,
             query=query,
+            include_declaration=include_declaration,
             limit=limit,
         )
         selection = self.selector.select(path)
@@ -114,6 +133,19 @@ class CodingLspTools:
             correlation_id=correlation_id,
             signal=signal,
         )
+        if not _supports_capability(
+            runtime.client.server_capabilities,
+            _QUERY_CAPABILITIES[query],
+        ):
+            return CodeQueryResult(
+                items=(),
+                count=0,
+                truncated=False,
+                server_id=selection.definition_id,
+                document_version=None,
+                readiness="unsupported",
+                warnings=(f"language server does not advertise {query} support",),
+            )
         document = await self.documents.ensure_document(
             runtime,
             selection.file_path,
@@ -123,13 +155,26 @@ class CodingLspTools:
             document.content,
             CodePosition(line=line, character=character),
         )
-        raw_result = await runtime.client.request(
-            "textDocument/definition",
-            {
-                "textDocument": {"uri": document.uri},
-                "position": lsp_position,
-            },
-        )
+        params: dict[str, object] = {
+            "textDocument": {"uri": document.uri},
+            "position": lsp_position,
+        }
+        if query == "references":
+            params["context"] = {"includeDeclaration": include_declaration}
+        raw_result = await runtime.client.request(_QUERY_METHODS[query], params)
+        if query == "hover":
+            hover, truncated, warnings = _normalize_hover(
+                raw_result,
+                source_document=document,
+            )
+            return CodeQueryResult(
+                items=() if hover is None else (hover,),
+                count=0 if hover is None else 1,
+                truncated=truncated,
+                server_id=selection.definition_id,
+                document_version=document.version,
+                warnings=warnings,
+            )
         locations, total, warnings = await self._normalize_locations(
             raw_result,
             runtime=runtime,
@@ -220,19 +265,19 @@ class CodingLspTools:
     ) -> CodeLocation:
         del runtime  # Runtime identity is retained in the enclosing result.
         if not isinstance(raw_location, Mapping):
-            raise LspProtocolError("definition result items must be objects")
+            raise LspProtocolError("semantic location result items must be objects")
         uri = raw_location.get("uri", raw_location.get("targetUri"))
         raw_range = raw_location.get(
             "range",
             raw_location.get("targetSelectionRange", raw_location.get("targetRange")),
         )
         if not isinstance(uri, str) or not isinstance(raw_range, Mapping):
-            raise LspProtocolError("definition result is missing a URI or range")
+            raise LspProtocolError("semantic location result is missing a URI or range")
         lsp_range = _parse_lsp_range(raw_range)
 
         target_path = _file_uri_path(uri)
         if target_path is None:
-            warnings.append("definition target uses a non-file URI")
+            warnings.append("semantic query target uses a non-file URI")
             return CodeLocation(
                 path=None,
                 uri=uri,
@@ -243,7 +288,7 @@ class CodingLspTools:
         target_path = target_path.resolve()
         workspace_root = self.selector.workspace_root
         if not target_path.is_relative_to(workspace_root):
-            warnings.append("definition target is outside the Coding workspace")
+            warnings.append("semantic query target is outside the Coding workspace")
             return CodeLocation(
                 path=None,
                 uri=uri,
@@ -261,7 +306,7 @@ class CodingLspTools:
             public_range = _to_public_range(content, lsp_range)
         except (OSError, UnicodeError, LspInvalidInputError):
             warnings.append(
-                "definition target could not be read for position conversion"
+                "semantic query target could not be read for position conversion"
             )
             return CodeLocation(
                 path=target_path.relative_to(workspace_root).as_posix(),
@@ -276,10 +321,107 @@ class CodingLspTools:
         )
 
 
+def _supports_capability(
+    capabilities: Mapping[str, object],
+    capability_name: str,
+) -> bool:
+    value = capabilities.get(capability_name)
+    return value is True or isinstance(value, Mapping)
+
+
+def _normalize_hover(
+    raw_result: object,
+    *,
+    source_document: DocumentSnapshot,
+) -> tuple[CodeHover | None, bool, tuple[str, ...]]:
+    if raw_result is None:
+        return None, False, ()
+    if not isinstance(raw_result, Mapping):
+        raise LspProtocolError("hover result must be an object or null")
+    if "contents" not in raw_result:
+        raise LspProtocolError("hover result is missing contents")
+
+    contents, kind, truncated = _normalize_hover_contents(raw_result["contents"])
+    raw_range = raw_result.get("range")
+    public_range = None
+    if raw_range is not None:
+        if not isinstance(raw_range, Mapping):
+            raise LspProtocolError("hover range must be an object")
+        public_range = _to_public_range(
+            source_document.content,
+            _parse_lsp_range(raw_range),
+        )
+    warnings = (
+        ("hover contents were truncated to the configured content limits",)
+        if truncated
+        else ()
+    )
+    return (
+        CodeHover(contents=contents, kind=kind, range=public_range),
+        truncated,
+        warnings,
+    )
+
+
+def _normalize_hover_contents(
+    raw_contents: object,
+) -> tuple[str, Literal["markdown", "plaintext"], bool]:
+    if isinstance(raw_contents, str):
+        contents, truncated = _bound_hover_content(raw_contents)
+        return contents, "markdown", truncated
+    if isinstance(raw_contents, Mapping):
+        if "kind" in raw_contents:
+            kind = raw_contents.get("kind")
+            value = raw_contents.get("value")
+            if kind not in {"markdown", "plaintext"} or not isinstance(value, str):
+                raise LspProtocolError(
+                    "hover MarkupContent requires a supported kind and string value"
+                )
+            contents, truncated = _bound_hover_content(value)
+            return contents, kind, truncated
+        contents = _normalize_marked_string(raw_contents)
+        contents, truncated = _bound_hover_content(contents)
+        return contents, "markdown", truncated
+    if isinstance(raw_contents, list):
+        protocol_truncated = len(raw_contents) > _MAX_HOVER_CONTENT_PARTS
+        parts = [
+            item if isinstance(item, str) else _normalize_marked_string(item)
+            for item in raw_contents[:_MAX_HOVER_CONTENT_PARTS]
+        ]
+        contents, content_truncated = _bound_hover_content("\n\n".join(parts))
+        return contents, "markdown", protocol_truncated or content_truncated
+    raise LspProtocolError("hover contents use an unsupported LSP shape")
+
+
+def _normalize_marked_string(raw_value: object) -> str:
+    if not isinstance(raw_value, Mapping):
+        raise LspProtocolError("hover MarkedString items must be strings or objects")
+    language = raw_value.get("language")
+    value = raw_value.get("value")
+    if not isinstance(language, str) or not isinstance(value, str):
+        raise LspProtocolError(
+            "hover MarkedString objects require language and value strings"
+        )
+    normalized_language = language.strip()
+    if len(normalized_language) > 64 or any(
+        character
+        not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+-.#"
+        for character in normalized_language
+    ):
+        normalized_language = ""
+    return f"```{normalized_language}\n{value}\n```"
+
+
+def _bound_hover_content(contents: str) -> tuple[str, bool]:
+    if len(contents) <= MAX_HOVER_CONTENT_CHARACTERS:
+        return contents, False
+    return contents[:MAX_HOVER_CONTENT_CHARACTERS], True
+
+
 def create_inspect_symbol_tool_definition(
     runtime: InspectSymbolRuntime,
 ) -> ToolDefinition:
-    """Create the first, definition-only LSP tool over an injected binding."""
+    """Create the bounded semantic-query tool over an injected binding."""
 
     @tool(
         name=INSPECT_SYMBOL_TOOL_NAME,
@@ -289,18 +431,27 @@ def create_inspect_symbol_tool_definition(
             "server for a file in the current Coding workspace."
         ),
         prompt_snippet=(
-            "- inspect_symbol: Resolve a symbol definition at a one-based source "
-            "position using the workspace language server."
+            "- inspect_symbol: Query definitions, references, hover information, or "
+            "implementations at a one-based workspace source position."
         ),
         prompt_guidelines=(
-            "Use inspect_symbol when language-semantic definition resolution is more "
-            "reliable than textual search.",
+            "Use inspect_symbol when language-semantic symbol information is more "
+            "reliable than textual search. The limit bounds location results.",
         ),
         schema_overrides={
             "properties": {
                 "line": {"type": "integer", "minimum": 1},
                 "character": {"type": "integer", "minimum": 1},
-                "query": {"type": "string", "enum": ["definition"]},
+                "query": {
+                    "type": "string",
+                    "enum": [
+                        "definition",
+                        "references",
+                        "hover",
+                        "implementation",
+                    ],
+                },
+                "include_declaration": {"type": "boolean"},
                 "limit": {
                     "type": "integer",
                     "minimum": 1,
@@ -315,6 +466,7 @@ def create_inspect_symbol_tool_definition(
         line: int,
         character: int,
         query: str = "definition",
+        include_declaration: bool = True,
         limit: int = 50,
     ) -> dict[str, object]:
         result = await runtime.inspect_symbol(
@@ -322,6 +474,7 @@ def create_inspect_symbol_tool_definition(
             line=line,
             character=character,
             query=query,
+            include_declaration=include_declaration,
             limit=limit,
             correlation_id=ctx.tool_call_id,
             signal=ctx.signal,
@@ -389,12 +542,14 @@ def _validate_query_input(
     line: int,
     character: int,
     query: str,
+    include_declaration: bool,
     limit: int,
 ) -> None:
-    if query != "definition":
-        raise LspInvalidInputError(
-            "the first LSP vertical slice supports query='definition' only"
-        )
+    if not isinstance(query, str) or query not in _QUERY_METHODS:
+        supported = ", ".join(_QUERY_METHODS)
+        raise LspInvalidInputError(f"query must be one of: {supported}")
+    if not isinstance(include_declaration, bool):
+        raise LspInvalidInputError("include_declaration must be a boolean")
     for name, value in (("line", line), ("character", character)):
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
             raise LspInvalidInputError(f"{name} must be a positive integer")
@@ -649,6 +804,7 @@ __all__ = [
     "InspectSymbolRuntime",
     "MAX_DOCUMENT_OUTLINE_DEPTH",
     "MAX_DOCUMENT_OUTLINE_RESULTS",
+    "MAX_HOVER_CONTENT_CHARACTERS",
     "MAX_INSPECT_SYMBOL_RESULTS",
     "create_document_outline_tool_definition",
     "create_inspect_symbol_tool_definition",

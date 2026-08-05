@@ -46,6 +46,9 @@ def test_real_harness_launcher_drives_lsp_query_and_graceful_cleanup(
         )
         lsp_runtime = None
         result = None
+        references = None
+        implementation = None
+        hover = None
         outline = None
         try:
             lsp_runtime = bind_coding_lsp_runtime(
@@ -83,9 +86,31 @@ def test_real_harness_launcher_drives_lsp_query_and_graceful_cleanup(
                 character=7,
                 correlation_id="real-lsp-query-1",
             )
+            references = await lsp_runtime.inspect_symbol(
+                path="main.py",
+                line=2,
+                character=7,
+                query="references",
+                include_declaration=False,
+                correlation_id="real-lsp-query-2",
+            )
+            implementation = await lsp_runtime.inspect_symbol(
+                path="main.py",
+                line=2,
+                character=7,
+                query="implementation",
+                correlation_id="real-lsp-query-3",
+            )
+            hover = await lsp_runtime.inspect_symbol(
+                path="main.py",
+                line=2,
+                character=7,
+                query="hover",
+                correlation_id="real-lsp-query-4",
+            )
             outline = await lsp_runtime.document_outline(
                 path="main.py",
-                correlation_id="real-lsp-query-2",
+                correlation_id="real-lsp-query-5",
             )
         finally:
             if lsp_runtime is not None:
@@ -98,6 +123,15 @@ def test_real_harness_launcher_drives_lsp_query_and_graceful_cleanup(
         assert result.items[0].path == "main.py"
         assert result.items[0].range.start.line == 1
         assert result.items[0].range.start.character == 1
+        assert references is not None
+        assert references.count == 1
+        assert references.items[0].path == "main.py"
+        assert implementation is not None
+        assert implementation.count == 1
+        assert implementation.items[0].path == "main.py"
+        assert hover is not None
+        assert hover.items[0].contents == "`target: int`"
+        assert hover.items[0].kind == "markdown"
         assert outline is not None
         assert outline.count == 1
         assert outline.items[0].name == "target"
@@ -107,6 +141,9 @@ def test_real_harness_launcher_drives_lsp_query_and_graceful_cleanup(
             "initialized",
             "textDocument/didOpen",
             "textDocument/definition",
+            "textDocument/references",
+            "textDocument/implementation",
+            "textDocument/hover",
             "textDocument/documentSymbol",
             "shutdown",
             "exit",

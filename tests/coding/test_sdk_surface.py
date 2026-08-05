@@ -253,96 +253,121 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     project_root.mkdir()
     import_dir.mkdir()
 
-    services = coding.create_services()
-    session_manager = asyncio.run(
-        coding.SessionManager.new(
+    async def scenario() -> None:
+        services = coding.create_services()
+        session_manager = await coding.SessionManager.new(
             session_dir=tmp_path / "direct-sessions",
             cwd=str(project_root),
             persist=True,
         )
-    )
-    result = coding.create_agent_session_result(
-        session_manager=session_manager,
-        model=_model(),
-        services=services,
-    )
+        standalone_sessions: list[coding.AgentSession] = []
+        runtime = None
+        imported_manager = None
+        try:
+            result = coding.create_agent_session_result(
+                session_manager=session_manager,
+                model=_model(),
+                services=services,
+            )
+            standalone_sessions.append(result.session)
 
-    assert isinstance(result, coding.CreateAgentSessionResult)
-    assert isinstance(result.cwd_bound_services_audit, coding.CwdBoundServicesAudit)
-    assert result.cwd_bound_services_audit.ok is True
-    assert [record for record in result.diagnostics if record.type == "error"] == []
+            assert isinstance(result, coding.CreateAgentSessionResult)
+            assert isinstance(
+                result.cwd_bound_services_audit,
+                coding.CwdBoundServicesAudit,
+            )
+            assert result.cwd_bound_services_audit.ok is True
+            assert [
+                record for record in result.diagnostics if record.type == "error"
+            ] == []
 
-    direct_session = coding.create_agent_session(
-        session_manager=session_manager,
-        model=_model(),
-        services=services,
-    )
-    assert isinstance(direct_session, coding.AgentSession)
-    assert direct_session.session_manager is session_manager
+            direct_session = coding.create_agent_session(
+                session_manager=session_manager,
+                model=_model(),
+                services=services,
+            )
+            standalone_sessions.append(direct_session)
+            assert isinstance(direct_session, coding.AgentSession)
+            assert direct_session.session_manager is session_manager
 
-    agent_services = coding.create_agent_session_services(
-        cwd=project_root,
-        global_settings_path=tmp_path / "global-settings.json",
-    )
-    from_services = coding.create_agent_session_from_services(
-        agent_services=agent_services,
-        session_manager=session_manager,
-        model=_model(),
-    )
-    assert from_services.session.settings_manager is agent_services.settings_manager
+            agent_services = coding.create_agent_session_services(
+                cwd=project_root,
+                global_settings_path=tmp_path / "global-settings.json",
+            )
+            from_services = coding.create_agent_session_from_services(
+                agent_services=agent_services,
+                session_manager=session_manager,
+                model=_model(),
+            )
+            standalone_sessions.append(from_services.session)
+            assert (
+                from_services.session.settings_manager
+                is agent_services.settings_manager
+            )
 
-    from loushang.harness.tools.workspace import (
-        ToolDefinition,
-        create_all_tool_definitions,
-        create_read_only_tool_definitions,
-    )
+            from loushang.harness.tools.workspace import (
+                ToolDefinition,
+                create_all_tool_definitions,
+                create_read_only_tool_definitions,
+            )
 
-    read_only_defs = create_read_only_tool_definitions()
-    all_defs = create_all_tool_definitions()
-    assert {"read", "grep", "ls", "find"}.issubset(
-        {definition.name for definition in read_only_defs}
-    )
-    assert {"read", "bash", "edit", "write"}.issubset(set(all_defs))
-    assert all(
-        isinstance(definition, ToolDefinition) for definition in all_defs.values()
-    )
+            read_only_defs = create_read_only_tool_definitions()
+            all_defs = create_all_tool_definitions()
+            assert {"read", "grep", "ls", "find"}.issubset(
+                {definition.name for definition in read_only_defs}
+            )
+            assert {"read", "bash", "edit", "write"}.issubset(set(all_defs))
+            assert all(
+                isinstance(definition, ToolDefinition)
+                for definition in all_defs.values()
+            )
 
-    runtime = coding.create_agent_session_runtime(
-        session_dir=tmp_path / "runtime-sessions",
-        model=_model(),
-        services=services,
-        persist=True,
-    )
-    created = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    asyncio.run(created.session_manager.append_message(_user_message("runtime root")))
-    fork_entry = created.session_manager.get_entries()[0].record_id
-    forked = asyncio.run(runtime.fork_session(fork_entry))
+            runtime = coding.create_agent_session_runtime(
+                session_dir=tmp_path / "runtime-sessions",
+                model=_model(),
+                services=services,
+                persist=True,
+            )
+            created = await runtime.create_session(cwd=str(project_root))
+            await created.session_manager.append_message(_user_message("runtime root"))
+            fork_entry = created.session_manager.get_entries()[0].record_id
+            forked = await runtime.fork_session(fork_entry)
 
-    imported_manager = asyncio.run(
-        coding.SessionManager.new(
-            session_dir=import_dir,
-            cwd=str(project_root),
-            persist=True,
-        )
-    )
-    asyncio.run(imported_manager.append_message(_user_message("imported")))
-    imported_file = imported_manager.session_file
-    assert imported_file is not None
+            imported_manager = await coding.SessionManager.new(
+                session_dir=import_dir,
+                cwd=str(project_root),
+                persist=True,
+            )
+            await imported_manager.append_message(_user_message("imported"))
+            imported_file = imported_manager.session_file
+            assert imported_file is not None
 
-    import_result = asyncio.run(runtime.import_from_jsonl(str(imported_file)))
-    imported = runtime.get_current_session()
+            import_result = await runtime.import_from_jsonl(str(imported_file))
+            imported = runtime.get_current_session()
 
-    assert forked.session_manager.get_header().metadata.get("parentSession") == str(
-        created.session_manager.session_file
-    )
-    assert import_result == {"cancelled": False}
-    assert imported is not None
-    assert [
-        message.content[0].text for message in imported.get_session_context().messages
-    ] == ["imported"]
-    assert runtime.get_packages() == []
-    assert (
-        runtime.get_diagnostics_summary(DiagnosticsQuery(level="error")).total_count
-        == 0
-    )
-    assert runtime.get_diagnostics(DiagnosticsQuery(source="session")) == []
+            assert forked.session_manager.get_header().metadata.get(
+                "parentSession"
+            ) == str(created.session_manager.session_file)
+            assert import_result == {"cancelled": False}
+            assert imported is not None
+            assert [
+                message.content[0].text
+                for message in imported.get_session_context().messages
+            ] == ["imported"]
+            assert runtime.get_packages() == []
+            assert (
+                runtime.get_diagnostics_summary(
+                    DiagnosticsQuery(level="error")
+                ).total_count
+                == 0
+            )
+            assert runtime.get_diagnostics(DiagnosticsQuery(source="session")) == []
+        finally:
+            if runtime is not None:
+                await runtime.dispose_session_runtime()
+            if imported_manager is not None:
+                await imported_manager.dispose_runtime_profile()
+            for session in reversed(standalone_sessions):
+                await session.dispose()
+
+    asyncio.run(scenario())
