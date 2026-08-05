@@ -9,6 +9,7 @@ import pytest
 
 from loushang.coding.lsp import (
     DOCUMENT_OUTLINE_TOOL_NAME,
+    MAX_HOVER_CONTENT_CHARACTERS,
     CodingLspBinding,
     LspCatalog,
     LspClient,
@@ -83,22 +84,30 @@ class FakeLspServer:
         self,
         *,
         definition_result: object,
+        references_result: object,
+        implementation_result: object,
+        hover_result: object,
         outline_result: object,
         initialize_gate: asyncio.Event | None,
         definition_gate: asyncio.Event | None,
         shutdown_gate: asyncio.Event | None,
         position_encoding: str,
+        server_capabilities: Mapping[str, object],
         crash_on_definition: bool,
         ignore_exit: bool,
     ) -> None:
         self.stdin: asyncio.Queue[bytes | None] = asyncio.Queue()
         self.stdout: asyncio.Queue[bytes | None] = asyncio.Queue()
         self.definition_result = definition_result
+        self.references_result = references_result
+        self.implementation_result = implementation_result
+        self.hover_result = hover_result
         self.outline_result = outline_result
         self.initialize_gate = initialize_gate
         self.definition_gate = definition_gate
         self.shutdown_gate = shutdown_gate
         self.position_encoding = position_encoding
+        self.server_capabilities = dict(server_capabilities)
         self.crash_on_definition = crash_on_definition
         self.ignore_exit = ignore_exit
         self.messages: list[dict[str, object]] = []
@@ -121,7 +130,8 @@ class FakeLspServer:
                             "id": request_id,
                             "result": {
                                 "capabilities": {
-                                    "positionEncoding": self.position_encoding
+                                    **self.server_capabilities,
+                                    "positionEncoding": self.position_encoding,
                                 }
                             },
                         }
@@ -159,6 +169,39 @@ class FakeLspServer:
                                 "jsonrpc": "2.0",
                                 "id": request_id,
                                 "result": self.definition_result,
+                            }
+                        ),
+                    )
+                elif method == "textDocument/references":
+                    self._schedule_response(
+                        None,
+                        _frame(
+                            {
+                                "jsonrpc": "2.0",
+                                "id": request_id,
+                                "result": self.references_result,
+                            }
+                        ),
+                    )
+                elif method == "textDocument/implementation":
+                    self._schedule_response(
+                        None,
+                        _frame(
+                            {
+                                "jsonrpc": "2.0",
+                                "id": request_id,
+                                "result": self.implementation_result,
+                            }
+                        ),
+                    )
+                elif method == "textDocument/hover":
+                    self._schedule_response(
+                        None,
+                        _frame(
+                            {
+                                "jsonrpc": "2.0",
+                                "id": request_id,
+                                "result": self.hover_result,
                             }
                         ),
                     )
@@ -255,20 +298,38 @@ class FakeLauncher:
         self,
         *,
         definition_result: object,
+        references_result: object = None,
+        implementation_result: object = None,
+        hover_result: object = None,
         outline_result: object = None,
         initialize_gate: asyncio.Event | None = None,
         definition_gate: asyncio.Event | None = None,
         shutdown_gate: asyncio.Event | None = None,
         position_encoding: str = "utf-16",
+        server_capabilities: Mapping[str, object] | None = None,
         crash_first_definition: bool = False,
         ignore_exit: bool = False,
     ) -> None:
         self.definition_result = definition_result
+        self.references_result = references_result
+        self.implementation_result = implementation_result
+        self.hover_result = hover_result
         self.outline_result = outline_result
         self.initialize_gate = initialize_gate
         self.definition_gate = definition_gate
         self.shutdown_gate = shutdown_gate
         self.position_encoding = position_encoding
+        self.server_capabilities = dict(
+            {
+                "definitionProvider": True,
+                "referencesProvider": True,
+                "implementationProvider": True,
+                "hoverProvider": True,
+                "documentSymbolProvider": True,
+            }
+            if server_capabilities is None
+            else server_capabilities
+        )
         self.crash_first_definition = crash_first_definition
         self.ignore_exit = ignore_exit
         self.requests: list[ProcessLaunchRequest] = []
@@ -287,11 +348,15 @@ class FakeLauncher:
         self.correlation_ids.append(correlation_id)
         server = FakeLspServer(
             definition_result=self.definition_result,
+            references_result=self.references_result,
+            implementation_result=self.implementation_result,
+            hover_result=self.hover_result,
             outline_result=self.outline_result,
             initialize_gate=self.initialize_gate,
             definition_gate=self.definition_gate,
             shutdown_gate=self.shutdown_gate,
             position_encoding=self.position_encoding,
+            server_capabilities=self.server_capabilities,
             crash_on_definition=self.crash_first_definition and not self.handles,
             ignore_exit=self.ignore_exit,
         )
@@ -429,8 +494,15 @@ def test_fake_launcher_drives_tool_to_definition_and_ordered_sync(
             "character": 6,
         }
         assert definition.execution_mode == "parallel"
-        assert definition.parameters["properties"]["query"]["enum"] == ["definition"]
-        assert "include_declaration" not in definition.parameters["properties"]
+        assert definition.parameters["properties"]["query"]["enum"] == [
+            "definition",
+            "references",
+            "hover",
+            "implementation",
+        ]
+        assert definition.parameters["properties"]["include_declaration"] == {
+            "type": "boolean"
+        }
 
         files[source.resolve()] = "😀target = 2\nprint(target)\n"
         changed = await binding.inspect_symbol(
@@ -445,6 +517,165 @@ def test_fake_launcher_drives_tool_to_definition_and_ordered_sync(
         await binding.dispose()
         assert launcher.handles[0].close_calls == 1
         assert server.methods()[-2:] == ["shutdown", "exit"]
+
+    asyncio.run(scenario())
+
+
+def test_inspect_symbol_supports_references_implementation_and_hover(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        content = "class Service:\n    pass\n"
+        files = {source.resolve(): content}
+        location = {
+            "uri": source.resolve().as_uri(),
+            "range": {
+                "start": {"line": 0, "character": 6},
+                "end": {"line": 0, "character": 13},
+            },
+        }
+        launcher = FakeLauncher(
+            definition_result=None,
+            references_result=[location, location],
+            implementation_result={
+                "targetUri": source.resolve().as_uri(),
+                "targetRange": location["range"],
+                "targetSelectionRange": location["range"],
+                "originSelectionRange": location["range"],
+            },
+            hover_result={
+                "contents": {
+                    "kind": "markdown",
+                    "value": "`class Service`\n\n" + "x" * MAX_HOVER_CONTENT_CHARACTERS,
+                },
+                "range": location["range"],
+            },
+        )
+        binding = _binding(tmp_path, launcher, files)
+
+        references = await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=7,
+            query="references",
+            include_declaration=False,
+            limit=1,
+            correlation_id="references",
+        )
+        implementation = await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=7,
+            query="implementation",
+            correlation_id="implementation",
+        )
+        hover = await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=7,
+            query="hover",
+            correlation_id="hover",
+        )
+
+        assert references.count == 2
+        assert len(references.items) == 1
+        assert references.truncated is True
+        assert references.items[0].path == "main.py"
+        assert implementation.count == 1
+        assert implementation.items[0].range.start.character == 7
+        assert hover.count == 1
+        assert hover.truncated is True
+        assert hover.items[0].kind == "markdown"
+        assert len(hover.items[0].contents) == MAX_HOVER_CONTENT_CHARACTERS
+        assert hover.items[0].range is not None
+        assert hover.items[0].range.start.character == 7
+
+        server = launcher.handles[0].server
+        references_call = next(
+            message
+            for message in server.messages
+            if message.get("method") == "textDocument/references"
+        )
+        assert references_call["params"]["context"] == {"includeDeclaration": False}
+        assert "textDocument/implementation" in server.methods()
+        assert "textDocument/hover" in server.methods()
+        await binding.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_inspect_symbol_normalizes_legacy_hover_and_skips_unsupported_query(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        files = {source.resolve(): "value = 1\n"}
+        launcher = FakeLauncher(
+            definition_result=None,
+            hover_result={
+                "contents": [
+                    "legacy markdown",
+                    {"language": "python", "value": "value: int"},
+                ]
+            },
+            server_capabilities={
+                "definitionProvider": True,
+                "hoverProvider": True,
+            },
+        )
+        binding = _binding(tmp_path, launcher, files)
+
+        hover = await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            query="hover",
+            correlation_id="legacy-hover",
+        )
+        unsupported = await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            query="references",
+            correlation_id="unsupported-references",
+        )
+
+        assert hover.items[0].kind == "markdown"
+        assert hover.items[0].contents == (
+            "legacy markdown\n\n```python\nvalue: int\n```"
+        )
+        assert hover.items[0].range is None
+        assert unsupported.items == ()
+        assert unsupported.count == 0
+        assert unsupported.readiness == "unsupported"
+        assert unsupported.warnings == (
+            "language server does not advertise references support",
+        )
+        assert "textDocument/references" not in launcher.handles[0].server.methods()
+
+        with pytest.raises(LspInvalidInputError, match="query must be one of"):
+            await binding.inspect_symbol(
+                path="main.py",
+                line=1,
+                character=1,
+                query="callers",
+                correlation_id="invalid-query",
+            )
+        with pytest.raises(LspInvalidInputError, match="include_declaration"):
+            await binding.inspect_symbol(
+                path="main.py",
+                line=1,
+                character=1,
+                query="references",
+                include_declaration=1,  # type: ignore[arg-type]
+                correlation_id="invalid-include-declaration",
+            )
+        await binding.dispose()
 
     asyncio.run(scenario())
 

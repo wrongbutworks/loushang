@@ -6,6 +6,7 @@ import asyncio
 import json
 from collections.abc import Mapping
 from contextlib import suppress
+from types import MappingProxyType
 
 from loushang.coding.lsp.model import LspProtocolError
 from loushang.coding.lsp.ports import ProcessHandle
@@ -40,11 +41,16 @@ class LspClient:
         self._initialized = False
         self._state = "open"
         self._position_encoding = "utf-16"
+        self._server_capabilities: Mapping[str, object] = MappingProxyType({})
         self._discarded_diagnostic_publications = 0
 
     @property
     def position_encoding(self) -> str:
         return self._position_encoding
+
+    @property
+    def server_capabilities(self) -> Mapping[str, object]:
+        return self._server_capabilities
 
     @property
     def is_closed(self) -> bool:
@@ -87,6 +93,12 @@ class LspClient:
                                 "didSave": False,
                             },
                             "definition": {"dynamicRegistration": False},
+                            "references": {"dynamicRegistration": False},
+                            "hover": {
+                                "dynamicRegistration": False,
+                                "contentFormat": ["markdown", "plaintext"],
+                            },
+                            "implementation": {"dynamicRegistration": False},
                             "documentSymbol": {
                                 "dynamicRegistration": False,
                                 "hierarchicalDocumentSymbolSupport": True,
@@ -112,6 +124,7 @@ class LspClient:
                     f"unsupported LSP position encoding: {encoding!r}"
                 )
             self._position_encoding = encoding
+            self._server_capabilities = MappingProxyType(dict(capabilities))
             await self.notify("initialized", {})
             self._initialized = True
 

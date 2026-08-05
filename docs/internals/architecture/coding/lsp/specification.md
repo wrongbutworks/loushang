@@ -230,8 +230,14 @@ class CodeLocation:
     readable: bool = True
 
 @dataclass(frozen=True)
+class CodeHover:
+    contents: str
+    kind: Literal["markdown", "plaintext"]
+    range: CodeRange | None = None
+
+@dataclass(frozen=True)
 class CodeQueryResult:
-    items: tuple[object, ...]
+    items: tuple[CodeLocation | CodeHover, ...]
     count: int
     truncated: bool
     server_id: str
@@ -539,7 +545,14 @@ Rules:
 
 - `path` must resolve through the existing workspace read boundary;
 - line/character are positive and public 1-based values;
-- unsupported Server capabilities return a typed warning, not a guessed result;
+- unsupported Server capabilities return `readiness="unsupported"` plus a typed
+  warning without sending a speculative protocol request;
+- `include_declaration` is sent only in the LSP references context;
+- definition, references, and implementation normalize `Location` and
+  `LocationLink` responses into bounded `CodeLocation` items;
+- hover normalizes `MarkupContent` and legacy `MarkedString` variants into one
+  bounded `CodeHover`; the initial hard content limits are 12,000 characters
+  and 64 legacy parts;
 - every result is bounded and normalized.
 
 Call hierarchy is a later compatible extension and, when added, uses

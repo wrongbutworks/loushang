@@ -103,6 +103,9 @@ def main() -> int:
                         "capabilities": {
                             "positionEncoding": "utf-16",
                             "definitionProvider": True,
+                            "referencesProvider": True,
+                            "hoverProvider": True,
+                            "implementationProvider": True,
                             "documentSymbolProvider": True,
                             "textDocumentSync": 2,
                         }
@@ -115,6 +118,40 @@ def main() -> int:
                     "jsonrpc": "2.0",
                     "id": request_id,
                     "result": _definition_result(message),
+                }
+            )
+        elif method == "textDocument/references":
+            _write_message(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": [_definition_result(message)],
+                }
+            )
+        elif method == "textDocument/implementation":
+            location = _definition_result(message)
+            _write_message(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "targetUri": location["uri"],
+                        "targetRange": location["range"],
+                        "targetSelectionRange": location["range"],
+                    },
+                }
+            )
+        elif method == "textDocument/hover":
+            _write_message(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "contents": {
+                            "kind": "markdown",
+                            "value": "`target: int`",
+                        }
+                    },
                 }
             )
         elif method == "textDocument/documentSymbol":
