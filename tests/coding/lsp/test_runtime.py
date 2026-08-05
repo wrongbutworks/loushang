@@ -63,7 +63,9 @@ def test_runtime_binds_the_harness_contract_without_starting_a_process(
     assert isinstance(runtime, CodingLspRuntime)
     assert binder.scope is scope
     assert ProcessLaunchRequest is HarnessProcessLaunchRequest
+    assert runtime.status().servers == ()
     asyncio.run(runtime.close())
+    assert runtime.status().disposed is True
 
 
 def test_deferred_runtime_and_tool_pack_preserve_mount_policy() -> None:

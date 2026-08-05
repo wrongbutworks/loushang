@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Mapping
 from contextlib import suppress
 from types import MappingProxyType
@@ -43,6 +44,10 @@ class LspClient:
         self._position_encoding = "utf-16"
         self._server_capabilities: Mapping[str, object] = MappingProxyType({})
         self._discarded_diagnostic_publications = 0
+        self._request_count = 0
+        self._timeout_count = 0
+        self._last_request_duration_ms: float | None = None
+        self._last_error: str | None = None
 
     @property
     def position_encoding(self) -> str:
@@ -61,6 +66,22 @@ class LspClient:
     @property
     def discarded_diagnostic_publications(self) -> int:
         return self._discarded_diagnostic_publications
+
+    @property
+    def request_count(self) -> int:
+        return self._request_count
+
+    @property
+    def timeout_count(self) -> int:
+        return self._timeout_count
+
+    @property
+    def last_request_duration_ms(self) -> float | None:
+        return self._last_request_duration_ms
+
+    @property
+    def last_error(self) -> str | None:
+        return self._last_error
 
     async def initialize(
         self,
@@ -156,6 +177,8 @@ class LspClient:
             raise LspProtocolError("too many pending LSP requests")
         request_id = self._next_request_id
         self._next_request_id += 1
+        self._request_count += 1
+        started_at = time.monotonic()
         future: asyncio.Future[object] = asyncio.get_running_loop().create_future()
         self._pending[request_id] = future
         try:
@@ -171,6 +194,8 @@ class LspClient:
             try:
                 return await asyncio.wait_for(asyncio.shield(future), timeout)
             except TimeoutError:
+                self._timeout_count += 1
+                self._last_error = "request_timeout"
                 future.cancel()
                 with suppress(LspProtocolError):
                     await self._notify(
@@ -188,9 +213,16 @@ class LspClient:
                         "$/cancelRequest",
                         {"id": request_id},
                         allow_closing=allow_closing,
-                    )
+                )
+                raise
+            except BaseException:
+                self._last_error = "request_failed"
                 raise
         finally:
+            self._last_request_duration_ms = round(
+                (time.monotonic() - started_at) * 1000,
+                3,
+            )
             self._pending.pop(request_id, None)
 
     async def notify(self, method: str, params: Mapping[str, object]) -> None:
@@ -326,6 +358,7 @@ class LspClient:
                     error = LspProtocolError("language server closed stdout")
                 elif not isinstance(error, LspProtocolError):
                     error = LspProtocolError(f"LSP reader failed: {error}")
+                self._last_error = "connection_closed"
                 self._fail_pending(error)
 
     async def _read_message(self) -> Mapping[str, object]:
@@ -386,6 +419,7 @@ class LspClient:
             return
         error = message.get("error")
         if error is not None:
+            self._last_error = "request_failed"
             future.set_exception(LspProtocolError(f"LSP response error: {error!r}"))
         else:
             future.set_result(message.get("result"))

@@ -655,6 +655,31 @@ def test_rpc_mode_get_commands_prefers_session_command_descriptors() -> None:
     ]
 
 
+def test_rpc_mode_discovers_coding_lsp_session_command() -> None:
+    from loushang.coding.lsp.commands import lsp_session_command_descriptor
+    from loushang.harness.host.rpc import RpcHost as RpcMode
+
+    class LspCommandSession(FakeSession):
+        def list_commands(self):
+            return [lsp_session_command_descriptor()]
+
+    session = LspCommandSession(session_id="session-a", cwd="/tmp/project")
+    runtime = FakeRuntime(session)
+    stdin = StringIO(json.dumps({"id": "commands", "type": "get_commands"}) + "\n")
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        mode = RpcMode(runtime=runtime, stdin=stdin, stdout=stdout)
+        assert await mode.run() == 0
+
+    asyncio.run(scenario())
+
+    command = _parse_jsonl(stdout)[0]["data"]["commands"][0]
+    assert command["name"] == "lsp"
+    assert command["source"] == "builtin"
+    assert command["argumentHint"] == "[status | stop <server-id> <root>]"
+
+
 def test_rpc_mode_get_commands_projects_session_command_descriptors() -> None:
     from loushang.harness.host.rpc import RpcHost as RpcMode
 

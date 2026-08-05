@@ -121,5 +121,18 @@ class LspDocumentManager:
             )
         return content
 
+    def open_document_count(self, runtime_id: int | None = None) -> int:
+        if runtime_id is None:
+            return len(self._snapshots)
+        return sum(key[0] == runtime_id for key in self._snapshots)
+
+    def release_runtime(self, runtime_id: int) -> None:
+        snapshot_keys = [key for key in self._snapshots if key[0] == runtime_id]
+        for key in snapshot_keys:
+            self._snapshots.pop(key, None)
+        lock_keys = [key for key in self._locks if key[0] == runtime_id]
+        for key in lock_keys:
+            self._locks.pop(key, None)
+
 
 __all__ = ["DocumentSnapshot", "LspDocumentManager"]

@@ -436,8 +436,13 @@ Read-only snapshots from `catalog`, `supervisor`, `documents`, and
 
 ### Commands
 
-None. P0 CLI stop calls `binding` or `supervisor` explicitly after status
-inspection. Richer restart controls are follow-on Product operations.
+- Session `/lsp status` projects the current runtime snapshot without mutation;
+- Session `/lsp stop <server-id> <root>` calls `binding`/`supervisor` explicitly;
+- the independent `loushang lsp status|doctor` commands remain Catalog-only.
+
+Richer restart controls are follow-on Product operations. The current Session
+command is contributed by Coding through the shared command catalog; Harness
+does not acquire an LSP command identifier.
 
 ### Queries
 

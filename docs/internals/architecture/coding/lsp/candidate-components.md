@@ -156,14 +156,16 @@ src/loushang/coding/lsp/
   tools.py
   tool_pack.py
   binding.py
+  commands.py
   status.py
 ```
 
 This is a target mapping, not a requirement to create every module in the first
 commit. Small adjacent records may begin together and split only when the
 component boundary has independent behavior or state. `tool_pack.py` is a
-physical declaration owned by the logical `tools` component, not an eleventh
-component.
+physical declaration owned by the logical `tools` component; `commands.py` is
+the Coding Session projection of logical `status`, not an additional runtime
+owner.
 
 ## Rejected Candidate Components
 

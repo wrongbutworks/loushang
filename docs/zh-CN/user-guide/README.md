@@ -78,9 +78,27 @@ loushang lsp status
 loushang lsp doctor
 ```
 
-Server 仍只会在第一次语义查询时惰性启动；`status` 和 `doctor` 只检查配置与可执行文件，
-不会启动或安装任何 Server。Loushang 会探测已安装的 Pyright、TypeScript Language
-Server、rust-analyzer、gopls 和 clangd。
+Server 仍只会在第一次语义查询时惰性启动。独立 CLI 的 `status` 和 `doctor` 标记为
+`scope=catalog`：它们只检查配置与可执行文件，不构造 Session，也不会启动或安装任何
+Server。Loushang 会探测已安装的 Pyright、TypeScript Language Server、rust-analyzer、
+gopls 和 clangd。
+
+在交互式 Coding Session 内，使用独立的 Session 运行态表面：
+
+```text
+/lsp status
+/lsp stop <server-id> <root>
+```
+
+`/lsp status` 只报告当前 Session 已知的 Server，包括生命周期、打开文档数、请求、超时、
+替换次数和已丢弃诊断发布数；查询本身不会启动 Server。`/lsp stop` 优雅关闭精确匹配的
+Session Server，下一次语义查询可以按需启动替代实例。嵌入方可使用
+`session.get_lsp_status()` 和 `await session.stop_lsp_server(...)` 取得同一份有界状态；
+普通 TUI 与 RPC 命令目录都能发现该 Session 命令。
+
+已经把 `pyright-langserver` 放入 `PATH` 的贡献者可以运行可选真实 Server 门：
+`uv run pytest tests/integration/coding/test_pyright_lsp_live.py -q`。未安装 Pyright 时测试会
+跳过，测试自身不会安装它。
 
 自定义 Server 写入 `~/.loushang/coding/lsp.json`：
 
