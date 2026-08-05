@@ -8,8 +8,10 @@ The package/plugin distinction and CLI/RPC wire semantics remain valid, but
 the former `coding.package.*` and `coding.plugin.*` paths were removed. Generic
 package and plugin APIs, including catalog/materialization projections, are now
 imported from `loushang.harness.resources`; Coding binds product defaults in
-`coding.resource_runtime` and retains only discovery/materializer wiring in
-`coding.package_projection`.
+`coding.resource_runtime` and retains no Package or Plugin facade. Canonical
+terminology and current ownership are defined by the
+[Product And OEM Glossary](../../glossary/loushang-product.md) and
+[Harness Platform Resource Layout Boundary](../harness/platform-resource-layout-boundary.md).
 
 ## Context
 

@@ -23,6 +23,14 @@ state, semantic tools, restart policy, and user-facing diagnostics. Coding LSP
 therefore remains under `loushang.coding`; it consumes this substrate through a
 narrow launcher binding.
 
+This binding follows the
+[Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md):
+Coding may replace a Product-owned language-service provider and aggregate
+server definitions, while Harness injects the authorized process capability.
+Authorization, required containment, fixed Host limits, and cleanup remain an
+invariant enforcement layer that a Coding provider or Plugin cannot replace or
+bypass.
+
 ## Public Surface
 
 `loushang.harness.workspace.process` exports only:
