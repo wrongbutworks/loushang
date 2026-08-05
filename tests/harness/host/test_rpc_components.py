@@ -28,6 +28,7 @@ from loushang.harness.host.rpc.projections import (
     STANDARD_RPC_DIAGNOSTICS_PROJECTION,
 )
 from loushang.harness.host.rpc.routing import legacy_rpc_routes
+from loushang.harness.session import CommandExecutionResult
 
 
 def test_rpc_package_keeps_the_stable_host_exports() -> None:
@@ -199,7 +200,110 @@ def test_rpc_command_groups_declare_their_complete_legacy_bindings() -> None:
     assert tuple(command for command, _handler in command_catalog.bindings()) == (
         "get_commands",
         "get_command_completions",
+        "execute_command",
     )
+
+
+def test_rpc_command_execution_returns_the_current_session_result() -> None:
+    class _Session:
+        def __init__(self, value: str) -> None:
+            self.value = value
+            self.calls: list[tuple[str, str]] = []
+
+        async def execute_command_async(
+            self,
+            invocation_name: str,
+            args: str,
+        ) -> CommandExecutionResult:
+            self.calls.append((invocation_name, args))
+            return CommandExecutionResult(
+                invocation_name=invocation_name,
+                result={"value": self.value},
+            )
+
+    stdout = StringIO()
+    current = [_Session("before")]
+    commands = RpcCommandCatalogCommands(
+        get_session=lambda: current[0],
+        output=RpcOutput(stdout),
+    )
+    selected = _Session("after")
+    current[0] = selected
+
+    asyncio.run(
+        commands.execute_command(
+            "execute",
+            {"command": "/status", "args": "verbose"},
+        )
+    )
+
+    assert selected.calls == [("status", "verbose")]
+    assert json.loads(stdout.getvalue()) == {
+        "id": "execute",
+        "type": "response",
+        "command": "execute_command",
+        "success": True,
+        "data": {
+            "invocationName": "status",
+            "args": "verbose",
+            "result": {"value": "after"},
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("payload", "error_code"),
+    [
+        ({"command": ""}, "invalid_request"),
+        ({"command": "status", "args": []}, "invalid_request"),
+    ],
+)
+def test_rpc_command_execution_rejects_invalid_input(
+    payload: dict[str, object],
+    error_code: str,
+) -> None:
+    stdout = StringIO()
+    commands = RpcCommandCatalogCommands(
+        get_session=object,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(commands.execute_command("execute", payload))
+
+    response = json.loads(stdout.getvalue())
+    assert response["success"] is False
+    assert response["errorCode"] == error_code
+
+
+def test_rpc_command_execution_reports_unknown_and_unserializable_results() -> None:
+    class _Session:
+        def __init__(self) -> None:
+            self.result: object | None = None
+
+        async def execute_command_async(
+            self,
+            invocation_name: str,
+            args: str,
+        ) -> object | None:
+            del invocation_name, args
+            return self.result
+
+    session = _Session()
+    stdout = StringIO()
+    commands = RpcCommandCatalogCommands(
+        get_session=lambda: session,
+        output=RpcOutput(stdout),
+    )
+
+    asyncio.run(commands.execute_command("missing", {"command": "missing"}))
+    session.result = object()
+    asyncio.run(commands.execute_command("unsafe", {"command": "unsafe"}))
+
+    responses = [json.loads(line) for line in stdout.getvalue().splitlines()]
+    assert [response["errorCode"] for response in responses] == [
+        "command_not_found",
+        "command_result_not_serializable",
+    ]
 
 
 def test_rpc_package_commands_resolve_the_current_rebound_session() -> None:

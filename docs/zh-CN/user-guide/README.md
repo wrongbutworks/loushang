@@ -93,8 +93,15 @@ gopls 和 clangd。
 `/lsp status` 只报告当前 Session 已知的 Server，包括生命周期、打开文档数、请求、超时、
 替换次数和已丢弃诊断发布数；查询本身不会启动 Server。`/lsp stop` 优雅关闭精确匹配的
 Session Server，下一次语义查询可以按需启动替代实例。嵌入方可使用
-`session.get_lsp_status()` 和 `await session.stop_lsp_server(...)` 取得同一份有界状态；
-普通 TUI 与 RPC 命令目录都能发现该 Session 命令。
+`session.get_lsp_status()` 和 `await session.stop_lsp_server(...)` 取得同一份有界状态。
+TUI 会直接执行同一个 Session 命令；RPC 客户端可以先用 `get_commands` 发现命令，再在不经过
+模型回合的情况下执行：
+
+```json
+{"id":"lsp-status","type":"execute_command","command":"lsp","args":"status"}
+```
+
+响应会把命令的结构化结果放在 `data.result`。
 
 已经把 `pyright-langserver` 放入 `PATH` 的贡献者可以运行可选真实 Server 门：
 `uv run pytest tests/integration/coding/test_pyright_lsp_live.py -q`。未安装 Pyright 时测试会

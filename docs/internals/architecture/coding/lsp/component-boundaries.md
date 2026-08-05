@@ -442,7 +442,8 @@ Read-only snapshots from `catalog`, `supervisor`, `documents`, and
 
 Richer restart controls are follow-on Product operations. The current Session
 command is contributed by Coding through the shared command catalog; Harness
-does not acquire an LSP command identifier.
+does not acquire an LSP command identifier. Remote clients execute it through
+Harness's Product-neutral `execute_command` RPC route.
 
 ### Queries
 

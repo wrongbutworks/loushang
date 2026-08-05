@@ -51,7 +51,8 @@ The command groups are:
 - `session_lifecycle`: listing, create/restore/fork/clone, naming, and rebinding;
 - `model_settings`: model, thinking, queue, tool, retry, and compaction settings;
 - `transcript`: transcript queries and export;
-- `command_catalog`: command inventory and completion;
+- `command_catalog`: command inventory, completion, and direct execution through
+  the current Product Session's admitted command dispatcher;
 - `diagnostics`: diagnostic and error-report queries;
 - `packages`: package inventory and lifecycle; and
 - `bash_maintenance`: Bash execution and maintenance controls.
@@ -65,6 +66,12 @@ uses the same pattern for session event subscription, extension-UI binding,
 and tool-rendering context. These adapters resolve the current session on each
 invocation or are rebuilt after lifecycle rebinding, so they do not capture a
 stale Session.
+
+`execute_command` accepts only a command name and string arguments. It invokes
+the current Session's existing `execute_command_async` port and returns its
+strict-JSON result; it does not interpret Product command names, invoke a model
+turn, execute a shell command, or create a second command registry. Missing
+commands and non-serializable results are explicit RPC errors.
 
 ## Prompt And Abort Semantics
 
