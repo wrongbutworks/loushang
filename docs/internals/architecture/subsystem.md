@@ -11,7 +11,9 @@
 
 - `loushang.ai`
 - `loushang.agent`
+- `loushang.channel`
 - `loushang.harness`
+- `loushang.harnesstui`
 - `loushang.coding`
 - `loushang.method`
 - `loushang.tui`
@@ -21,6 +23,7 @@
 
 - `loushang.observability`
 - `loushang.ontology`
+- `loushang.protocol`
 
 `loushang.runtime` 不再作为子系统保留。若某个 worktree 中仍存在
 `src/loushang/runtime`，它只是待删除的旧 command/effect 临时路径；迁移目标是
@@ -35,9 +38,9 @@ command substrate 的目标归属是 `loushang.harness`，见
 - `loushang.ppt`
 - `loushang.cowork`
 
-目标架构仍保留 `loushang.channel`，但当前没有 package-level
-implementation。现有 RPC mode 是 coding-local transitional adapter，不等于
-长期 channel surface。
+`loushang.channel` 已有对应 Python package implementation。现有
+`loushang.coding.mode.RpcMode` 仍是 Coding-local transitional adapter；它的
+命令表与 UI payload 不属于长期 Channel core。
 
 ## Subsystem Responsibilities
 
@@ -87,9 +90,11 @@ agent 运行内核。
 
 ### loushang-harness
 
-跨产品的 product-adapter substrate。当前已落地的核心是 prepared agent run
-contract，后续 product-neutral host / adapter / command / lifecycle /
-diagnostics 合同也归属这里。
+跨产品的 product-adapter substrate。它在唯一 prepared agent run contract
+之上组合 Product-neutral runtime、Session、Conversation、Transcript、Context、
+Tools、Policy、Approval、Sandbox、Capability、Host、Events、Continuity 和
+Workspace 机制。完整当前 owner 以
+[Harness Current Owner Map](./harness/current-owner-map.md) 为准。
 
 负责：
 
@@ -97,10 +102,13 @@ diagnostics 合同也归属这里。
 - `AgentRunResult`
 - `run_agent()`
 - headless agent run 编排
-- product-neutral adapter / prepared-turn / adapter-result contracts
-- product-neutral host lifecycle contracts
+- runtime cancellation、retry/scheduling、Runtime Profile resolution 与 binding
+- Session lifecycle、conversation repository、transcript、context packing 与 replay
+- tool authoring/hosting、Policy、Approval、Sandbox 和 execution-profile mechanics
+- resources、extensions、capabilities 与 scoped activation
+- product-neutral adapter、host、CLI、events、presentation、diagnostics、continuity
+  和 workspace contracts
 - command/effect value objects, such as `loushang.harness.commands`
-- generic diagnostics / status records
 
 不负责：
 
@@ -129,17 +137,17 @@ prepared-run contract，不引入第二套 `HarnessRunSpec`。原
 边界协议与 transport 层。该源码包已落地，并保持为由 Product host ports
 注入业务操作的 transport-first 层。
 
-负责：
+当前负责：
 
-- operation / event protocol
+- `WorkOperation` / `WorkEvent` 和已投影 `RuntimeEventView` 的边界值契约
+- JSONL envelope/framing 与严格 wire values
 - request / response correlation
-- notification / subscription
-- transport adapters, such as in-process, stdio/JSONL, HTTP, WebSocket
-- capability negotiation
-- delivery policy, such as immediate / coalesce / final-only
-- replay / resume
-- channel audit trail
-- multi-client access to the same work run
+- accepted ACK 与随后到达的 event delivery
+- 当前 `rpc_jsonl` adapter
+
+目标扩展包括 capability negotiation、interaction request/response、subscription
+cursor/resume，以及按需求增加的 in-process、IPC、HTTP/WebSocket 等 adapter。
+这些目标能力不能当作当前已实现事实。
 
 不负责：
 
@@ -149,11 +157,10 @@ prepared-run contract，不引入第二套 `HarnessRunSpec`。原
 - coding / design / research / ppt / cowork 产品内部 session
 - 产品 adapter 注册之外的业务执行
 
-`channel` 面向多客户端和多 UI：TUI、WebUI、AppUI、SDK host、RPC client
-都应通过 channel 发送 operation、订阅 event、恢复和回放状态。channel core
-承载 `WorkOperation` / `WorkEvent` 的边界传输语义；具体产品 adapter 由
-host 装配，不由 channel core 直接 import。对于 Host/Session 的瞬态观察，
-channel 还可承载已完成产品投影的 `RuntimeEventView`；它不解释或产生该 view。
+`channel` 可以服务 TUI、WebUI、AppUI、SDK host 和 RPC client，但不是所有
+Session/App 操作的强制总线。它承载选定的 `WorkOperation` / `WorkEvent` 和
+已完成产品投影的 `RuntimeEventView`；具体 Product adapter 由 host 装配，
+Channel 不解释或产生该 view，也不拥有 Work/Session truth。
 
 ### loushang-tui
 
@@ -165,6 +172,8 @@ channel 还可承载已完成产品投影的 `RuntimeEventView`；它不解释�
 - keybinding / history / TTY fallback 等终端交互能力
 - 真实 terminal scrollback 与 transient composer 的协调
 - 为产品适配层提供可复用的终端 UI primitives
+- render planning、terminal operations、diagnostics 和性能预算
+- product-neutral terminal playback、scenario suite 和 artifact mechanics
 
 不负责：
 
@@ -177,6 +186,33 @@ channel 还可承载已完成产品投影的 `RuntimeEventView`；它不解释�
 相关文档：
 
 - [Loushang-TUI Architecture](./tui/README.md)
+- [Terminal Playback Harness](./tui/native-terminal-core/key-designs/KD-010-terminal-playback-harness.md)
+
+### loushang-harnesstui
+
+Harness conversation contract 与通用 TUI 之间的 product-neutral composition
+层。它可以同时依赖 `loushang.harness` 和 `loushang.tui`，但二者都不反向依赖
+它；它也不得依赖 `loushang.coding`、AI provider 或 Product policy。
+
+负责：
+
+- neutral conversation snapshot/event 到 TUI records、surfaces 和 status 的投影
+- conversation input、queue、abort/steer/follow-up 和 approval presentation routing
+- transcript reader、tool transcript、settings/selection/surface 等共享交互
+- Agent-free neutral conversation ports，以及可选 Agent binding profile
+- 基于 neutral ports 的 direct render、decoded-input 和 screen-loop playback
+- playback conversation state、routed action 和 terminal artifact 的组合证据
+
+不负责：
+
+- terminal decoding/render-loop/terminal-write 内核
+- Harness Session、Conversation 或 Work 的权威状态
+- Coding intent、prompt、tool policy、模型选择策略或最终 Product copy
+- 第二套 Agent loop、conversation persistence 或 transcript renderer
+
+相关文档：
+
+- [Loushang Harness TUI](./harnesstui/README.md)
 
 ### loushang-method
 
@@ -281,6 +317,7 @@ Artifact 分层规则：
 
 ```text
 loushang.coding
+  -> loushang.harness
   -> loushang.agent
   -> loushang.ai
 ```
@@ -339,10 +376,13 @@ operation/event 边界，不是 Product runtime 的统一入口。Product 本身
 - `harness` 提供跨产品 prepared-run contract 以及 product-neutral host /
   adapter / command substrate
 - `harnesstui` 提供跨产品的 Harness/TUI conversation interaction 与
-  presentation composition；可依赖 `harness` 和 `tui`，不可依赖 `coding`
+  presentation composition，以及基于中性 ports 的 conversation input、
+  render 和 screen-loop playback testing；可依赖 `harness` 和 `tui`，不可依赖
+  `coding`
 - `channel` 提供选定的 operation/event、订阅、关联和回放边界，不承担通用
   Product 路由或 transport/runtime 总线职责
-- `tui` 提供通用终端交互原语
+- `tui` 提供通用终端交互原语、render/terminal diagnostics 与确定性 playback
+  substrate
 - `method` 提供可选的方法组织与 plan/projection
 - `work` 提供业务 work acceptance、运行终态、事件、日志与 projection
 - `coding` 提供 coding 产品装配；feature-local adapter 解释 Coding 语义，
@@ -356,24 +396,24 @@ operation/event 边界，不是 Product runtime 的统一入口。Product 本身
 目标二级组件依赖关系。本节中 `A -> B` 表示 `A` 可以依赖 / 调用 `B`。
 
 ```text
-all packages -> observability
+all Python packages -> observability
 
-method / work / product packages -> ontology
+method / work / Product implementation Python packages -> ontology
   # only when semantic typing is needed
 
 agent -> ai
-product packages -> ai
+Product implementation Python packages -> ai
   # only for product-level helper AI calls
 
 harness -> agent
-product packages -> harness
-product packages -> agent
+Product implementation Python packages -> harness
+Product implementation Python packages -> agent
   # only through stable agent primitives when bypassing harness is justified
 
-product packages -> work
+Product implementation Python packages -> work
 channel -> work
 
-product packages -> method
+Product implementation Python packages -> method
   # optional and only for structured work; Product binds Method output to Work
 
 product TUI adapters -> tui
@@ -381,7 +421,7 @@ product TUI adapters -> tui
 UI clients / SDK hosts / RPC clients -> channel
 ```
 
-Product packages are peers:
+Product implementation Python packages are peers:
 
 ```text
 coding
@@ -391,9 +431,9 @@ ppt
 cowork
 ```
 
-Product packages should not depend on each other directly. Cross-product
-coordination should go through explicit adapters, `work` events, `channel`
-protocol, or a future host-level orchestration layer.
+Product implementation Python packages should not depend on each other
+directly. Cross-Product coordination should go through explicit adapters,
+`work` events, `channel` protocol, or a future host-level orchestration layer.
 
 Multi-UI target shape:
 
@@ -421,11 +461,18 @@ or own product execution internals.
 | Product-run loop | `loushang.harness` plus product adapter | prepared run handoff, product-neutral host/adapter/lifecycle contracts, shared engines | second agent loop, product defaults, provider behavior |
 | Work/method loop | `loushang.work` and optional `loushang.method` | durable operations/events/projections, method plan/step guidance | model streaming, product UI, harness execution mechanics |
 | Channel loop | `loushang.channel` | external operation/event transport, subscription, replay, correlation | local UI widgets, product internals, agent state machine |
-| TUI render loop | `loushang.tui` plus product UI adapter | terminal input/render primitives and product-specific terminal wiring | agent loop, provider behavior, harness policy |
+| TUI render loop | `loushang.tui` plus product UI adapter | terminal input/render planning, terminal operations, and product-specific final wiring | agent loop, provider behavior, harness policy, durable transcript truth |
 
 This split lets `harness`, `tui`, `agent`, and `ai` develop in parallel. A
 harness change should affect those lanes only when it intentionally changes a
 stable cross-boundary contract. Otherwise:
+
+TUI playback is not another runtime loop or a second conversation replay
+engine. It drives the existing input, render, terminal, and optional
+HarnessTUI screen-loop boundaries with scripted events, then records semantic
+state and physical terminal evidence. Its value is precisely that it tests the
+cross-boundary sequence without taking ownership away from Conversation,
+Session, Work, Product presentation, or the live render loop.
 
 - TUI changes stay in `loushang.tui` or product-owned UI adapters.
 - Agent changes stay in `loushang.agent`.

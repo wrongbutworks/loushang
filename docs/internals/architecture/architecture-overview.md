@@ -11,9 +11,56 @@
 
 `loushang` 以内核承载语义，以协议连接边界，以适配器触达环境，以扩展点驱动演化。
 
+## Architecture Evaluation Lens
+
+评估 Loushang 时，应区分“当前开箱即用的 Agent 功能数量”和“系统长期需要
+保持稳定的语义 substrate”。Loushang 有意不把某一代模型需要的 planner、
+reflection、todo reminder、通用 verifier prompt 或工具选择启发式固化进
+Agent 内循环。模型能力可以吞噬这些认知脚手架，但不应吞噬权限、副作用控制、
+证据、持久化、协调和 Work truth。
+
+以下是理解当前架构价值的主要视角：
+
+| 设计 | 架构价值 | 不应误读为 |
+|---|---|---|
+| `ai` 与小型 `agent` 执行内核 | Provider 变化和模型能力升级不要求重写 Product/Work 语义 | Agent Loop 应内置 planner、verifier 或产品 workflow |
+| Product -> Harness -> Agent -> AI 的单向依赖 | 跨产品机制复用，同时阻止 Coding 语义污染底层 | Harness 是第二套 Agent Loop |
+| Conversation、Transcript、Runtime Event、Work Event 分层 | 区分交互记录、执行事实与业务权威事实 | 一份 checkpoint 或消息日志可以替代全部状态 |
+| Method 与 Work 分离 | Method 规定什么必须成立；模型决定怎样达到；Work 记录本次实际履约 | MethodPlan、模型 todo 和一次 Agent invocation 是同一对象 |
+| Policy、Approval、Enforcement 分离 | 同一 action model 支撑决策、同意、强制执行和审计，委派权限只能收窄 | 提示模型“不要越权”就是安全边界 |
+| TUI、HarnessTUI 与 Product presentation 分离 | 终端机制、对话交互和产品语义可独立演进、测试和复用 | TUI 必须理解 Agent/AI/Coding 对象 |
+| terminal playback | 将输入、streaming、resize、surface、光标和终端操作序列变成可执行回归契约 | 只对最终屏幕文本做 snapshot，或等同于 Session transcript replay |
+
+这些优点不意味着当前能力面已经完整。通用图执行、远端 multi-agent、持久
+审批和 managed runtime 仍有明确缺口。架构评价应同时报告“能力是否已实现”
+和“该能力应由哪个 owner 实现”，不能因为某个可选认知脚手架尚未内置，就把
+它错误记为 Agent 内循环缺陷。
+
+### Playback 是 TUI 的可执行规范
+
+Loushang TUI playback 不等同于重放历史消息。它把脚本化输入和运行事件送入
+真实的输入解码、路由、render planning 与 terminal-operation 边界，并逐步记录
+逻辑行、changed range、viewport、光标、repaint 原因、scrollback policy、
+终端操作和可选 frame。更高层的 HarnessTUI playback 还记录 neutral action
+result、conversation state，并可用 scripted TTY chunks 运行真实 screen loop。
+
+因此 playback 能验证普通 final-screen golden 难以发现的问题：中间帧闪烁、
+重复 transcript、resize/reflow 漂移、错误清屏、scrollback 破坏、光标错位、
+streaming 每 token 产生一个 block、surface focus 顺序、steer/follow-up/abort
+路由以及跨 feature 交互回归。它也能输出 JSONL trace、screen、terminal 和 state
+artifact，并对操作数、输出字节、changed lines、同步 frame 和长 transcript
+性能设置预算。
+
+这是一项对模型和 Product 都相对稳定的能力：模型输出策略可以变化，不同
+Product 可以复用相同机制，而终端交互和渲染不变量仍能通过同一套
+Product-neutral playback substrate 验证。详细设计见
+[TUI Architecture](./tui/README.md)、
+[Terminal Playback Harness](./tui/native-terminal-core/key-designs/KD-010-terminal-playback-harness.md)
+和 [HarnessTUI](./harnesstui/README.md#conversation-playback-testing)。
+
 ## Monorepo Subsystem Map
 
-`loushang` 采用 monorepo 组织。当前阶段按统一根 Python project 组织各子系统源码，而不是先拆成多个独立 package。
+`loushang` 采用 monorepo 组织。当前阶段按统一根 Python project 组织各子系统源码，而不是先拆成多个独立 Python packages。
 
 当前已经落到 Python 包级源码的主要子系统包括：
 
@@ -22,6 +69,7 @@
 - `loushang.channel`
 - `loushang.coding`
 - `loushang.harness`
+- `loushang.harnesstui`
 - `loushang.method`
 - `loushang.tui`
 - `loushang.work`
@@ -48,6 +96,7 @@ loushang/
       channel/
       coding/
       harness/
+      harnesstui/
       method/
       tui/
       work/
@@ -68,6 +117,8 @@ loushang/
 跨层架构判断准则请参见 [Loushang Architecture Principles](./loushang-architecture-principles.md)。
 文档分层与阅读规则请参见 [Loushang Documentation Model](./loushang-documentation-model.md)。
 `loushang-tui` 子系统文档请参见 [Loushang-TUI Architecture](./tui/README.md)。
+`loushang-harnesstui` 的中性 conversation composition 与 playback testing
+边界请参见 [Loushang Harness TUI](./harnesstui/README.md)。
 `loushang-harness` 的产品适配器 substrate 方向请参见
 [ARD-002: Harness Product Adapter Substrate](./agent/ARD-002-harness-product-adapter-substrate.md)。
 `loushang-work` 的业务工作与方法履约边界请参见
@@ -79,10 +130,11 @@ loushang/
 
 ```text
 CLI / TUI
-  -> loushang.coding bootstrap / runtime / session
-  -> loushang.agent loop
-  -> loushang.ai provider adapters
-  -> tools / events / store / diagnostics / modes
+  -> loushang.coding Product composition
+  -> loushang.harness Session / prepared run
+       -> loushang.agent loop
+            -> loushang.ai provider adapters
+       -> tools / policy / approval / sandbox / events
 ```
 
 相邻能力层：
@@ -136,4 +188,4 @@ CLI / TUI
 1. `loushang.work` 的 run-bound plan binding、动态输入与 outcome 验证
 2. channel capability negotiation and interaction request/response contracts
 3. TUI method status layer 与 `WorkEvent` / `WorkPlanRun` projection
-4. public CLI reference 对 method/work/package surface 的补齐
+4. public CLI reference 对 Method、Work 与 Resource Package surfaces 的补齐
