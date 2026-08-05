@@ -56,7 +56,9 @@ async def execute_lsp_session_command(
     if action == "status":
         if len(values) != 1 and values:
             return _usage_error()
-        status = runtime.status() if runtime is not None else disabled_lsp_session_status()
+        status = (
+            runtime.status() if runtime is not None else disabled_lsp_session_status()
+        )
         return _status_result(status)
     if action != "stop" or len(values) != 3:
         return _usage_error()
@@ -134,6 +136,7 @@ def _status_display(status: LspSessionStatus) -> str:
         lines.append(
             f"{server.state}\t{server.definition_id}\t{server.workspace_root}\t"
             f"documents={server.open_document_count}\t"
+            f"diagnostics={server.current_diagnostic_count}\t"
             f"requests={server.request_count}\ttimeouts={server.timeout_count}\t"
             f"replacements={server.replacement_count}"
         )

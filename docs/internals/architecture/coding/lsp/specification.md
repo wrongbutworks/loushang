@@ -419,10 +419,11 @@ P0 handlers:
 | `window/showMessageRequest` | reject or select no action |
 | unknown request | JSON-RPC method-not-found/error response |
 
-P0 also recognizes `textDocument/publishDiagnostics` notifications and discards
-them after validating only the bounded envelope needed to identify the method.
-It retains no diagnostic payload, injects no model context, and logs no source
-content. H4 replaces this discard handler with the bounded diagnostic Inbox.
+H4.1 routes `textDocument/publishDiagnostics` notifications synchronously to a
+bounded session-local Inbox. The handler accepts only already-open documents,
+normalizes at most a fixed number of items, and never performs I/O or awaits a
+consumer on the protocol reader. Rejected publications increment a bounded
+status counter. No diagnostic payload is injected into model context or logged.
 Unknown notifications are ignored with at most bounded metadata diagnostics.
 
 Client capabilities must disable dynamic features that the client does not
@@ -588,7 +589,7 @@ not the primary bounding mechanism.
 
 ## 10. Passive Diagnostic Feedback
 
-### 10.1 Authoritative current set
+### 10.1 Authoritative current set (H4.1 implemented)
 
 LSP diagnostics are published as a complete set for a Server/document. The
 Inbox replaces the current set for that key, including replacement by an empty
@@ -604,7 +605,14 @@ If a version is present:
 If no version is present, records are marked unversioned and tied to the latest
 observed document state without claiming exact version authority.
 
-### 10.2 Pending delivery
+The initial implementation scans at most 512 raw items per publication, retains
+at most 100 normalized diagnostics per document, 128 documents, 2,048 total
+diagnostics, and a 256K-character diagnostic accounting budget per session. It
+also bounds individual message, code, source, and tag values. The Inbox evicts
+the least-recently-replaced document set when a total limit is exceeded and
+records omission, truncation, malformed, version-anomaly, and eviction counters.
+
+### 10.2 Pending delivery (H4.2 deferred)
 
 The Inbox derives a delta against delivered keys. A diagnostic key includes
 Server, URI, version class, range, severity, code, source, and message.
@@ -622,7 +630,7 @@ priority: error -> warning -> information -> hint
 Measured H4 implementation work selects the exact Coding Product defaults. The
 projection reports how many diagnostics were omitted.
 
-### 10.3 Delivery point
+### 10.3 Delivery point (H4.2 deferred)
 
 Pending diagnostics are attached after a completed tool batch or before the
 next model turn, not injected while a model response is streaming. A debounce
@@ -687,7 +695,7 @@ granted by Server capability negotiation alone.
 
 ## 12. Status And Operational Diagnostics
 
-The status surface returns bounded records for:
+The target status surface returns bounded records for:
 
 - catalog generation and definition provenance;
 - admitted/rejected/unavailable definitions;
@@ -698,6 +706,10 @@ The status surface returns bounded records for:
 - open document count;
 - current/pending diagnostic counts;
 - result and diagnostic truncation counts.
+
+H4.1 exposes accepted/rejected publication counts and current diagnostic
+document/item counts per live runtime. Detailed Inbox omission and truncation
+counters remain internal until H4.2 defines their stable SDK/TUI projection.
 
 Source text, request payload contents, inherited environment, and unrestricted
 stderr are excluded. Stderr is kept in a bounded operational buffer or artifact
@@ -808,12 +820,15 @@ direct subprocess launcher as a temporary production bypass.
 - status/doctor;
 - explicit stop; after a crash or stop, the next demand may reauthorize and
   start a replacement;
+- H4.1 bounded, version-aware passive diagnostic reception and lifecycle
+  cleanup, without model delivery;
 - fake Server tests;
+- a path-scoped CI compatibility gate against a pinned real Pyright Server;
 - clean degradation when no Server exists.
 
 ### Deferred
 
-- committed workspace mutation event and passive diagnostics;
+- committed workspace mutation event and H4.2 diagnostic delivery;
 - workspace warm-up and idle eviction;
 - automatic restart budgets and exponential backoff;
 - live catalog-generation migration;

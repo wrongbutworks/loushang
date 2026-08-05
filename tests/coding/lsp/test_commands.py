@@ -24,6 +24,7 @@ class _Runtime:
                     workspace_root=str(self.root),
                     state="stopped" if self.stopped else "ready",
                     open_document_count=0 if self.stopped else 1,
+                    current_diagnostic_count=0 if self.stopped else 2,
                     request_count=3,
                 ),
             )
@@ -54,6 +55,7 @@ def test_lsp_session_command_projects_status_and_explicit_stop(tmp_path: Path) -
     assert status.result["scope"] == "session"
     assert status.result["ready_count"] == 1
     assert "pyright" in status.result["display"]
+    assert "diagnostics=2" in status.result["display"]
     assert runtime.stop_calls == [("pyright", str(tmp_path))]
     assert stopped.result["action"] == "stop"
     assert stopped.result["stopped"] is True

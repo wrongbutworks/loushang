@@ -20,7 +20,10 @@ class LspServerRuntimeStatus:
     request_count: int = 0
     timeout_count: int = 0
     replacement_count: int = 0
+    accepted_diagnostic_publications: int = 0
     discarded_diagnostic_publications: int = 0
+    diagnostic_document_count: int = 0
+    current_diagnostic_count: int = 0
     last_request_duration_ms: float | None = None
     last_error: str | None = None
 

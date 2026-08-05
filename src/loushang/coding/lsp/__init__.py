@@ -15,6 +15,7 @@ from loushang.coding.lsp.discovery import (
 )
 from loushang.coding.lsp.documents import DocumentSnapshot, LspDocumentManager
 from loushang.coding.lsp.model import (
+    CodeDiagnostic,
     CodeHover,
     CodeLocation,
     CodePosition,
@@ -69,6 +70,7 @@ from loushang.coding.lsp.tools import (
 
 __all__ = [
     "AuthorizedProcessLauncher",
+    "CodeDiagnostic",
     "CodeHover",
     "CodeLocation",
     "CodePosition",

@@ -194,20 +194,23 @@ target document with disk state and resynchronize if necessary. This preserves
 correctness for shell commands, external editors, or mutation sources not yet
 covered by the event path.
 
-### R12. Passive diagnostics (H4, deferred from active P0)
+### R12. Passive diagnostics (H4.1 reception; H4.2 delivery)
 
 The capability must be able to receive `publishDiagnostics`, retain the latest
 diagnostic set per Server/document, recognize empty sets as clearing previous
 diagnostics, and project only new, relevant diagnostics to the model.
 
-Diagnostic delivery must be version-aware where the Server supplies a version,
-bounded per file and per turn, severity ordered, deduplicated across turns, and
-capable of marking unversioned or stale information.
+Diagnostic reception must be version-aware where the Server supplies a version,
+bounded per document and session, severity ordered, and capable of recognizing
+unversioned or stale information. Diagnostic delivery must additionally be
+bounded per turn and deduplicated across turns.
 
-P0 recognizes and discards `publishDiagnostics` without retaining payloads or
-injecting context. This keeps ordinary Servers protocol-safe before H4 exists.
+H4.1 retains normalized current replacement sets for already-open documents and
+clears them on empty publication, document advance, runtime retirement, crash,
+or session disposal. It does not inject model context. H4.2 adds committed
+mutation consumption and bounded model delivery.
 
-### R13. Separate code diagnostics (H4 data; P0 operational failures only)
+### R13. Separate code diagnostics (H4.1 data)
 
 LSP diagnostics must use Coding-owned `CodeDiagnostic` records. They must not be
 stored as Harness operational `DiagnosticRecord` values, which represent

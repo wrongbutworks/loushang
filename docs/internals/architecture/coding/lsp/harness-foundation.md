@@ -600,9 +600,13 @@ Only H1-H2 are Harness prerequisites for active production LSP.
 - ship bounded active semantic tools and read-only status/doctor;
 - on crash, fail current requests and allow the next demand to reauthorize and
   start a replacement;
-- do not add warm-up, idle eviction, automatic backoff or passive diagnostics.
+- do not add warm-up, idle eviction, automatic backoff or model-visible passive
+  diagnostic delivery.
 
 ### H4. Passive diagnostic feedback
+
+H4.1 is Coding-only bounded reception and lifecycle cleanup; it needs no new
+Harness contract. H4.2 completes the feedback loop:
 
 - add the minimal mutation fact/source/sink over `OrderedEventBus`;
 - integrate successful Harness write/edit commits;
