@@ -38,7 +38,7 @@ The three executable composition semantics are:
 | --- | --- | --- | --- |
 | Aggregate Contribution | zero or more | admit every compatible entry and combine deterministically | tools, commands, server definitions, independent hooks |
 | Ordered Interception | zero or more around one operation or provider | build an explicit ordered chain with a declared error policy | policy interceptors, tracing, metrics, caching |
-| Exclusive Replacement | zero or one active provider per slot | select explicitly; reject unresolved ambiguity | approval resolver, model provider, storage or channel adapter |
+| Exclusive Replacement | zero or one active provider per slot | apply the owning surface's explicit deterministic selection rule; reject only unresolved ambiguity | approval resolver, model provider, storage or channel adapter |
 
 Decoration is the restricted case of Ordered Interception that wraps an
 already resolved capability without acquiring its selection, authority, or
@@ -143,10 +143,58 @@ Every replaceable or composable surface declares:
 - duplicate, ambiguity, failure, and fallback behavior.
 
 Registries must reject duplicate identities that the owning semantic cannot
-combine. Exclusive replacements require explicit Product, OEM, or Platform
-selection. They do not use last-write-wins or import order. Fallback providers
-are selected by the slot owner and are visible in the resolved profile and
-diagnostics.
+combine. Exclusive replacements require an explicit Product, OEM, or Platform
+selection rule. A runtime-profile `single` slot may use its declared
+source/layer/selection precedence; another surface may require a named provider
+or reject competing candidates. These policies do not use incidental import or
+discovery order. Fallback providers are selected by the slot owner and are
+visible in the resolved profile and diagnostics.
+
+## Standard Runtime Capability Semantic Inventory
+
+This inventory applies the canonical glossary terms to the standard Harness
+runtime slots. It is not a second glossary: term definitions remain in the
+[Product And OEM Glossary](../../glossary/loushang-product.md), while
+`src/loushang/harness/runtime/_profile_standard.py` remains the code authority
+for current slot keys, shapes, scopes, refresh boundaries, and source ceilings.
+
+The **slot semantic** describes how alternative bound implementations interact.
+The **nested semantic** describes values subsequently consumed by the selected
+implementation. Keeping these columns separate prevents an ordered collection
+of prompt sections or capability packs from being mistaken for permission to
+bind multiple composer implementations.
+
+| Standard slot | Owner boundary | Current profile contract | Slot semantic | Nested semantic | Alignment status |
+| --- | --- | --- | --- | --- | --- |
+| `conversation.store` | Harness Conversation and transcript runtime | `single`; Session; sealed; Product/OEM | Exclusive Replacement | None | Executable: profile precedence selects one store implementation. |
+| `agent.transcript_profile` | Harness transcript runtime | `single`; Session; sealed; Product/OEM | Exclusive Replacement | None | Executable: profile precedence selects one transcript profile. |
+| `context.compaction` | Harness Context and transcript runtime | `single`; Session; turn; Product/OEM/Extension/session | Exclusive Replacement | None | Executable: profile precedence selects one turn-refreshable implementation. |
+| `resource.runtime` | Harness Resources | `single`; workspace; sealed; Product/OEM | Exclusive Replacement of the activation runtime | Resource Overlay inside the admitted `ResourceBundle` | Executable; the provider and data-overlay axes remain separate. |
+| `prompt.sections` | Product prompt policy with Harness composition mechanics | `single`; Session; turn; Product/OEM/Extension/session | Exclusive Replacement of the composer | Aggregate Contribution of admitted `PromptSection` values | Aligned: exactly one composer binds, while its input sections remain an ordered aggregate. |
+| `skill.activation` | Product activation policy with Harness resource mechanics | `single`; Session; turn; Product/OEM/Extension/session | Exclusive Replacement | One selected policy transforms the admitted resource bundle | Executable: exactly one activation runtime binds. |
+| `tool.packs` | Product tool policy with Harness pack composition | `single`; Session; turn; Product/OEM/Extension | Exclusive Replacement of the composer | Aggregate Contribution of admitted `CapabilityPack` values | Aligned: exactly one composer binds, while admitted packs remain an ordered aggregate. |
+| `command.packs` | Product command policy with Harness pack composition | `single`; Session; turn; Product/OEM/Extension | Exclusive Replacement of the composer | Aggregate Contribution of admitted `CapabilityPack` values | Aligned: exactly one composer binds, while admitted packs remain an ordered aggregate. |
+| `interaction.side_question` | Product interaction port with Harness Session binding | optional `single`; Session; sealed; Product/OEM/Extension | Exclusive Replacement | None | Executable: profile precedence selects zero or one provider factory. |
+| `continuity.provider_packs` | Harness Continuity composition | optional `ordered`; Process; sealed; Product/OEM | Aggregate Contribution | Each pack contributes one or more continuity providers | Executable: all resolved packs compose in profile order and duplicate provider identities are rejected. |
+
+No current standard runtime slot is classified as Ordered Interception.
+Extension-routing interceptor chains are a separate executable surface and must
+retain their own ordering, error, and delegation contract rather than borrowing
+the semantics of an `ordered` runtime slot.
+
+`RuntimeCapabilitySlot.variation_semantic` is the executable code authority for
+this classification. Slots that admit non-Product sources or retain multiple
+values must declare it. Shape/semantic compatibility is validated when the
+slot is constructed, and the semantic is retained in new runtime-profile
+snapshots. Legacy schema-v1 snapshots without the additive field remain
+readable and are normalized against the current Product contract during
+resume validation.
+
+No standard slot declares automatic provider fallback. A Product default is
+the baseline selection; a higher-precedence admitted Exclusive Replacement may
+replace it, but a binding failure does not silently retry the baseline.
+Introducing such fallback requires a separately declared failure policy,
+durable provenance, and lifecycle tests.
 
 ## Application To Coding Language Services
 

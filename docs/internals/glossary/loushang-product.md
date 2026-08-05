@@ -333,7 +333,9 @@ admitted capability catalog and policy.
 
 A Product-declared location at which one or more implementations of a
 Capability may bind. The slot defines composition shape, lifecycle scope,
-refresh boundary, and allowed contribution sources.
+refresh boundary, and allowed contribution sources. When the slot exposes
+replaceable or composable behavior, `variation_semantic` separately records
+Aggregate Contribution, Ordered Interception, or Exclusive Replacement.
 
 ### Runtime Capability Shape
 
@@ -392,11 +394,12 @@ layer.
 ### Exclusive Replacement
 
 A composition semantic in which exactly one admitted provider is active for a
-declared variation surface. Selection is explicit and explainable; ambiguous
-candidates are rejected instead of being resolved by silent last-write-wins
-behavior. When profile-bound, Runtime Capability Shape independently governs
-selection retention and refresh. Any fallback is selected by the owning
-Product or Platform policy.
+declared variation surface. Selection is explicit and explainable: the owning
+surface may define deterministic precedence, require a named provider, or
+reject candidates that its policy cannot disambiguate. It must not rely on
+incidental last-write or discovery order. When profile-bound, Runtime
+Capability Shape independently governs selection retention and refresh. Any
+fallback is selected by the owning Product or Platform policy.
 
 ### Protocol Injection
 

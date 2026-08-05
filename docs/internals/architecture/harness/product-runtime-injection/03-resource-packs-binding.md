@@ -45,8 +45,8 @@ behavior is fixed. `prompt.sections` requires exactly `separator` and
 `stripSections`. Resource roots, disabled selectors, conflict policy, and the
 actual pack values are Product inputs to the bound operations, not hidden
 Harness configuration. The standard runtime binds one composition mechanism
-per slot; an ordered slot's multiple admitted content packs are passed to that
-mechanism and retain their own provenance.
+per slot; multiple admitted prompt sections or content packs are passed to the
+selected mechanism and retain their own provenance.
 
 ## Product Policy And Admission
 
@@ -65,8 +65,9 @@ authority.
 ## Durable And Refresh Rules
 
 The Product persists the pure resolved capability-profile snapshot separately
-from its conversation/runtime profile. The snapshot contains only selected
-implementation IDs, versions, JSON config, and provenance.
+from its conversation/runtime profile. The snapshot contains only the declared
+variation semantic, selected implementation IDs, versions, JSON config, and
+provenance.
 
 `resource.runtime` stays sealed for the session. Prompt, skill, tool-pack, and
 command-pack slots retain their declared turn refresh boundary, but a Product

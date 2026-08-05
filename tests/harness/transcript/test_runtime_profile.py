@@ -96,6 +96,27 @@ def test_product_runtime_accepts_pre_release_current_format_alias() -> None:
     )
 
 
+def test_product_runtime_accepts_legacy_snapshot_without_variation_semantics() -> None:
+    runtime = _runtime()
+    profile = runtime.resolve(persist=True)
+    metadata = runtime.snapshot_metadata(profile)
+    persisted = metadata["runtimeProfile"]
+    assert isinstance(persisted, dict)
+    capabilities = persisted["capabilities"]
+    assert isinstance(capabilities, list)
+    for capability in capabilities:
+        assert isinstance(capability, dict)
+        capability.pop("variationSemantic")
+
+    restored = runtime.validate_snapshot(metadata, profile, require_current=True)
+
+    assert restored is not None
+    assert all(
+        capability.variation_semantic is None
+        for capability in restored.capabilities
+    )
+
+
 def test_product_runtime_rejects_another_products_snapshot() -> None:
     research = _runtime("research")
     design = _runtime("design")

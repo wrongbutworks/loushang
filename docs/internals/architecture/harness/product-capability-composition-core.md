@@ -32,9 +32,11 @@ second production Product is not required by the neutrality evidence gate.
 The values bound through Capability Slots use the behavioral semantics from the
 [Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md):
 
-- command and tool packs are Aggregate Contributions after Product admission;
-- prompt sections are an ordered aggregate whose ordering is supplied by the
-  Product and recorded in the prepared result;
+- command and tool pack composers use Exclusive Replacement, while the
+  admitted packs passed to the selected composer are Aggregate Contributions;
+- the prompt-section composer uses Exclusive Replacement, while its admitted
+  sections are an ordered aggregate whose ordering is supplied by the Product
+  and recorded in the prepared result;
 - injected prompt parsing, expansion, activation, and callback behavior is
   Protocol Injection at the Product composition root;
 - same-name resource or tool behavior follows the owning catalog's documented

@@ -182,11 +182,12 @@ class AgentTranscriptProfileRuntime:
         require_current: bool,
     ) -> RuntimeProfileSnapshot | None:
         snapshot = self.read_snapshot(metadata)
+        current_snapshot = profile.snapshot()
         if (
             require_current
             and snapshot is not None
-            and self._normalize_snapshot(snapshot)
-            != self._normalize_snapshot(profile.snapshot())
+            and self._normalize_snapshot(snapshot, current=current_snapshot)
+            != self._normalize_snapshot(current_snapshot, current=current_snapshot)
         ):
             raise ValueError(
                 f"{self.spec.product_name} cannot resume a session with an "
@@ -197,11 +198,25 @@ class AgentTranscriptProfileRuntime:
     def _normalize_snapshot(
         self,
         snapshot: RuntimeProfileSnapshot,
+        *,
+        current: RuntimeProfileSnapshot,
     ) -> RuntimeProfileSnapshot:
         """Canonicalize pre-release aliases without weakening profile checks."""
 
+        current_capabilities = {
+            capability.slot: capability for capability in current.capabilities
+        }
         capabilities = []
         for capability in snapshot.capabilities:
+            current_capability = current_capabilities.get(capability.slot)
+            if (
+                capability.variation_semantic is None
+                and current_capability is not None
+            ):
+                capability = replace(
+                    capability,
+                    variation_semantic=current_capability.variation_semantic,
+                )
             if capability.slot != _TRANSCRIPT_SLOT:
                 capabilities.append(capability)
                 continue

@@ -18,18 +18,18 @@ It satisfies PDRI-001, PDRI-004, PDRI-008, PDRI-009, PDRI-010, and PDRI-011.
 
 ## Standard Slots
 
-| Slot | Shape / lifecycle | Sources | Meaning |
+| Slot | Shape / semantic / lifecycle | Sources | Meaning |
 | --- | --- | --- | --- |
-| `resource.runtime` | single, workspace, sealed | Product, OEM | Resource discovery/materialization implementation. Content may refresh; the backend cannot hot-swap inside a Session. |
-| `prompt.sections` | ordered, session, turn-refreshable | Product, OEM, approved extension, session | Prepared prompt section providers. |
-| `skill.activation` | single, session, turn-refreshable | Product, OEM, approved extension, session | The policy that decides which discovered skills are active and model-visible. |
-| `tool.packs` | ordered, session, turn-refreshable | Product, OEM, approved extension | Definitions/materializers to contribute; a session cannot inject an executable handler. |
-| `command.packs` | ordered, session, turn-refreshable | Product, OEM, approved extension | Command descriptors and handlers; a session cannot inject an executable handler. |
+| `resource.runtime` | single, Exclusive Replacement, workspace, sealed | Product, OEM | Resource discovery/materialization implementation. Content may refresh; the backend cannot hot-swap inside a Session. |
+| `prompt.sections` | single, Exclusive Replacement, session, turn-refreshable | Product, OEM, approved extension, session | One prepared-prompt composer; its admitted section inputs are Aggregate Contributions. |
+| `skill.activation` | single, Exclusive Replacement, session, turn-refreshable | Product, OEM, approved extension, session | The policy that decides which discovered skills are active and model-visible. |
+| `tool.packs` | single, Exclusive Replacement, session, turn-refreshable | Product, OEM, approved extension | One pack composer; its admitted tool-pack inputs are Aggregate Contributions. |
+| `command.packs` | single, Exclusive Replacement, session, turn-refreshable | Product, OEM, approved extension | One pack composer; its admitted command-pack inputs are Aggregate Contributions. |
 
-An ordered slot retains contributor order after source/layer/selection ordering;
-the concrete pack runtime owns duplicate-name conflict rules. `tool.packs` and
-`command.packs` deliberately exclude session selection because a session
-setting must not acquire executable authority.
+The selected prompt or pack composer retains its input contribution order and
+owns its duplicate-name conflict rules. `tool.packs` and `command.packs`
+deliberately exclude session selection because a session setting must not
+acquire executable authority.
 
 ## Admission
 
@@ -88,9 +88,9 @@ defines its resume contract.
 
 ## Durable And Refresh Rules
 
-The resolved profile snapshot records implementation ID, version, JSON
-configuration, and layer provenance. It never records live factories, handler
-callables, credentials, or arbitrary extension objects.
+The resolved profile snapshot records variation semantic, implementation ID,
+version, JSON configuration, and layer provenance. It never records live
+factories, handler callables, credentials, or arbitrary extension objects.
 
 `resource.runtime` is sealed for the Session. Refreshing resources must keep
 the selected backend and atomically retain the last valid materialized bundle
