@@ -18,9 +18,9 @@ direction is:
 
 The reverse dependencies are forbidden. In particular, `loushang.harnesstui`
 must not import `loushang.coding`, `loushang.agent`, AI message/model/provider
-Python packages, or product-specific policy. `loushang.harness` and
-`loushang.tui` are independent peers: Harnesstui may depend on both, but neither
-peer may depend on Harnesstui or on the other peer.
+Python packages, or product-specific policy. `loushang.harness` and `loushang.tui` are
+independent peers: Harnesstui may depend on both, but neither peer may depend on
+Harnesstui or on the other peer.
 
 ## Responsibilities
 
