@@ -88,9 +88,30 @@ loushang lsp doctor
 ```
 
 Servers still start lazily on the first semantic query. `status` and `doctor`
-only inspect configuration and executable availability; they do not start or
-install a server. Loushang probes installed Pyright, TypeScript Language Server,
-rust-analyzer, gopls, and clangd defaults.
+have `scope=catalog`: they only inspect configuration and executable
+availability, and never construct a Session, start a Server, or install one.
+Loushang probes installed Pyright, TypeScript Language Server, rust-analyzer,
+gopls, and clangd defaults.
+
+Inside an interactive Coding Session, use the separate Session-local surface:
+
+```text
+/lsp status
+/lsp stop <server-id> <root>
+```
+
+`/lsp status` reports only Servers known to that Session, including lifecycle,
+open-document, request, timeout, replacement, and discarded-publication counts.
+It is read-only and does not start a Server. `/lsp stop` gracefully shuts down
+the exact Session-owned Server; the next semantic query may start a replacement.
+Embedding code can use `session.get_lsp_status()` and
+`await session.stop_lsp_server(...)` over the same bounded snapshot. The Session
+command is discoverable through the normal TUI and RPC command catalogs.
+
+Contributors with `pyright-langserver` already on `PATH` can run the optional
+real-server gate with `uv run pytest
+tests/integration/coding/test_pyright_lsp_live.py -q`; it skips when Pyright is
+absent and never installs it.
 
 Declare a custom server in `~/.loushang/coding/lsp.json`:
 

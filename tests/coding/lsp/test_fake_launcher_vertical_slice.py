@@ -884,6 +884,11 @@ def test_initialize_failure_closes_fake_process_and_publishes_no_runtime(
 
         assert len(launcher.handles) == 1
         assert launcher.handles[0].close_calls == 1
+        failed = binding.status().servers[0]
+        assert failed.state == "failed"
+        assert failed.runtime_id is None
+        assert failed.request_count == 1
+        assert failed.last_error == "initialization_failed"
         await binding.dispose()
 
     asyncio.run(scenario())
@@ -1003,6 +1008,10 @@ def test_request_timeout_sends_protocol_cancel_and_keeps_runtime(
             )
         server = launcher.handles[0].server
         await _wait_for_method(server, "$/cancelRequest")
+        timed_out_status = binding.status().servers[0]
+        assert timed_out_status.state == "ready"
+        assert timed_out_status.timeout_count == 1
+        assert timed_out_status.last_error is None
 
         gate.set()
         result = await binding.inspect_symbol(
@@ -1013,6 +1022,127 @@ def test_request_timeout_sends_protocol_cancel_and_keeps_runtime(
         )
         assert result.count == 0
         assert len(launcher.requests) == 1
+        await binding.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_runtime_status_is_read_only_and_explicit_stop_allows_replacement(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        launcher = FakeLauncher(definition_result=None)
+        binding = _binding(tmp_path, launcher, {source.resolve(): "value = 1\n"})
+
+        initial = binding.status()
+        assert initial.scope == "session"
+        assert initial.enabled is True
+        assert initial.servers == ()
+        assert launcher.requests == []
+
+        await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            correlation_id="status-query",
+        )
+        ready = binding.status()
+        assert ready.ready_count == 1
+        assert ready.starting_count == 0
+        assert len(launcher.requests) == 1
+        ready_server = ready.servers[0]
+        assert ready_server.definition_id == "fake-python"
+        assert ready_server.workspace_root == str(tmp_path.resolve())
+        assert ready_server.state == "ready"
+        assert ready_server.runtime_id == 1
+        assert ready_server.open_document_count == 1
+        assert ready_server.request_count == 2
+        assert ready_server.timeout_count == 0
+        assert ready_server.replacement_count == 0
+        assert ready_server.discarded_diagnostic_publications == 1
+        assert ready_server.last_request_duration_ms is not None
+        assert ready_server.last_error is None
+
+        with pytest.raises(LspInvalidInputError, match="unknown LSP server"):
+            await binding.stop(
+                definition_id="unknown",
+                workspace_root=tmp_path,
+            )
+        with pytest.raises(LspInvalidInputError, match="must stay within"):
+            await binding.stop(
+                definition_id="fake-python",
+                workspace_root=tmp_path.parent,
+            )
+
+        stopped = await binding.stop(
+            definition_id="fake-python",
+            workspace_root=tmp_path,
+        )
+        assert stopped is True
+        stopped_server = binding.status().servers[0]
+        assert stopped_server.state == "stopped"
+        assert stopped_server.runtime_id is None
+        assert stopped_server.open_document_count == 0
+        assert launcher.handles[0].server.methods()[-2:] == ["shutdown", "exit"]
+
+        await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            correlation_id="replacement-query",
+        )
+        replacement = binding.status().servers[0]
+        assert replacement.state == "ready"
+        assert replacement.runtime_id == 2
+        assert replacement.replacement_count == 1
+        assert replacement.request_count >= 5
+        assert len(launcher.requests) == 2
+
+        await binding.dispose()
+        disposed = binding.status()
+        assert disposed.disposed is True
+        assert disposed.servers[0].state == "stopped"
+
+    asyncio.run(scenario())
+
+
+def test_runtime_status_observes_pending_start_without_starting_another_server(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        gate = asyncio.Event()
+        launcher = FakeLauncher(definition_result=None, initialize_gate=gate)
+        binding = _binding(tmp_path, launcher, {source.resolve(): "value = 1\n"})
+
+        query = asyncio.create_task(
+            binding.inspect_symbol(
+                path="main.py",
+                line=1,
+                character=1,
+                correlation_id="pending-start",
+            )
+        )
+        for _ in range(100):
+            if launcher.handles:
+                break
+            await asyncio.sleep(0)
+        assert launcher.handles
+
+        pending = binding.status()
+        assert pending.starting_count == 1
+        assert pending.servers[0].state == "starting"
+        assert pending.servers[0].open_document_count == 0
+        assert len(launcher.requests) == 1
+
+        gate.set()
+        await query
+        assert binding.status().servers[0].state == "ready"
         await binding.dispose()
 
     asyncio.run(scenario())
@@ -1138,6 +1268,57 @@ def test_cancelled_binding_dispose_keeps_one_shared_close_running(
     asyncio.run(scenario())
 
 
+def test_concurrent_stop_and_dispose_share_one_server_shutdown(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        shutdown_gate = asyncio.Event()
+        launcher = FakeLauncher(
+            definition_result=None,
+            shutdown_gate=shutdown_gate,
+        )
+        binding = _binding(tmp_path, launcher, {source.resolve(): "value = 1\n"})
+        await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            correlation_id="open-before-stop",
+        )
+
+        first_stop = asyncio.create_task(
+            binding.stop(
+                definition_id="fake-python",
+                workspace_root=tmp_path,
+            )
+        )
+        await _wait_for_method(launcher.handles[0].server, "shutdown")
+        second_stop = asyncio.create_task(
+            binding.stop(
+                definition_id="fake-python",
+                workspace_root=tmp_path,
+            )
+        )
+        disposing = asyncio.create_task(binding.dispose())
+        await asyncio.sleep(0)
+        assert not first_stop.done()
+        assert not second_stop.done()
+        assert not disposing.done()
+
+        shutdown_gate.set()
+        assert await first_stop is True
+        assert await second_stop is True
+        await disposing
+
+        methods = launcher.handles[0].server.methods()
+        assert methods.count("shutdown") == 1
+        assert methods.count("exit") == 1
+        assert launcher.handles[0].close_calls == 1
+        assert binding.status().disposed is True
+
+    asyncio.run(scenario())
+
+
 def test_server_crash_restarts_on_demand_and_reopens_document(tmp_path: Path) -> None:
     async def scenario() -> None:
         (tmp_path / "pyproject.toml").touch()
@@ -1156,6 +1337,9 @@ def test_server_crash_restarts_on_demand_and_reopens_document(tmp_path: Path) ->
                 character=1,
                 correlation_id="crashed-query",
             )
+        crashed = binding.status().servers[0]
+        assert crashed.state == "failed"
+        assert crashed.last_error == "connection_closed"
         result = await binding.inspect_symbol(
             path="main.py",
             line=1,
@@ -1165,6 +1349,9 @@ def test_server_crash_restarts_on_demand_and_reopens_document(tmp_path: Path) ->
 
         assert result.count == 0
         assert len(launcher.requests) == 2
+        replacement = binding.status().servers[0]
+        assert replacement.state == "ready"
+        assert replacement.replacement_count == 1
         assert [
             handle.server.methods().count("textDocument/didOpen")
             for handle in launcher.handles

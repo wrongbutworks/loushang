@@ -34,6 +34,7 @@ src/loushang/coding/lsp/
 ├── tools.py
 ├── tool_pack.py
 ├── binding.py
+├── commands.py
 └── status.py
 ```
 
@@ -705,14 +706,20 @@ with existing policy.
 Recommended non-model commands/queries are:
 
 ```text
-lsp status
-lsp doctor
-lsp stop <server-id> [root]
+loushang lsp status                     # offline Catalog scope
+loushang lsp doctor                     # offline Catalog scope
+/lsp status                             # current Session runtime scope
+/lsp stop <server-id> <root>            # current Session runtime scope
+session.get_lsp_status()                # SDK, read-only
+await session.stop_lsp_server(...)      # SDK, explicit mutation
 ```
 
-Exact CLI syntax belongs to Coding CLI design; these are Product operations,
-not model tools. A richer explicit restart command may be added after the
-replacement policy is measured; in P0, stop plus the next demand is sufficient.
+The independent CLI never constructs a Session and therefore cannot claim to
+inspect a live child process. Session commands use the normal Product command
+catalog so TUI and RPC discovery do not need an LSP-specific Harness route.
+These are Product operations, not model tools. A richer explicit restart
+command may be added after the replacement policy is measured; in P0, stop plus
+the next demand is sufficient.
 
 ## 13. Package And Extension Contributions
 

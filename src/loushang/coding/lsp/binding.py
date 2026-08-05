@@ -10,7 +10,9 @@ from loushang.coding.lsp.documents import LspDocumentManager
 from loushang.coding.lsp.model import (
     CodeQueryResult,
     DocumentOutlineResult,
+    LspInvalidInputError,
     LspServerDefinition,
+    LspServerKey,
 )
 from loushang.coding.lsp.ports import (
     AuthorizedProcessLauncher,
@@ -18,6 +20,7 @@ from loushang.coding.lsp.ports import (
     WorkspaceTextReader,
 )
 from loushang.coding.lsp.selector import LspSelector
+from loushang.coding.lsp.status import LspSessionStatus
 from loushang.coding.lsp.supervisor import LspServerSupervisor
 from loushang.coding.lsp.tools import CodingLspTools
 
@@ -42,15 +45,19 @@ class CodingLspBinding:
             catalog=catalog,
             path_exists=path_exists,
         )
-        supervisor = LspServerSupervisor(
-            catalog=catalog,
-            launcher=launcher,
-            baseline_environment=baseline_environment,
-        )
         documents = LspDocumentManager(
             workspace_root=root,
             read_text=read_text,
         )
+        supervisor = LspServerSupervisor(
+            catalog=catalog,
+            launcher=launcher,
+            baseline_environment=baseline_environment,
+            open_document_count=documents.open_document_count,
+            release_runtime_documents=documents.release_runtime,
+        )
+        self._workspace_root = root
+        self._catalog = catalog
         self._supervisor = supervisor
         self._tools = CodingLspTools(
             selector=selector,
@@ -97,6 +104,31 @@ class CodingLspBinding:
             correlation_id=correlation_id,
             signal=signal,
         )
+
+    def status(self) -> LspSessionStatus:
+        return self._supervisor.status()
+
+    async def stop(
+        self,
+        *,
+        definition_id: str,
+        workspace_root: str | Path,
+    ) -> bool:
+        try:
+            self._catalog.definition(definition_id)
+        except KeyError as exc:
+            raise LspInvalidInputError(
+                f"unknown LSP server definition: {definition_id!r}"
+            ) from exc
+        root = Path(workspace_root).expanduser()
+        if not root.is_absolute():
+            root = self._workspace_root / root
+        root = root.resolve()
+        if not root.is_relative_to(self._workspace_root):
+            raise LspInvalidInputError(
+                "LSP Server root must stay within the Coding workspace"
+            )
+        return await self._supervisor.stop(LspServerKey(definition_id, root))
 
     async def dispose(self) -> None:
         await self._supervisor.dispose()

@@ -10,7 +10,13 @@ from loushang.coding.compaction.adapter import (
 from loushang.coding.compaction.adapter import (
     execute_coding_compaction as _execute_coding_compaction,
 )
+from loushang.coding.lsp.commands import (
+    LSP_SESSION_COMMAND_NAME,
+    execute_lsp_session_command,
+    lsp_session_command_descriptor,
+)
 from loushang.coding.lsp.runtime import CodingLspRuntime
+from loushang.coding.lsp.status import LspSessionStatus, disabled_lsp_session_status
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -25,6 +31,7 @@ from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
 )
+from loushang.harness.commands import normalize_command_name
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.events import RuntimeEvent
@@ -179,6 +186,42 @@ class AgentSession(AgentProductSession):
         if self._sandbox_runtime is None:
             return SandboxStatus(state="disabled")
         return self._sandbox_runtime.status()
+
+    def get_lsp_status(self) -> LspSessionStatus:
+        if self._lsp_runtime is None:
+            return disabled_lsp_session_status()
+        return self._lsp_runtime.status()
+
+    async def stop_lsp_server(
+        self,
+        *,
+        definition_id: str,
+        workspace_root: str,
+    ) -> bool:
+        if self._lsp_runtime is None:
+            return False
+        return await self._lsp_runtime.stop(
+            definition_id=definition_id,
+            workspace_root=workspace_root,
+        )
+
+    def list_commands(self) -> list[object]:
+        commands = list(super().list_commands())
+        if not any(
+            getattr(command, "name", None) == LSP_SESSION_COMMAND_NAME
+            for command in commands
+        ):
+            commands.append(lsp_session_command_descriptor())
+        return commands
+
+    async def execute_command_async(
+        self,
+        invocation_name: str,
+        args: str,
+    ) -> object | None:
+        if normalize_command_name(invocation_name) == LSP_SESSION_COMMAND_NAME:
+            return await execute_lsp_session_command(self._lsp_runtime, args)
+        return await super().execute_command_async(invocation_name, args)
 
     async def emit_product_tool_audit_event(
         self,

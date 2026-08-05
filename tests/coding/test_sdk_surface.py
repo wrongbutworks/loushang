@@ -289,6 +289,11 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
             standalone_sessions.append(direct_session)
             assert isinstance(direct_session, coding.AgentSession)
             assert direct_session.session_manager is session_manager
+            assert direct_session.get_lsp_status().scope == "session"
+            assert direct_session.get_lsp_status().servers == ()
+            assert "lsp" in {
+                command.name for command in direct_session.list_commands()
+            }
 
             agent_services = coding.create_agent_session_services(
                 cwd=project_root,
