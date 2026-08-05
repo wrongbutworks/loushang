@@ -5,9 +5,12 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from loushang.coding.lsp import (
+    LspCatalog,
+    LspSelector,
     LspServerDefinition,
     default_lsp_environment,
     discover_lsp_catalog,
+    product_default_lsp_definitions,
 )
 
 
@@ -247,6 +250,92 @@ def test_product_defaults_report_unavailable_without_installing_or_starting(
         "typescript-language-server",
     ]
     assert {record.state for record in snapshot.records} == {"unavailable"}
+
+
+def test_typescript_product_preset_maps_languages_and_selects_nearest_root(
+    tmp_path: Path,
+) -> None:
+    definition = next(
+        item
+        for item in product_default_lsp_definitions()
+        if item.id == "typescript-language-server"
+    )
+    package_root = tmp_path / "packages" / "web"
+    source_root = package_root / "src"
+    source_root.mkdir(parents=True)
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+    (package_root / "tsconfig.json").write_text("{}", encoding="utf-8")
+    selector = LspSelector(
+        workspace_root=tmp_path,
+        catalog=LspCatalog((definition,)),
+    )
+
+    assert definition.command == ("typescript-language-server", "--stdio")
+    assert definition.language_extensions == {
+        "javascript": (".js", ".mjs", ".cjs"),
+        "javascriptreact": (".jsx",),
+        "typescript": (".ts", ".mts", ".cts"),
+        "typescriptreact": (".tsx",),
+    }
+    assert definition.root_markers == (
+        "tsconfig.json",
+        "jsconfig.json",
+        "package.json",
+        ".git",
+    )
+    assert selector.select(source_root / "component.tsx").language_id == (
+        "typescriptreact"
+    )
+    assert selector.select(source_root / "component.jsx").language_id == (
+        "javascriptreact"
+    )
+    selection = selector.select(source_root / "main.ts")
+    assert selection.language_id == "typescript"
+    assert selection.workspace_root == package_root
+    assert selection.reason_code == "nearest_root"
+
+
+def test_typescript_product_preset_is_admitted_only_when_binary_exists(
+    tmp_path: Path,
+) -> None:
+    probes: list[str] = []
+
+    snapshot = discover_lsp_catalog(
+        workspace_root=tmp_path,
+        baseline_environment={"PATH": "/tools"},
+        global_config_path=False,
+        project_config_path=False,
+        executable_resolver=lambda command, _environment: (
+            probes.append(command)
+            or (
+                "/tools/typescript-language-server"
+                if command == "typescript-language-server"
+                else None
+            )
+        ),
+    )
+
+    assert [item.id for item in snapshot.definitions] == ["typescript-language-server"]
+    definition = snapshot.definitions[0]
+    assert definition.command == (
+        "/tools/typescript-language-server",
+        "--stdio",
+    )
+    record = next(
+        item
+        for item in snapshot.records
+        if item.definition_id == "typescript-language-server"
+    )
+    assert record.state == "admitted"
+    assert record.source == "product-default"
+    assert record.executable == "/tools/typescript-language-server"
+    assert probes == [
+        "clangd",
+        "gopls",
+        "pyright-langserver",
+        "rust-analyzer",
+        "typescript-language-server",
+    ]
 
 
 def test_default_environment_excludes_unrelated_secrets() -> None:

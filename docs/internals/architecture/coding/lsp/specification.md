@@ -148,6 +148,13 @@ Rules:
 This conservative project rule is the P0 substitute for the future general
 workspace-trust gate.
 
+The built-in TypeScript Language Server preset recognizes JavaScript,
+JavaScript React, TypeScript, and TypeScript React as distinct language ids. It
+selects the nearest `tsconfig.json`, `jsconfig.json`, `package.json`, or `.git`
+root and starts `typescript-language-server --stdio` only after a semantic
+query. If the executable is absent, catalog discovery reports the preset as
+unavailable without installing or starting anything.
+
 ## 4. Core Data Contracts
 
 The exact dataclass organization may evolve, but these semantic records are
@@ -823,7 +830,9 @@ direct subprocess launcher as a temporary production bypass.
 - H4.1 bounded, version-aware passive diagnostic reception and lifecycle
   cleanup, without model delivery;
 - fake Server tests;
-- a path-scoped CI compatibility gate against a pinned real Pyright Server;
+- path-scoped CI compatibility gates against pinned real Pyright and
+  TypeScript Language Servers; the TypeScript gate pins the language-server
+  wrapper and its TypeScript runtime as a tested pair;
 - clean degradation when no Server exists.
 
 ### Deferred

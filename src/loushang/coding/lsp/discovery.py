@@ -150,9 +150,12 @@ def product_default_lsp_definitions() -> tuple[LspServerDefinition, ...]:
             id="typescript-language-server",
             command=("typescript-language-server", "--stdio"),
             language_extensions={
-                "javascript": (".js", ".jsx", ".mjs", ".cjs"),
-                "typescript": (".ts", ".tsx", ".mts", ".cts"),
+                "javascript": (".js", ".mjs", ".cjs"),
+                "javascriptreact": (".jsx",),
+                "typescript": (".ts", ".mts", ".cts"),
+                "typescriptreact": (".tsx",),
             },
+            root_markers=("tsconfig.json", "jsconfig.json", "package.json", ".git"),
             source="product-default",
         ),
         LspServerDefinition(

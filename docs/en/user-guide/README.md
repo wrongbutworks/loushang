@@ -93,6 +93,13 @@ availability, and never construct a Session, start a Server, or install one.
 Loushang probes installed Pyright, TypeScript Language Server, rust-analyzer,
 gopls, and clangd defaults.
 
+The TypeScript preset covers `.ts`, `.tsx`, `.js`, `.jsx`, and their standard
+module variants. It chooses the nearest `tsconfig.json`, `jsconfig.json`,
+`package.json`, or `.git` root. Install both `typescript-language-server` and a
+compatible `typescript` package yourself; when either usable server setup is
+absent, ordinary Coding tools continue to work and Loushang does not install
+packages automatically.
+
 Inside an interactive Coding Session, use the separate Session-local surface:
 
 ```text
@@ -119,6 +126,11 @@ Contributors with `pyright-langserver` already on `PATH` can run the optional
 real-server gate with `uv run pytest
 tests/integration/coding/test_pyright_lsp_live.py -q`; it skips when Pyright is
 absent and never installs it.
+
+The corresponding TypeScript gate is `uv run pytest
+tests/integration/coding/test_typescript_lsp_live.py -q`. It looks for
+`typescript-language-server` on `PATH` by default, or accepts an executable via
+`LOUSHANG_TEST_TYPESCRIPT_LANGSERVER`; it also never installs the Server.
 
 Declare a custom server in `~/.loushang/coding/lsp.json`:
 

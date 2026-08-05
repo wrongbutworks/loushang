@@ -13,6 +13,7 @@ on:
       - "src/loushang/harness/sandbox/**"
       - "src/loushang/harness/tools/process_hosting/**"
       - "tests/integration/coding/test_pyright_lsp_live.py"
+      - "tests/integration/coding/test_typescript_lsp_live.py"
   pull_request:
     paths:
       - ".github/workflows/coding-lsp-compatibility.yml"
@@ -23,6 +24,7 @@ on:
       - "src/loushang/harness/sandbox/**"
       - "src/loushang/harness/tools/process_hosting/**"
       - "tests/integration/coding/test_pyright_lsp_live.py"
+      - "tests/integration/coding/test_typescript_lsp_live.py"
   workflow_dispatch:
 
 jobs:
@@ -50,3 +52,34 @@ jobs:
 
       - name: Verify real Pyright LSP compatibility
         run: uv run pytest tests/integration/coding/test_pyright_lsp_live.py -q
+
+  typescript-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Python dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Install pinned TypeScript Server
+        run: >-
+          npm install --global
+          typescript-language-server@5.3.0
+          typescript@5.9.3
+
+      - name: Verify real TypeScript LSP compatibility
+        run: >-
+          uv run pytest
+          tests/integration/coding/test_typescript_lsp_live.py
+          -q
