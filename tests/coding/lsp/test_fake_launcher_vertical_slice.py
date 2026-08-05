@@ -22,6 +22,7 @@ from loushang.coding.lsp import (
     ProcessStderrTail,
     create_document_outline_tool_definition,
     create_inspect_symbol_tool_definition,
+    product_default_lsp_definitions,
 )
 from loushang.harness.tools import ToolContext
 from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
@@ -1586,3 +1587,74 @@ def test_language_mapping_catalog_freeze_and_literal_root_markers(
                 "other": (".ts",),
             },
         )
+
+
+def test_python_and_typescript_servers_are_selected_independently_in_one_session(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        python_root = tmp_path / "python-service"
+        typescript_root = tmp_path / "web-app"
+        python_root.mkdir()
+        typescript_root.mkdir()
+        (python_root / "pyproject.toml").touch()
+        (typescript_root / "tsconfig.json").write_text("{}", encoding="utf-8")
+        python_source = python_root / "main.py"
+        typescript_source = typescript_root / "main.ts"
+        tsx_source = typescript_root / "component.tsx"
+        for source in (python_source, typescript_source, tsx_source):
+            source.touch()
+        files = {
+            python_source.resolve(): "value = 1\n",
+            typescript_source.resolve(): "export const value = 1;\n",
+            tsx_source.resolve(): "export const View = () => null;\n",
+        }
+        typescript_definition = next(
+            item
+            for item in product_default_lsp_definitions()
+            if item.id == "typescript-language-server"
+        )
+        launcher = FakeLauncher(definition_result=None, outline_result=None)
+        binding = CodingLspBinding(
+            workspace_root=tmp_path,
+            definitions=(_definition(), typescript_definition),
+            launcher=launcher,
+            read_text=lambda path: files[path],
+            baseline_environment={"PATH": "/admitted/bin"},
+        )
+
+        await binding.inspect_symbol(
+            path="python-service/main.py",
+            line=1,
+            character=1,
+            correlation_id="python-query",
+        )
+        await binding.inspect_symbol(
+            path="web-app/main.ts",
+            line=1,
+            character=14,
+            correlation_id="typescript-query",
+        )
+        await binding.document_outline(
+            path="web-app/component.tsx",
+            correlation_id="tsx-query",
+        )
+
+        assert [request.command for request in launcher.requests] == [
+            ("fake-language-server", "--stdio"),
+            ("typescript-language-server", "--stdio"),
+        ]
+        assert [request.cwd for request in launcher.requests] == [
+            str(python_root.resolve()),
+            str(typescript_root.resolve()),
+        ]
+        status_by_id = {
+            server.definition_id: server for server in binding.status().servers
+        }
+        assert status_by_id["fake-python"].runtime_id == 1
+        assert status_by_id["fake-python"].open_document_count == 1
+        assert status_by_id["typescript-language-server"].runtime_id == 2
+        assert status_by_id["typescript-language-server"].open_document_count == 2
+        await binding.dispose()
+
+    asyncio.run(scenario())
