@@ -6,8 +6,17 @@ Status: implementation complete, including the follow-on control-plane routing
 closure, for integration into `lane/harness`.
 
 This boundary moves the product-neutral extension runtime core into
-`loushang.harness.extensions`. Coding remains a product adapter and preserves
-accepted import paths without maintaining a second implementation.
+`loushang.harness.extensions`. Coding remains Product composition; the
+zero-compatibility cutover preserves Product behavior without retaining Coding
+Extension import paths or a second implementation.
+
+Canonical Package, Plugin, and Extension terms are defined by the
+[Product And OEM Glossary](../../glossary/loushang-product.md). This runtime
+owns Extension loading and composition after discovery and Product/OEM
+admission. It does not own Resource Package distribution or Plugin identity,
+source registration, enablement, and package-root resolution; those mechanics
+belong to the
+[Platform Resource Layout Boundary](platform-resource-layout-boundary.md).
 
 ## Harness Ownership
 
