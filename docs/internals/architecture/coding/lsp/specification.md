@@ -716,7 +716,9 @@ await session.stop_lsp_server(...)      # SDK, explicit mutation
 
 The independent CLI never constructs a Session and therefore cannot claim to
 inspect a live child process. Session commands use the normal Product command
-catalog so TUI and RPC discovery do not need an LSP-specific Harness route.
+catalog: TUI dispatches that catalog locally, while RPC uses the generic
+`execute_command` route after discovery. Neither surface needs an LSP-specific
+Harness route.
 These are Product operations, not model tools. A richer explicit restart
 command may be added after the replacement policy is measured; in P0, stop plus
 the next demand is sufficient.
