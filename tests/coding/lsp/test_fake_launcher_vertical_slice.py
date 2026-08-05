@@ -783,6 +783,38 @@ def test_document_outline_preserves_hierarchy_and_enforces_depth(
     asyncio.run(scenario())
 
 
+def test_document_outline_skips_unsupported_server_capability(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        files = {source.resolve(): "value = 1\n"}
+        launcher = FakeLauncher(
+            definition_result=None,
+            server_capabilities={"definitionProvider": True},
+        )
+        binding = _binding(tmp_path, launcher, files)
+
+        result = await binding.document_outline(
+            path="main.py",
+            correlation_id="unsupported-outline",
+        )
+
+        assert result.items == ()
+        assert result.count == 0
+        assert result.readiness == "unsupported"
+        assert result.document_version is None
+        assert result.warnings == (
+            "language server does not advertise document symbol support",
+        )
+        assert "textDocument/documentSymbol" not in launcher.handles[0].server.methods()
+        await binding.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_concurrent_first_queries_single_flight_launch_and_document_open(
     tmp_path: Path,
 ) -> None:

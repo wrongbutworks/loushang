@@ -206,6 +206,21 @@ class CodingLspTools:
             correlation_id=correlation_id,
             signal=signal,
         )
+        if not _supports_capability(
+            runtime.client.server_capabilities,
+            "documentSymbolProvider",
+        ):
+            return DocumentOutlineResult(
+                items=(),
+                count=0,
+                truncated=False,
+                server_id=selection.definition_id,
+                document_version=None,
+                readiness="unsupported",
+                warnings=(
+                    "language server does not advertise document symbol support",
+                ),
+            )
         document = await self.documents.ensure_document(
             runtime,
             selection.file_path,
