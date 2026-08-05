@@ -18,6 +18,11 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
+from loushang.coding.lsp.discovery import (
+    coding_lsp_config_paths,
+    default_lsp_environment,
+    discover_lsp_catalog,
+)
 from loushang.coding.lsp.model import LspServerDefinition
 from loushang.coding.lsp.ports import WorkspaceTextReader
 from loushang.coding.lsp.runtime import (
@@ -240,22 +245,34 @@ def _create_agent_session(
                 "child approval actor must match its delegated execution profile"
             )
     services = services or create_services()
-    resolved_lsp_definitions = tuple(lsp_definitions)
-    if resolved_lsp_definitions and lsp_baseline_environment is None:
-        raise ValueError(
-            "lsp_baseline_environment is required when LSP definitions are supplied"
-        )
     lsp_mode = coding_capability_mount_mode(
         services.settings_manager,
         CODING_LSP_CAPABILITY,
     )
-    lsp_slot = (
-        DeferredCodingLspRuntime()
-        if resolved_lsp_definitions
-        and lsp_mode != "disabled"
-        and normalize_no_tools(no_tools) != "all"
-        else None
+    resolved_lsp_environment = (
+        dict(lsp_baseline_environment)
+        if lsp_baseline_environment is not None
+        else default_lsp_environment()
     )
+    lsp_enabled_for_session = (
+        lsp_mode != "disabled" and normalize_no_tools(no_tools) != "all"
+    )
+    global_lsp_config, project_lsp_config = coding_lsp_config_paths(
+        services.settings_manager,
+        workspace_root=session_manager.get_cwd(),
+    )
+    resolved_lsp_definitions = (
+        discover_lsp_catalog(
+            workspace_root=session_manager.get_cwd(),
+            baseline_environment=resolved_lsp_environment,
+            explicit_definitions=tuple(lsp_definitions),
+            global_config_path=global_lsp_config,
+            project_config_path=project_lsp_config,
+        ).definitions
+        if lsp_enabled_for_session
+        else ()
+    )
+    lsp_slot = DeferredCodingLspRuntime() if lsp_enabled_for_session else None
     # Restored sessions carry historical transcript.  A previous run may have
     # been interrupted between a tool call and its result, leaving an unpaired
     # toolCall in the transcript.  Force repair pairing for such sessions so
@@ -298,8 +315,14 @@ def _create_agent_session(
         and tool_registry is not None
         else tool_registry
     )
+    construction_tools = tools
     if lsp_slot is not None:
-        session_tool_registry = session_tool_registry or WorkspaceToolRegistry()
+        if session_tool_registry is None:
+            session_tool_registry = WorkspaceToolRegistry()
+            for definition in tools or ():
+                session_tool_registry.register_tool(definition)
+            if tools is not None:
+                construction_tools = None
         register_coding_lsp_tools(
             session_tool_registry,
             runtime=lsp_slot,
@@ -358,7 +381,7 @@ def _create_agent_session(
                     ),
                 ),
                 read_text=lsp_read_text or _read_lsp_workspace_text,
-                baseline_environment=dict(lsp_baseline_environment or {}),
+                baseline_environment=resolved_lsp_environment,
             )
             lsp_slot.bind(lsp_runtime)
         child_session = AgentSession(
@@ -403,7 +426,7 @@ def _create_agent_session(
         append_system_prompt=resolved_append_system_prompt,
         model=model,
         thinking_level=thinking_level,
-        tools=tools,
+        tools=construction_tools,
         tool_registry=session_tool_registry,
         allowed_tool_names=allowed_tool_names,
         active_tool_names=active_tool_names,

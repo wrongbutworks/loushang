@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from loushang.coding.capabilities import CODING_LSP_CAPABILITY
 from loushang.coding.lsp.tools import (
+    DOCUMENT_OUTLINE_TOOL_NAME,
     INSPECT_SYMBOL_TOOL_NAME,
     InspectSymbolRuntime,
+    create_document_outline_tool_definition,
     create_inspect_symbol_tool_definition,
 )
 from loushang.harness.config.agent import CapabilityMountMode
@@ -18,7 +20,7 @@ from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 CODING_LSP_TOOL_PACK = ToolPackDefinition(
     name="coding.lsp.tools",
-    tools=(INSPECT_SYMBOL_TOOL_NAME,),
+    tools=(INSPECT_SYMBOL_TOOL_NAME, DOCUMENT_OUTLINE_TOOL_NAME),
     metadata={"product_capability": CODING_LSP_CAPABILITY},
 )
 
@@ -36,7 +38,10 @@ def register_coding_lsp_tools(
     if mode not in {"on_demand", "always"}:
         raise ValueError(f"unsupported coding.lsp mount mode: {mode!r}")
     resolution = resolve_tool_contributions(
-        (ToolContribution(create_inspect_symbol_tool_definition(runtime)),),
+        (
+            ToolContribution(create_inspect_symbol_tool_definition(runtime)),
+            ToolContribution(create_document_outline_tool_definition(runtime)),
+        ),
         packs=(CODING_LSP_TOOL_PACK,),
         include_packs=(CODING_LSP_TOOL_PACK.name,),
     )

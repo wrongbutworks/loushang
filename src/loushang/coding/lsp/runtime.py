@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Protocol
 
 from loushang.coding.lsp.binding import CodingLspBinding
-from loushang.coding.lsp.model import CodeQueryResult, LspServerDefinition
+from loushang.coding.lsp.model import (
+    CodeQueryResult,
+    DocumentOutlineResult,
+    LspServerDefinition,
+)
 from loushang.coding.lsp.ports import WorkspaceTextReader
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
@@ -50,6 +54,23 @@ class CodingLspRuntime:
             signal=signal,
         )
 
+    async def document_outline(
+        self,
+        *,
+        path: str,
+        depth: int = 4,
+        limit: int = 200,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> DocumentOutlineResult:
+        return await self._binding.document_outline(
+            path=path,
+            depth=depth,
+            limit=limit,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+
     async def close(self) -> None:
         await self._binding.dispose()
 
@@ -84,6 +105,26 @@ class DeferredCodingLspRuntime:
             line=line,
             character=character,
             query=query,
+            limit=limit,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+
+    async def document_outline(
+        self,
+        *,
+        path: str,
+        depth: int = 4,
+        limit: int = 200,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> DocumentOutlineResult:
+        runtime = self._runtime
+        if runtime is None:
+            raise RuntimeError("Coding LSP runtime is not bound")
+        return await runtime.document_outline(
+            path=path,
+            depth=depth,
             limit=limit,
             correlation_id=correlation_id,
             signal=signal,

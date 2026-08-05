@@ -74,6 +74,11 @@
 - 高频查询复用语言 provider 输出的版本化逐文件事实缓存，而不缓存 AST 或主观架构结论。CLI 默认在
   `LOUSHANG_HOME/cache/coding/arch` 使用磁盘缓存；长驻工具复用进程内缓存。内容指纹负责单文件失效，文件集合变化则使依赖
   模块索引的事实整体失效；缓存损坏或版本不兼容必须安全退化为重新分析。
+- `coding.lsp` 同样是 Coding Product Capability Bundle，而不是 Harness builtin。它通过
+  `coding.lsp.tools` 提供 `inspect_symbol` 与 `document_outline`；`on_demand` / `always` 只控制工具可见性，Server
+  始终在第一次语义查询时惰性启动。
+- Coding 拥有 `lsp.json` 的 Server 发现、优先级、可执行文件 admission 与结构化状态；Harness 只提供授权进程启动、
+  Sandbox、裸字节传输和 Session 兜底清理。`loushang lsp status|doctor` 只检查 catalog，不隐式启动或安装 Server。
 
 ## Reference Implementation Alignment
 

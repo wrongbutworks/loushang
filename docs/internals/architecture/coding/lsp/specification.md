@@ -89,16 +89,15 @@ runtime.
 ## 3. Configuration Contract
 
 Coding `ControlConfig.capabilities` continues to own the mount selection. LSP
-details belong to a Coding-owned config object. A representative JSON shape is:
+details stay out of Harness configuration and use a Coding-owned `lsp.json`.
+The user-level file is `~/.loushang/coding/lsp.json`; the project-level file is
+`.loushang/lsp.json`. The implemented shape is:
 
 ```json
 {
-  "capabilities": {
-    "coding.lsp": "on_demand"
-  },
-  "lsp": {
-    "servers": {
-      "pyright": {
+  "servers": [
+    {
+        "id": "pyright",
         "command": ["pyright-langserver", "--stdio"],
         "language_extensions": {
           "python": [".py", ".pyi"]
@@ -111,11 +110,14 @@ details belong to a Coding-owned config object. A representative JSON shape is:
         "startup_timeout_seconds": 20,
         "request_timeout_seconds": 15,
         "shutdown_timeout_seconds": 3
-      }
     }
-  }
+  ]
 }
 ```
+
+The mount remains in ordinary Coding settings, for example
+`{"capabilities": {"coding.lsp": "always"}}`, or can be overridden for one
+process with `--capability coding.lsp=always`.
 
 Rules:
 
@@ -134,8 +136,16 @@ Rules:
   interpreted.
 - P0 supports stdio only and has no `transport` field that promises an
   unimplemented socket mode.
+- Product defaults are admitted only when their executable is found; Loushang
+  never installs a language server implicitly.
+- Until a general workspace-trust runtime exists, project config may tune a
+  Product-default or user-admitted server only when its complete argv exactly
+  matches that trusted definition. It cannot introduce process-environment
+  overrides; the admitted user-level environment is inherited unchanged. A
+  custom command must first be declared in the user-level file.
 
-Project-local Server config is not evaluated until workspace trust succeeds.
+This conservative project rule is the P0 substitute for the future general
+workspace-trust gate.
 
 ## 4. Core Data Contracts
 

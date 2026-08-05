@@ -25,6 +25,7 @@ from loushang.coding.capabilities import (
     coding_capability_mount_mode,
 )
 from loushang.coding.cli.args import CliArgs, ExtensionFlag, help_text, parse_args
+from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
 from loushang.coding.cli.workspace import (
     extract_workspace_argv,
@@ -289,6 +290,7 @@ async def run_cli(
     continuity_runner=run_continuity_picker,
     multiagent_runner=run_coding_multiagent_command,
     workspace_runner=run_coding_workspace_command,
+    lsp_runner=run_coding_lsp_command,
 ) -> int:
     raw_argv = tuple(argv or ())
     workspace_argv = extract_workspace_argv(raw_argv)
@@ -299,6 +301,17 @@ async def run_cli(
             stdout=stdout or sys.stdout,
             stderr=stderr or sys.stderr,
             cwd=cwd,
+        )
+    lsp_argv = extract_lsp_argv(raw_argv)
+    if lsp_argv is not None:
+        return await lsp_runner(
+            lsp_argv,
+            stdin=stdin or sys.stdin,
+            stdout=stdout or sys.stdout,
+            stderr=stderr or sys.stderr,
+            cwd=cwd,
+            services=services,
+            build_services=build_default_services,
         )
     multiagent_argv = extract_multiagent_argv(raw_argv)
     if multiagent_argv is not None:

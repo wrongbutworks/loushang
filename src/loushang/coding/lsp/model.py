@@ -175,6 +175,31 @@ class CodeQueryResult:
     warnings: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class CodeSymbol:
+    """One normalized document symbol with bounded nested children."""
+
+    name: str
+    kind: int
+    kind_name: str
+    range: CodeRange
+    selection_range: CodeRange
+    detail: str | None = None
+    container_name: str | None = None
+    children: tuple[CodeSymbol, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentOutlineResult:
+    items: tuple[CodeSymbol, ...]
+    count: int
+    truncated: bool
+    server_id: str
+    document_version: int | None
+    readiness: str = "ready"
+    warnings: tuple[str, ...] = ()
+
+
 def _normalize_extension(value: str) -> str:
     if not isinstance(value, str):
         raise TypeError("LSP server extensions must be strings")
@@ -246,6 +271,8 @@ __all__ = [
     "CodePosition",
     "CodeQueryResult",
     "CodeRange",
+    "CodeSymbol",
+    "DocumentOutlineResult",
     "LspError",
     "LspInvalidInputError",
     "LspProtocolError",

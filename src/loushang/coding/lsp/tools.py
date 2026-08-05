@@ -14,6 +14,8 @@ from loushang.coding.lsp.model import (
     CodePosition,
     CodeQueryResult,
     CodeRange,
+    CodeSymbol,
+    DocumentOutlineResult,
     LspInvalidInputError,
     LspProtocolError,
 )
@@ -23,7 +25,40 @@ from loushang.harness.tools.authoring import ToolContext, direct_tool
 from loushang.harness.tools.core import ToolDefinition, tool
 
 INSPECT_SYMBOL_TOOL_NAME = "inspect_symbol"
+DOCUMENT_OUTLINE_TOOL_NAME = "document_outline"
 MAX_INSPECT_SYMBOL_RESULTS = 50
+MAX_DOCUMENT_OUTLINE_DEPTH = 8
+MAX_DOCUMENT_OUTLINE_RESULTS = 200
+_MAX_OUTLINE_PROTOCOL_SYMBOLS = 2_000
+
+_SYMBOL_KIND_NAMES = (
+    "file",
+    "module",
+    "namespace",
+    "package",
+    "class",
+    "method",
+    "property",
+    "field",
+    "constructor",
+    "enum",
+    "interface",
+    "function",
+    "variable",
+    "constant",
+    "string",
+    "number",
+    "boolean",
+    "array",
+    "object",
+    "key",
+    "null",
+    "enum_member",
+    "struct",
+    "event",
+    "operator",
+    "type_parameter",
+)
 
 
 class InspectSymbolRuntime(Protocol):
@@ -38,6 +73,16 @@ class InspectSymbolRuntime(Protocol):
         correlation_id: str,
         signal: object | None = None,
     ) -> CodeQueryResult: ...
+
+    async def document_outline(
+        self,
+        *,
+        path: str,
+        depth: int = 4,
+        limit: int = 200,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> DocumentOutlineResult: ...
 
 
 @dataclass(slots=True)
@@ -98,6 +143,47 @@ class CodingLspTools:
             server_id=selection.definition_id,
             document_version=document.version,
             warnings=warnings,
+        )
+
+    async def document_outline(
+        self,
+        *,
+        path: str,
+        depth: int = 4,
+        limit: int = 200,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> DocumentOutlineResult:
+        _validate_outline_input(depth=depth, limit=limit)
+        selection = self.selector.select(path)
+        runtime = await self.supervisor.ensure_runtime(
+            selection,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+        document = await self.documents.ensure_document(
+            runtime,
+            selection.file_path,
+            language_id=selection.language_id,
+        )
+        raw_result = await runtime.client.request(
+            "textDocument/documentSymbol",
+            {"textDocument": {"uri": document.uri}},
+        )
+        normalizer = _OutlineNormalizer(
+            content=document.content,
+            document_uri=document.uri,
+            depth=depth,
+            limit=limit,
+        )
+        items = normalizer.normalize(raw_result)
+        return DocumentOutlineResult(
+            items=items,
+            count=normalizer.count,
+            truncated=normalizer.truncated,
+            server_id=selection.definition_id,
+            document_version=document.version,
+            warnings=tuple(normalizer.warnings),
         )
 
     async def _normalize_locations(
@@ -245,6 +331,59 @@ def create_inspect_symbol_tool_definition(
     return direct_tool(inspect_symbol)
 
 
+def create_document_outline_tool_definition(
+    runtime: InspectSymbolRuntime,
+) -> ToolDefinition:
+    """Create the bounded, hierarchy-preserving document outline tool."""
+
+    @tool(
+        name=DOCUMENT_OUTLINE_TOOL_NAME,
+        label="Document Outline",
+        description=(
+            "Return a bounded semantic hierarchy of symbols in one workspace file "
+            "using its admitted language server."
+        ),
+        prompt_snippet=(
+            "- document_outline: Inspect the semantic symbol hierarchy of one "
+            "workspace file."
+        ),
+        prompt_guidelines=(
+            "Use document_outline to understand a file's classes, functions, and "
+            "nested members without reading the entire file.",
+        ),
+        schema_overrides={
+            "properties": {
+                "depth": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAX_DOCUMENT_OUTLINE_DEPTH,
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAX_DOCUMENT_OUTLINE_RESULTS,
+                },
+            }
+        },
+    )
+    async def document_outline(
+        ctx: ToolContext,
+        path: str,
+        depth: int = 4,
+        limit: int = 200,
+    ) -> dict[str, object]:
+        result = await runtime.document_outline(
+            path=path,
+            depth=depth,
+            limit=limit,
+            correlation_id=ctx.tool_call_id,
+            signal=ctx.signal,
+        )
+        return asdict(result)
+
+    return direct_tool(document_outline)
+
+
 def _validate_query_input(
     *,
     line: int,
@@ -266,6 +405,154 @@ def _validate_query_input(
     ):
         raise LspInvalidInputError(
             f"limit must be between 1 and {MAX_INSPECT_SYMBOL_RESULTS}"
+        )
+
+
+def _validate_outline_input(*, depth: int, limit: int) -> None:
+    if (
+        not isinstance(depth, int)
+        or isinstance(depth, bool)
+        or not 1 <= depth <= MAX_DOCUMENT_OUTLINE_DEPTH
+    ):
+        raise LspInvalidInputError(
+            f"depth must be between 1 and {MAX_DOCUMENT_OUTLINE_DEPTH}"
+        )
+    if (
+        not isinstance(limit, int)
+        or isinstance(limit, bool)
+        or not 1 <= limit <= MAX_DOCUMENT_OUTLINE_RESULTS
+    ):
+        raise LspInvalidInputError(
+            f"limit must be between 1 and {MAX_DOCUMENT_OUTLINE_RESULTS}"
+        )
+
+
+class _OutlineNormalizer:
+    def __init__(
+        self,
+        *,
+        content: str,
+        document_uri: str,
+        depth: int,
+        limit: int,
+    ) -> None:
+        self._content = content
+        self._document_uri = document_uri
+        self._depth = depth
+        self._limit = limit
+        self.count = 0
+        self._emitted = 0
+        self.truncated = False
+        self.warnings: list[str] = []
+
+    def normalize(self, raw_result: object) -> tuple[CodeSymbol, ...]:
+        if raw_result is None:
+            return ()
+        if not isinstance(raw_result, list):
+            raise LspProtocolError("documentSymbol result must be an array or null")
+        return self._visit(raw_result, level=1)
+
+    def _visit(self, raw_items: list[object], *, level: int) -> tuple[CodeSymbol, ...]:
+        items: list[CodeSymbol] = []
+        for raw_item in raw_items:
+            if not self._reserve_protocol_item():
+                break
+            if not isinstance(raw_item, Mapping):
+                raise LspProtocolError("documentSymbol items must be objects")
+            raw_children = raw_item.get("children", ())
+            if not isinstance(raw_children, list | tuple):
+                raise LspProtocolError("documentSymbol children must be an array")
+            children_values = list(raw_children)
+            if level > self._depth or self._emitted >= self._limit:
+                self.truncated = True
+                self._count_omitted(children_values)
+                continue
+
+            self._emitted += 1
+            children: tuple[CodeSymbol, ...] = ()
+            if children_values:
+                if level == self._depth:
+                    self.truncated = True
+                    self._count_omitted(children_values)
+                else:
+                    children = self._visit(children_values, level=level + 1)
+            items.append(self._parse_symbol(raw_item, children=children))
+        return tuple(items)
+
+    def _reserve_protocol_item(self) -> bool:
+        if self.count >= _MAX_OUTLINE_PROTOCOL_SYMBOLS:
+            self.truncated = True
+            warning = "language server returned too many document symbols"
+            if warning not in self.warnings:
+                self.warnings.append(warning)
+            return False
+        self.count += 1
+        return True
+
+    def _count_omitted(self, raw_items: list[object]) -> None:
+        pending = list(reversed(raw_items))
+        while pending:
+            raw_item = pending.pop()
+            if not self._reserve_protocol_item():
+                return
+            if isinstance(raw_item, Mapping):
+                raw_children = raw_item.get("children", ())
+                if isinstance(raw_children, list | tuple):
+                    pending.extend(reversed(raw_children))
+
+    def _parse_symbol(
+        self,
+        raw_symbol: Mapping[str, object],
+        *,
+        children: tuple[CodeSymbol, ...],
+    ) -> CodeSymbol:
+        name = raw_symbol.get("name")
+        kind = raw_symbol.get("kind")
+        if not isinstance(name, str) or not name:
+            raise LspProtocolError("documentSymbol name must be a non-empty string")
+        if (
+            not isinstance(kind, int)
+            or isinstance(kind, bool)
+            or not 1 <= kind <= len(_SYMBOL_KIND_NAMES)
+        ):
+            raise LspProtocolError("documentSymbol kind is outside the LSP range")
+
+        raw_range = raw_symbol.get("range")
+        raw_selection_range = raw_symbol.get("selectionRange")
+        container_name = raw_symbol.get("containerName")
+        if raw_range is None:
+            raw_location = raw_symbol.get("location")
+            if not isinstance(raw_location, Mapping):
+                raise LspProtocolError(
+                    "documentSymbol item is missing range or location"
+                )
+            if raw_location.get("uri") != self._document_uri:
+                raise LspProtocolError(
+                    "documentSymbol location must refer to the requested document"
+                )
+            raw_range = raw_location.get("range")
+            raw_selection_range = raw_range
+        if not isinstance(raw_range, Mapping) or not isinstance(
+            raw_selection_range, Mapping
+        ):
+            raise LspProtocolError("documentSymbol ranges must be objects")
+        detail = raw_symbol.get("detail")
+        if detail is not None and not isinstance(detail, str):
+            raise LspProtocolError("documentSymbol detail must be a string")
+        if container_name is not None and not isinstance(container_name, str):
+            raise LspProtocolError("documentSymbol containerName must be a string")
+        return CodeSymbol(
+            name=name,
+            kind=kind,
+            kind_name=_SYMBOL_KIND_NAMES[kind - 1],
+            range=_to_public_range(self._content, _parse_lsp_range(raw_range)),
+            selection_range=_to_public_range(
+                self._content,
+                _parse_lsp_range(raw_selection_range),
+            ),
+            detail=detail,
+            container_name=container_name,
+            children=children,
         )
 
 
@@ -357,8 +644,12 @@ def _file_uri_path(uri: str) -> Path | None:
 
 __all__ = [
     "CodingLspTools",
+    "DOCUMENT_OUTLINE_TOOL_NAME",
     "INSPECT_SYMBOL_TOOL_NAME",
     "InspectSymbolRuntime",
+    "MAX_DOCUMENT_OUTLINE_DEPTH",
+    "MAX_DOCUMENT_OUTLINE_RESULTS",
     "MAX_INSPECT_SYMBOL_RESULTS",
+    "create_document_outline_tool_definition",
     "create_inspect_symbol_tool_definition",
 ]

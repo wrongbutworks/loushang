@@ -40,10 +40,10 @@ def test_coding_top_level_exports_stable_sdk_surface() -> None:
         "BootstrapServices",
         "CreateAgentSessionResult",
         "CwdBoundServicesAudit",
-            "CwdBoundServicesAuditIssue",
-            "ExtensionFlagValues",
-            "HeadlessApprovalMode",
-            "SdkSurfaceCompatibilityReport",
+        "CwdBoundServicesAuditIssue",
+        "ExtensionFlagValues",
+        "HeadlessApprovalMode",
+        "SdkSurfaceCompatibilityReport",
         "SdkSurfaceSnapshot",
         "SessionManager",
         "check_sdk_surface_compatibility",
@@ -92,6 +92,9 @@ def test_coding_top_level_exposes_sdk_surface_snapshot() -> None:
         "approval_resolver",
         "tool_policy_evaluator",
         "enable_multiagent",
+        "lsp_definitions",
+        "lsp_baseline_environment",
+        "lsp_read_text",
     )
     assert snapshot.to_dict()["missing_exports"] == []
 
@@ -182,6 +185,9 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "approval_resolver",
         "tool_policy_evaluator",
         "enable_multiagent",
+        "lsp_definitions",
+        "lsp_baseline_environment",
+        "lsp_read_text",
     )
     assert tuple(
         inspect.signature(coding.create_agent_session_result).parameters
@@ -207,6 +213,9 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "approval_resolver",
         "tool_policy_evaluator",
         "enable_multiagent",
+        "lsp_definitions",
+        "lsp_baseline_environment",
+        "lsp_read_text",
     )
     assert tuple(inspect.signature(coding.create_agent_session_runtime).parameters) == (
         "session_dir",
@@ -227,6 +236,9 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "approval_resolver",
         "tool_policy_evaluator",
         "enable_multiagent",
+        "lsp_definitions",
+        "lsp_baseline_environment",
+        "lsp_read_text",
     )
 
 

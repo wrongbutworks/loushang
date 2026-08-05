@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from loushang.coding.lsp import (
+    DOCUMENT_OUTLINE_TOOL_NAME,
     CodingLspBinding,
     LspCatalog,
     LspClient,
@@ -18,6 +19,7 @@ from loushang.coding.lsp import (
     ProcessExit,
     ProcessLaunchRequest,
     ProcessStderrTail,
+    create_document_outline_tool_definition,
     create_inspect_symbol_tool_definition,
 )
 from loushang.harness.tools import ToolContext
@@ -81,6 +83,7 @@ class FakeLspServer:
         self,
         *,
         definition_result: object,
+        outline_result: object,
         initialize_gate: asyncio.Event | None,
         definition_gate: asyncio.Event | None,
         shutdown_gate: asyncio.Event | None,
@@ -91,6 +94,7 @@ class FakeLspServer:
         self.stdin: asyncio.Queue[bytes | None] = asyncio.Queue()
         self.stdout: asyncio.Queue[bytes | None] = asyncio.Queue()
         self.definition_result = definition_result
+        self.outline_result = outline_result
         self.initialize_gate = initialize_gate
         self.definition_gate = definition_gate
         self.shutdown_gate = shutdown_gate
@@ -155,6 +159,17 @@ class FakeLspServer:
                                 "jsonrpc": "2.0",
                                 "id": request_id,
                                 "result": self.definition_result,
+                            }
+                        ),
+                    )
+                elif method == "textDocument/documentSymbol":
+                    self._schedule_response(
+                        None,
+                        _frame(
+                            {
+                                "jsonrpc": "2.0",
+                                "id": request_id,
+                                "result": self.outline_result,
                             }
                         ),
                     )
@@ -240,6 +255,7 @@ class FakeLauncher:
         self,
         *,
         definition_result: object,
+        outline_result: object = None,
         initialize_gate: asyncio.Event | None = None,
         definition_gate: asyncio.Event | None = None,
         shutdown_gate: asyncio.Event | None = None,
@@ -248,6 +264,7 @@ class FakeLauncher:
         ignore_exit: bool = False,
     ) -> None:
         self.definition_result = definition_result
+        self.outline_result = outline_result
         self.initialize_gate = initialize_gate
         self.definition_gate = definition_gate
         self.shutdown_gate = shutdown_gate
@@ -270,6 +287,7 @@ class FakeLauncher:
         self.correlation_ids.append(correlation_id)
         server = FakeLspServer(
             definition_result=self.definition_result,
+            outline_result=self.outline_result,
             initialize_gate=self.initialize_gate,
             definition_gate=self.definition_gate,
             shutdown_gate=self.shutdown_gate,
@@ -427,6 +445,109 @@ def test_fake_launcher_drives_tool_to_definition_and_ordered_sync(
         await binding.dispose()
         assert launcher.handles[0].close_calls == 1
         assert server.methods()[-2:] == ["shutdown", "exit"]
+
+    asyncio.run(scenario())
+
+
+def test_document_outline_preserves_hierarchy_and_enforces_depth(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "pyproject.toml").touch()
+        source = project / "main.py"
+        source.touch()
+        content = "class Greeter:\n    def hello(self):\n        pass\n\ndef main():\n    pass\n"
+        files = {source.resolve(): content}
+        outline = [
+            {
+                "name": "Greeter",
+                "detail": "class Greeter",
+                "kind": 5,
+                "range": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 2, "character": 12},
+                },
+                "selectionRange": {
+                    "start": {"line": 0, "character": 6},
+                    "end": {"line": 0, "character": 13},
+                },
+                "children": [
+                    {
+                        "name": "hello",
+                        "kind": 6,
+                        "range": {
+                            "start": {"line": 1, "character": 4},
+                            "end": {"line": 2, "character": 12},
+                        },
+                        "selectionRange": {
+                            "start": {"line": 1, "character": 8},
+                            "end": {"line": 1, "character": 13},
+                        },
+                    }
+                ],
+            },
+            {
+                "name": "main",
+                "kind": 12,
+                "range": {
+                    "start": {"line": 4, "character": 0},
+                    "end": {"line": 5, "character": 8},
+                },
+                "selectionRange": {
+                    "start": {"line": 4, "character": 4},
+                    "end": {"line": 4, "character": 8},
+                },
+            },
+        ]
+        launcher = FakeLauncher(definition_result=None, outline_result=outline)
+        binding = _binding(tmp_path, launcher, files)
+
+        result = await binding.document_outline(
+            path="project/main.py",
+            depth=2,
+            correlation_id="outline-1",
+        )
+        shallow = await binding.document_outline(
+            path="project/main.py",
+            depth=1,
+            correlation_id="outline-2",
+        )
+        limited = await binding.document_outline(
+            path="project/main.py",
+            limit=1,
+            correlation_id="outline-3",
+        )
+
+        assert result.count == 3
+        assert result.truncated is False
+        assert [item.name for item in result.items] == ["Greeter", "main"]
+        assert result.items[0].kind_name == "class"
+        assert result.items[0].children[0].name == "hello"
+        assert result.items[0].children[0].range.start.line == 2
+        assert shallow.count == 3
+        assert shallow.truncated is True
+        assert shallow.items[0].children == ()
+        assert limited.count == 3
+        assert limited.truncated is True
+        assert [item.name for item in limited.items] == ["Greeter"]
+        assert launcher.correlation_ids == ["outline-1"]
+        assert (
+            launcher.handles[0].server.methods().count("textDocument/documentSymbol")
+            == 3
+        )
+
+        with pytest.raises(LspInvalidInputError, match="depth"):
+            await binding.document_outline(
+                path="project/main.py",
+                depth=0,
+                correlation_id="invalid-outline",
+            )
+
+        definition = create_document_outline_tool_definition(binding)
+        assert definition.name == DOCUMENT_OUTLINE_TOOL_NAME
+        await binding.dispose()
 
     asyncio.run(scenario())
 
