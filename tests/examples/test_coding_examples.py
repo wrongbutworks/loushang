@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -212,3 +213,28 @@ def test_usage_inspect_example_marks_unknown_cost(
         "known": False
     }
     assert "cost: {'known': False}" in output
+
+
+def test_runtime_capability_replacement_extension_example_runs_offline() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/coding/extensions/06_runtime_capability_replacement.py",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert "Selected source: extension" in completed.stdout
+    assert "Selected layer: extension:examples.side-question" in completed.stdout
+    assert (
+        "Implementation: "
+        "extension:examples.side-question:interaction.side_question:demo"
+        in completed.stdout
+    )
+    assert "Answer: extension:What is the current status?" in completed.stdout
+    assert "Lifecycle: create -> bind -> ask:What is the current status? -> dispose" in (
+        completed.stdout
+    )
