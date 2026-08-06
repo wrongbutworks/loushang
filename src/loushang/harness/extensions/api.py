@@ -15,6 +15,7 @@ from loushang.harness.extensions.types import (
     RegisteredCommand,
     RegisteredControlContribution,
     RegisteredFlag,
+    RegisteredRuntimeCapabilityReplacement,
     RegisteredShortcut,
 )
 from loushang.harness.resources.source import SourceInfo
@@ -38,6 +39,9 @@ class ExtensionContributionAPI:
         self._hooks: dict[str, list[object]] = {}
         self._handler_registrations: list[RegisteredExtensionHandler] = []
         self._control_contributions: list[RegisteredControlContribution] = []
+        self._runtime_capability_replacements: list[
+            RegisteredRuntimeCapabilityReplacement
+        ] = []
         self._tool_definitions: list[ToolDefinition] = []
         self._commands: dict[str, RegisteredCommand] = {}
         self._flags: dict[str, RegisteredFlag] = {}
@@ -278,6 +282,7 @@ class ExtensionContributionAPI:
             },
             handler_registrations=list(self._handler_registrations),
             control_contributions=list(self._control_contributions),
+            runtime_capability_replacements=list(self._runtime_capability_replacements),
             tool_definitions=list(self._tool_definitions),
             commands=dict(self._commands),
             flags=dict(self._flags),
@@ -333,6 +338,16 @@ class ExtensionContributionAPI:
                 value=value,
             )
         )
+
+    def _register_runtime_capability_replacement(
+        self,
+        replacement: RegisteredRuntimeCapabilityReplacement,
+    ) -> None:
+        if not isinstance(replacement, RegisteredRuntimeCapabilityReplacement):
+            raise TypeError(
+                "replacement must be a RegisteredRuntimeCapabilityReplacement"
+            )
+        self._runtime_capability_replacements.append(replacement)
 
 
 def _normalize_references(references: Sequence[str]) -> tuple[str, ...]:

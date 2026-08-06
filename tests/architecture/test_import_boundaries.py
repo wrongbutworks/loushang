@@ -321,6 +321,7 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
     assert not Path("src/loushang/coding/capability_profile.py").exists()
     assert not Path("src/loushang/coding/capability_plan.py").exists()
     assert not Path("src/loushang/coding/runtime_profile.py").exists()
+    assert Path("src/loushang/coding/runtime_capability_admission.py").exists()
 
     expected_imports = {
         Path("src/loushang/coding/product_plan.py"): {
@@ -330,10 +331,12 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
             "loushang.harness.runtime.RuntimeProfileResolver",
         },
         Path("src/loushang/coding/bootstrap.py"): {
+            "loushang.coding.runtime_capability_admission.bind_coding_capability_composition_runtime",
             "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.bind_capability_composition_runtime",
         },
         Path("src/loushang/coding/session/agent_session.py"): {
+            "loushang.coding.runtime_capability_admission.bind_coding_capability_composition_runtime",
             "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.CapabilityCompositionRuntime",
             "loushang.harness.capabilities.bind_capability_composition_runtime",
@@ -351,6 +354,17 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
         )
 
     assert missing == []
+
+    admission_boundary = ImportBoundary(
+        name="Coding Runtime Capability admission adapter",
+        root=Path("src/loushang/coding/runtime_capability_admission.py"),
+        forbidden_prefixes=(
+            "loushang.coding.bootstrap",
+            "loushang.coding.session",
+            "loushang.coding.session_manager",
+        ),
+    )
+    assert _find_forbidden_imports(admission_boundary) == []
 
 
 def test_harnesstui_neutral_modules_do_not_import_product_or_model_layers() -> None:

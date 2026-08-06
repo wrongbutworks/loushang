@@ -33,16 +33,16 @@ rules.
 | Memory | `harness.context` | ordered-many | Planned | context items, packing, salience foundations |
 | Context compaction | `harness.context` + `harness.transcript` | one selected mechanism plus Product executor ports | Implemented | coordinator, strategies, turn-aware transcript planning, checkpoint runtime, bound capability |
 | Artifact store | focused Harness artifact contract or Work owner | typed single or per-kind | Deferred | Product/Work artifact semantics remain unresolved |
-| Prompt | `harness.capabilities` | ordered-many | Standard runtime binding implemented | section composition and templates |
-| Skill | `harness.resources` plus Product selection | ordered-many | Standard runtime binding implemented | descriptor, discovery, resource overlay |
+| Prompt | `harness.capabilities` | single composer; nested ordered-many sections | Standard runtime binding implemented | section composition and templates |
+| Skill | `harness.resources` plus Product selection | single activation policy; nested resource overlay | Standard runtime binding implemented | descriptor, discovery, resource overlay |
 | Method | Method owner plus Product selection | ordered-many | Deferred | Method registry/contract remains outside this wave |
 | Resource roots and packages | `harness.resources` | ordered-many | Planned | discovery, merge, materialization, reload |
-| Tool pack | `harness.capabilities` / `harness.tools` | ordered-many | Standard runtime binding implemented | activation, contributions, workspace packs |
-| Command pack | `harness.capabilities` | ordered-many | Standard runtime binding implemented | catalog, conflict resolution, dispatch |
+| Tool pack | `harness.capabilities` / `harness.tools` | single composer; nested ordered-many packs | Standard runtime binding implemented | activation, contributions, workspace packs |
+| Command pack | `harness.capabilities` | single composer; nested ordered-many packs | Standard runtime binding implemented | catalog, conflict resolution, dispatch |
 | Model and auth selection | AI/Agent data owner plus Product policy | single or ordered policy chain | Deferred | model/auth remain outside current Harness ownership |
 | Policy and approval | `harness.policy` / `harness.approval` | chain and exclusive replacement | Planned | control-plane routing and approval broker |
 | Presentation and theme | presentation/channel owner | ordered-many, channel-local | Deferred | neutral presentation records and TUI theme primitives |
-| OEM and extension contribution resolution | `harness.extensions` / contribution registry | source and validation layer | Planned | manifests, contribution inventory, route planning |
+| OEM and extension contribution resolution | `harness.extensions` / contribution registry | source and validation layer | Partial; Side Question replacement implemented | manifests, contribution inventory, route planning, and focused Runtime Capability replacement registration |
 
 ## Migration Coupling
 

@@ -19,6 +19,9 @@ from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
 from loushang.coding.resource_runtime import summarize_coding_package_root
+from loushang.coding.runtime_capability_admission import (
+    bind_coding_capability_composition_runtime,
+)
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
@@ -130,10 +133,13 @@ class AgentSession(AgentProductSession):
         self._lsp_runtime = lsp_runtime
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
-        resolved_capability_runtime = (
-            capability_runtime
-            or bind_capability_composition_runtime(CODING_CAPABILITY_PROFILE)
-        )
+        resolved_capability_runtime = capability_runtime
+        if resolved_capability_runtime is None:
+            resolved_capability_runtime = (
+                bind_coding_capability_composition_runtime(extension_runner)
+                if extension_runner is not None
+                else bind_capability_composition_runtime(CODING_CAPABILITY_PROFILE)
+            )
         super().__init__(
             agent=agent,
             session_manager=session_manager,
