@@ -4391,6 +4391,42 @@ def test_core_workspace_effects_only_execute_through_gateway() -> None:
     assert "ProcessEffect" in (workspace_root / "bash.py").read_text(encoding="utf-8")
 
 
+def test_code_enabled_products_reuse_harness_workspace_capabilities() -> None:
+    workspace_root = Path("src/loushang/harness/tools/workspace")
+    for tool_name in ("read", "ls", "grep", "find", "write", "edit", "bash"):
+        assert (workspace_root / f"{tool_name}.py").is_file(), tool_name
+    for tool_name in ("read", "write", "edit"):
+        assert not Path(f"src/loushang/coding/tools/{tool_name}.py").exists()
+
+    coding_capabilities = Path("src/loushang/coding/capabilities.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'CODING_ARCH_CAPABILITY = "coding.arch"' in coding_capabilities
+    assert 'CODING_LSP_CAPABILITY = "coding.lsp"' in coding_capabilities
+
+    shared_boundary = " ".join(
+        Path("docs/internals/architecture/harness/shared-capability-boundaries.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert (
+        "Every Product may be code-enabled, but not every Product is the Coding Product"
+        in shared_boundary
+    )
+    assert (
+        "the only Coding-specific Capability Mount identities are `coding.arch` and `coding.lsp`"
+        in shared_boundary
+    )
+
+    glossary = " ".join(
+        Path("docs/internals/glossary/loushang-product.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "### Code-Enabled Product" in glossary
+    assert "### Coding Product" in glossary
+
+
 def test_authorized_tool_context_does_not_become_a_capability_bag() -> None:
     from loushang.harness.tools.execution import AuthorizedToolContext
 

@@ -243,6 +243,32 @@ For example, Coding may create a deck artifact and hand it to a PPT Product
 Session for canvas-level editing. A Product Handoff is not an in-place mutation
 of the source session's `product_id`.
 
+### Code-Enabled Product
+
+A Product that mounts Product-approved, Product-neutral workspace, file,
+process, Sandbox, Approval, or automation Capabilities without adopting the
+Coding Product's domain identity or complete repository-engineering lifecycle.
+
+Every Product may be code-enabled, but not every Product is the Coding Product.
+Mounting Harness-owned read, list, search, write, edit, or process-execution
+mechanisms does not create a second Product, change the active `product_id`, or
+authorize unrestricted shell, network, package-install, or workspace access.
+The owning Product still selects the capability packs, grants, roots, defaults,
+prompt wording, artifact meanings, and presentation.
+
+### Coding Product
+
+The Product whose kernel owns the complete repository-engineering experience,
+including Coding-specific prompts, tool-pack defaults, repository and Git
+workflow, session compatibility, diagnostics, and Product presentation.
+
+The current Coding-specific Capability Mount identities are `coding.arch` and
+`coding.lsp`. Workspace read, list, search, write, edit, and process-execution
+implementations are Harness Capabilities selected and configured by Coding;
+they are not Coding-owned merely because Coding was their first consumer.
+Other Coding-exclusive Product Kernel semantics remain Product-owned even when
+they are not expressed as Capability Mount identities.
+
 ## OEM Model
 
 ### OEM
