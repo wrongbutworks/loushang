@@ -161,12 +161,14 @@ visible in the resolved profile and diagnostics.
 
 ## Top-Level Capabilities And Internal Facets
 
-The initial top-level Harness Capability IDs are `harness.workspace`,
-`harness.resources`, and `harness.session`. The current Coding-specific
-mountable Capability IDs are `coding.lsp` and `coding.arch`.
+The accepted target top-level Harness Capability IDs are `harness.workspace`,
+`harness.resources`, and `harness.session`. The accepted target Coding-specific
+mountable Capability IDs are `coding.lsp` and `coding.arch`; matching Coding
+constants already exist, while the top-level planner and live Mount graph do
+not.
 
-The public Capability dependency graph intentionally stays coarser than the
-Runtime Profile inventory:
+The accepted target Capability dependency graph intentionally stays coarser
+than the current Runtime Profile inventory:
 
 | Top-level Capability | Representative internal Runtime Profile facets |
 | --- | --- |

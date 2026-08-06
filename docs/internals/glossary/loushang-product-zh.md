@@ -97,10 +97,11 @@ Extension        → 向已准入运行时扩展面贡献行为
 每个 Product 都可以具备适合自己的代码能力，但并非每个 Product 都是 Coding
 Product。挂载 Harness 所有的 read、list、search、write、edit 或进程执行机制，
 不会创建第二个 Product，也不会自动授予不受限 shell、网络、依赖安装或工作区
-访问权。当前 Coding 专属的可挂载 Capability ID 只有 `coding.arch` 和
-`coding.lsp`；read、list、search、write、edit 与授权进程执行是
-`harness.workspace` 的内部 facet。Coding 对这些共享机制的缺省 pack、文案、
-策略和激活选择，以及其他 Product Kernel 语义仍由 Coding 拥有。
+访问权。已接受的目标 Coding 专属可挂载 Capability ID 只有
+`coding.arch` 和 `coding.lsp`；对应 Coding 常量已存在，但顶层 planner 与
+live Mount graph 尚未实现。read、list、search、write、edit 与授权进程
+执行是 `harness.workspace` 的内部 facet。Coding 对这些共享机制的缺省 pack、
+文案、策略和激活选择，以及其他 Product Kernel 语义仍由 Coding 拥有。
 
 ## OEM 模型
 
@@ -127,6 +128,7 @@ OEM 通常不是 Product。一个 OEM Package 可以启用 `coding`、`ppt` 和
 | --- | --- | --- |
 | Capability | 能力 | 可命名的运行时或领域关注点，如 Store、Memory、Tool、Command、Deck Renderer 或 Artifact Handler。 |
 | Capability ID | 能力标识 | 顶层 Capability 的稳定 owner-qualified 身份，如 `harness.workspace` 或 `coding.lsp`；它不是 live Mount、实现 key、权限、Protocol 或 Plugin 身份。 |
+| Capability Bundle | 能力运行时组合 | 由 owner 组装、实现且仅实现一个 Capability ID 的运行时边界；可包含 Tool、Resource、公共 facet view 与更细粒度的私有 Binding Facet。它不是面向装配或分发的 Product Capability Bundle。 |
 | Harness Capability | Harness 能力／共享能力 | 由 Harness 拥有公共契约、可复用机制或可覆盖平台默认值的产品中立 Capability；“共享”不表示全局单例、强制启用或 Plugin 类型。 |
 | Capability Dependency | 能力依赖 | 一个 Capability ID 对另一个 Capability ID 的声明式依赖；图中 `A -> B` 表示 A 依赖 B，B 先绑定、后释放。 |
 | Binding Facet | 绑定分面 | Capability Bundle 内部由 owner 管理的选择、provider、贡献族或生命周期单元；可以有独立诊断，但不自动成为顶层 DAG 节点。 |
@@ -143,10 +145,10 @@ OEM 通常不是 Product。一个 OEM Package 可以启用 `coding`、`ppt` 和
 | Invariant Enforcement Layer | 不变量执行层 | 围绕可替换 provider 或私有机制强制授权、审批、沙箱、资源限制、校验和清理保证的不可绕过包装层。 |
 | Trusted Backend Substitution | 可信后端替换 | 仅在 owner 明确公开相应 seam 时，由可信 Platform 组合替换私有机制；它不是普通 Plugin 权利。 |
 | Capability Pack | 能力包 | 运行时准入后，针对单一能力项类型的有序贡献组；对应代码中的 `CapabilityPack[T]`。 |
-| Product Capability Bundle | Product 能力组合包 | 面向装配或分发、包含多种能力与资源类型的组合，如 `ppt-authoring`。 |
+| Product Capability Bundle | Product 能力组合包 | 面向装配或分发、可包含多个 Capability Bundle、Capability Pack 与资源类型的组合，如 `ppt-authoring`；它不是顶层 DAG 节点。 |
 | Capability Mount | 能力挂载 | Product 把已准入 Capability Bundle 接入特定运行时 scope 的动作和结果；Capability ID 本身不是 Mount。 |
 | Mount Policy | 挂载策略 | 决定何时挂载已准入 Capability 的 Product 策略，如 `disabled`、`on_demand`、`always`；它不选择 provider 或授予权限。 |
-| Mounted Capability | 已挂载能力 | 绑定到具体 process、tenant、workspace、Session、turn 或 Channel scope 的 Capability Bundle 实例，如 `coding.lsp@workspace:repo-123`。 |
+| Mounted Capability | 已挂载能力 | 绑定到具体 process、tenant、workspace、Session、turn 或 Channel scope 的 Capability Bundle 实例，如 `coding.lsp@session:session-42`。 |
 
 Runtime Capability Shape 与行为组合语义不是同一维度：`ordered` shape
 既可以承载 Aggregate Contribution，也可以承载 Ordered Interception；
@@ -199,13 +201,13 @@ loushang
   → 创建对应 Product Runtime
 ```
 
-OEM 品牌启动 Coding 并挂载 PPT 创作能力：
+OEM 品牌启动 Coding 并激活 PPT 创作能力组合包：
 
 ```text
 acme
   → 使用 "acme" OEM Profile 启动共享 Platform Host
   → 选择 "coding" Product
-  → 挂载已准入的 OEM 能力与 ppt-authoring 能力组合包
+  → 激活已准入的 OEM 与 ppt-authoring 组合贡献
 ```
 
 完整 PPT Product：

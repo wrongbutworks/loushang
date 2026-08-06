@@ -48,23 +48,26 @@ the owning Product package is `loushang.coding` and the established sibling id
 is `coding.arch`.
 
 `coding.lsp` is a mountable Capability ID, not a live Mount instance. A
-workspace/session binding creates a Mounted Capability such as
-`coding.lsp@workspace:<workspace-id>` according to Coding's
-`disabled | on_demand | always` Mount Policy. Its supervisor, clients,
-documents, diagnostics, queries, and Tool family remain internal Bundle facets
-rather than top-level Capability nodes. The canonical terminology and graph
-rules are defined by
+target P0 binding creates a Session-scoped Mounted Capability such as
+`coding.lsp@session:<session-id>` according to Coding's
+`disabled | on_demand | always` Mount Policy. Workspace identity remains an
+explicit binding input and signature component; P0 does not pool a live LSP
+runtime across Sessions. Its supervisor, clients, documents, diagnostics,
+queries, and Tool family remain internal Capability Bundle facets rather than
+top-level Capability nodes. The canonical terminology and graph rules are
+defined by
 [Capability Dependency And Mount Lifecycle](../../harness/capability-dependency-and-mount-lifecycle.md).
 
 `coding.lsp` is:
 
-- a Coding Product Capability Bundle;
+- a `coding.lsp` Capability Bundle owned by the Coding Product;
 - language-extensible through declarative Server definitions;
 - independent of VS Code, Cursor, or another editor;
 - backed by separately installed language-server executables;
 - model-facing through bounded, structured code-intelligence tools;
-- workspace/session-scoped at first, with language-server processes started
-  lazily and retained until crash, explicit stop, or Session close in P0;
+- Session-scoped at first, with workspace identity in its binding inputs and
+  language-server processes started lazily and retained until crash, explicit
+  stop, or Session close in P0;
 - capable of both active semantic queries and passive diagnostic feedback;
 - optional and governed by the existing `disabled | on_demand | always`
   Product capability mount policy.
@@ -107,8 +110,8 @@ Extension or package
   may contribute declarations, but cannot grant itself execution authority
 ```
 
-At the top-level Capability-plan granularity, the current required dependency
-is:
+At the accepted target top-level Capability-plan granularity, the required
+dependency is:
 
 ```text
 coding.lsp -> harness.workspace
@@ -170,9 +173,9 @@ call hierarchy, and diagnostics.
 
 Future integration may let `coding.arch` consume an optional semantic-fact
 facet. If accepted, the Product plan may declare
-`coding.arch -> coding.lsp` as an optional dependency, but the current graph has
-no such edge. The deterministic analyzer and CI gates must continue to work
-without an LSP Server.
+`coding.arch -> coding.lsp` as an optional dependency, but the initial accepted
+target graph has no such edge. The deterministic analyzer and CI gates must
+continue to work without an LSP Server.
 
 ## Implementation Status Rule
 

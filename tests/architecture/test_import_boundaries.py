@@ -20,6 +20,29 @@ class ImportBoundary:
     allowed_paths: frozenset[str] = frozenset()
 
 
+def _markdown_table_first_column_after(text: str, marker: str) -> tuple[str, ...]:
+    assert marker in text
+    tail = text.split(marker, maxsplit=1)[1]
+    values: list[str] = []
+    table_started = False
+    for raw_line in tail.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("|"):
+            if table_started and values:
+                break
+            continue
+        table_started = True
+        cells = tuple(cell.strip() for cell in line.strip("|").split("|"))
+        if not cells:
+            continue
+        first = cells[0]
+        if first == "Capability ID" or set(first) <= {"-", ":", " "}:
+            continue
+        values.append(first.strip("`"))
+    assert values
+    return tuple(values)
+
+
 def test_core_runtime_packages_do_not_import_product_layers() -> None:
     boundaries = (
         ImportBoundary(
@@ -4414,15 +4437,9 @@ def test_code_enabled_products_reuse_harness_workspace_capabilities() -> None:
         in shared_boundary
     )
     assert (
-        "The only current Coding-specific mountable Capability IDs are `coding.arch` and `coding.lsp`"
+        "The accepted target Coding Capability inventory contains only the mountable IDs `coding.arch` and `coding.lsp`"
         in shared_boundary
     )
-    for capability_id in (
-        "`harness.workspace`",
-        "`harness.resources`",
-        "`harness.session`",
-    ):
-        assert capability_id in shared_boundary
 
     glossary = " ".join(
         Path("docs/internals/glossary/loushang-product.md")
@@ -4432,6 +4449,7 @@ def test_code_enabled_products_reuse_harness_workspace_capabilities() -> None:
     assert "### Code-Enabled Product" in glossary
     assert "### Coding Product" in glossary
     assert "### Capability ID" in glossary
+    assert "### Capability Bundle" in glossary
     assert "### Binding Facet" in glossary
     assert "### Mounted Capability" in glossary
 
@@ -4448,6 +4466,43 @@ def test_code_enabled_products_reuse_harness_workspace_capabilities() -> None:
         "Product, OEM, Plugin, Package, and Extension identities are not graph nodes"
         in graph_boundary
     )
+
+
+def test_capability_docs_define_exact_top_level_id_budgets() -> None:
+    graph_text = Path(
+        "docs/internals/architecture/harness/"
+        "capability-dependency-and-mount-lifecycle.md"
+    ).read_text(encoding="utf-8")
+    shared_text = Path(
+        "docs/internals/architecture/harness/shared-capability-boundaries.md"
+    ).read_text(encoding="utf-8")
+
+    expected_harness_ids = (
+        "harness.workspace",
+        "harness.resources",
+        "harness.session",
+    )
+    assert (
+        _markdown_table_first_column_after(
+            graph_text,
+            "The accepted target top-level Harness Capability IDs are:",
+        )
+        == expected_harness_ids
+    )
+    assert (
+        _markdown_table_first_column_after(
+            shared_text,
+            "The accepted target Harness Capability IDs are deliberately coarse.",
+        )
+        == expected_harness_ids
+    )
+
+    assert set(
+        _markdown_table_first_column_after(
+            graph_text,
+            "represented by current Coding constants, are:",
+        )
+    ) == {"coding.arch", "coding.lsp"}
 
 
 def test_authorized_tool_context_does_not_become_a_capability_bag() -> None:

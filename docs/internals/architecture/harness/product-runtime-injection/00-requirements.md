@@ -137,7 +137,13 @@ and lifecycle semantics without becoming a top-level node.
 
 The planner must validate unknown dependencies, complete cycle paths, scope and
 refresh inversions, bootstrap/final phase inversions, missing required facets,
-and undeclared cross-Product dependencies before constructing live values.
+incompatible Capability/facet contract versions, and undeclared cross-Product
+dependencies before constructing live values.
+
+The accepted target Harness plan contains
+`harness.session -> harness.resources` and
+`harness.session -> harness.workspace`. Current Session assembly wires those
+dependencies directly until the graph planner is implemented.
 
 ### PDRI-014: Incremental Mount Finalization
 
@@ -147,10 +153,17 @@ known, finalization must reconcile the final plan by binding signature, reuse
 unchanged Mounted Capabilities, bind only new or changed nodes, and seal the
 published graph only after commit.
 
+The signature must include the Capability and scope identity, compatible
+contract versions, selected implementation/configuration and factory identity,
+dependency requirements, relevant provenance, and an owner-supplied
+deterministic fingerprint of every binding input that can alter factory output.
+A node without a complete stable binding-input fingerprint is not reusable.
+
 An unchanged Capability must not be constructed twice merely because Extension
-discovery occurs between bootstrap and Session construction. Failed
-finalization must roll back newly created nodes and must not publish a partially
-updated graph.
+discovery occurs between bootstrap and Session construction. Failed or
+cancelled finalization must preserve the previously published generation,
+reverse-dispose newly created nodes, and must not publish a partially updated
+graph. Once abort cleanup begins, later cancellation cannot skip owned cleanup.
 
 ### PDRI-015: Graph Management And Observation
 
@@ -170,7 +183,8 @@ dependent, and impact queries without exposing credentials or live providers.
 - Product-neutral contract tests must cover resolution, lifecycle, diagnostics,
   and sealing; Coding tests must preserve existing behavior during cutover.
 - Graph tests must cover dependency closure, cycle and scope diagnostics,
-  signature reuse, finalization rollback, and reverse-order disposal.
+  signature reuse, failure and cancellation rollback, cleanup shielding, and
+  reverse-order disposal.
 - Unknown future contributions must fail explicitly or remain inactive; they
   must not be treated as a valid fallback implementation.
 

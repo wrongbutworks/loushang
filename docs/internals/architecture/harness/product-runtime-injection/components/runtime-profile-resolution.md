@@ -80,6 +80,10 @@ node. Slots such as `prompt.sections`, `tool.packs`,
 owner-private Binding Facets. Their resolved selections and snapshots remain
 authoritative for factory binding while `harness.resources` or
 `harness.session` projects the aggregate top-level Capability state.
+That future aggregate Mount does not force all of its internal facets into one
+scope or refresh generation: it may hold explicit leases or stable references
+to broader-lived facets, while focused profile generations remain
+authoritative for internal refresh.
 
 The first shared vocabulary is deliberately limited to these neutral slot
 identifiers:
@@ -206,6 +210,18 @@ changed nodes. It publishes and seals the final graph atomically. An unchanged
 Capability must not bind twice merely because discovery occurs between
 bootstrap and Session construction.
 
+The Runtime Profile snapshot is necessary selection evidence but is not by
+itself a complete reusable-node signature. The graph binder must also include
+compatible contract versions, selected factory identity/version, dependency
+requirements, relevant provenance, and an owner-supplied deterministic
+fingerprint of binding-context inputs such as persistence mode, Session path,
+workspace identity, and referenced-runtime generation. If those inputs cannot
+be completely fingerprinted, the target binder must construct a new node.
+
+Failure or cancellation before atomic publication preserves the previous
+generation and reverse-disposes the newly created delta. Once abort cleanup
+begins, another cancellation request cannot skip owned cleanup.
+
 Selection diagnostics, graph-plan diagnostics, and binding lifecycle facts are
 separate projections. A global mutable DAG manager or a graph-wide arbitrary
 object lookup remains prohibited.
@@ -273,8 +289,8 @@ Session shutdown cancels the active Provider before disposing the factory.
 
 PDRI-013 through PDRI-015 additionally require future neutral tests for
 dependency closure, full cycle paths, scope/phase inversion, unchanged-node
-reuse, finalization rollback, and reverse-topological disposal before the
-Mount-graph target may be marked implemented.
+reuse, failure/cancellation rollback with shielded cleanup, and reverse-
+topological disposal before the Mount-graph target may be marked implemented.
 
 ## Non-Goals
 

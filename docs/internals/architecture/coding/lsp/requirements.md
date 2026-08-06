@@ -41,16 +41,20 @@ responsibilities.
 
 The feature must be represented as the opaque Coding Product capability
 ID `coding.lsp` and use the existing `disabled | on_demand | always` Mount
-Policy. The ID names the definition; a concrete workspace/session activation is
-a Mounted Capability and must retain its scope and generation identity.
+Policy. The ID names the definition; the initial target activation is a
+Session-scoped Mounted Capability and must retain its Session scope and
+generation identity. Workspace identity is configuration and a required
+binding-signature input, not a second Mount scope. P0 does not pool a live LSP
+runtime across Sessions.
 
 The capability id must not be replaced by a Harness tool-pack id. Family packs
 may use qualified ids such as `coding.lsp.tools`.
 
-The top-level plan declares `coding.lsp -> harness.workspace`, meaning LSP
-depends on the Harness workspace Capability. Required read and authorized
-process-launch facets are admitted separately and do not become additional DAG
-nodes. Dependency and Mount terminology follows
+The accepted target top-level plan declares
+`coding.lsp -> harness.workspace`, meaning LSP depends on the Harness workspace
+Capability. Required read and authorized process-launch facets are admitted
+separately and do not become additional DAG nodes. Dependency and Mount
+terminology follows
 [Capability Dependency And Mount Lifecycle](../../harness/capability-dependency-and-mount-lifecycle.md).
 
 ### R2. Editor independence

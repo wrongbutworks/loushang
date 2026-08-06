@@ -262,12 +262,14 @@ The Product whose kernel owns the complete repository-engineering experience,
 including Coding-specific prompts, tool-pack defaults, repository and Git
 workflow, session compatibility, diagnostics, and Product presentation.
 
-The current Coding-specific mountable Capability IDs are `coding.arch` and
-`coding.lsp`. Workspace read, list, search, write, edit, and process-execution
-facets belong to the Product-neutral `harness.workspace` Capability selected
-and configured by Coding; they are not Coding-owned merely because Coding was
-their first consumer. Other Coding-exclusive Product Kernel semantics remain
-Product-owned even when they are not expressed as mountable Capability IDs.
+The accepted target Coding-specific mountable Capability IDs are `coding.arch`
+and `coding.lsp`; matching Coding constants already exist, while the top-level
+planner and live Mount graph do not. Workspace read, list, search, write, edit,
+and process-execution facets belong to the Product-neutral
+`harness.workspace` Capability selected and configured by Coding; they are not
+Coding-owned merely because Coding was their first consumer. Other Coding-
+exclusive Product Kernel semantics remain Product-owned even when they are not
+expressed as mountable Capability IDs.
 
 ## OEM Model
 
@@ -345,6 +347,22 @@ A Capability ID names the definition and dependency target. It is not a live
 Mount, implementation key, Python Protocol, permission, tool name, or Plugin
 identity. Architecture documents may call it *mountable* when a Product exposes
 Mount Policy for that Capability.
+
+### Capability Bundle
+
+The owner-composed runtime boundary that implements exactly one Capability ID.
+It may contain tools, resources, typed public facet views, and private Binding
+Facets with more detailed scope, refresh, selection, and diagnostic lifecycles.
+
+One top-level Mount generation describes the public Bundle binding. Private
+Facet generations remain authoritative for internal refreshes, and a Bundle
+may hold explicit leases or stable references to broader-lived Facets. It must
+not capture a shorter-lived concrete value across its safe boundary.
+
+A Capability Bundle is not a Product Capability Bundle. The former implements
+one Capability ID at runtime; the latter is an assembly or distribution
+grouping that may deliver several Capability Bundles, resource families, and
+Capability Packs.
 
 ### Harness Capability
 
@@ -517,6 +535,10 @@ A Product Capability Bundle does not become the Active Product. If PPT-specific
 canvas state, session compatibility, compaction, approval, or artifact lifecycle
 is required, use the PPT Product and an explicit Product Handoff.
 
+A Product Capability Bundle is not a top-level Capability DAG node. Its
+contents enter their owner-defined Capability Bundles, resource overlays, or
+Capability Pack admission paths independently.
+
 ### Capability Mount
 
 The Product-owned act and resulting binding by which an admitted Capability
@@ -535,7 +557,7 @@ provider, grant authority, or identify a live runtime instance.
 ### Mounted Capability
 
 One admitted Capability Bundle bound to a concrete runtime scope. For example,
-`coding.lsp@workspace:repo-123` is a useful diagnostic label for one Mounted
+`coding.lsp@session:session-42` is a useful diagnostic label for one Mounted
 Capability, while `coding.lsp` remains its Capability ID.
 
 Scoped Mounts from Product defaults, manual selection, Skills, and Method/Work
@@ -544,9 +566,11 @@ another scope's request. A Mounted Capability owns or imports the lifecycle
 required by its declared dependencies. It is unrelated to an AppService
 control lease.
 
-For example, Coding may mount `ppt-authoring` while remaining the Active
-Product. The Product Session should snapshot continuity-critical mounted
-identities and compatible versions.
+For example, Coding may activate the `ppt-authoring` Product Capability Bundle
+while remaining the Active Product. Its admitted contents may contribute
+resources and Capability Packs or request owner-defined Capability Mounts. The
+Product Session should snapshot continuity-critical Mounted Capability
+identities, compatible versions, and separately activated bundle provenance.
 
 ## Package, Plugin, Extension, And Resource Model
 
@@ -647,11 +671,12 @@ loushang
 acme
   -> start the shared Platform Host with OEM Profile "acme"
   -> select Product "coding"
-  -> mount admitted OEM and ppt-authoring capabilities
+  -> activate admitted OEM and ppt-authoring bundle contributions
 ```
 
 In this example, `coding` remains the Active Product. The OEM Profile and
-mounted capability identities are recorded separately.
+activated Product Capability Bundle provenance and resulting Mounted Capability
+identities are recorded separately.
 
 ### Full PPT Launch Or Handoff
 
@@ -671,8 +696,8 @@ policy, or presentation semantics.
 - An OEM Package may configure multiple Product Packages.
 - One Platform Host may run multiple Products concurrently.
 - One Product Session has exactly one Active Product.
-- A Product may mount many admitted Capability Packs and Product Capability
-  Bundles.
+- A Product may activate many admitted Capability Packs and Product Capability
+  Bundles; only owner-defined Capability IDs produce Mounted Capabilities.
 - A Product Capability Bundle augments a Product; it does not silently replace
   it.
 - Product Handoff crosses Product-session boundaries explicitly.

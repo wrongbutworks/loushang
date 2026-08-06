@@ -19,7 +19,7 @@ loushang.coding (Product)
         |
         +-- language-server catalog and admission
         +-- semantic tools and diagnostic feedback
-        +-- workspace/session-scoped LSP runtime
+        +-- Session-scoped LSP runtime (workspace identity is a binding input)
 ```
 
 This placement follows two rules:

@@ -373,9 +373,11 @@ and architecture judgments.
 
 ### Role
 
-Compose one `coding.lsp` Mounted Capability for one Coding session/workspace.
+Compose one target `coding.lsp` Mounted Capability for one Coding Session.
 `coding.lsp` remains the Capability ID; the live binding additionally records
-its workspace/Session scope instance and generation.
+its Session scope instance and generation. Workspace identity is an explicit
+configuration and binding-signature input rather than a second scope. P0 does
+not share the live runtime across Sessions.
 
 ### Owns
 

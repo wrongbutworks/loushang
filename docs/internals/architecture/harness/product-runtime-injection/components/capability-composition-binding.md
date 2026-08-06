@@ -126,10 +126,18 @@ facets, and then reconciles the live graph by binding signature. A finalizer:
 
 1. reuses every unchanged Mounted Capability and owned facet binding;
 2. creates only final-only, new, or changed nodes;
-3. rolls back newly created nodes if any dependency or factory fails;
+3. rolls back newly created nodes if any dependency or factory fails or the
+   transaction is cancelled;
 4. publishes the new graph generation only after the delta succeeds; and
 5. seals Session nodes after commit, then disposes replaced bootstrap-only
    values in reverse dependency order.
+
+Reuse requires the complete target binding signature, including compatible
+contract versions, selected factory identity/version, and an owner-supplied
+deterministic fingerprint of every binding input that can alter factory output.
+The current Runtime Profile snapshot alone is not that fingerprint. On failure
+or cancellation, the previous published generation remains current and abort
+cleanup cannot itself be skipped by a later cancellation request.
 
 An unchanged Capability must not bind twice merely because Extension discovery
 occurs between bootstrap and Session construction. Bootstrap-critical
@@ -138,9 +146,12 @@ Capabilities unless declaration-only discovery occurs before binding or a
 separate explicit hot-replacement contract is accepted.
 
 Planning, binding, live state, and projection remain separate owners. The
-public graph exposes coarse Capability IDs and requested facet views; it does
-not expose factories, arbitrary objects, or each internal slot as a service
-locator key.
+accepted target graph exposes coarse Capability IDs and requested facet views;
+it does not expose factories, arbitrary objects, or each internal slot as a
+service locator key. One aggregate Mount may hold explicit leases or stable
+references to broader-lived internal facets while turn-refreshable facets keep
+their own profile generations; aggregation does not force all facets into one
+scope or refresh boundary.
 
 ## Durable And Refresh Rules
 
@@ -181,6 +192,6 @@ into Harness.
   profiles can be validated without rehydrating executable objects; the
   auxiliary side-question replacement is resolved again from active Extensions.
 - Target graph tests must additionally prove bootstrap dependency closure,
-  unchanged-signature reuse, finalization rollback, cycle/scope diagnostics,
-  and reverse-topological disposal before incremental Mount finalization is
-  marked implemented.
+  unchanged-signature reuse, failure/cancellation rollback with shielded
+  cleanup, cycle/scope diagnostics, and reverse-topological disposal before
+  incremental Mount finalization is marked implemented.

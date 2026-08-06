@@ -39,12 +39,13 @@ The static plan and the live runtime have related but different nodes:
 ```text
 Capability Plan DAG                 Live Mount Graph
 
-coding.lsp                          coding.lsp@workspace:repo-123
+coding.lsp                          coding.lsp@session:session-42
   -> harness.workspace                -> harness.workspace@workspace:repo-123
 ```
 
 - A **Capability Plan DAG** node is a Capability ID plus its owner, declared
-  scope, dependency requirements, activation policy, and allowed variation.
+  scope, versioned dependency requirements, activation policy, and allowed
+  variation.
 - A **Live Mount Graph** node is a Mounted Capability plus its selected Bundle,
   scope instance, generation, lifecycle state, and binding signature.
 - `A -> B` always means **A depends on B**. Binding proceeds against the arrow;
@@ -63,7 +64,7 @@ node when it has a stable contract, an independent activation or binding
 lifecycle, an owner that can explain its state, and meaningful dependency or
 variation semantics.
 
-The initial top-level Harness Capability IDs are:
+The accepted target top-level Harness Capability IDs are:
 
 | Capability ID | Bundle boundary | Representative internal facets |
 | --- | --- | --- |
@@ -71,12 +72,13 @@ The initial top-level Harness Capability IDs are:
 | `harness.resources` | Resource discovery, activation, and capability-item composition | resource runtime, prompt sections, skill activation, tool packs, command packs |
 | `harness.session` | Product-neutral Session, transcript, context, interaction, and continuity mechanics | conversation store, transcript profile, compaction, side question, continuity providers |
 
-This is a public Capability budget, not a prohibition on focused Harness
-modules. A fourth top-level Harness Capability requires an independently owned
-lifecycle and a demonstrated need that cannot be expressed as a facet or
-contribution of an existing Capability.
+This is an accepted target Capability budget, not a current public runtime API
+and not a prohibition on focused Harness modules. A fourth top-level Harness
+Capability requires an independently owned lifecycle and a demonstrated need
+that cannot be expressed as a facet or contribution of an existing Capability.
 
-The current Coding-specific mountable Capability IDs are:
+The accepted target Coding-specific mountable Capability IDs, already
+represented by current Coding constants, are:
 
 | Capability ID | Bundle boundary |
 | --- | --- |
@@ -96,14 +98,23 @@ Dependencies use stable Capability IDs. Terms such as `port`, `adapter`,
 public dependency identities.
 
 ```text
+                                     # accepted target Harness composition
+harness.session -> harness.resources
+harness.session -> harness.workspace
+
 coding.lsp  -> harness.workspace
 coding.arch -> harness.workspace
 coding.arch -. optional .-> coding.lsp
 ```
 
+`harness.session` consumes the admitted resource composition and workspace
+facets used by the Session runtime, so both Harness edges are required in the
+accepted target plan. Current Session assembly wires those dependencies
+directly until the top-level planner exists.
+
 The optional `coding.arch -> coding.lsp` edge is a permitted future shape, not
-a current requirement. `coding.arch` must remain independently usable unless a
-later accepted Product decision changes that contract.
+part of the initial target. `coding.arch` must remain independently usable
+unless a later accepted Product decision changes that contract.
 
 Coarse graph identity does not grant coarse authority. A consumer declares a
 narrow facet view separately:
@@ -112,8 +123,15 @@ narrow facet view separately:
 CapabilityRequirement(
     capability="harness.workspace",
     facets=("read", "process.launch"),
+    compatible_contract="1.x",
 )
 ```
+
+Every Capability and exported facet view has an owner-versioned contract. A
+dependency requirement declares a compatible contract version or range; the
+planner rejects an incompatible requirement before construction. An
+implementation version identifies a selected provider and does not substitute
+for the dependency contract version.
 
 Facets constrain admission and typed injection but do not create more DAG
 nodes. The same distinction applies to requirements:
@@ -154,9 +172,25 @@ harness.session
 ```
 
 These facets may retain Runtime Profile snapshots and focused diagnostics. They
-do not expand the public Capability DAG, and an Extension that contributes a
-side-question provider does not become a node. The owning Bundle admits and
-resolves that candidate, then projects one aggregate node state upward.
+do not expand the accepted target Capability DAG, and an Extension that
+contributes a side-question provider does not become a node. The owning Bundle
+admits and resolves that candidate, then projects one aggregate node state
+upward.
+
+The top-level Mount scope and generation describe the owner-visible Bundle
+binding, not a forced common lifecycle for every private facet. A Session-
+scoped `harness.resources` Bundle may hold a lease to its workspace-scoped,
+sealed `resource.runtime` facet while its prompt, skill, Tool-pack, and
+Command-pack facets remain Session-scoped and turn-refreshable. Likewise,
+`harness.session` may consume process-scoped continuity packs through stable
+references or leases. The Bundle must not capture a shorter-lived concrete
+facet value across its safe boundary.
+
+Facet snapshots and generations remain authoritative for their focused
+selection and refresh state. The aggregate Mount generation changes only when
+the public Bundle binding signature changes; an internal turn refresh is
+projected as facet state and does not invent another top-level node or silently
+replace the Mounted Capability.
 
 ## Planning And Binding Lifecycle
 
@@ -176,7 +210,16 @@ declare Capability Plan
 Bootstrap roots bind their transitive dependency closure rather than a
 hand-maintained list. Finalization reuses an existing node only when Capability
 ID, scope instance, selected implementation/configuration, dependency
-requirements, and relevant provenance form the same binding signature.
+requirements, compatible contract versions, selected factory identity/version,
+relevant provenance, and an owner-supplied binding-input fingerprint form the
+same binding signature.
+
+The binding-input fingerprint is strict deterministic data covering every
+factory input that can alter the live value, such as persistence mode, Session
+directory identity, workspace identity, or a stable referenced-runtime
+generation. It excludes credentials and arbitrary live objects. A Capability
+whose owner cannot provide a complete stable fingerprint is not eligible for
+signature reuse.
 
 An unchanged Capability must not be constructed twice merely because Extension
 discovery occurs between bootstrap and Session creation. A final-only
@@ -189,9 +232,16 @@ not a valid resolution policy.
 
 Finalization is a construction transaction, not a turn-boundary rebind. It
 creates the delta before publishing the new graph, rolls back newly created
-nodes on failure, and seals Session-scoped nodes only after commit. Runtime hot
-replacement remains unsupported unless the owning Capability explicitly
-declares a stable reference or dependent-closure rebind contract.
+nodes on failure or cancellation, and seals Session-scoped nodes only after
+commit. Cancellation before commit is a transactional abort: the previously
+published generation remains authoritative and the newly created delta is
+reverse-disposed. Once rollback begins, cleanup runs to completion under a
+cleanup shield; another cancellation request is recorded but cannot skip owned
+cleanup. Cancellation after atomic publication follows the normal scope-owner
+cancellation and disposal contract rather than retroactively rolling back the
+committed generation. Runtime hot replacement remains unsupported unless the
+owning Capability explicitly declares a stable reference or dependent-closure
+rebind contract.
 
 ## Dependency And Lifecycle Validation
 
@@ -215,6 +265,12 @@ higher-level application composition root may coordinate multiple Product
 graphs through Harness contracts, but one Product graph does not turn another
 Product identity into an internal node.
 
+The initial target does not share a live Mounted Capability object between
+Product graphs merely because their scope labels match. Each graph owns its
+bindings and releases independently. Cross-graph pooling would require a
+separate accepted scope-owned pool, lease, reference-counting, and final-
+disposal contract; the read-only graph catalog is not that lifecycle owner.
+
 ## Management Ownership
 
 There is no global mutable DAG manager or service locator. Responsibilities are
@@ -223,7 +279,7 @@ split as follows:
 | Owner | Responsibility |
 | --- | --- |
 | `RuntimeCapabilityGraphPlanner` | Pure plan construction, dependency closure, topological order, and validation diagnostics |
-| `RuntimeCapabilityGraphBinder` | Transactional bind, signature reuse, rollback, reverse disposal, and generation invalidation |
+| `RuntimeCapabilityGraphBinder` | Transactional bind, signature reuse, failure/cancellation rollback, reverse disposal, and generation invalidation |
 | `RuntimeCapabilityGraphRuntime` | Live Mounted Capability state and scope-owned leases |
 | `RuntimeCapabilityGraphProjector` | Read-only snapshots, explanations, impact paths, and redacted lifecycle facts |
 | optional graph catalog | Read-only aggregation of graph snapshots from multiple Product/runtime instances |

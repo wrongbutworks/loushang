@@ -202,7 +202,7 @@
   <!-- Shared product runtime core -->
   <rect x="160" y="1150" width="1080" height="210" rx="22" fill="#fffaf0" stroke="#d97706" stroke-width="2.5"/>
   <text x="700" y="1188" text-anchor="middle" class="box-title">Hosted Product Runtime · instance B</text>
-  <text x="700" y="1210" text-anchor="middle" class="small">Mount examples：coding.lsp@workspace · coding.arch@workspace · …</text>
+  <text x="700" y="1210" text-anchor="middle" class="small">Mount examples：coding.lsp@session:demo · coding.arch@workspace:repo · …</text>
 
   <rect x="190" y="1230" width="225" height="88" rx="14" fill="#f0fdfa" stroke="#14b8a6" stroke-width="2"/>
   <text x="302" y="1260" text-anchor="middle" class="box-title-sm">Conversation Capability</text>
