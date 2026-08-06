@@ -14,12 +14,17 @@ from loushang.coding.lsp.model import (
     CodeLocation,
     CodePosition,
     CodeQueryResult,
-    CodeRange,
     CodeSymbol,
     DocumentOutlineResult,
     LspInvalidInputError,
     LspProtocolError,
 )
+from loushang.coding.lsp.positions import (
+    fallback_public_range as _fallback_public_range,
+)
+from loushang.coding.lsp.positions import parse_lsp_range as _parse_lsp_range
+from loushang.coding.lsp.positions import to_lsp_position as _to_lsp_position
+from loushang.coding.lsp.positions import to_public_range as _to_public_range
 from loushang.coding.lsp.selector import LspSelector
 from loushang.coding.lsp.supervisor import LspRuntimeHandle, LspServerSupervisor
 from loushang.harness.tools.authoring import ToolContext, direct_tool
@@ -206,6 +211,21 @@ class CodingLspTools:
             correlation_id=correlation_id,
             signal=signal,
         )
+        if not _supports_capability(
+            runtime.client.server_capabilities,
+            "documentSymbolProvider",
+        ):
+            return DocumentOutlineResult(
+                items=(),
+                count=0,
+                truncated=False,
+                server_id=selection.definition_id,
+                document_version=None,
+                readiness="unsupported",
+                warnings=(
+                    "language server does not advertise document symbol support",
+                ),
+            )
         document = await self.documents.ensure_document(
             runtime,
             selection.file_path,
@@ -709,85 +729,6 @@ class _OutlineNormalizer:
             container_name=container_name,
             children=children,
         )
-
-
-def _to_lsp_position(content: str, position: CodePosition) -> dict[str, int]:
-    lines = content.split("\n")
-    if position.line > len(lines):
-        raise LspInvalidInputError("line is outside the current document")
-    line = lines[position.line - 1]
-    if line.endswith("\r"):
-        line = line[:-1]
-    offset = position.character - 1
-    if offset > len(line):
-        raise LspInvalidInputError("character is outside the current line")
-    utf16_character = len(line[:offset].encode("utf-16-le")) // 2
-    return {"line": position.line - 1, "character": utf16_character}
-
-
-def _parse_lsp_range(
-    raw_range: Mapping[str, object],
-) -> tuple[tuple[int, int], tuple[int, int]]:
-    def position(name: str) -> tuple[int, int]:
-        raw = raw_range.get(name)
-        if not isinstance(raw, Mapping):
-            raise LspProtocolError(f"LSP range {name!r} must be an object")
-        line = raw.get("line")
-        character = raw.get("character")
-        if (
-            not isinstance(line, int)
-            or isinstance(line, bool)
-            or line < 0
-            or not isinstance(character, int)
-            or isinstance(character, bool)
-            or character < 0
-        ):
-            raise LspProtocolError("LSP positions must be non-negative integers")
-        return line, character
-
-    return position("start"), position("end")
-
-
-def _to_public_range(
-    content: str,
-    value: tuple[tuple[int, int], tuple[int, int]],
-) -> CodeRange:
-    return CodeRange(
-        start=_to_public_position(content, value[0]),
-        end=_to_public_position(content, value[1]),
-    )
-
-
-def _to_public_position(content: str, value: tuple[int, int]) -> CodePosition:
-    line_number, utf16_character = value
-    lines = content.split("\n")
-    if line_number >= len(lines):
-        raise LspProtocolError("LSP result line is outside the target document")
-    line = lines[line_number]
-    if line.endswith("\r"):
-        line = line[:-1]
-    consumed = 0
-    code_points = 0
-    for character in line:
-        if consumed == utf16_character:
-            break
-        width = len(character.encode("utf-16-le")) // 2
-        if consumed + width > utf16_character:
-            raise LspProtocolError("LSP position splits a UTF-16 surrogate pair")
-        consumed += width
-        code_points += 1
-    if consumed != utf16_character:
-        raise LspProtocolError("LSP result character is outside the target line")
-    return CodePosition(line=line_number + 1, character=code_points + 1)
-
-
-def _fallback_public_range(
-    value: tuple[tuple[int, int], tuple[int, int]],
-) -> CodeRange:
-    return CodeRange(
-        start=CodePosition(line=value[0][0] + 1, character=value[0][1] + 1),
-        end=CodePosition(line=value[1][0] + 1, character=value[1][1] + 1),
-    )
 
 
 def _file_uri_path(uri: str) -> Path | None:

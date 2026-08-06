@@ -63,18 +63,23 @@ class LspDocumentManager:
                     content=content,
                     content_hash=content_hash,
                 )
-                await runtime.client.notify(
-                    "textDocument/didOpen",
-                    {
-                        "textDocument": {
-                            "uri": uri,
-                            "languageId": language_id,
-                            "version": 1,
-                            "text": content,
-                        }
-                    },
-                )
                 self._snapshots[key] = snapshot
+                try:
+                    await runtime.client.notify(
+                        "textDocument/didOpen",
+                        {
+                            "textDocument": {
+                                "uri": uri,
+                                "languageId": language_id,
+                                "version": 1,
+                                "text": content,
+                            }
+                        },
+                    )
+                except BaseException:
+                    if self._snapshots.get(key) is snapshot:
+                        self._snapshots.pop(key, None)
+                    raise
                 return snapshot
             if current.content_hash == content_hash:
                 return current
@@ -87,17 +92,22 @@ class LspDocumentManager:
                 content=content,
                 content_hash=content_hash,
             )
-            await runtime.client.notify(
-                "textDocument/didChange",
-                {
-                    "textDocument": {
-                        "uri": uri,
-                        "version": snapshot.version,
-                    },
-                    "contentChanges": [{"text": content}],
-                },
-            )
             self._snapshots[key] = snapshot
+            try:
+                await runtime.client.notify(
+                    "textDocument/didChange",
+                    {
+                        "textDocument": {
+                            "uri": uri,
+                            "version": snapshot.version,
+                        },
+                        "contentChanges": [{"text": content}],
+                    },
+                )
+            except BaseException:
+                if self._snapshots.get(key) is snapshot:
+                    self._snapshots[key] = current
+                raise
             return snapshot
 
     def canonical_path(self, path: str | Path) -> Path:
@@ -120,6 +130,28 @@ class LspDocumentManager:
                 f"LSP document exceeds {self._max_document_bytes} bytes"
             )
         return content
+
+    def open_document_count(self, runtime_id: int | None = None) -> int:
+        if runtime_id is None:
+            return len(self._snapshots)
+        return sum(key[0] == runtime_id for key in self._snapshots)
+
+    def snapshot_for_uri(
+        self,
+        runtime_id: int,
+        uri: str,
+    ) -> DocumentSnapshot | None:
+        """Return the current runtime-local snapshot without opening a document."""
+
+        return self._snapshots.get((runtime_id, uri))
+
+    def release_runtime(self, runtime_id: int) -> None:
+        snapshot_keys = [key for key in self._snapshots if key[0] == runtime_id]
+        for key in snapshot_keys:
+            self._snapshots.pop(key, None)
+        lock_keys = [key for key in self._locks if key[0] == runtime_id]
+        for key in lock_keys:
+            self._locks.pop(key, None)
 
 
 __all__ = ["DocumentSnapshot", "LspDocumentManager"]

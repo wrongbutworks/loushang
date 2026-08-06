@@ -111,6 +111,7 @@ def test_rpc_mode_command_catalog_preserves_the_complete_legacy_surface() -> Non
             "compact",
             "cycle_model",
             "cycle_thinking_level",
+            "execute_command",
             "export_html",
             "extension_ui_response",
             "follow_up",

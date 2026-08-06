@@ -84,6 +84,7 @@ def test_status_and_doctor_inspect_catalog_without_starting_process(
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 0
+    assert payload["scope"] == "catalog"
     assert payload["mount_mode"] == "always"
     assert payload["admitted_count"] >= 1
     assert payload["process_start_attempted"] is False
@@ -120,6 +121,7 @@ def test_doctor_reports_missing_servers_without_attempting_install(
     )
 
     assert exit_code == 1
+    assert "Scope: catalog (offline)" in stdout.getvalue()
     assert "Process start attempted: no" in stdout.getvalue()
     assert "no language server is available" in stdout.getvalue()
 
@@ -255,5 +257,11 @@ def test_configured_lsp_is_available_to_ordinary_session_and_remains_lazy(
     assert {INSPECT_SYMBOL_TOOL_NAME, DOCUMENT_OUTLINE_TOOL_NAME}.issubset(
         session.get_active_tool_names()
     )
+    assert "lsp" in {command.name for command in session.list_commands()}
+    command_result = asyncio.run(session.execute_command_async("lsp", "status"))
+    assert command_result is not None
+    assert command_result.result["scope"] == "session"
+    assert command_result.result["servers"] == []
+    assert "No language server has been started" in command_result.result["display"]
     assert starts == []
     asyncio.run(session.dispose())

@@ -135,6 +135,7 @@ def _write_json(
     stdout.write(
         json.dumps(
             {
+                "scope": "catalog",
                 "capability": CODING_LSP_CAPABILITY,
                 "mount_mode": mode,
                 "catalog_generation": snapshot.generation,
@@ -155,6 +156,7 @@ def _write_text(
     snapshot: LspCatalogSnapshot,
     doctor: bool,
 ) -> None:
+    stdout.write("Scope: catalog (offline)\n")
     stdout.write(f"Capability: {CODING_LSP_CAPABILITY} ({mode})\n")
     stdout.write(f"Catalog: {snapshot.generation}\n")
     stdout.write(f"Admitted servers: {snapshot.admitted_count}\n")

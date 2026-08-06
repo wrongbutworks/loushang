@@ -15,6 +15,7 @@ from loushang.coding.lsp.discovery import (
 )
 from loushang.coding.lsp.documents import DocumentSnapshot, LspDocumentManager
 from loushang.coding.lsp.model import (
+    CodeDiagnostic,
     CodeHover,
     CodeLocation,
     CodePosition,
@@ -44,6 +45,12 @@ from loushang.coding.lsp.runtime import (
     bind_coding_lsp_runtime,
 )
 from loushang.coding.lsp.selector import LspSelector
+from loushang.coding.lsp.status import (
+    LspServerRuntimeState,
+    LspServerRuntimeStatus,
+    LspSessionStatus,
+    disabled_lsp_session_status,
+)
 from loushang.coding.lsp.supervisor import LspRuntimeHandle, LspServerSupervisor
 from loushang.coding.lsp.tool_pack import (
     CODING_LSP_TOOL_PACK,
@@ -63,6 +70,7 @@ from loushang.coding.lsp.tools import (
 
 __all__ = [
     "AuthorizedProcessLauncher",
+    "CodeDiagnostic",
     "CodeHover",
     "CodeLocation",
     "CodePosition",
@@ -92,6 +100,9 @@ __all__ = [
     "LspServerKey",
     "LspServerSelection",
     "LspServerSupervisor",
+    "LspServerRuntimeState",
+    "LspServerRuntimeStatus",
+    "LspSessionStatus",
     "LspUnavailableError",
     "MAX_INSPECT_SYMBOL_RESULTS",
     "MAX_HOVER_CONTENT_CHARACTERS",
@@ -109,6 +120,7 @@ __all__ = [
     "default_global_lsp_config_path",
     "default_lsp_environment",
     "default_project_lsp_config_path",
+    "disabled_lsp_session_status",
     "discover_lsp_catalog",
     "product_default_lsp_definitions",
     "register_coding_lsp_tools",

@@ -150,9 +150,12 @@ def product_default_lsp_definitions() -> tuple[LspServerDefinition, ...]:
             id="typescript-language-server",
             command=("typescript-language-server", "--stdio"),
             language_extensions={
-                "javascript": (".js", ".jsx", ".mjs", ".cjs"),
-                "typescript": (".ts", ".tsx", ".mts", ".cts"),
+                "javascript": (".js", ".mjs", ".cjs"),
+                "javascriptreact": (".jsx",),
+                "typescript": (".ts", ".mts", ".cts"),
+                "typescriptreact": (".tsx",),
             },
+            root_markers=("tsconfig.json", "jsconfig.json", "package.json", ".git"),
             source="product-default",
         ),
         LspServerDefinition(
@@ -348,7 +351,7 @@ def _load_config(path: Path, *, source: str) -> tuple[_Declaration, ...]:
     for index, value in enumerate(servers):
         try:
             declarations.append(_parse_declaration(value, source=source))
-        except (TypeError, ValueError) as exc:
+        except (OverflowError, TypeError, ValueError) as exc:
             definition_id = (
                 value.get("id")
                 if isinstance(value, Mapping) and isinstance(value.get("id"), str)

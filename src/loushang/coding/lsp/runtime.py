@@ -14,6 +14,7 @@ from loushang.coding.lsp.model import (
     LspServerDefinition,
 )
 from loushang.coding.lsp.ports import WorkspaceTextReader
+from loushang.coding.lsp.status import LspSessionStatus
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
@@ -71,6 +72,20 @@ class CodingLspRuntime:
             limit=limit,
             correlation_id=correlation_id,
             signal=signal,
+        )
+
+    def status(self) -> LspSessionStatus:
+        return self._binding.status()
+
+    async def stop(
+        self,
+        *,
+        definition_id: str,
+        workspace_root: str | Path,
+    ) -> bool:
+        return await self._binding.stop(
+            definition_id=definition_id,
+            workspace_root=workspace_root,
         )
 
     async def close(self) -> None:

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from types import MappingProxyType
 
@@ -15,6 +16,9 @@ _MAX_HEADER_BYTES = 16 * 1024
 _MAX_MESSAGE_BYTES = 4 * 1024 * 1024
 _MAX_PENDING_REQUESTS = 128
 _MAX_CONFIGURATION_ITEMS = 64
+
+DiagnosticPublicationHandler = Callable[[Mapping[str, object]], bool]
+ConnectionClosedHandler = Callable[[], None]
 
 
 class LspClient:
@@ -27,11 +31,15 @@ class LspClient:
         request_timeout_seconds: float,
         shutdown_timeout_seconds: float,
         settings: Mapping[str, object] | None = None,
+        on_publish_diagnostics: DiagnosticPublicationHandler | None = None,
+        on_close: ConnectionClosedHandler | None = None,
     ) -> None:
         self._handle = handle
         self._request_timeout_seconds = request_timeout_seconds
         self._shutdown_timeout_seconds = shutdown_timeout_seconds
         self._settings = dict(settings or {})
+        self._on_publish_diagnostics = on_publish_diagnostics
+        self._on_close = on_close
         self._buffer = bytearray()
         self._write_lock = asyncio.Lock()
         self._lifecycle_lock = asyncio.Lock()
@@ -42,7 +50,12 @@ class LspClient:
         self._state = "open"
         self._position_encoding = "utf-16"
         self._server_capabilities: Mapping[str, object] = MappingProxyType({})
+        self._accepted_diagnostic_publications = 0
         self._discarded_diagnostic_publications = 0
+        self._request_count = 0
+        self._timeout_count = 0
+        self._last_request_duration_ms: float | None = None
+        self._last_error: str | None = None
 
     @property
     def position_encoding(self) -> str:
@@ -61,6 +74,26 @@ class LspClient:
     @property
     def discarded_diagnostic_publications(self) -> int:
         return self._discarded_diagnostic_publications
+
+    @property
+    def accepted_diagnostic_publications(self) -> int:
+        return self._accepted_diagnostic_publications
+
+    @property
+    def request_count(self) -> int:
+        return self._request_count
+
+    @property
+    def timeout_count(self) -> int:
+        return self._timeout_count
+
+    @property
+    def last_request_duration_ms(self) -> float | None:
+        return self._last_request_duration_ms
+
+    @property
+    def last_error(self) -> str | None:
+        return self._last_error
 
     async def initialize(
         self,
@@ -102,6 +135,11 @@ class LspClient:
                             "documentSymbol": {
                                 "dynamicRegistration": False,
                                 "hierarchicalDocumentSymbolSupport": True,
+                            },
+                            "publishDiagnostics": {
+                                "relatedInformation": False,
+                                "tagSupport": {"valueSet": [1, 2]},
+                                "versionSupport": True,
                             },
                         },
                         "workspace": {
@@ -156,6 +194,8 @@ class LspClient:
             raise LspProtocolError("too many pending LSP requests")
         request_id = self._next_request_id
         self._next_request_id += 1
+        self._request_count += 1
+        started_at = time.monotonic()
         future: asyncio.Future[object] = asyncio.get_running_loop().create_future()
         self._pending[request_id] = future
         try:
@@ -171,6 +211,8 @@ class LspClient:
             try:
                 return await asyncio.wait_for(asyncio.shield(future), timeout)
             except TimeoutError:
+                self._timeout_count += 1
+                self._last_error = "request_timeout"
                 future.cancel()
                 with suppress(LspProtocolError):
                     await self._notify(
@@ -190,7 +232,14 @@ class LspClient:
                         allow_closing=allow_closing,
                     )
                 raise
+            except BaseException:
+                self._last_error = "request_failed"
+                raise
         finally:
+            self._last_request_duration_ms = round(
+                (time.monotonic() - started_at) * 1000,
+                3,
+            )
             self._pending.pop(request_id, None)
 
     async def notify(self, method: str, params: Mapping[str, object]) -> None:
@@ -326,7 +375,11 @@ class LspClient:
                     error = LspProtocolError("language server closed stdout")
                 elif not isinstance(error, LspProtocolError):
                     error = LspProtocolError(f"LSP reader failed: {error}")
+                self._last_error = "connection_closed"
                 self._fail_pending(error)
+            if self._on_close is not None:
+                with suppress(Exception):
+                    self._on_close()
 
     async def _read_message(self) -> Mapping[str, object]:
         while b"\r\n\r\n" not in self._buffer:
@@ -375,7 +428,20 @@ class LspClient:
             if "id" in message:
                 await self._handle_server_request(message, method)
             elif method == "textDocument/publishDiagnostics":
-                self._discarded_diagnostic_publications += 1
+                accepted = False
+                params = message.get("params")
+                if (
+                    isinstance(params, Mapping)
+                    and self._on_publish_diagnostics is not None
+                ):
+                    try:
+                        accepted = self._on_publish_diagnostics(params) is True
+                    except Exception:
+                        accepted = False
+                if not accepted:
+                    self._discarded_diagnostic_publications += 1
+                else:
+                    self._accepted_diagnostic_publications += 1
             return
 
         response_id = message.get("id")
@@ -386,6 +452,7 @@ class LspClient:
             return
         error = message.get("error")
         if error is not None:
+            self._last_error = "request_failed"
             future.set_exception(LspProtocolError(f"LSP response error: {error!r}"))
         else:
             future.set_result(message.get("result"))
@@ -429,4 +496,8 @@ def _thaw_json(value: object) -> object:
     return value
 
 
-__all__ = ["LspClient"]
+__all__ = [
+    "ConnectionClosedHandler",
+    "DiagnosticPublicationHandler",
+    "LspClient",
+]

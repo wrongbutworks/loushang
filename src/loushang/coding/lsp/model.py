@@ -174,6 +174,24 @@ class CodeHover:
 
 
 @dataclass(frozen=True, slots=True)
+class CodeDiagnostic:
+    """One normalized code diagnostic, distinct from Harness operations."""
+
+    server_id: str
+    uri: str
+    path: str | None
+    version: int | None
+    severity: str
+    message: str
+    range: CodeRange
+    code: str | None = None
+    source: str | None = None
+    tags: tuple[str, ...] = ()
+    received_at: float = 0.0
+    stale: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class CodeQueryResult:
     items: tuple[CodeLocation | CodeHover, ...]
     count: int
@@ -276,6 +294,7 @@ def _freeze_json_value(value: object) -> object:
 
 
 __all__ = [
+    "CodeDiagnostic",
     "CodeHover",
     "CodeLocation",
     "CodePosition",

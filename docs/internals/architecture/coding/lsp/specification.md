@@ -34,6 +34,7 @@ src/loushang/coding/lsp/
 ├── tools.py
 ├── tool_pack.py
 ├── binding.py
+├── commands.py
 └── status.py
 ```
 
@@ -146,6 +147,13 @@ Rules:
 
 This conservative project rule is the P0 substitute for the future general
 workspace-trust gate.
+
+The built-in TypeScript Language Server preset recognizes JavaScript,
+JavaScript React, TypeScript, and TypeScript React as distinct language ids. It
+selects the nearest `tsconfig.json`, `jsconfig.json`, `package.json`, or `.git`
+root and starts `typescript-language-server --stdio` only after a semantic
+query. If the executable is absent, catalog discovery reports the preset as
+unavailable without installing or starting anything.
 
 ## 4. Core Data Contracts
 
@@ -418,10 +426,11 @@ P0 handlers:
 | `window/showMessageRequest` | reject or select no action |
 | unknown request | JSON-RPC method-not-found/error response |
 
-P0 also recognizes `textDocument/publishDiagnostics` notifications and discards
-them after validating only the bounded envelope needed to identify the method.
-It retains no diagnostic payload, injects no model context, and logs no source
-content. H4 replaces this discard handler with the bounded diagnostic Inbox.
+H4.1 routes `textDocument/publishDiagnostics` notifications synchronously to a
+bounded session-local Inbox. The handler accepts only already-open documents,
+normalizes at most a fixed number of items, and never performs I/O or awaits a
+consumer on the protocol reader. Rejected publications increment a bounded
+status counter. No diagnostic payload is injected into model context or logged.
 Unknown notifications are ignored with at most bounded metadata diagnostics.
 
 Client capabilities must disable dynamic features that the client does not
@@ -587,7 +596,7 @@ not the primary bounding mechanism.
 
 ## 10. Passive Diagnostic Feedback
 
-### 10.1 Authoritative current set
+### 10.1 Authoritative current set (H4.1 implemented)
 
 LSP diagnostics are published as a complete set for a Server/document. The
 Inbox replaces the current set for that key, including replacement by an empty
@@ -603,7 +612,14 @@ If a version is present:
 If no version is present, records are marked unversioned and tied to the latest
 observed document state without claiming exact version authority.
 
-### 10.2 Pending delivery
+The initial implementation scans at most 512 raw items per publication, retains
+at most 100 normalized diagnostics per document, 128 documents, 2,048 total
+diagnostics, and a 256K-character diagnostic accounting budget per session. It
+also bounds individual message, code, source, and tag values. The Inbox evicts
+the least-recently-replaced document set when a total limit is exceeded and
+records omission, truncation, malformed, version-anomaly, and eviction counters.
+
+### 10.2 Pending delivery (H4.2 deferred)
 
 The Inbox derives a delta against delivered keys. A diagnostic key includes
 Server, URI, version class, range, severity, code, source, and message.
@@ -621,7 +637,7 @@ priority: error -> warning -> information -> hint
 Measured H4 implementation work selects the exact Coding Product defaults. The
 projection reports how many diagnostics were omitted.
 
-### 10.3 Delivery point
+### 10.3 Delivery point (H4.2 deferred)
 
 Pending diagnostics are attached after a completed tool batch or before the
 next model turn, not injected while a model response is streaming. A debounce
@@ -686,7 +702,7 @@ granted by Server capability negotiation alone.
 
 ## 12. Status And Operational Diagnostics
 
-The status surface returns bounded records for:
+The target status surface returns bounded records for:
 
 - catalog generation and definition provenance;
 - admitted/rejected/unavailable definitions;
@@ -698,6 +714,10 @@ The status surface returns bounded records for:
 - current/pending diagnostic counts;
 - result and diagnostic truncation counts.
 
+H4.1 exposes accepted/rejected publication counts and current diagnostic
+document/item counts per live runtime. Detailed Inbox omission and truncation
+counters remain internal until H4.2 defines their stable SDK/TUI projection.
+
 Source text, request payload contents, inherited environment, and unrestricted
 stderr are excluded. Stderr is kept in a bounded operational buffer or artifact
 with existing policy.
@@ -705,14 +725,22 @@ with existing policy.
 Recommended non-model commands/queries are:
 
 ```text
-lsp status
-lsp doctor
-lsp stop <server-id> [root]
+loushang lsp status                     # offline Catalog scope
+loushang lsp doctor                     # offline Catalog scope
+/lsp status                             # current Session runtime scope
+/lsp stop <server-id> <root>            # current Session runtime scope
+session.get_lsp_status()                # SDK, read-only
+await session.stop_lsp_server(...)      # SDK, explicit mutation
 ```
 
-Exact CLI syntax belongs to Coding CLI design; these are Product operations,
-not model tools. A richer explicit restart command may be added after the
-replacement policy is measured; in P0, stop plus the next demand is sufficient.
+The independent CLI never constructs a Session and therefore cannot claim to
+inspect a live child process. Session commands use the normal Product command
+catalog: TUI dispatches that catalog locally, while RPC uses the generic
+`execute_command` route after discovery. Neither surface needs an LSP-specific
+Harness route.
+These are Product operations, not model tools. A richer explicit restart
+command may be added after the replacement policy is measured; in P0, stop plus
+the next demand is sufficient.
 
 ## 13. Package And Extension Contributions
 
@@ -799,12 +827,17 @@ direct subprocess launcher as a temporary production bypass.
 - status/doctor;
 - explicit stop; after a crash or stop, the next demand may reauthorize and
   start a replacement;
+- H4.1 bounded, version-aware passive diagnostic reception and lifecycle
+  cleanup, without model delivery;
 - fake Server tests;
+- path-scoped CI compatibility gates against pinned real Pyright and
+  TypeScript Language Servers; the TypeScript gate pins the language-server
+  wrapper and its TypeScript runtime as a tested pair;
 - clean degradation when no Server exists.
 
 ### Deferred
 
-- committed workspace mutation event and passive diagnostics;
+- committed workspace mutation event and H4.2 diagnostic delivery;
 - workspace warm-up and idle eviction;
 - automatic restart budgets and exponential backoff;
 - live catalog-generation migration;
