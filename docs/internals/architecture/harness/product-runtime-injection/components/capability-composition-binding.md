@@ -15,6 +15,16 @@ ordering, lifecycle, and diagnostics. Products retain their domain content,
 default selections, executable handlers, and policy.
 
 It satisfies PDRI-001, PDRI-004, PDRI-008, PDRI-009, PDRI-010, and PDRI-011.
+PDRI-013 through PDRI-015 define an accepted follow-on graph/finalization
+target that is not yet implemented by this component.
+
+The standard slots below are internal Binding Facets rather than one public
+Capability dependency node per slot. Resource, prompt, skill, Tool-pack, and
+Command-pack facets project through the top-level `harness.resources`
+Capability. `interaction.side_question` is semantically a `harness.session`
+facet despite its current physical binding in the standard composition
+runtime. See
+[Capability Dependency And Mount Lifecycle](../../capability-dependency-and-mount-lifecycle.md).
 
 ## Standard Slots
 
@@ -25,6 +35,7 @@ It satisfies PDRI-001, PDRI-004, PDRI-008, PDRI-009, PDRI-010, and PDRI-011.
 | `skill.activation` | single, Exclusive Replacement, session, turn-refreshable | Product, OEM, approved extension, session | The policy that decides which discovered skills are active and model-visible. |
 | `tool.packs` | single, Exclusive Replacement, session, turn-refreshable | Product, OEM, approved extension | One pack composer; its admitted tool-pack inputs are Aggregate Contributions. |
 | `command.packs` | single, Exclusive Replacement, session, turn-refreshable | Product, OEM, approved extension | One pack composer; its admitted command-pack inputs are Aggregate Contributions. |
+| `interaction.side_question` | optional single, Exclusive Replacement, session, sealed | Product, OEM, approved extension | One Session-owned side-question Provider factory. |
 
 The selected prompt or pack composer retains its input contribution order and
 owns its duplicate-name conflict rules. `tool.packs` and `command.packs`
@@ -103,6 +114,34 @@ binding. The late-bound side-question choice is auxiliary rather than
 continuity-critical: persisted `capabilityProfile` metadata omits this slot,
 while the live selected provenance is exposed by `session.capability_profile`.
 
+This describes the current implementation, including construction of separate
+bootstrap and final composition bindings when Coding enables late Session
+capability admission. It is not the accepted final Mount lifecycle.
+
+## Accepted Incremental Finalization Target
+
+The target Capability Plan binds the bootstrap roots' transitive dependency
+closure, admits data-only Extension contributions, resolves the final internal
+facets, and then reconciles the live graph by binding signature. A finalizer:
+
+1. reuses every unchanged Mounted Capability and owned facet binding;
+2. creates only final-only, new, or changed nodes;
+3. rolls back newly created nodes if any dependency or factory fails;
+4. publishes the new graph generation only after the delta succeeds; and
+5. seals Session nodes after commit, then disposes replaced bootstrap-only
+   values in reverse dependency order.
+
+An unchanged Capability must not bind twice merely because Extension discovery
+occurs between bootstrap and Session construction. Bootstrap-critical
+Capabilities cannot be replaced by an Extension discovered through those same
+Capabilities unless declaration-only discovery occurs before binding or a
+separate explicit hot-replacement contract is accepted.
+
+Planning, binding, live state, and projection remain separate owners. The
+public graph exposes coarse Capability IDs and requested facet views; it does
+not expose factories, arbitrary objects, or each internal slot as a service
+locator key.
+
 ## Durable And Refresh Rules
 
 The resolved profile snapshot records variation semantic, implementation ID,
@@ -141,3 +180,7 @@ into Harness.
 - Resume tests assert the persisted continuity-critical runtime and capability
   profiles can be validated without rehydrating executable objects; the
   auxiliary side-question replacement is resolved again from active Extensions.
+- Target graph tests must additionally prove bootstrap dependency closure,
+  unchanged-signature reuse, finalization rollback, cycle/scope diagnostics,
+  and reverse-topological disposal before incremental Mount finalization is
+  marked implemented.

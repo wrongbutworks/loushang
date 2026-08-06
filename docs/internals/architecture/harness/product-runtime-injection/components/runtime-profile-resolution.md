@@ -15,6 +15,9 @@ This component turns an explicitly declared Product runtime plan into a
 deterministic, inspectable, session-scoped set of live bindings. It satisfies
 the common mechanics in PDRI-001 through PDRI-012, with capability-specific
 policy remaining in each Product and its later component document.
+PDRI-013 through PDRI-015 define the accepted next-stage top-level Capability
+graph and incremental Mount finalization; those mechanics are not yet part of
+`loushang.harness.runtime.profile`.
 
 Harness owns resolution, strict data validation, lifecycle sequencing, stale
 lease invalidation, and diagnostics. A Product owns its slots, baseline
@@ -26,6 +29,13 @@ This is not a dependency-injection container or a global service locator. An
 implementation can only be retrieved through the exact slot/key/version
 selection in a resolved profile and the explicit `RuntimeProfileBinding`
 returned by its binder.
+
+The Runtime Profile and top-level Capability graph are related but distinct.
+The profile resolves fine-grained Binding Facets and exact provider factories.
+The Capability Plan DAG uses coarse owner-qualified Capability IDs, and the live
+graph records Mounted Capability instances. The canonical distinction and
+arrow convention are defined by
+[Capability Dependency And Mount Lifecycle](../../capability-dependency-and-mount-lifecycle.md).
 
 ## Internal Module Ownership
 
@@ -63,6 +73,13 @@ Every selection is pure data: slot, implementation key, positive
 implementation version, integer priority, and strict JSON-object
 configuration. It never contains a callable, a connection, a credential, a
 provider instance, or a Product object.
+
+A `RuntimeCapabilitySlot` is not automatically a top-level Capability graph
+node. Slots such as `prompt.sections`, `tool.packs`,
+`interaction.side_question`, and `context.compaction` are currently useful
+owner-private Binding Facets. Their resolved selections and snapshots remain
+authoritative for factory binding while `harness.resources` or
+`harness.session` projects the aggregate top-level Capability state.
 
 The first shared vocabulary is deliberately limited to these neutral slot
 identifiers:
@@ -117,6 +134,12 @@ particular extension is trusted. Extension manifests, permissions, dependency
 checks, OEM trust, and Product policy must complete before a layer is passed
 to the resolver (PDRI-003, PDRI-009).
 
+The resolver also does not turn Product, OEM, Package, Plugin, or Extension
+identities into graph nodes. Candidate acceptance, rejection, deterministic
+loss, and selection belong in a structured resolution trace. Only the final
+Capability dependencies enter the plan DAG, and only successfully bound
+Capability instances enter the live Mount Graph.
+
 ## Snapshot And Resume
 
 `ResolvedRuntimeProfile.snapshot()` produces `RuntimeProfileSnapshot` schema
@@ -158,6 +181,34 @@ PDRI-010).
 Declared scope describes ownership and future pooling boundaries. This first
 implementation binds an explicit resolved profile and intentionally does not
 add a process-global cache or automatic cross-tenant reuse.
+
+## Accepted Mount-Graph Finalization Target
+
+The current binder creates an explicit profile in full and its `rebind`
+operation supports only declared turn-safe changes. It must not be described as
+the future Mount-graph finalizer: sealed-slot protection is correct after
+publication, while construction finalization occurs before the Session graph
+is published or sealed.
+
+The accepted target adds separate owners above the focused profile machinery:
+
+| Owner | Target responsibility |
+| --- | --- |
+| graph planner | pure Capability dependency closure, topology, phase/scope validation, and diagnostics |
+| graph binder | bootstrap-closure bind, binding-signature reconciliation, delta creation, rollback, and reverse disposal |
+| graph runtime | live Mounted Capability generations and leases |
+| graph projector | redacted snapshots, explanations, dependencies, dependents, and impact paths |
+
+Bootstrap binds only the transitive closure required for data-only discovery.
+After Extension declarations are admitted and internal facets resolve, final
+construction reuses every unchanged binding signature and creates only new or
+changed nodes. It publishes and seals the final graph atomically. An unchanged
+Capability must not bind twice merely because discovery occurs between
+bootstrap and Session construction.
+
+Selection diagnostics, graph-plan diagnostics, and binding lifecycle facts are
+separate projections. A global mutable DAG manager or a graph-wide arbitrary
+object lookup remains prohibited.
 
 ## Coding Adoption
 
@@ -219,6 +270,11 @@ replacement path: an Agent Extension registers a side-question Provider
 factory, Coding derives an explicit grant from its effective policy, the
 runtime profile selects one deterministic winner, only that factory binds, and
 Session shutdown cancels the active Provider before disposing the factory.
+
+PDRI-013 through PDRI-015 additionally require future neutral tests for
+dependency closure, full cycle paths, scope/phase inversion, unchanged-node
+reuse, finalization rollback, and reverse-topological disposal before the
+Mount-graph target may be marked implemented.
 
 ## Non-Goals
 

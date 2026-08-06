@@ -10,6 +10,9 @@ Canonical terms are defined in the
 [Product And OEM Glossary](../../glossary/loushang-product.md). This document
 defines when those variation semantics apply and how they preserve dependency,
 authority, and lifecycle boundaries.
+Top-level Capability IDs, dependency direction, Mounted Capability identity,
+graph lifecycle, and graph diagnostics are defined by
+[Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md).
 
 ## Decision
 
@@ -53,6 +56,12 @@ surface contract decide whether Product, OEM, Extension, or session sources
 may replace it. An Extension may be carried by a Plugin, but Plugin identity is
 not a runtime-profile source. `append_only` is a selection-retention rule, not
 permission to execute every retained contribution.
+
+There is also no one-to-one mapping between a Runtime Capability Slot and a
+top-level Capability ID. A slot may be an owner-private Binding Facet within a
+coarser Capability Bundle. Variation semantics still govern that facet, while
+the top-level Capability dependency graph records only the stable owner-level
+Capability ID and its aggregate Mounted Capability state.
 
 ## Contract Ownership And Dependency Direction
 
@@ -150,10 +159,39 @@ or reject competing candidates. These policies do not use incidental import or
 discovery order. Fallback providers are selected by the slot owner and are
 visible in the resolved profile and diagnostics.
 
+## Top-Level Capabilities And Internal Facets
+
+The initial top-level Harness Capability IDs are `harness.workspace`,
+`harness.resources`, and `harness.session`. The current Coding-specific
+mountable Capability IDs are `coding.lsp` and `coding.arch`.
+
+The public Capability dependency graph intentionally stays coarser than the
+Runtime Profile inventory:
+
+| Top-level Capability | Representative internal Runtime Profile facets |
+| --- | --- |
+| `harness.resources` | `resource.runtime`, `prompt.sections`, `skill.activation`, `tool.packs`, `command.packs` |
+| `harness.session` | `conversation.store`, `agent.transcript_profile`, `context.compaction`, `interaction.side_question`, `continuity.provider_packs` |
+| `harness.workspace` | workspace access and authorized-execution facets; non-bypassable authorization, Sandbox, audit, limits, and cleanup remain internal invariants |
+| `coding.lsp` | Product-owned LSP catalog, selection, supervisor, document, diagnostic, query, and tool facets |
+| `coding.arch` | Product-owned analyzer, import-graph, diagnostic, query, and tool facets |
+
+An Extension may contribute to a declared facet such as an LSP Server
+definition, architecture analyzer, Tool pack, or side-question provider. The
+Extension and contribution are not graph nodes. A full Bundle replacement is a
+separate, higher-authority surface and must be explicitly admitted by the
+Capability owner.
+
+Coarse Capability identity does not widen authority. A dependency such as
+`coding.lsp -> harness.workspace` may request only a narrow read/process-launch
+facet view; the requested facets remain admission and typed-injection metadata,
+not additional nodes.
+
 ## Standard Runtime Capability Semantic Inventory
 
-This inventory applies the canonical glossary terms to the standard Harness
-runtime slots. It is not a second glossary: term definitions remain in the
+This internal-facet inventory applies the canonical glossary terms to the
+standard Harness runtime slots. It is not the top-level Capability dependency
+graph and not a second glossary: term definitions remain in the
 [Product And OEM Glossary](../../glossary/loushang-product.md), while
 `src/loushang/harness/runtime/_profile_standard.py` remains the code authority
 for current slot keys, shapes, scopes, refresh boundaries, and source ceilings.

@@ -262,12 +262,12 @@ The Product whose kernel owns the complete repository-engineering experience,
 including Coding-specific prompts, tool-pack defaults, repository and Git
 workflow, session compatibility, diagnostics, and Product presentation.
 
-The current Coding-specific Capability Mount identities are `coding.arch` and
+The current Coding-specific mountable Capability IDs are `coding.arch` and
 `coding.lsp`. Workspace read, list, search, write, edit, and process-execution
-implementations are Harness Capabilities selected and configured by Coding;
-they are not Coding-owned merely because Coding was their first consumer.
-Other Coding-exclusive Product Kernel semantics remain Product-owned even when
-they are not expressed as Capability Mount identities.
+facets belong to the Product-neutral `harness.workspace` Capability selected
+and configured by Coding; they are not Coding-owned merely because Coding was
+their first consumer. Other Coding-exclusive Product Kernel semantics remain
+Product-owned even when they are not expressed as mountable Capability IDs.
 
 ## OEM Model
 
@@ -325,12 +325,26 @@ Coding launch, or a Product with OEM overlays.
 This section defines vocabulary. The binding, conflict, dependency, authority,
 and lifecycle rules are defined by the
 [Harness Capability Variation And Replacement Boundary](../architecture/harness/capability-variation-and-replacement-boundary.md).
+Top-level dependency direction and Mount lifecycle are defined by the
+[Capability Dependency And Mount Lifecycle](../architecture/harness/capability-dependency-and-mount-lifecycle.md)
+decision.
 
 ### Capability
 
 A named runtime or domain concern, such as a conversation store, memory
 provider, compaction planner, tool definition, command descriptor, deck
 renderer, or artifact handler.
+
+### Capability ID
+
+A stable owner-qualified identity for a top-level Capability, such as
+`harness.workspace`, `harness.resources`, `harness.session`, `coding.lsp`, or
+`coding.arch`.
+
+A Capability ID names the definition and dependency target. It is not a live
+Mount, implementation key, Python Protocol, permission, tool name, or Plugin
+identity. Architecture documents may call it *mountable* when a Product exposes
+Mount Policy for that Capability.
 
 ### Harness Capability
 
@@ -355,6 +369,27 @@ does not name executable handlers, select a Harness implementation, grant
 authority, or imply activation. The Active Product resolves it through its
 admitted capability catalog and policy.
 
+### Capability Dependency
+
+A declared requirement from one Capability ID to another. In architecture
+graphs `A -> B` means A depends on B. The depended-on Capability binds first and
+disposes last.
+
+A dependency may request a narrow facet view, but that view does not create a
+new top-level node or grant authority. Permissions, configuration values, and
+injected implementation Protocols are not Capability dependencies.
+
+### Binding Facet
+
+An owner-private selection, provider, contribution family, or lifecycle unit
+inside a Capability Bundle. Runtime Profile slots such as `prompt.sections` or
+`interaction.side_question` may act as Binding Facets without becoming
+top-level Capability IDs.
+
+A Binding Facet can retain focused selection, refresh, snapshot, and diagnostic
+semantics. Its owner projects an aggregate Capability state to the top-level
+graph.
+
 ### Capability Slot
 
 A Product-declared location at which one or more implementations of a
@@ -362,6 +397,9 @@ Capability may bind. The slot defines composition shape, lifecycle scope,
 refresh boundary, and allowed contribution sources. When the slot exposes
 replaceable or composable behavior, `variation_semantic` separately records
 Aggregate Contribution, Ordered Interception, or Exclusive Replacement.
+
+A Capability Slot is not automatically a top-level Capability dependency node.
+It may be a private Binding Facet of a coarser Capability Bundle.
 
 ### Runtime Capability Shape
 
@@ -481,13 +519,30 @@ is required, use the PPT Product and an explicit Product Handoff.
 
 ### Capability Mount
 
-The Product-owned activation of an admitted Product Capability Bundle or
-Capability Pack for a specific runtime scope.
+The Product-owned act and resulting binding by which an admitted Capability
+Bundle becomes available in a specific runtime scope.
 
-A Product may define `disabled`, `on_demand`, or `always` mount policy. Scoped
-mounts from Product defaults, manual selection, Skills, and Method/Work steps are
-additive and independently owned; releasing one scope must not remove another
-scope's request. A Capability Mount is unrelated to an AppService control lease.
+A Capability ID such as `coding.lsp` names the definition; it is not itself a
+Mount. A concrete Mount combines that Capability ID with a process, tenant,
+workspace, Session, turn, or Channel scope instance and a live generation.
+
+### Mount Policy
+
+Product policy that decides when an admitted Capability is mounted. Common
+values are `disabled`, `on_demand`, and `always`. Mount Policy does not select a
+provider, grant authority, or identify a live runtime instance.
+
+### Mounted Capability
+
+One admitted Capability Bundle bound to a concrete runtime scope. For example,
+`coding.lsp@workspace:repo-123` is a useful diagnostic label for one Mounted
+Capability, while `coding.lsp` remains its Capability ID.
+
+Scoped Mounts from Product defaults, manual selection, Skills, and Method/Work
+steps are additive and independently owned; releasing one scope must not remove
+another scope's request. A Mounted Capability owns or imports the lifecycle
+required by its declared dependencies. It is unrelated to an AppService
+control lease.
 
 For example, Coding may mount `ppt-authoring` while remaining the Active
 Product. The Product Session should snapshot continuity-critical mounted

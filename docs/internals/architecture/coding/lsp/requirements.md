@@ -40,10 +40,18 @@ responsibilities.
 ### R1. Product capability identity
 
 The feature must be represented as the opaque Coding Product capability
-`coding.lsp` and use the existing `disabled | on_demand | always` mount model.
+ID `coding.lsp` and use the existing `disabled | on_demand | always` Mount
+Policy. The ID names the definition; a concrete workspace/session activation is
+a Mounted Capability and must retain its scope and generation identity.
 
 The capability id must not be replaced by a Harness tool-pack id. Family packs
 may use qualified ids such as `coding.lsp.tools`.
+
+The top-level plan declares `coding.lsp -> harness.workspace`, meaning LSP
+depends on the Harness workspace Capability. Required read and authorized
+process-launch facets are admitted separately and do not become additional DAG
+nodes. Dependency and Mount terminology follows
+[Capability Dependency And Mount Lifecycle](../../harness/capability-dependency-and-mount-lifecycle.md).
 
 ### R2. Editor independence
 
@@ -266,7 +274,9 @@ authoritative.
 
 `coding.arch` may later request semantic facts through an injected protocol, but
 must retain its deterministic language providers and must not acquire a hard
-runtime dependency on `coding.lsp`.
+runtime dependency on `coding.lsp`. A later accepted plan may represent the
+relationship as an optional `coding.arch -> coding.lsp` Capability dependency;
+the current plan contains no such edge.
 
 ## Non-Functional Requirements
 
@@ -361,7 +371,8 @@ The architecture is implementable when:
 
 1. every functional requirement maps to a specified component and contract;
 2. Product/Harness/extension ownership is unambiguous;
-3. capability mount and process startup semantics are separate;
+3. Capability ID, Mount Policy, Mounted Capability, and process startup
+   semantics are separate;
 4. document version and notification ordering are explicit;
 5. code diagnostics and operational diagnostics are separated;
 6. no component requires a global singleton or IDE process;

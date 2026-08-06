@@ -4414,9 +4414,15 @@ def test_code_enabled_products_reuse_harness_workspace_capabilities() -> None:
         in shared_boundary
     )
     assert (
-        "the only Coding-specific Capability Mount identities are `coding.arch` and `coding.lsp`"
+        "The only current Coding-specific mountable Capability IDs are `coding.arch` and `coding.lsp`"
         in shared_boundary
     )
+    for capability_id in (
+        "`harness.workspace`",
+        "`harness.resources`",
+        "`harness.session`",
+    ):
+        assert capability_id in shared_boundary
 
     glossary = " ".join(
         Path("docs/internals/glossary/loushang-product.md")
@@ -4425,6 +4431,23 @@ def test_code_enabled_products_reuse_harness_workspace_capabilities() -> None:
     )
     assert "### Code-Enabled Product" in glossary
     assert "### Coding Product" in glossary
+    assert "### Capability ID" in glossary
+    assert "### Binding Facet" in glossary
+    assert "### Mounted Capability" in glossary
+
+    graph_boundary = " ".join(
+        Path(
+            "docs/internals/architecture/harness/"
+            "capability-dependency-and-mount-lifecycle.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "A -> B` always means **A depends on B**" in graph_boundary
+    assert (
+        "Product, OEM, Plugin, Package, and Extension identities are not graph nodes"
+        in graph_boundary
+    )
 
 
 def test_authorized_tool_context_does_not_become_a_capability_bag() -> None:

@@ -33,6 +33,29 @@ depend on `loushang.coding`, `loushang.work`, `loushang.method`,
 | `host` / `cli` / `events` / `presentation` | Product-neutral host lifecycle, RPC/JSON projection, runtime event contracts and reusable presentation | AppService tenancy, Channel protocol, Product grammar or final UI composition |
 | `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, one-shot execution, and bounded session-owned process primitives | Product-specific recovery UX, business audit retention, protocol/server selection, Product artifact semantics |
 
+## Accepted Capability Graph Target (Not Yet Implemented)
+
+The implemented owner table above remains authoritative for current code. The
+accepted [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
+decision adds a coarser target architecture without pretending that its graph
+owners already exist in source.
+
+The initial top-level Harness Capability IDs are `harness.workspace`,
+`harness.resources`, and `harness.session`; current Coding-owned examples are
+`coding.lsp` and `coding.arch`. Runtime Profile slots remain finer internal
+Binding Facets rather than additional top-level graph nodes.
+
+| Accepted target responsibility | Current implementation status |
+| --- | --- |
+| plan dependencies, closure, order, and validation | no top-level Capability graph planner yet |
+| bind final nodes transactionally and reuse unchanged binding signatures | current Runtime Profile binding is narrower; graph finalization is not implemented |
+| own live Mounted Capability state, generations, and scope leases | current runtime-profile generations and leases do not yet form a live Mount graph |
+| project read-only graph snapshots, explanations, and impact paths | no Capability graph projector yet |
+
+The target responsibility names are conceptual boundaries, not current public
+classes or permission to create a global mutable registry. When implementation
+lands, this map and its architecture gates must be updated in the same change.
+
 ## Dependency Direction
 
 The intended direction is:
@@ -159,7 +182,10 @@ policy remains with Host prompt input and the read tool.
 - one-way tool-definition-to-execution dependencies;
 - one shared workspace image-payload owner consumed by Host prompt input and
   the read tool;
-- Product-neutral Harnesstui and shared runtime owners.
+- Product-neutral Harnesstui and shared runtime owners;
+- canonical coarse Capability IDs and Mount terminology in architecture
+  documents, without representing Product, Plugin, Package, or Extension
+  identities as graph nodes.
 
 New boundaries must update this map when they change current ownership. A
 migration ledger alone is not sufficient evidence of the resulting boundary.
@@ -182,7 +208,8 @@ When documents disagree, use this order:
 
 1. current source and architecture gates;
 2. this current owner map;
-3. accepted boundary documents linked from the Harness README;
+3. accepted boundary documents linked from the Harness README, including the
+   Capability dependency and Mount lifecycle decision;
 4. proposed architecture documents;
 5. migration plans, ledgers, slice status, and historical inventories.
 

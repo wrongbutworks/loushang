@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1650" viewBox="0 0 1800 1650" role="img" aria-labelledby="title desc">
   <title id="title">楼上（Loushang）未来目标架构 v3</title>
-  <desc id="desc">Product TUI 启动时在本地 Product Runtime 与 AppService Client 之间选择 backend；本地嵌入会话不自动迁移，需要 attach 与 resume 时使用 AppService；App Contract 与窄 Channel 边界并列使用 Transport，客户端命令向下，事件、快照与 interaction request 向上；Hosted Product Runtime 按 Session 或 Work 构造独立 instance；轻量 session turn 直达 Harness，持久业务承诺经 Work；远端 Agent 按一次 invoke、异步 job 或持续 collaboration 的实际语义接入，不因远程而默认有状态。</desc>
+  <desc id="desc">Product TUI 可使用本地嵌入运行时或连接 AppService；其他客户端通过版本化协议附着到 Application Host。Product、Work、Harness、Agent 和 AI 保持单向责任边界，Capability 仅展示 owner-level 标识与 Mount 运行态。</desc>
   <defs>
     <linearGradient id="pageBg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#f8fafc"/>
@@ -49,7 +49,7 @@
 
   <rect width="1800" height="1650" fill="url(#pageBg)"/>
   <text x="900" y="50" text-anchor="middle" class="title">楼上（Loushang）未来目标架构 v3</text>
-  <text x="900" y="80" text-anchor="middle" class="subtitle">Target logical architecture：共享 Product definitions / factories；Session 与 Work runtime 按边界独立构造</text>
+  <text x="900" y="80" text-anchor="middle" class="subtitle">Target logical architecture：Product 边界 · 可附着客户端 · 共享执行底座</text>
 
   <!-- TUI foreground process: parallel composition -->
   <rect x="45" y="108" width="720" height="292" rx="24" fill="#ffffff" stroke="#0f766e" stroke-width="2.5" filter="url(#shadow)"/>
@@ -169,8 +169,7 @@
   <text x="700" y="973" text-anchor="middle" class="copy">principal/device context · attach / control lease · 幂等 · snapshot_revision · interaction routing</text>
 
   <rect x="160" y="1037" width="1080" height="76" rx="18" fill="#fff7ed" stroke="#f59e0b" stroke-width="2.5"/>
-  <text x="700" y="1067" text-anchor="middle" class="box-title">Host-composed Product Binding Registry</text>
-  <text x="700" y="1093" text-anchor="middle" class="copy">AppService 只消费 ProductResolver；Registry 提供 immutable definitions / factories / capability descriptors</text>
+  <text x="700" y="1078" text-anchor="middle" class="box-title">Product Binding Registry</text>
   <text x="700" y="1023" text-anchor="middle" class="tiny">approval：先校验 principal / lease / idempotency；Harness 以 Session / invocation 关联，WorkRun 关联仅在 Work 路径存在</text>
 
   <path d="M700 881 V915" class="arrow"/>
@@ -202,8 +201,8 @@
 
   <!-- Shared product runtime core -->
   <rect x="160" y="1150" width="1080" height="210" rx="22" fill="#fffaf0" stroke="#d97706" stroke-width="2.5"/>
-  <text x="700" y="1182" text-anchor="middle" class="box-title">Hosted Product Runtime Binding · instance B</text>
-  <text x="700" y="1206" text-anchor="middle" class="small">每个 Session / Work 由同一 factories 构造；调用方显式选择 session_turn 或 submit_work，不做结构启发式判断</text>
+  <text x="700" y="1188" text-anchor="middle" class="box-title">Hosted Product Runtime · instance B</text>
+  <text x="700" y="1210" text-anchor="middle" class="small">Mount examples：coding.lsp@workspace · coding.arch@workspace · …</text>
 
   <rect x="190" y="1230" width="225" height="88" rx="14" fill="#f0fdfa" stroke="#14b8a6" stroke-width="2"/>
   <text x="302" y="1260" text-anchor="middle" class="box-title-sm">Conversation Capability</text>
@@ -248,9 +247,9 @@
   <text x="685" y="1490" text-anchor="middle" class="small">event log · replay · artifact refs</text>
 
   <rect x="990" y="1410" width="300" height="92" rx="18" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2.5"/>
-  <text x="1140" y="1442" text-anchor="middle" class="box-title">Harness</text>
-  <text x="1140" y="1468" text-anchor="middle" class="copy">Session · Transcript · Context</text>
-  <text x="1140" y="1490" text-anchor="middle" class="small">Tools · Approval · Retry · Compaction</text>
+  <text x="1140" y="1442" text-anchor="middle" class="box-title">Harness Capability IDs</text>
+  <text x="1140" y="1468" text-anchor="middle" class="copy">harness.workspace · harness.resources</text>
+  <text x="1140" y="1490" text-anchor="middle" class="small">harness.session</text>
 
   <rect x="1370" y="1410" width="270" height="92" rx="18" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
   <text x="1505" y="1442" text-anchor="middle" class="box-title-sm">Agent + AI / Tool Kernel</text>

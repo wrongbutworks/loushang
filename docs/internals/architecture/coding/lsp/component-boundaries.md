@@ -373,7 +373,9 @@ and architecture judgments.
 
 ### Role
 
-Compose one `coding.lsp` capability instance for one Coding session/workspace.
+Compose one `coding.lsp` Mounted Capability for one Coding session/workspace.
+`coding.lsp` remains the Capability ID; the live binding additionally records
+its workspace/Session scope instance and generation.
 
 ### Owns
 
@@ -390,8 +392,16 @@ behaviors.
 
 - all other LSP component ports;
 - Coding Product capability/profile/configuration APIs;
-- Harness policy, workspace, tool, lifecycle, and context ports;
+- the top-level `harness.workspace` Capability, narrowed to admitted read and
+  authorized process-launch facets;
+- Harness policy, tool, lifecycle, and context interfaces that remain internal
+  enforcement or injected wiring rather than more top-level DAG nodes;
 - Coding session diagnostic/context integration ports.
+
+The static dependency uses `coding.lsp -> harness.workspace`; `A -> B` means A
+depends on B. Concrete Protocol and adapter names are implementation wiring,
+not public dependency identities. See
+[Capability Dependency And Mount Lifecycle](../../harness/capability-dependency-and-mount-lifecycle.md).
 
 ### Commands
 
@@ -514,7 +524,9 @@ binding stops mutation subscriptions and tool activation
 6. The runtime is owned by one session/workspace binding, never a module-level
    singleton.
 7. `coding.arch` integration uses an optional semantic-fact protocol and cannot
-   own LSP processes.
+   own LSP processes. The current Capability plan has no `coding.arch ->
+   coding.lsp` edge; a future optional edge requires a separate accepted
+   Product decision.
 8. Harness provides a generic authorized `ProcessHandle` and internal session
    cleanup safety net; Coding retains LSP pooling, readiness, protocol, and
    graceful-shutdown semantics. If restart or idle policies are later added,

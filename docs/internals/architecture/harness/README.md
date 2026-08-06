@@ -19,6 +19,9 @@ planning, work event persistence, or AI provider behavior.
   assembly phases, and public loading boundaries.
 - [Shared Capability Boundaries](shared-capability-boundaries.md) provides the
   detailed owner matrix for cross-Product capabilities.
+- [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
+  defines top-level Capability IDs, dependency direction, Mount identity,
+  graph lifecycle, and graph diagnostics.
 - [Refactoring Principles](refactoring-principles.md) defines the evidence and
   neutrality gates for moving code into Harness.
 
@@ -34,6 +37,10 @@ description.
   canonical Product, OEM, Capability, Harness Capability, Package, Plugin,
   Extension, Product Capability Bundle, and multi-Product launch vocabulary
   used by these boundaries.
+- [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
+  separates static Capability Plan nodes from live Mounted Capabilities,
+  fixes `A -> B` as "A depends on B", and defines graph planning, incremental
+  binding, disposal, diagnostics, and multi-Product observation.
 - [Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md)
   defines aggregate contribution, ordered interception and decoration,
   exclusive replacement, protocol injection, composition-root ownership, and

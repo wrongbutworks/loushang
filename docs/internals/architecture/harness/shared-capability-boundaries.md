@@ -40,6 +40,35 @@ domain semantics into Harness. An Extension can contribute a provider or item
 to an admitted Capability Slot without owning that Capability, Product, or
 lifecycle. The composition rules for those slots are defined by the
 [Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md).
+Top-level Capability dependency and Mount lifecycle rules are defined by
+[Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md).
+
+## Top-Level Harness Capability IDs
+
+The initial public Harness Capability IDs are deliberately coarse:
+
+| Capability ID | Product-neutral boundary |
+| --- | --- |
+| `harness.workspace` | workspace access, mutation, search, and authorized execution |
+| `harness.resources` | resource discovery, activation, and prompt/skill/tool/command contribution composition |
+| `harness.session` | Session, transcript, context, interaction, and continuity mechanics |
+
+These identities are a public dependency and observation budget, not a limit
+on focused Harness Python modules. Read, write, edit, process launch, prompt
+sections, Tool packs, compaction, and side-question providers remain facets or
+contributions inside the owning Capability; they do not become top-level nodes
+merely because their implementations have separate modules or lifecycle tests.
+
+Capability IDs name definitions. A live instance combines the ID with a
+concrete scope and generation, for example
+`harness.workspace@workspace:<workspace-id>`. In dependency diagrams `A -> B`
+means A depends on B. The depended-on Capability binds first and disposes last.
+
+Authorization, approval coordination, Sandbox enforcement, limits, audit, and
+cleanup remain non-bypassable internals of the applicable Harness Capability.
+They are not public replacement nodes. A Product depending on a coarse Harness
+Capability receives only its admitted facet view rather than an unrestricted
+service bundle.
 
 ## Layer Model
 
@@ -98,10 +127,10 @@ The canonical principle is:
 > **Every Product may be code-enabled, but not every Product is the Coding Product.**
 
 A PPT, Research, Design, Method, or OEM-defined Product may mount an admitted
-subset of Harness workspace, file, process, Sandbox, Approval, and automation
-Capabilities. That composition remains one Product Runtime and one Product
-Session. It does not import or embed the Coding Product, and it does not gain
-repository-engineering authority merely by mounting a shared tool pack.
+facet view of `harness.workspace`, `harness.resources`, or `harness.session`.
+That composition remains one Product Runtime and one Product Session. It does
+not import or embed the Coding Product, and it does not gain repository-
+engineering authority merely by mounting a shared tool pack.
 
 Harness owns the reusable mechanisms for workspace read, list, search, write,
 edit, and process execution. A Product owns their activation, allowed roots,
@@ -111,14 +140,15 @@ add Coding-owned Git workflow, session compatibility, prompts, diagnostics,
 and other Product Kernel semantics without pulling the neutral mechanisms back
 into Coding.
 
-In the current implementation, the only Coding-specific Capability Mount
-identities are `coding.arch` and `coding.lsp`. Architecture import-graph
+The only current Coding-specific mountable Capability IDs are `coding.arch`
+and `coding.lsp`. Architecture import-graph
 analysis and language-server selection, synchronization, and tool semantics
 remain Coding capabilities while they have a Coding-specific contract. They
-may reuse Harness workspace, process-hosting, and Sandbox foundations. This
-inventory statement does not imply that Coding has only two Product-specific
-semantics; it distinguishes named Capability Mounts from the rest of the
-Coding Product Kernel.
+may declare dependencies on `harness.workspace` and other public Harness
+Capabilities while consuming only admitted facets. This inventory statement
+does not imply that Coding has only two Product-specific semantics; it
+distinguishes mountable Capability IDs from the rest of the Coding Product
+Kernel.
 
 If another Product needs bounded file or script automation, it should select
 Harness capabilities. If it needs a durable repository-engineering Session,
@@ -211,6 +241,10 @@ Product adapters and UI packages own:
 
 ## Workspace And Exec
 
+`harness.workspace` is the stable top-level Capability ID for this boundary.
+The concrete protocols and operations below are narrow facets of that
+Capability, not separate DAG nodes.
+
 Harness may own neutral workspace mechanics:
 
 - workspace path reference types;
@@ -242,6 +276,11 @@ product-tuned descriptions, activation, and presentation overrides. Harness
 must not silently select those values.
 
 ## Resources
+
+`harness.resources` is the stable top-level Capability ID for this boundary.
+Resource runtime, prompt-section, skill-activation, Tool-pack, and Command-pack
+selection may retain private Runtime Profile facets without expanding the
+public Capability graph.
 
 Harness may own:
 
@@ -364,6 +403,11 @@ Do not introduce top-level `loushang.memory` until there is a separate accepted
 architecture decision.
 
 ## Session And Lifecycle
+
+`harness.session` is the stable top-level Capability ID for this boundary.
+Store, transcript, compaction, interaction, and continuity owners retain their
+focused contracts and internal binding facets while projecting one aggregate
+Mounted Capability state to the Product graph.
 
 Harness may own:
 

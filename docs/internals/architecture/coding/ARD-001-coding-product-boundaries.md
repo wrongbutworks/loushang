@@ -216,23 +216,32 @@ vertical，不是 `work` 的协作语义层名称。
 详见
 [Agent Harness and Product Adapter Boundaries](../agent/ARD-001-agent-harness-and-product-adapters.md)。
 
-### 11. 共享代码机制与 Coding 专属 Capability Mount 分离
+### 11. 共享代码机制与 Coding 专属可挂载 Capability 分离
 
 每个 Product 都可以具备适合自己的代码能力，但并非每个 Product 都是 Coding
 Product。read、list、search、write、edit 和进程执行的公共契约、实现与不可绕过
-执行边界属于 `loushang.harness`；Coding 只选择其缺省 pack、产品文案、允许根、
-权限、审批、Sandbox、激活和呈现策略。
+执行边界属于顶层 Capability ID `harness.workspace`；这些操作是其内部 facet，
+不是独立 DAG 节点。Coding 只选择其缺省 pack、产品文案、允许根、权限、审批、
+Sandbox、激活和呈现策略。
 
-当前 Coding 专属的 Capability Mount 身份只有：
+当前 Coding 专属的可挂载 Capability ID 只有：
 
 - `coding.arch`：Coding 的仓库 import-graph 分析语义与工具面；
 - `coding.lsp`：Coding 的 language-server 选择、文档同步、生命周期与工具语义。
 
-两者可以依赖 Harness 的 workspace、process-hosting 和 Sandbox 基础，但其他
-Product 不应为了获得 read/write/edit 或受限脚本执行而依赖 `loushang.coding`。
-反过来，这份 mount inventory 也不表示 Coding 只有两个 Product 专属关注点；
-Coding Prompt、仓库/Git 工作流、Session 兼容性、诊断、Artifact 和呈现仍属于
-Coding Product Kernel。
+`coding.lsp` 与 `coding.arch` 都可以声明对 `harness.workspace` 的窄 facet 依赖。
+未来 `coding.arch` 可以通过显式 optional dependency 消费 `coding.lsp` 的语义
+事实，但当前不得形成硬依赖，确定性 analyzer 和 CI gate 必须可独立运行。依赖图
+统一使用 `A -> B` 表示 A 依赖 B；具体 port、adapter、provider 或权限名称不作为
+公共依赖身份。
+
+其他 Product 不应为了获得 read/write/edit 或受限脚本执行而依赖
+`loushang.coding`。反过来，这份 mountable Capability inventory 也不表示 Coding
+只有两个 Product 专属关注点；Coding Prompt、仓库/Git 工作流、Session 兼容性、
+诊断、Artifact 和呈现仍属于 Coding Product Kernel。
+
+Capability ID、Mount 实例、内部 Binding Facet 与依赖图规则见
+[Capability Dependency And Mount Lifecycle](../harness/capability-dependency-and-mount-lifecycle.md)。
 
 ## Rationale
 

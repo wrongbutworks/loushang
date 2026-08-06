@@ -47,6 +47,15 @@ The canonical Product capability id is `coding.lsp`, not `code.lsp`, because
 the owning Product package is `loushang.coding` and the established sibling id
 is `coding.arch`.
 
+`coding.lsp` is a mountable Capability ID, not a live Mount instance. A
+workspace/session binding creates a Mounted Capability such as
+`coding.lsp@workspace:<workspace-id>` according to Coding's
+`disabled | on_demand | always` Mount Policy. Its supervisor, clients,
+documents, diagnostics, queries, and Tool family remain internal Bundle facets
+rather than top-level Capability nodes. The canonical terminology and graph
+rules are defined by
+[Capability Dependency And Mount Lifecycle](../../harness/capability-dependency-and-mount-lifecycle.md).
+
 `coding.lsp` is:
 
 - a Coding Product Capability Bundle;
@@ -98,6 +107,18 @@ Extension or package
   may contribute declarations, but cannot grant itself execution authority
 ```
 
+At the top-level Capability-plan granularity, the current required dependency
+is:
+
+```text
+coding.lsp -> harness.workspace
+```
+
+The dependency requests only admitted workspace read and authorized
+process-launch facets. It does not expose Harness authorization, Sandbox,
+process Host, or cleanup internals and does not turn those facets into more DAG
+nodes.
+
 The references are used deliberately, not copied wholesale:
 
 | Concern | CC reference | Codex reference | Loushang decision |
@@ -118,7 +139,7 @@ subsystem, so this design does not attribute Product runtime guarantees to it.
 Coding config / CLI / package / extension
                 |
                 v
-      coding.lsp Product binding
+      coding.lsp Mounted Capability
         catalog + admission + selector
                 |
                 v
@@ -148,8 +169,10 @@ language-semantic facts such as definitions, references, types, implementations,
 call hierarchy, and diagnostics.
 
 Future integration may let `coding.arch` consume an optional semantic-fact
-port, but its deterministic analyzer and CI gates must continue to work without
-an LSP Server.
+facet. If accepted, the Product plan may declare
+`coding.arch -> coding.lsp` as an optional dependency, but the current graph has
+no such edge. The deterministic analyzer and CI gates must continue to work
+without an LSP Server.
 
 ## Implementation Status Rule
 

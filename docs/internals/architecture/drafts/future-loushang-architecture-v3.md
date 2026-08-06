@@ -19,6 +19,12 @@ the target decision.
 
 ![Loushang future target architecture v3](../future-loushang-architecture-v3.svg)
 
+The overview deliberately shows only coarse Product and Harness Capability
+boundaries. Product resolver/factory contracts and the explicit choice between
+Session-turn and Work submission semantics remain in the prose below; they are
+not repeated in the diagram. Capability-internal Binding Facets are also left
+out of the overview.
+
 ## Purpose
 
 The target architecture supports two operating shapes without creating two
@@ -439,6 +445,20 @@ independent of Harness and Product code.
 
 ### Product Capability Requirement resolution and scoped activation
 
+The overview uses stable owner-level Capability IDs. Its initial Harness
+boundaries are `harness.workspace`, `harness.resources`, and
+`harness.session`; Product-owned examples include `coding.lsp` and
+`coding.arch`. A Capability Plan node is an ID and its declared requirements,
+while a live runtime node is a Mounted Capability bound to a concrete scope.
+Product, Plugin, Package, and Extension identities remain composition,
+provenance, delivery, or admission facts rather than graph nodes.
+
+In Capability dependency diagrams, `A -> B` means A depends on B. Internal
+providers, tools, permissions, and narrow injected facet views do not become
+additional top-level nodes. The accepted
+[Capability Dependency And Mount Lifecycle](../harness/capability-dependency-and-mount-lifecycle.md)
+decision owns the detailed planning, binding, disposal, and diagnostic rules.
+
 Method and Skill resources may declare opaque Product Capability Requirement
 values, such as `coding.arch`. They do not name Harness `ToolPackDefinition`
 values, register executable handlers, or grant themselves execution authority.
@@ -633,6 +653,7 @@ interaction.
 - [Application Service Refactor](application-service-refactor.md)
 - [Agent, Harness, And Product Adapters](../agent/ARD-001-agent-harness-and-product-adapters.md)
 - [Harness Product Runtime Core Boundary](../harness/product-runtime-core-boundary.md)
+- [Capability Dependency And Mount Lifecycle](../harness/capability-dependency-and-mount-lifecycle.md)
 - [Capability Variation And Replacement Boundary](../harness/capability-variation-and-replacement-boundary.md)
 - [Session Facade Boundary](../harness/session-facade-boundary.md)
 - [Channel Architecture](../channel/README.md)
