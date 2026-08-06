@@ -36,6 +36,16 @@ Target Python 3.11+ and use 4-space indentation. Follow existing naming patterns
 ## Testing Guidelines
 Tests use `pytest` with `--import-mode=importlib` and `src` on `PYTHONPATH`. Name files `test_*.py` and keep test scope narrow and behavior-focused. Add or update tests when changing provider behavior, model resolution, auth handling, or public examples. Run targeted tests first, then broader suites if the change crosses subsystem boundaries.
 
+Run `pytest` in the normal sandbox by default. The revision-aware
+`JsonConversationIndex` test
+`tests/harness/conversation/test_json_index.py::test_revision_aware_json_index_rejects_stale_upsert_and_late_recreation`
+may make no progress in a restricted sandbox while its asynchronous file-index
+work is delegated to a worker thread. If that exact test stalls, stop the
+stalled run and, with user approval, rerun only the affected test or the
+smallest relevant test group outside the sandbox. Do not disable sandboxing for
+the full suite. Report the sandboxed hang and the unsandboxed result separately;
+a sandbox-only hang is an environment limitation, not a passing test.
+
 ## Commit & Pull Request Guidelines
 Recent history uses short summaries and occasional conventional prefixes such as `test(integration): ...`. Prefer concise, imperative commit messages; use `type(scope): summary` when helpful. PRs should explain the user-visible change, list validation performed, and call out config or API contract changes. Link related issues or design docs when relevant.
 
