@@ -64,6 +64,42 @@ _MODULE_EXPORTS = {
     ),
 }
 
+_INTEGRATION_FORWARDERS = {
+    "session": (
+        "loushang.harnesswork.integrations.session",
+        (
+            "PreparedSessionWorkTurn",
+            "RuntimeEventListener",
+            "SessionEventFactProjector",
+            "SessionIdReader",
+            "SessionOperationInProgressError",
+            "SessionPromptPort",
+            "SessionTurnExecutor",
+            "SessionTurnHook",
+            "SessionWorkHostPort",
+            "SessionWorkProfile",
+            "SessionWorkRuntime",
+            "SessionWorkTurn",
+            "project_prepared_session_work_turns",
+            "require_session_work_turn",
+            "submit_session_turn",
+        ),
+    ),
+    "agent_projection": (
+        "loushang.harnesswork.integrations.agent_session",
+        (
+            "AgentWorkFactProjectionContext",
+            "create_agent_session_work_runtime",
+            "project_agent_event_to_work_facts",
+            "project_agent_runtime_event_to_work_facts",
+        ),
+    ),
+    "projection": (
+        "loushang.harnesswork.integrations.agent_events",
+        ("WorkEventProjectionContext", "project_agent_event_to_work_events"),
+    ),
+}
+
 
 def test_harnesswork_public_api_is_the_product_neutral_work_kernel() -> None:
     import loushang.harnesswork as harnesswork
@@ -124,6 +160,20 @@ assert loaded == [], loaded
     )
 
     assert completed.returncode == 0, completed.stderr
+
+
+def test_legacy_integration_modules_forward_canonical_symbols() -> None:
+    for legacy_name, (canonical_name, symbols) in _INTEGRATION_FORWARDERS.items():
+        legacy = importlib.import_module(f"loushang.work.{legacy_name}")
+        canonical = importlib.import_module(canonical_name)
+
+        assert legacy.__all__ == canonical.__all__
+        for symbol in symbols:
+            canonical_value = getattr(canonical, symbol)
+            assert getattr(legacy, symbol) is canonical_value
+            owner = getattr(canonical_value, "__module__", "")
+            if owner.startswith("loushang"):
+                assert owner == canonical_name
 
 
 def test_legacy_and_canonical_kernel_import_order_is_stable() -> None:

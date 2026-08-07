@@ -6,7 +6,7 @@
 RPC surfaces, and future WebUI/AppUI adapters.
 
 The implementation defines endpoint and envelope types that carry
-`loushang.work.WorkOperation`, `loushang.work.WorkEvent`, and a projected
+`loushang.harnesswork.WorkOperation`, `loushang.harnesswork.WorkEvent`, and a projected
 `loushang.harness.events.RuntimeEventView` across a boundary, plus a
 deliberately narrow JSONL framing adapter for headless clients.
 
@@ -18,8 +18,8 @@ Current code package:
 src/loushang/channel/
   __init__.py
   adapters/
+    harnesswork.py
     runtime_events.py
-    session_work.py
   host.py
   json_codec.py
   rpc_jsonl.py
@@ -78,7 +78,7 @@ stdio JSONL loop over an injected `ChannelHostPort`: a Product port accepts a
 `operation_id` and `run_id` retain Work ownership. See
 [Channel Host Boundary](channel-host-boundary.md).
 
-`adapters/session_work.py` owns the Work-to-Channel operation binding, so Work
+`adapters/harnesswork.py` owns the HarnessWork-to-Channel operation binding, so HarnessWork
 does not import its transport. `adapters/runtime_events.py` owns the optional
 Harness runtime-view projection. Neither adapter is imported by the Channel
 package root.
@@ -90,16 +90,16 @@ records the separate Product-owned command input runtime.
 
 ## Ownership
 
-`loushang.channel` depends on `loushang.work` because the channel boundary
+`loushang.channel` depends on `loushang.harnesswork` because the channel boundary
 carries work operations and work events. It depends downward on selected
 Harness Host mechanics and event-view contracts. The optional runtime-event
 adapter may consume Harness session projection functions; Harness never
-imports Channel, and Work never imports Channel.
+imports Channel, and HarnessWork never imports Channel.
 
 The package direction is:
 
 ```text
-Channel -> Work -> Harness
+Channel -> HarnessWork -> Harness
 Channel --------> Harness
 ```
 

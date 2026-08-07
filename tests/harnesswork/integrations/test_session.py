@@ -5,8 +5,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from loushang.work import InMemoryEventLogBackend
-from loushang.work.session import (
+from loushang.harnesswork import InMemoryEventLogBackend
+from loushang.harnesswork.integrations.session import (
     SessionWorkProfile,
     SessionWorkRuntime,
     SessionWorkTurn,

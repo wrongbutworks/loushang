@@ -15,7 +15,7 @@ from loushang.channel import (
     encode_rpc_jsonl_frame,
 )
 from loushang.channel.types import ChannelEnvelope
-from loushang.work import WorkEvent, WorkOperation
+from loushang.harnesswork import WorkEvent, WorkOperation
 
 
 class _FakePort:

@@ -4,7 +4,7 @@
 
 ## Status
 
-Status: **accepted; Phase 1 migration in progress**.
+Status: **accepted; Phase 2 adapter migration complete**.
 
 2026-08-07 已完成三路独立只读评审：模块/owner 边界、运行时与故障语义、API 与迁移
 可实施性。三路结论均为 `accept-with-changes`；高优先级意见纳入后复审均无阻断。同日已
@@ -35,9 +35,10 @@ HarnessWork 是 Harness 的可选持久履约扩展。它负责把一个已接�
 ## Current Boundary
 
 当前迁移分支已建立 `loushang.harnesswork`，并迁入 types、ports、runtime、event log、
-run/plan projection 和中立 log inspection CLI。`loushang.work` 对这些模块保留
-symbol-identical forwarding facade；Agent/session projection 与产品 adapters 正在下一阶段
-迁移。Coding、Channel 和现有测试仍可使用旧根包及子模块。
+run/plan projection、中立 log inspection CLI，以及 Session/Agent integration owners。
+Coding、Channel、Ontology 已通过各自 adapter 接入 canonical HarnessWork API；生产代码不再
+依赖 `loushang.work`。旧包仅保留 symbol-identical forwarding facade，作为有测试约束的
+兼容入口。
 
 Harness owner map 继续禁止 Harness import Work/HarnessWork，并把 Method-to-Work preparation、
 Product Work execution、存储位置/保留策略和最终投影留给 Product。当前 Method 又复用了

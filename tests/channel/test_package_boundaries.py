@@ -17,6 +17,7 @@ def test_channel_package_does_not_import_product_or_agent_runtime_layers() -> No
     assert "loushang.coding" not in source
     assert "loushang.method" not in source
     assert "loushang.tui" not in source
+    assert "loushang.work" not in source
 
 
 def test_channel_depends_on_only_explicit_harness_host_and_event_surfaces() -> None:
@@ -45,6 +46,7 @@ def test_channel_depends_on_only_explicit_harness_host_and_event_surfaces() -> N
 def test_harness_work_and_channel_import_in_any_package_order() -> None:
     modules = (
         "loushang.harness.host.rpc",
+        "loushang.harnesswork",
         "loushang.work",
         "loushang.channel",
     )

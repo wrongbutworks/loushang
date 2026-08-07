@@ -52,7 +52,7 @@ input, routing, settlement, and response framing are independently owned by
 | `coding.session.builtin_commands` | 547 -> deleted | `harness.session.command_pack` | `shared adopted` | Standard descriptors and result projection now live in Harness |
 | removed `coding.session.command_controller` | 0 | `harness.capabilities.commands.SessionCommandRuntime` and command sources | `shared adopted` | Coding retains command definitions and Product handlers |
 | removed `coding.mode` | 0 | `harness.host.rpc`, `harness.host.mode`, and `harnesstui.conversation` | `shared adopted` | Coding CLI/UI composition injects Product runtime, projections, Work profile, and presentation |
-| `coding.prompt_command` plus removed `coding.work_*` | 144 | `work.session.SessionWorkRuntime` over canonical `WorkRuntime` | `product adapter` | Retain Coding renderer, failure wording, Method preparation, domain, and event projection |
+| `coding.prompt_command` plus removed `coding.work_*` | 144 | `harnesswork.integrations.session.SessionWorkRuntime` over canonical `WorkRuntime` | `product adapter` | Retain Coding renderer, failure wording, Method preparation, domain, and event projection |
 | removed `coding.runtime_profile` and `coding.capability_plan`; `coding.product_plan` | 46 | runtime resolver/binder, transcript profile, and capability composition | `shared adopted` | Coding declares stable Product identities and defaults only |
 
 Coding remains responsible in this group for concrete service/session

@@ -139,7 +139,7 @@ result through its transcript view before calling a renderer and isolates the
 renderer from the result's content list. This makes live rendering and replay
 rendering consume the same result semantics.
 
-The explicit `loushang.work.agent_projection` bridge serializes Agent messages
+The explicit `loushang.harnesswork.integrations.agent_session` bridge serializes Agent messages
 with the AI codec, accepts an injected product message serializer for custom
 Agent messages, and serializes tool update/end results with the Agent event view. It
 strictly snapshots every payload before constructing a `WorkEvent`. In-memory

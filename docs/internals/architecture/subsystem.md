@@ -331,7 +331,9 @@ loushang.coding
 
 ```text
 loushang.method -> Product adapter -> loushang.harnesswork
-loushang.coding -> loushang.work facade -> loushang.harnesswork  # migration only
+loushang.coding.adapters.harnesswork -> loushang.harnesswork
+loushang.channel.adapters.harnesswork -> loushang.harnesswork
+loushang.ontology.integrations.harnesswork -> loushang.harnesswork
 loushang.coding.ui -> loushang.coding feature-local TUI adapters
 loushang.coding.ui -> loushang.harnesstui -> loushang.tui
 loushang.coding feature-local TUI adapters -> loushang.harnesstui
