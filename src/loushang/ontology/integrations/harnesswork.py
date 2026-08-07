@@ -1,4 +1,12 @@
-"""Ontology Action binding for the optional HarnessWork runtime."""
+"""Atomic Ontology Action binding for the optional HarnessWork runtime.
+
+The current adapter models an ontology-owned, single-process commit only. A
+handler must return only after its local mutation has committed; a normal
+return publishes ``OntologyActionCommitted`` and an exception leaves the run
+failed without that fact. External effects, compensation, reconciliation,
+cross-process transactions, and authorization are deliberately outside this
+contract. ``actor_id`` is audit context, not proof of authorization.
+"""
 
 from __future__ import annotations
 

@@ -96,7 +96,7 @@ Current Coding-specific method usage is bridged through
 runtime, not a separate long-term DomainApp execution layer. In the v3 target,
 the Coding Product work preparer consumes the Method plan and its Product work
 executor binds each admitted step to Harness. When a method is enacted,
-`loushang.work` owns the resulting run, plan, step, outcome, event-log, replay,
+`loushang.harnesswork` owns the resulting run, plan, step, outcome, event-log, replay,
 artifact-reference, and deviation facts.
 
 ## Relation To Agent Harness And Products
@@ -106,7 +106,7 @@ artifact-reference, and deviation facts.
 Product implementation Python packages such as `loushang.coding`, and future
 `loushang.research`, `loushang.ppt`, and `loushang.cowork`, may call
 `loushang.harness` directly for lightweight turns. They may also write or
-project through `loushang.work` directly.
+project through `loushang.harnesswork` directly.
 
 Use `method` when the product needs structured work: planning, staged execution,
 review gates, method-specific constraints, or acceptance criteria. Do not route
@@ -120,7 +120,7 @@ and `ppt`; it is not the name of the shared work or collaboration abstraction.
 Method defines expected artifacts: what a structured workflow or method step
 should produce.
 
-`loushang.work` records actual artifact references: what was produced, where it
+`loushang.harnesswork` records actual artifact references: what was produced, where it
 is, which run or step produced it, and how it relates to the expected artifact.
 
 Products such as Coding, Research, PPT, and Cowork own concrete artifact types,
@@ -195,7 +195,7 @@ scenarios. LouShang currently claims only SPEM-aligned terminology and a partial
 subset, not SPEM compliance.
 
 `loushang.method` owns definitions, selection, compilation, and tailoring.
-`loushang.work` is the runtime enactment layer; it is not SPEM `WorkDefinition`
+`loushang.harnesswork` is the runtime enactment layer; it is not SPEM `WorkDefinition`
 and must not copy the SPEM metamodel. The detailed current/target mapping lives in
 [Loushang Work Architecture](../work/README.md#spem-20-alignment).
 
@@ -229,8 +229,7 @@ These fields are not yet closed enums. The experimental methodology documents re
 - [HarnessWork Durable Enactment Architecture](../harnesswork/README.md)
   is the accepted consolidation of the product-neutral `loushang.work` kernel into an optional
   Harness extension. Its [migration ledger](../harnesswork/migration-ledger.md) defines which owner
-  changes are already implemented; the remaining `loushang.work` surfaces stay authoritative until
-  their gates pass.
+  changes are already implemented; `loushang.work` remains only a tested compatibility namespace.
 - [Architecture Overview](../architecture-overview.md)
 - [Loushang Work Architecture](../work/README.md)
 - [Coding Domain Component](../coding/component-interfaces/domain.md)

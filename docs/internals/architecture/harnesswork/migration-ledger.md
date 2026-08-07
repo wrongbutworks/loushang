@@ -43,6 +43,11 @@ Coding binding 已迁至 `coding.adapters.harnesswork`，Channel session binding
 `ontology.integrations.harnesswork`。所有生产消费者已改用 canonical imports；旧路径仅作为
 受测试的 forwarding compatibility 入口。
 
+Channel core 继续拥有 typed Work envelope 与稳定 JSON wire codec；这是当前 Channel 作为
+Work transport 的明确边界，不是待抽取的通用 payload bus。`channel.adapters.harnesswork`
+只拥有 execution binding。Method 的真实 Product binding 已由 Coding prepared-turn 路径验证；
+在第二个 Product 出现前不增加通用 Method-to-HarnessWork adapter。
+
 ## Public Surface
 
 `loushang.harnesswork` 根包只导出产品中立 kernel 与 inspection 公共符号：

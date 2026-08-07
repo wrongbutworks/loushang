@@ -96,6 +96,12 @@ Harness Host mechanics and event-view contracts. The optional runtime-event
 adapter may consume Harness session projection functions; Harness never
 imports Channel, and HarnessWork never imports Channel.
 
+This dependency is intentional: Channel is currently the typed Work transport,
+not a universal payload bus. Its core owns the stable Work and runtime-view wire
+codec, while `channel.adapters.harnesswork` owns execution binding. A generic
+codec registry, plugin discovery, or opaque payload protocol must not be added
+until a second concrete non-Work transport requirement demonstrates that need.
+
 The package direction is:
 
 ```text
@@ -126,6 +132,7 @@ The current channel package does not implement:
 - UI layout, widgets, rendering, or a universal UI wire protocol
 - direct agent loop or product session control
 - a universal Product RPC command schema
+- a universal payload codec registry or negotiation protocol
 
 Capability negotiation and interaction request/response contracts remain
 future work. They must remain independent of legacy Coding RPC widget and

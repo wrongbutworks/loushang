@@ -4,7 +4,7 @@
 
 ## Status
 
-Status: **accepted; Phase 2 adapter migration complete**.
+Status: **accepted; Phase 2 boundary closeout complete**.
 
 2026-08-07 已完成三路独立只读评审：模块/owner 边界、运行时与故障语义、API 与迁移
 可实施性。三路结论均为 `accept-with-changes`；高优先级意见纳入后复审均无阻断。同日已
@@ -104,7 +104,6 @@ Product / App composition root
   ├── loushang.harnesswork       (optional -> harness)
   ├── loushang.harnesstui        (optional -> harness)
   ├── loushang.method            (optional, standalone definitions)
-  │     └── integrations.harnesswork
   └── loushang.ontology          (optional, standalone semantics)
         └── integrations.harnesswork
 ```
@@ -378,6 +377,21 @@ Product work preparer/executor 拥有。Method helper 不能自行注册一个�
 
 Ontology core 保持独立：
 
+当前实现只提供 ontology-owned、单进程原子 Action adapter。handler 只有在本地业务修改已经
+提交后才能正常返回；`OntologyActionCommitted` 只表示 handler 正常返回，不承诺数据库事务、
+外部 effect、补偿或跨进程恢复。`actor_id` 当前只是审计上下文，不代表授权已经完成。
+
+当前原子路径为：
+
+```text
+OntologyActionWorkRequest
+  -> HarnessWork Runtime
+  -> OntologyActionHandler
+  -> OntologyActionCommitted / WorkRunFailed
+```
+
+以下是出现真实多步骤或外部副作用 Action 后才考虑的目标边界，并非当前能力：
+
 ```text
 ActionRequest
   -> Ontology ActionPlanner
@@ -522,16 +536,17 @@ session adapter 和 CLI；Coding 与 Channel 存在直接 imports，tests 也把
 | `session.py` | `harnesswork.integrations.session` 或 Product adapter | 它是 Agent-session execution adapter，不是 durable kernel |
 | `projection.py` | compatibility/Agent-session integration | 当前委托 `agent_projection`，不进入 core |
 | Coding `domain/work.py` | Coding Product composition | 保留产品 payload 和 executor binding |
-| Channel Work codec/binding | `channel.adapters.harnesswork` | Channel core 改为注入 codec 或严格 tagged transport，保持 HarnessWork 可选 |
+| Channel Work codec/binding | Channel core owns typed wire codec; `channel.adapters.harnesswork` owns execution binding | Channel 当前就是显式 Work transport；wire 保持稳定，不预建通用 codec registry |
 | 旧根包和子模块 | compatibility forwarding modules | old symbol 必须与新 owner 是同一对象，并带明确弃用周期 |
 
 ### Phase 2: Move Adapters And Consumers
 
 - Coding Product adapter 改用 HarnessWork；
-- `channel.adapters.harnesswork` 拥有 Work envelope/codec；Channel core 移除具体 Work union、
-  `isinstance` 和 JSON codec 依赖，保留 frame/payload golden JSON 与 unknown/additive field
-  兼容；
-- Product Method-to-Work adapter 改用 HarnessWork；Method 可选 helper 只做结构投影；
+- Channel core 继续拥有显式 typed Work envelope/codec，`channel.adapters.harnesswork` 拥有
+  execution binding；保留 frame/payload golden JSON 与 unknown/additive field 兼容。只有出现
+  第二种真实、非 Work transport 需求后，才重新评估 codec seam；
+- Coding Product 已把 Method prepared turns 绑定到 HarnessWork；Method core 保持独立，不新增
+  通用 `method.run` handler 或 HarnessWork adapter；
 - 引入 Ontology integration fixture；
 - 保留序列化兼容和读取旧 Work JSONL 的 round-trip 测试。
 
@@ -604,8 +619,8 @@ session adapter 和 CLI；Coding 与 Channel 存在直接 imports，tests 也把
 2. Work payload/result codec 由 handler、Product profile 还是统一 registry 提供？
 3. approval wait 和 dynamic input 是否需要新的权威状态，还是继续作为 blocking facts？
 4. recovery ARD 的最小持久 checkpoint 和 fencing contract 是什么？
-5. Channel 旧 Work envelope/codec 的兼容期多长，何时只保留
-   `channel.adapters.harnesswork`？
+5. 只有出现第二种真实、非 Work transport 需求时，才重新评估 Channel typed codec 是否需要
+   下沉为可注入 seam；在此之前不建设 registry 或 negotiation protocol。
 6. `loushang.work` 是否已有外部用户或插件依赖，如何检测并公告 deprecation？
 
 ## Adoption Rule
