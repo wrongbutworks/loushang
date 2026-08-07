@@ -344,6 +344,7 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
     assert not Path("src/loushang/coding/capability_profile.py").exists()
     assert not Path("src/loushang/coding/capability_plan.py").exists()
     assert not Path("src/loushang/coding/runtime_profile.py").exists()
+    assert Path("src/loushang/coding/runtime_capability_admission.py").exists()
 
     expected_imports = {
         Path("src/loushang/coding/product_plan.py"): {
@@ -353,10 +354,12 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
             "loushang.harness.runtime.RuntimeProfileResolver",
         },
         Path("src/loushang/coding/bootstrap.py"): {
+            "loushang.coding.runtime_capability_admission.bind_coding_capability_composition_runtime",
             "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.bind_capability_composition_runtime",
         },
         Path("src/loushang/coding/session/agent_session.py"): {
+            "loushang.coding.runtime_capability_admission.bind_coding_capability_composition_runtime",
             "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.CapabilityCompositionRuntime",
             "loushang.harness.capabilities.bind_capability_composition_runtime",
@@ -374,6 +377,17 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
         )
 
     assert missing == []
+
+    admission_boundary = ImportBoundary(
+        name="Coding Runtime Capability admission adapter",
+        root=Path("src/loushang/coding/runtime_capability_admission.py"),
+        forbidden_prefixes=(
+            "loushang.coding.bootstrap",
+            "loushang.coding.session",
+            "loushang.coding.session_manager",
+        ),
+    )
+    assert _find_forbidden_imports(admission_boundary) == []
 
 
 def test_harnesstui_neutral_modules_do_not_import_product_or_model_layers() -> None:
@@ -4398,6 +4412,42 @@ def test_core_workspace_effects_only_execute_through_gateway() -> None:
         source = (workspace_root / f"{tool_name}.py").read_text(encoding="utf-8")
         assert "FilesystemActionAdapter" in source, tool_name
     assert "ProcessEffect" in (workspace_root / "bash.py").read_text(encoding="utf-8")
+
+
+def test_code_enabled_products_reuse_harness_workspace_capabilities() -> None:
+    workspace_root = Path("src/loushang/harness/tools/workspace")
+    for tool_name in ("read", "ls", "grep", "find", "write", "edit", "bash"):
+        assert (workspace_root / f"{tool_name}.py").is_file(), tool_name
+    for tool_name in ("read", "write", "edit"):
+        assert not Path(f"src/loushang/coding/tools/{tool_name}.py").exists()
+
+    coding_capabilities = Path("src/loushang/coding/capabilities.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'CODING_ARCH_CAPABILITY = "coding.arch"' in coding_capabilities
+    assert 'CODING_LSP_CAPABILITY = "coding.lsp"' in coding_capabilities
+
+    shared_boundary = " ".join(
+        Path("docs/internals/architecture/harness/shared-capability-boundaries.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert (
+        "Every Product may be code-enabled, but not every Product is the Coding Product"
+        in shared_boundary
+    )
+    assert (
+        "the only Coding-specific Capability Mount identities are `coding.arch` and `coding.lsp`"
+        in shared_boundary
+    )
+
+    glossary = " ".join(
+        Path("docs/internals/glossary/loushang-product.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "### Code-Enabled Product" in glossary
+    assert "### Coding Product" in glossary
 
 
 def test_authorized_tool_context_does_not_become_a_capability_bag() -> None:

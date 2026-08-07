@@ -40,6 +40,9 @@ from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
 from loushang.coding.runtime import AgentSessionRuntime
+from loushang.coding.runtime_capability_admission import (
+    bind_coding_capability_composition_runtime,
+)
 from loushang.coding.sandbox import bind_coding_sandbox_runtime
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
@@ -699,6 +702,7 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
     source_identity_check=_source_identity_startup_check,
     list_tool_definitions=lambda runner: runner.list_tool_definitions(),
     get_tool_source_info=lambda runner, name: runner.get_tool_source_info(name),
+    bind_session_capabilities=bind_coding_capability_composition_runtime,
     product_tool_pack_id="coding.registry",
     extension_tool_pack_id="coding.extensions",
 )

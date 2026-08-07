@@ -13,6 +13,7 @@ ExtensionCapability = Literal[
     "session_mutation",
     "ui_mutation",
     "tool_mutation",
+    "interaction.side_question",
 ]
 
 _DEFAULT_CAPABILITIES: dict[PermissionLevel, tuple[str, ...]] = {

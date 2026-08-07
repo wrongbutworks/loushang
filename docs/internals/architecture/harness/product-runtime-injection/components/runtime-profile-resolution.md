@@ -214,6 +214,12 @@ snapshot, persistent resume validates it, transient open does not rewrite the
 durable file choice, and `AgentSession` consumes then disposes the selected
 compaction behavior.
 
+`tests/coding/test_capability_profile.py` verifies the first real external
+replacement path: an Agent Extension registers a side-question Provider
+factory, Coding derives an explicit grant from its effective policy, the
+runtime profile selects one deterministic winner, only that factory binds, and
+Session shutdown cancels the active Provider before disposing the factory.
+
 ## Non-Goals
 
 - No plugin discovery, trust evaluation, permission granting, or OEM loader.

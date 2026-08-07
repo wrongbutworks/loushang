@@ -225,11 +225,17 @@ def bind_capability_composition_runtime(
     profile: ResolvedRuntimeProfile,
     *,
     context: object | None = None,
+    additional_implementations: Iterable[RuntimeCapabilityImplementation] = (),
 ) -> CapabilityCompositionRuntime:
     """Synchronously bind standard capability-composition implementations."""
 
     binder = RuntimeProfileBinder(
-        RuntimeCapabilityRegistry(standard_capability_composition_implementations())
+        RuntimeCapabilityRegistry(
+            (
+                *standard_capability_composition_implementations(),
+                *tuple(additional_implementations),
+            )
+        )
     )
     return CapabilityCompositionRuntime(
         binding=binder.bind_sync(profile, context=context),
