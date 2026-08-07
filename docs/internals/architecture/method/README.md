@@ -226,6 +226,11 @@ These fields are not yet closed enums. The experimental methodology documents re
 
 ## Related Documents
 
+- [HarnessWork Durable Enactment Architecture](../harnesswork/README.md)
+  is the accepted consolidation of the product-neutral `loushang.work` kernel into an optional
+  Harness extension. Its [migration ledger](../harnesswork/migration-ledger.md) defines which owner
+  changes are already implemented; the remaining `loushang.work` surfaces stay authoritative until
+  their gates pass.
 - [Architecture Overview](../architecture-overview.md)
 - [Loushang Work Architecture](../work/README.md)
 - [Coding Domain Component](../coding/component-interfaces/domain.md)

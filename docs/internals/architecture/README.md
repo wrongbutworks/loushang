@@ -35,6 +35,7 @@ history, experimental notes, or legacy documents.
 - [Coding](coding/loushang-coding-system-context.md)
 - [Method](method/README.md)
 - [Work](work/README.md)
+- [HarnessWork](harnesswork/README.md) — accepted migration of the product-neutral Work kernel
 - [TUI](tui/README.md)
 - [Harness TUI](harnesstui/README.md)
 - [Monorepo Conventions](loushang-monorepo-conventions.md)

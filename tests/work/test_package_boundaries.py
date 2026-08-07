@@ -19,7 +19,12 @@ def test_work_standard_projection_does_not_depend_on_coding() -> None:
 
 
 def test_work_runtime_is_product_neutral_and_harness_does_not_import_work() -> None:
-    work_runtime = Path("src/loushang/work/runtime.py").read_text(encoding="utf-8")
+    work_runtime = Path("src/loushang/harnesswork/runtime.py").read_text(
+        encoding="utf-8"
+    )
+    work_runtime_facade = Path("src/loushang/work/runtime.py").read_text(
+        encoding="utf-8"
+    )
     session_runtime = Path("src/loushang/work/session.py").read_text(
         encoding="utf-8"
     )
@@ -32,11 +37,11 @@ def test_work_runtime_is_product_neutral_and_harness_does_not_import_work() -> N
     )
 
     assert "loushang.coding" not in work_runtime
-    assert "loushang.harness" not in work_runtime
     assert "loushang.agent" not in work_runtime
     assert "class WorkRuntime" in work_runtime
     assert "WorkRunStarted" in work_runtime
     assert "WorkRunCompleted" in work_runtime
+    assert "from loushang.harnesswork.runtime import" in work_runtime_facade
 
     assert "loushang.coding" not in session_runtime
     assert "loushang.harness" not in session_runtime
@@ -48,6 +53,7 @@ def test_work_runtime_is_product_neutral_and_harness_does_not_import_work() -> N
     assert "SessionWorkProfile(" in coding_binding
 
     assert "loushang.work" not in harness_source
+    assert "loushang.harnesswork" not in harness_source
     assert not Path("src/loushang/harness/work").exists()
 
 

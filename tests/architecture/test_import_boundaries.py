@@ -31,6 +31,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.channel",
                 "loushang.coding",
                 "loushang.harness",
+                "loushang.harnesswork",
                 "loushang.method",
                 "loushang.observability",
                 "loushang.ontology",
@@ -47,6 +48,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.channel",
                 "loushang.coding",
                 "loushang.harness",
+                "loushang.harnesswork",
                 "loushang.method",
                 "loushang.tui",
                 "loushang.work",
@@ -58,6 +60,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             forbidden_prefixes=(
                 "loushang.coding",
                 "loushang.harness",
+                "loushang.harnesswork",
                 "loushang.method",
                 "loushang.tui",
                 "loushang.work",
@@ -74,6 +77,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.coding",
                 "loushang.method",
                 "loushang.tui",
+                "loushang.harnesswork",
                 "loushang.work",
             ),
             allowed_paths=frozenset(
@@ -84,6 +88,24 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                     "src/loushang/harness/session/operations_runtime.py",
                     "src/loushang/harness/session/side_question.py",
                 }
+            ),
+        ),
+        ImportBoundary(
+            name="harnesswork",
+            root=Path("src/loushang/harnesswork"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.channel",
+                "loushang.coding",
+                "loushang.harnesstui",
+                "loushang.method",
+                "loushang.observability",
+                "loushang.ontology",
+                "loushang.resource",
+                "loushang.runtime",
+                "loushang.tui",
+                "loushang.work",
             ),
         ),
         ImportBoundary(
@@ -262,10 +284,11 @@ def test_session_modules_do_not_import_their_public_barrel() -> None:
 def test_harness_work_channel_dependency_graph_is_one_way() -> None:
     graph = _package_dependency_graph(
         Path("src/loushang"),
-        packages=frozenset({"harness", "work", "channel"}),
+        packages=frozenset({"harness", "harnesswork", "work", "channel"}),
     )
 
-    assert graph["harness"].isdisjoint({"work", "channel"})
+    assert graph["harness"].isdisjoint({"harnesswork", "work", "channel"})
+    assert graph["harnesswork"].isdisjoint({"work", "channel"})
     assert "channel" not in graph["work"]
     assert [
         component
