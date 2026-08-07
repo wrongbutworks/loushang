@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from loushang.work import (
+from loushang.harnesswork import (
     EventLogEntry,
     JsonlEventLogBackend,
     create_work_event_log,

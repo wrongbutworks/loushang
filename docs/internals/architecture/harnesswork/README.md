@@ -34,10 +34,10 @@ HarnessWork 是 Harness 的可选持久履约扩展。它负责把一个已接�
 
 ## Current Boundary
 
-当前迁移分支已建立 `loushang.harnesswork`，并迁入 types、ports、runtime、event log 和
-run projection 这五个产品中立 kernel 模块。`loushang.work` 对这些模块保留 symbol-identical
-forwarding facade；plan projection、CLI、Agent/session projection 与产品 adapters 尚未迁移。
-Coding、Channel 和现有测试仍可使用旧根包及子模块。
+当前迁移分支已建立 `loushang.harnesswork`，并迁入 types、ports、runtime、event log、
+run/plan projection 和中立 log inspection CLI。`loushang.work` 对这些模块保留
+symbol-identical forwarding facade；Agent/session projection 与产品 adapters 正在下一阶段
+迁移。Coding、Channel 和现有测试仍可使用旧根包及子模块。
 
 Harness owner map 继续禁止 Harness import Work/HarnessWork，并把 Method-to-Work preparation、
 Product Work execution、存储位置/保留策略和最终投影留给 Product。当前 Method 又复用了

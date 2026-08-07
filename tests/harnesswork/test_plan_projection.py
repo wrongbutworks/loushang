@@ -23,7 +23,7 @@ def _entry(
     plan_facts: dict[str, object] | None = None,
     step_facts: dict[str, object] | None = None,
 ) -> object:
-    from loushang.work import EventLogEntry
+    from loushang.harnesswork import EventLogEntry
 
     payload: dict[str, object] = {"kind": kind}
     nested_payload: dict[str, object] = {}
@@ -78,7 +78,7 @@ def _step_entries(
     entries = [
         _entry(
             f"{run_id}-operation",
-            kind="SubmitCodingTurn",
+            kind="ExecuteTestOperation",
             run_id=run_id,
             sequence=0,
             entry_type="operation",
@@ -165,7 +165,7 @@ def _step_entries(
 
 
 def test_project_work_plan_runs_replays_completed_steps_across_turn_runs() -> None:
-    from loushang.work import project_work_plan_runs
+    from loushang.harnesswork import project_work_plan_runs
 
     plans = project_work_plan_runs(
         [
@@ -210,7 +210,7 @@ def test_project_work_plan_runs_replays_completed_steps_across_turn_runs() -> No
 
 
 def test_project_work_plan_runs_replays_failed_step_and_plan_error() -> None:
-    from loushang.work import project_work_plan_runs
+    from loushang.harnesswork import project_work_plan_runs
 
     plans = project_work_plan_runs(
         _step_entries(
@@ -236,7 +236,7 @@ def test_project_work_plan_runs_replays_failed_step_and_plan_error() -> None:
 
 
 def test_project_work_plan_runs_replays_cancelled_step_and_plan() -> None:
-    from loushang.work import project_work_plan_runs
+    from loushang.harnesswork import project_work_plan_runs
 
     plans = project_work_plan_runs(
         [
@@ -290,7 +290,7 @@ def test_project_work_plan_runs_replays_cancelled_step_and_plan() -> None:
 
 
 def test_project_work_plan_runs_replays_step_deviation_metadata() -> None:
-    from loushang.work import project_work_plan_runs
+    from loushang.harnesswork import project_work_plan_runs
 
     plans = project_work_plan_runs(
         [
@@ -346,7 +346,7 @@ def test_project_work_plan_runs_replays_step_deviation_metadata() -> None:
 
 
 def test_project_work_plan_runs_replays_planned_step_policy_metadata() -> None:
-    from loushang.work import project_work_plan_runs
+    from loushang.harnesswork import project_work_plan_runs
 
     plans = project_work_plan_runs(
         [
@@ -385,7 +385,7 @@ def test_project_work_plan_runs_replays_planned_step_policy_metadata() -> None:
 
 
 def test_project_work_plan_runs_replays_plan_and_step_facts() -> None:
-    from loushang.work import project_work_plan_runs
+    from loushang.harnesswork import project_work_plan_runs
 
     plan_facts = {
         "plan_id": "plan:method:task:review",
@@ -431,13 +431,13 @@ def test_project_work_plan_runs_replays_plan_and_step_facts() -> None:
 
 
 def test_project_work_plan_runs_ignores_entries_without_plan_id() -> None:
-    from loushang.work import project_work_plan_runs
+    from loushang.harnesswork import project_work_plan_runs
 
     plans = project_work_plan_runs(
         [
             _entry(
                 "run-1-operation",
-                kind="SubmitCodingTurn",
+                kind="ExecuteTestOperation",
                 run_id="run-1",
                 sequence=0,
                 entry_type="operation",

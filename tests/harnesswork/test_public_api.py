@@ -54,6 +54,14 @@ _MODULE_EXPORTS = {
         "WorkRuntimeError",
     ),
     "run_projection": ("WorkRunReplayError", "project_work_runs"),
+    "plan_projection": ("project_work_plan_runs",),
+    "cli": (
+        "WorkLogInspectionError",
+        "create_work_event_log",
+        "inspect_work_log",
+        "resolve_work_log_path",
+        "run_work_log_inspection_operation",
+    ),
 }
 
 
@@ -69,7 +77,7 @@ def test_harnesswork_public_api_is_the_product_neutral_work_kernel() -> None:
     assert set(harnesswork.__all__) == expected
     assert not hasattr(harnesswork, "AgentWorkFactProjectionContext")
     assert not hasattr(harnesswork, "SessionWorkRuntime")
-    assert not hasattr(harnesswork, "project_work_plan_runs")
+    assert hasattr(harnesswork, "project_work_plan_runs")
 
 
 def test_legacy_work_kernel_modules_forward_the_canonical_symbols() -> None:

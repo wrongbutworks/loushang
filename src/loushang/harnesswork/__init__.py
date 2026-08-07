@@ -23,6 +23,13 @@ from loushang.harnesswork.types import (
 )
 
 if TYPE_CHECKING:
+    from loushang.harnesswork.cli import (
+        WorkLogInspectionError,
+        create_work_event_log,
+        inspect_work_log,
+        resolve_work_log_path,
+        run_work_log_inspection_operation,
+    )
     from loushang.harnesswork.event_log import (
         EventLogBackend,
         EventLogEntry,
@@ -30,6 +37,7 @@ if TYPE_CHECKING:
         InMemoryEventLogBackend,
         JsonlEventLogBackend,
     )
+    from loushang.harnesswork.plan_projection import project_work_plan_runs
     from loushang.harnesswork.ports import (
         WorkAcceptPort,
         WorkCancelPort,
@@ -59,6 +67,23 @@ if TYPE_CHECKING:
     )
 
 _LAZY_EXPORTS = {
+    "WorkLogInspectionError": (
+        "loushang.harnesswork.cli",
+        "WorkLogInspectionError",
+    ),
+    "create_work_event_log": (
+        "loushang.harnesswork.cli",
+        "create_work_event_log",
+    ),
+    "inspect_work_log": ("loushang.harnesswork.cli", "inspect_work_log"),
+    "resolve_work_log_path": (
+        "loushang.harnesswork.cli",
+        "resolve_work_log_path",
+    ),
+    "run_work_log_inspection_operation": (
+        "loushang.harnesswork.cli",
+        "run_work_log_inspection_operation",
+    ),
     "EventLogBackend": ("loushang.harnesswork.event_log", "EventLogBackend"),
     "EventLogEntry": ("loushang.harnesswork.event_log", "EventLogEntry"),
     "EventPosition": ("loushang.harnesswork.event_log", "EventPosition"),
@@ -69,6 +94,10 @@ _LAZY_EXPORTS = {
     "JsonlEventLogBackend": (
         "loushang.harnesswork.event_log",
         "JsonlEventLogBackend",
+    ),
+    "project_work_plan_runs": (
+        "loushang.harnesswork.plan_projection",
+        "project_work_plan_runs",
     ),
     "project_work_runs": (
         "loushang.harnesswork.run_projection",
@@ -153,6 +182,7 @@ __all__ = [
     "EventPosition",
     "InMemoryEventLogBackend",
     "JsonlEventLogBackend",
+    "WorkLogInspectionError",
     "UnknownWorkRunError",
     "WorkAcceptPort",
     "WorkCancelPort",
@@ -185,5 +215,10 @@ __all__ = [
     "WorkStepStatus",
     "WorkSubscribePort",
     "WorkWaitPort",
+    "create_work_event_log",
+    "inspect_work_log",
+    "project_work_plan_runs",
     "project_work_runs",
+    "resolve_work_log_path",
+    "run_work_log_inspection_operation",
 ]

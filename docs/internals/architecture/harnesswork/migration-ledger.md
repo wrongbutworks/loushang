@@ -32,8 +32,8 @@ Coding、Method 或 Ontology 类型。
 | `runtime.py` | `loushang.harnesswork.runtime` | `loushang.work.runtime` forwarding | 已 `git mv`；只有这一套可写 runtime |
 | `event_log.py` | `loushang.harnesswork.event_log` | `loushang.work.event_log` forwarding | 已 `git mv`；JSONL schema 与 replay contract 不变 |
 | `run_projection.py` | `loushang.harnesswork.run_projection` | `loushang.work.run_projection` forwarding | 已 `git mv`；orphan replay 语义不变 |
-| `plan_projection.py` | 暂留 `loushang.work` | 原入口 | `SubmitCodingTurn` sentinel 中立化并通过旧日志 golden replay 后再迁 |
-| `cli.py` | 暂留 `loushang.work` | 原入口 | 依赖 plan projection；先拆出中立 inspect surface |
+| `plan_projection.py` | `loushang.harnesswork.plan_projection` | `loushang.work.plan_projection` forwarding | 已迁移；以通用 operation/plan-start 识别 attempt，旧 Coding JSONL golden replay 已通过 |
+| `cli.py` | `loushang.harnesswork.cli` | `loushang.work.cli` forwarding | 已迁移中立 log inspection；产品命令装配仍留 Product |
 | `agent_projection.py` | Agent/Product integration | 原入口 | 不进入 HarnessWork core；后续迁往明确 adapter owner |
 | `projection.py` | Agent/Product compatibility | 原入口 | 委托 agent projection，不进入 HarnessWork core |
 | `session.py` | Agent-session/HarnessWork integration | 原入口 | 后续进入 integration adapter，不进入 durable kernel |
@@ -43,13 +43,15 @@ Coding executor、Channel codec/session binding 等消费者本阶段不搬入 c
 
 ## Public Surface
 
-`loushang.harnesswork` 根包只导出五个 kernel 模块的产品中立公共符号：
+`loushang.harnesswork` 根包只导出产品中立 kernel 与 inspection 公共符号：
 
 - types：operation/run/step/event/artifact/deviation 值对象；
 - ports：accept/wait/cancel/query/subscribe、domain executor/cancellation/resolver 与 fact publisher；
 - runtime：`WorkRuntime` 及生命周期错误；
 - event log：Memory/JSONL backend、entry 与 position；
-- run projection：`project_work_runs` 与 replay error。
+- run projection：`project_work_runs` 与 replay error；
+- plan projection：`project_work_plan_runs`；
+- CLI：JSONL event log 创建、路径解析和中立 inspect/format 操作。
 
 `loushang.work` 根包暂时保留原完整 `__all__`，包括 CLI 和 Agent/session projection symbols。
 kernel 子模块的旧入口与新入口必须返回同一 Python 对象。迁移不承诺稳定的
@@ -63,6 +65,7 @@ kernel 子模块的旧入口与新入口必须返回同一 Python 对象。迁�
 - `harness -/-> harnesswork`、`harnesswork -/-> work/channel` 保持单向；
 - `tests/work/` 继续验证旧 facade，`tests/harnesswork/` 验证 canonical owner；
 - 至少一个非 Coding opaque handler 从 accept 运行到 terminal 并可 replay；
+- 旧 Coding plan JSONL golden fixture 在无 Coding sentinel 的 projection 上保持等价；
 - 当前 Work 与 Channel contract suite 无回归。
 
 ## Deferred Surfaces
