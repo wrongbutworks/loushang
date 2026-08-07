@@ -2799,7 +2799,7 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
             "loushang.harness.transcript.AgentTranscriptSessionFactory",
             "loushang.harness.transcript.ProductTranscriptSession",
         },
-        Path("src/loushang/work/event_log.py"): {
+        Path("src/loushang/harnesswork/event_log.py"): {
             "loushang.harness.journal.FunctionalJournalRecordCodec",
             "loushang.harness.journal.JsonlJournal",
         },
