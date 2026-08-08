@@ -40,6 +40,7 @@ from loushang.harness.resources.packages.session import (
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import (
     CancellationSignal,
+    ResolvedRuntimeProfile,
     SideQuestionAnswer,
     SideQuestionCoordinator,
     SideQuestionUpdate,
@@ -292,6 +293,15 @@ class AgentProductSession(AgentSessionAdapterMixin):
             sync_footer=self._sync_footer_available_provider_count,
         )
 
+    @property
+    def capability_profile(self) -> ResolvedRuntimeProfile:
+        """Return the final resolved Session capability profile."""
+
+        runtime = self._capability_runtime
+        if runtime is None:
+            raise RuntimeError("Session capability profile has been disposed.")
+        return runtime.profile
+
     def _composition_ports(
         self,
         *,
@@ -434,6 +444,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
     def cancel_side_question(self) -> bool:
         coordinator = self._side_question
         return coordinator.cancel() if coordinator is not None else False
+
+    async def _dispose_session_runtime_profile(self) -> None:
+        # Stop the selected Provider before its capability factory is disposed.
+        self.cancel_side_question()
+        await super()._dispose_session_runtime_profile()
 
     def _finalize_after_session_shutdown(self) -> None:
         self.cancel_side_question()

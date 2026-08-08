@@ -19,7 +19,7 @@ from loushang.channel import (
     rpc_jsonl_frame_to_json,
 )
 from loushang.harness.events import RuntimeEventView
-from loushang.work import WorkEvent, WorkOperation
+from loushang.harnesswork import WorkEvent, WorkOperation
 
 
 def test_operation_request_jsonl_round_trips_with_request_correlation() -> None:

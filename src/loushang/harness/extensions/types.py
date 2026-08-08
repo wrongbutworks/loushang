@@ -96,6 +96,41 @@ class RegisteredControlContribution:
             )
 
 
+@dataclass(frozen=True)
+class RegisteredRuntimeCapabilityReplacement:
+    """One Extension-declared candidate for an explicit runtime slot."""
+
+    slot: str
+    name: str
+    create: Callable[[], object]
+    dispose: Callable[[object], None] | None = None
+    implementation_version: int = 1
+    priority: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.slot, str) or not self.slot.strip():
+            raise ValueError("runtime capability replacement slot must not be empty")
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("runtime capability replacement name must not be empty")
+        if not callable(self.create):
+            raise TypeError("runtime capability replacement create must be callable")
+        if self.dispose is not None and not callable(self.dispose):
+            raise TypeError("runtime capability replacement dispose must be callable")
+        if (
+            isinstance(self.implementation_version, bool)
+            or not isinstance(self.implementation_version, int)
+            or self.implementation_version < 1
+        ):
+            raise ValueError(
+                "runtime capability replacement implementation_version must be "
+                "a positive integer"
+            )
+        if isinstance(self.priority, bool) or not isinstance(self.priority, int):
+            raise TypeError(
+                "runtime capability replacement priority must be an integer"
+            )
+
+
 @dataclass(frozen=True, kw_only=True)
 class RegisteredCommand:
     name: str
@@ -173,6 +208,9 @@ class LoadedExtension:
     control_contributions: list[RegisteredControlContribution] = field(
         default_factory=list
     )
+    runtime_capability_replacements: list[RegisteredRuntimeCapabilityReplacement] = (
+        field(default_factory=list)
+    )
 
     def __post_init__(self) -> None:
         if self.handler_registrations and not self.hooks:
@@ -224,6 +262,7 @@ __all__ = [
     "LoadedExtension",
     "RegisteredCommand",
     "RegisteredControlContribution",
+    "RegisteredRuntimeCapabilityReplacement",
     "RegisteredExtensionHandler",
     "RegisteredFlag",
     "RegisteredShortcut",

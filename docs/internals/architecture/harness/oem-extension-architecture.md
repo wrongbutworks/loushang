@@ -141,7 +141,7 @@ This categorisation is important because OEMs typically need all three:
 | --- | --- | --- |
 | **Contribution** (aggregate) | All declarations run independently; failure is isolated | Ship custom tools, commands, methods, skills |
 | **Interceptor** (pipeline) | Handlers form a pipeline; each sees previous output; failure governed by `on_error` | Ship custom hooks and policy evaluators |
-| **Replacement** (one active provider) | Only one provider is active for the surface; failure propagates to the Product-selected fallback | Ship approval resolvers, custom model providers, channel adapters, storage backends |
+| **Replacement** (one active provider) | Only one provider is active for the surface; selected-provider failure propagates without implicit fallback | Ship approval resolvers, side-question providers, custom model providers, channel adapters, storage backends |
 
 These are applications of the canonical Aggregate Contribution, Ordered
 Interception, and Exclusive Replacement semantics. A decorator is a restricted
@@ -154,6 +154,11 @@ enforcement.
 Harness extension dispatch now provides stable dependency-aware observer,
 interceptor, reducer, and first-match routing. Policy contributions use the
 interceptor chain; approval contributions use an exclusive replacement slot.
+Agent Extensions may also declare the focused
+`interaction.side_question` Runtime Capability replacement. Coding converts
+that declaration into an admitted runtime-profile layer only when the effective
+Extension policy grants the same permission; this is not a generic API for
+registering arbitrary factories or slots.
 The Product/OEM layer still supplies activation and trust decisions; Harness
 enforces them while building executable routes and registries. See the
 [Control Plane Runtime Boundary](control-plane-runtime-boundary.md).

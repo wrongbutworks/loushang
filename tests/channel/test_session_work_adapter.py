@@ -3,13 +3,25 @@ from __future__ import annotations
 import asyncio
 
 from loushang.channel import ChannelOperationRequest
-from loushang.channel.adapters.session_work import (
+from loushang.channel.adapters import session_work as legacy_session_work
+from loushang.channel.adapters.harnesswork import (
     SessionWorkChannelPort,
     SessionWorkChannelProfile,
 )
 from loushang.channel.types import ChannelEnvelope
-from loushang.work import InMemoryEventLogBackend, WorkOperation
-from loushang.work.session import SessionWorkProfile, SessionWorkRuntime
+from loushang.harnesswork import InMemoryEventLogBackend, WorkOperation
+from loushang.harnesswork.integrations.session import (
+    SessionWorkProfile,
+    SessionWorkRuntime,
+)
+
+
+def test_legacy_session_work_adapter_forwards_harnesswork_owner() -> None:
+    assert legacy_session_work.SessionWorkChannelPort is SessionWorkChannelPort
+    assert (
+        SessionWorkChannelPort.__module__
+        == "loushang.channel.adapters.harnesswork"
+    )
 
 
 class _Session:

@@ -17,7 +17,8 @@
 - `loushang.coding`
 - `loushang.method`
 - `loushang.tui`
-- `loushang.work`
+- `loushang.harnesswork`
+- `loushang.work`（迁移期 compatibility/integration namespace）
 
 当前已落地的支撑/实验性包包括：
 
@@ -243,10 +244,12 @@ Harness conversation contract 与通用 TUI 之间的 product-neutral compositio
 workflows 中使用 `method`，但轻量 turn 可以直接使用 `loushang.harness` 和
 `work`。
 
-### loushang-work
+### loushang-harnesswork / loushang-work compatibility
 
-跨产品业务工作与可选方法履约运行时。它接受具有可判定终局的业务意图，并拥有
-该承诺的权威运行事实、事件日志与 projection。
+`loushang.harnesswork` 是可选的跨产品持久履约扩展。它接受具有可判定终局的业务意图，
+并拥有该承诺的产品中立运行事实、事件日志与 run projection。迁移期间
+`loushang.work` 对已迁 kernel 提供 forwarding，并暂时保留 plan、CLI 和 Agent/session
+integration surfaces。
 
 负责：
 
@@ -267,12 +270,14 @@ workflows 中使用 `method`，但轻量 turn 可以直接使用 `loushang.harne
 - 外部 transport
 - coding / design / research / ppt / cowork 产品语义
 
-`work` 是 coding、design、research、ppt、cowork 等产品线共享的业务工作抽象。
+HarnessWork 是 coding、design、research、ppt、cowork 等产品线共享的业务工作抽象。
 Method 可选；选用 Method 时，Work 拥有编译后 plan 的一次真实履约。它不依赖这些
 产品线，也不依赖 `method` 类型。
 
 详细边界、状态机和 SPEM 2.0 对齐关系参见
 [Loushang Work Architecture](./work/README.md)。
+逐文件 owner 和兼容门禁见
+[HarnessWork Migration Ledger](./harnesswork/migration-ledger.md)。
 
 Artifact 分层规则：
 
@@ -325,7 +330,10 @@ loushang.coding
 相邻集成链路为：
 
 ```text
-loushang.method -> loushang.coding -> loushang.work
+loushang.method -> Product adapter -> loushang.harnesswork
+loushang.coding.adapters.harnesswork -> loushang.harnesswork
+loushang.channel.adapters.harnesswork -> loushang.harnesswork
+loushang.ontology.integrations.harnesswork -> loushang.harnesswork
 loushang.coding.ui -> loushang.coding feature-local TUI adapters
 loushang.coding.ui -> loushang.harnesstui -> loushang.tui
 loushang.coding feature-local TUI adapters -> loushang.harnesstui
@@ -347,11 +355,11 @@ loushang.agent
 ```text
 loushang.method
   -> Product Work Preparer, only for structured work
-  -> loushang.work
+  -> loushang.harnesswork
 
 loushang.coding / loushang.design / loushang.research / loushang.ppt / loushang.cowork
   -> Product Work Preparer
-  -> loushang.work
+  -> loushang.harnesswork
 ```
 
 长期目标边界为：
@@ -360,7 +368,7 @@ loushang.coding / loushang.design / loushang.research / loushang.ppt / loushang.
 external host/client
   -> embedded host or AppService
       -> Product Session binding -> loushang.harness
-      -> Product Work Preparer -> loushang.work
+      -> Product Work Preparer -> loushang.harnesswork
            -> Product Work Executor -> loushang.harness
 ```
 
@@ -410,8 +418,10 @@ Product implementation Python packages -> harness
 Product implementation Python packages -> agent
   # only through stable agent primitives when bypassing harness is justified
 
+Product implementation Python packages -> harnesswork
 Product implementation Python packages -> work
 channel -> work
+  # the latter two are migration edges through compatibility/integration surfaces
 
 Product implementation Python packages -> method
   # optional and only for structured work; Product binds Method output to Work

@@ -72,6 +72,7 @@ Product-neutral playback substrate 验证。详细设计见
 - `loushang.harnesstui`
 - `loushang.method`
 - `loushang.tui`
+- `loushang.harnesswork`
 - `loushang.work`
 - `loushang.observability`
 - `loushang.ontology`
@@ -141,8 +142,9 @@ CLI / TUI
 
 - `loushang.method` 提供 method resource、compile、projection 和 fixed
   `MethodPlan` 语义；method 是面向一类任务的结构化工作契约
-- `loushang.work` 接受具有可判定终局的业务意图，拥有 `WorkRun`、可选 method
-  plan/step 的真实履约、权威终态、`WorkEvent`、event log、query 和 replay
+- `loushang.harnesswork` 接受具有可判定终局的业务意图，拥有 `WorkRun`、可选 method
+  plan/step 的真实履约、权威终态、`WorkEvent`、event log、query 和 replay；
+  `loushang.work` 是迁移期 compatibility/integration namespace
 - `loushang.tui` 提供通用 terminal-native UI primitives；
   `loushang.harnesstui` 组合 product-neutral Harness conversation 与 TUI；
   Coding feature-local adapter 解释产品状态，`loushang.coding.ui` 只保留最终
@@ -185,7 +187,7 @@ CLI / TUI
 
 下一步建议继续完善：
 
-1. `loushang.work` 的 run-bound plan binding、动态输入与 outcome 验证
+1. `loushang.harnesswork` 的 run-bound plan binding、动态输入与 outcome 验证
 2. channel capability negotiation and interaction request/response contracts
 3. TUI method status layer 与 `WorkEvent` / `WorkPlanRun` projection
 4. public CLI reference 对 Method、Work 与 Resource Package surfaces 的补齐

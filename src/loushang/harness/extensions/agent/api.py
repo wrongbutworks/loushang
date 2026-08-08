@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from loushang.agent.types import ThinkingLevel
 from loushang.harness.extensions.api import ExtensionContributionAPI
+from loushang.harness.extensions.types import RegisteredRuntimeCapabilityReplacement
+from loushang.harness.runtime import SIDE_QUESTION_PROVIDER_SLOT
 
 
 class ExtensionAPI(ExtensionContributionAPI):
@@ -85,6 +88,33 @@ class ExtensionAPI(ExtensionContributionAPI):
     def unregister_provider(self, name: str) -> None:
         if not self._apply_provider_action("unregister", name, None):
             self._pending_provider_actions.append(("unregister", name, None))
+
+    def register_side_question_provider(
+        self,
+        name: str,
+        *,
+        create: Callable[[], object],
+        dispose: Callable[[object], None] | None = None,
+        implementation_version: int = 1,
+        priority: int = 0,
+    ) -> None:
+        """Declare one candidate for the Agent side-question capability.
+
+        Registration is data-only. Coding admission decides whether the loaded
+        Extension may select the slot, and the selected factory is not invoked
+        until the final Session capability profile binds.
+        """
+
+        self._register_runtime_capability_replacement(
+            RegisteredRuntimeCapabilityReplacement(
+                slot=SIDE_QUESTION_PROVIDER_SLOT.key,
+                name=name,
+                create=create,
+                dispose=dispose,
+                implementation_version=implementation_version,
+                priority=priority,
+            )
+        )
 
     def _flush_pending_provider_actions(self) -> None:
         if self._runtime_bindings() is None or not self._pending_provider_actions:

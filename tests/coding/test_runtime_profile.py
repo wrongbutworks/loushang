@@ -16,7 +16,7 @@ from loushang.coding.product_plan import (
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.conversation import FileConversationStore, MemoryConversationStore
-from loushang.harness.runtime import RuntimeProfileSnapshot
+from loushang.harness.runtime import SIDE_QUESTION_PROVIDER_SLOT, RuntimeProfileSnapshot
 from loushang.harness.transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
@@ -38,6 +38,18 @@ def _model() -> Model:
     )
 
 
+def _durable_capability_snapshot() -> dict[str, object]:
+    snapshot = CODING_CAPABILITY_PROFILE.snapshot()
+    return replace(
+        snapshot,
+        capabilities=tuple(
+            capability
+            for capability in snapshot.capabilities
+            if capability.slot != SIDE_QUESTION_PROVIDER_SLOT.key
+        ),
+    ).to_json()
+
+
 def test_in_memory_session_binds_the_coding_runtime_profile_and_records_snapshot(
     tmp_path,
 ) -> None:
@@ -56,10 +68,7 @@ def test_in_memory_session_binds_the_coding_runtime_profile_and_records_snapshot
 
         assert manager.runtime_profile.product_id == "coding"
         assert snapshot.to_json() == manager.runtime_profile.snapshot().to_json()
-        assert (
-            capability_snapshot.to_json()
-            == CODING_CAPABILITY_PROFILE.snapshot().to_json()
-        )
+        assert capability_snapshot.to_json() == _durable_capability_snapshot()
         assert isinstance(
             manager.get_runtime_capability("conversation.store"),
             MemoryConversationStore,
@@ -99,7 +108,7 @@ def test_persistent_session_resumes_the_snapshotted_file_profile(tmp_path) -> No
             UserMessage(role="user", content="materialize", timestamp=0.0)
         )
         expected_snapshot = manager.runtime_profile.snapshot().to_json()
-        expected_capability_snapshot = CODING_CAPABILITY_PROFILE.snapshot().to_json()
+        expected_capability_snapshot = _durable_capability_snapshot()
 
         resumed = await SessionManager.load(manager.session_file, persist=True)
 
