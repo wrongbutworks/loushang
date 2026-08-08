@@ -2,9 +2,11 @@
 
 ## Status
 
-Proposed draft. This document defines a refactor plan; it does not make
-`loushang.foundation` accepted architecture and does not authorize removing the
-current compatibility packages.
+Accepted, in progress. Phases 0 through 2 are implemented: Foundation owns the
+strict JSON contract and the canonical Observability runtime, while the old
+packages remain compatibility facades. The later internal module split,
+production-consumer migration, semantic tightening, and facade retirement are
+not implemented by this phase.
 
 The refactor is intentionally limited to package ownership, dependency
 direction, API clarity, and compatibility. It does not add new logging,
@@ -64,8 +66,8 @@ position inconsistently:
   which makes ownership unclear even though callers should see one JSON value
   type.
 
-At the Phase 0 baseline, 59 production files directly import one or both
-current packages: 43 import `loushang.protocol` and 17 import
+At the Phase 0 baseline, 60 production files directly import one or both
+current packages: 43 import `loushang.protocol` and 18 import
 `loushang.observability`, with one file importing both. This breadth requires
 a compatibility-first migration rather than a repository-wide rename in one
 change.
@@ -590,8 +592,8 @@ After canonical imports are adopted:
    architecture overview and subsystem documentation;
 2. update documents that currently state that `loushang.protocol` owns
    `JSONValue`;
-3. remove the documented Observability JSON compatibility exception after its
-   consumers are migrated;
+3. remove the documented diagnostic-projection compatibility exception after
+   its consumers are migrated;
 4. add Foundation standard-library-only and no-upward-dependency tests;
 5. prohibit new production imports from old packages; and
 6. require explicit allowlisting only for the forwarding modules themselves.

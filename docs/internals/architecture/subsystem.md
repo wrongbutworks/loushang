@@ -23,7 +23,7 @@
 当前已落地的支撑/实验性包包括：
 
 - `loushang.foundation`
-- `loushang.observability`
+- `loushang.observability`（诊断运行时的迁移期 compatibility namespace）
 - `loushang.ontology`
 - `loushang.protocol`（严格 JSON 的迁移期 compatibility namespace）
 
@@ -48,14 +48,18 @@ command substrate 的目标归属是 `loushang.harness`，见
 
 ### loushang-foundation
 
-产品无关、只依赖 Python 标准库的共同底座。当前 canonical implementation 是
-`loushang.foundation.json`，负责唯一的严格 `JSONValue` algebra、校验、复制
-与编码。`loushang.protocol` 暂时保留根包和 `json_value` 子模块转发，但不拥有
-第二份实现；现有生产调用方将在后续独立阶段按子系统迁移。
+产品无关、只依赖 Python 标准库的共同底座。当前 canonical implementations 是：
 
-Foundation 不负责 Product 策略、Agent/Harness 编排、Work 权威事件、Channel
-schema、诊断投影或任意 Python 对象到 JSON 的容错转换。Observability 仍是当前
-独立包，其迁入 Foundation 属于后续阶段。
+- `loushang.foundation.json`，负责唯一的严格 `JSONValue` algebra、校验、复制
+  与编码；
+- `loushang.foundation.observability`，负责日志上下文、问题记录、trace/debug
+  事件、sink 路由、运行时配置与运行时身份。
+
+`loushang.protocol` 和 `loushang.observability` 暂时保留根包及已有公开子模块的
+转发，但不拥有第二份实现或第二套全局状态；现有生产调用方将在后续独立阶段按
+子系统迁移。Foundation 不负责 Product 策略、Agent/Harness 编排、Work 权威
+事件、Channel schema，或者为诊断投影之外的新 wire schema 提供任意 Python
+对象到 JSON 的容错转换。
 
 ### loushang-ai
 

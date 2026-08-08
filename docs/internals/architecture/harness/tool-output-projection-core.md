@@ -38,13 +38,14 @@ The contract lives below AI because AI, Agent, Harness, Work, Channel, and
 future products all need the same wire-value invariant. AI must not import
 Agent or Harness, and Agent must not import Harness.
 
-`loushang.observability` remains a documented compatibility exception. Its
-stdlib-only `ProblemRecord`, AI error, provider trace, and structured-schema
-paths retain the older logging-oriented `JSONValue` helper until the later
-Observability migration adopts the canonical Foundation type. That helper is
-not an owner for new transcript, event, journal, Channel, or product wire
-schemas; architecture tests freeze its existing consumers so the exception
-cannot expand silently.
+`loushang.foundation.observability` owns the canonical diagnostics runtime and
+uses `loushang.foundation.json.JSONValue`; `loushang.observability` is now only
+a forwarding compatibility namespace. Its `ensure_json_safe_*` helpers remain
+a documented diagnostic-projection compatibility exception: existing AI
+error, provider trace, and structured-schema paths may still use their more
+permissive ingress policy, but that policy is not an owner for new transcript,
+event, journal, Channel, or product wire schemas. Architecture tests freeze
+its existing consumers so the exception cannot expand silently.
 
 ## Agent Ownership
 

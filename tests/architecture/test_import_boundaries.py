@@ -5194,7 +5194,8 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
         "live rendering and replay rendering consume the same result semantics",
         "In-memory and JSONL event logs enforce the same strict snapshot contract",
         "Channel envelope encoding validates the complete wire object",
-        "`loushang.observability` remains a documented compatibility exception",
+        "`loushang.foundation.observability` owns the canonical diagnostics runtime",
+        "a documented diagnostic-projection compatibility exception",
         "Product adapters still own tool-specific detail vocabulary",
         "Foundation -> Protocol compatibility -> AI -> Agent -> Harness -> Product dependency direction",
     }
@@ -5225,7 +5226,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
     assert CompatibilityJSONValue is JSONValue
 
 
-def test_observability_json_compatibility_exception_does_not_expand() -> None:
+def test_diagnostic_projection_compatibility_exception_does_not_expand() -> None:
     allowed_consumers = {
         "src/loushang/ai/errors.py",
         "src/loushang/ai/auth/support.py",

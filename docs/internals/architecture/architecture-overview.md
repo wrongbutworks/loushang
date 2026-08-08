@@ -75,7 +75,7 @@ Product-neutral playback substrate 验证。详细设计见
 - `loushang.harnesswork`
 - `loushang.work`
 - `loushang.foundation`
-- `loushang.observability`
+- `loushang.observability`（诊断运行时的迁移期 compatibility namespace）
 - `loushang.ontology`
 - `loushang.protocol`（严格 JSON 的迁移期 compatibility namespace）
 
@@ -103,6 +103,7 @@ loushang/
       tui/
       work/
       foundation/
+        observability/
       observability/
       ontology/
       protocol/
@@ -168,8 +169,9 @@ CLI / TUI
   `loushang.coding.ui` 只完成最终 UI composition 与 terminal binding
 - `channel` 定义边界通信协议类型，当前已落地最小 envelope / endpoint surface
 - `foundation.json` 提供不依赖产品、Harness、Agent 或 AI 的严格 JSON
-  wire-value algebra，供上述层共同使用；`protocol` 暂时只转发这一 canonical
-  contract，不再拥有独立实现
+  wire-value algebra；`foundation.observability` 提供同样产品无关的日志上下文、
+  问题记录、trace/debug 事件、sink 路由和运行时身份能力；旧 `protocol` 与
+  `observability` 包暂时只转发 canonical contract，不再拥有独立实现或状态
 
 ## Agent and Channel Documentation
 
