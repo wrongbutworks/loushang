@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, NotRequired, TypedDict
 
-from loushang.observability.problem import JSONValue
+from loushang.foundation.json import JSONValue
 
 
 class ResponseStartPart(TypedDict):

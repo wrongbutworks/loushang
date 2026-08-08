@@ -16,7 +16,7 @@ from loushang.ai.errors import (
     ai_error_from_info,
     ai_error_info_from_mapping,
 )
-from loushang.observability.problem import JSONValue
+from loushang.foundation.json import JSONValue
 
 if TYPE_CHECKING:
     from loushang.ai.event_stream.raw_parts import RawPart, ResponseErrorPart

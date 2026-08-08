@@ -5,8 +5,8 @@ from collections.abc import Mapping
 from contextlib import suppress
 from typing import Any, cast
 
+from loushang.foundation.json import JSONValue
 from loushang.observability import get_log
-from loushang.observability.problem import JSONValue
 
 _log = get_log(__name__).bind(component="AITrace")
 TRACE_SCHEMA = "loushang.ai.trace.v1"

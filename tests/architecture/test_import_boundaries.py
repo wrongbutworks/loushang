@@ -5229,11 +5229,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
 def test_diagnostic_projection_compatibility_exception_does_not_expand() -> None:
     allowed_consumers = {
         "src/loushang/ai/errors.py",
-        "src/loushang/ai/auth/support.py",
-        "src/loushang/ai/event_stream/raw_parts.py",
-        "src/loushang/ai/provider/errors.py",
         "src/loushang/ai/structured.py",
-        "src/loushang/ai/trace.py",
     }
     actual_consumers: set[str] = set()
     for path in Path("src/loushang").rglob("*.py"):
