@@ -9,6 +9,7 @@ from pathlib import Path
 FOUNDATION_ROOT = Path("src/loushang/foundation")
 PROTOCOL_ROOT = Path("src/loushang/protocol")
 OBSERVABILITY_COMPATIBILITY_ROOT = Path("src/loushang/observability")
+CANONICAL_OBSERVABILITY_ROOT = FOUNDATION_ROOT / "observability"
 
 _BASELINE_PROTOCOL_IMPORTERS = frozenset(
     {
@@ -135,6 +136,29 @@ def test_observability_compatibility_modules_define_no_runtime_implementation() 
     assert _runtime_implementation_modules(OBSERVABILITY_COMPATIBILITY_ROOT) == []
 
 
+def test_canonical_observability_compatibility_modules_define_no_runtime_implementation() -> None:
+    compatibility_modules = (
+        CANONICAL_OBSERVABILITY_ROOT / "problem.py",
+        CANONICAL_OBSERVABILITY_ROOT / "sinks.py",
+    )
+
+    assert _runtime_implementation_paths(compatibility_modules) == []
+
+
+def test_canonical_observability_router_does_not_depend_on_concrete_sinks() -> None:
+    router_imports = _relative_import_targets(
+        CANONICAL_OBSERVABILITY_ROOT / "_router.py"
+    )
+    assert router_imports.isdisjoint({"debug_log", "logger", "runtime", "trace"})
+
+    for module_name in ("debug_log", "trace"):
+        sink_imports = _relative_import_targets(
+            CANONICAL_OBSERVABILITY_ROOT / f"{module_name}.py"
+        )
+        assert "records" in sink_imports
+        assert "_router" not in sink_imports
+
+
 def test_legacy_protocol_importers_do_not_expand() -> None:
     actual_importers = {
         path.as_posix()
@@ -158,13 +182,26 @@ def test_legacy_observability_importers_do_not_expand() -> None:
 
 
 def _runtime_implementation_modules(root: Path) -> list[str]:
+    return _runtime_implementation_paths(root.rglob("*.py"))
+
+
+def _runtime_implementation_paths(paths) -> list[str]:
     forbidden_nodes = (ast.AsyncFunctionDef, ast.ClassDef, ast.FunctionDef)
     offenders: list[str] = []
-    for path in root.rglob("*.py"):
+    for path in paths:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if any(isinstance(node, forbidden_nodes) for node in ast.walk(tree)):
             offenders.append(path.as_posix())
     return offenders
+
+
+def _relative_import_targets(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {
+        node.module or ""
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.level
+    }
 
 
 def _imports_legacy_protocol(path: Path) -> bool:

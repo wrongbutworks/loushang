@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import loushang.foundation.json as foundation_json
 import loushang.foundation.observability as canonical
+import loushang.foundation.observability._router as canonical_router
 import loushang.foundation.observability.context as canonical_context
 import loushang.foundation.observability.debug_log as canonical_debug_log
 import loushang.foundation.observability.logger as canonical_logger
 import loushang.foundation.observability.problem as canonical_problem
 import loushang.foundation.observability.problem_text as canonical_problem_text
+import loushang.foundation.observability.projection as canonical_projection
+import loushang.foundation.observability.records as canonical_records
 import loushang.foundation.observability.runtime as canonical_runtime
 import loushang.foundation.observability.runtime_identity as canonical_identity
 import loushang.foundation.observability.sinks as canonical_sinks
@@ -54,14 +57,15 @@ def test_compatibility_submodules_forward_canonical_symbols() -> None:
         (compatibility_logger.ObservabilityLog, canonical_logger.ObservabilityLog),
         (compatibility_logger.get_log, canonical_logger.get_log),
         (compatibility_problem.ProblemRecord, canonical_problem.ProblemRecord),
+        (compatibility_problem.ProblemRecord, canonical_records.ProblemRecord),
         (compatibility_problem.ProblemSeverity, canonical_problem.ProblemSeverity),
         (
             compatibility_problem.ensure_json_safe_mapping,
-            canonical_problem.ensure_json_safe_mapping,
+            canonical_projection.ensure_json_safe_mapping,
         ),
         (
             compatibility_problem.ensure_json_safe_value,
-            canonical_problem.ensure_json_safe_value,
+            canonical_projection.ensure_json_safe_value,
         ),
         (
             compatibility_problem_text.ProblemRecordReader,
@@ -81,19 +85,19 @@ def test_compatibility_submodules_forward_canonical_symbols() -> None:
         ),
         (
             compatibility_sinks.DebugEventRecord,
-            canonical_sinks.DebugEventRecord,
+            canonical_records.DebugEventRecord,
         ),
         (
             compatibility_sinks.InMemoryProblemStore,
-            canonical_sinks.InMemoryProblemStore,
+            canonical_router.InMemoryProblemStore,
         ),
         (
             compatibility_sinks.configure_observability,
-            canonical_sinks.configure_observability,
+            canonical_router.configure_observability,
         ),
         (
             compatibility_sinks.capture_observability,
-            canonical_sinks.capture_observability,
+            canonical_router.capture_observability,
         ),
         (compatibility_trace.TraceJSONLSink, canonical_trace.TraceJSONLSink),
     )

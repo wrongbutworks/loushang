@@ -4,10 +4,10 @@ import json
 from pathlib import Path
 from threading import RLock
 
+from ..json import JSONValue
 from ._time import utc_now_iso
 from .context import LogContext
-from .problem import JSONValue, ProblemRecord
-from .sinks import DebugEventRecord
+from .records import DebugEventRecord, ProblemRecord
 
 
 class DebugLogSink:

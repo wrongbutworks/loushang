@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .problem import ProblemRecord
+from .records import ProblemRecord
 
 
 class ProblemRecordReader(Protocol):

@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from threading import RLock
 
-from .problem import JSONValue, ProblemRecord
-from .sinks import DebugEventRecord
+from ..json import JSONValue
+from .records import DebugEventRecord, ProblemRecord
 
 
 class TraceJSONLSink:

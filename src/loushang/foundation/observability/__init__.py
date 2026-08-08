@@ -2,7 +2,7 @@
 
 from .context import LogContext, log_context
 from .logger import ObservabilityLog, get_log
-from .problem import ProblemRecord, ProblemSeverity
+from .records import ProblemRecord, ProblemSeverity
 
 __all__ = [
     "LogContext",

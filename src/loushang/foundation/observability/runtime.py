@@ -9,14 +9,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from .context import log_context
-from .debug_log import DebugLogSink
-from .sinks import (
+from ._router import (
     capture_observability,
     configure_debug_logging,
     configure_observability,
     restore_observability,
 )
+from .context import log_context
+from .debug_log import DebugLogSink
 from .trace import TraceJSONLSink
 
 

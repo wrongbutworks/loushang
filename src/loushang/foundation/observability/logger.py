@@ -3,21 +3,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from ._time import monotonic_ms, utc_now_iso
-from .context import current_context
-from .problem import (
-    JSONValue,
-    ProblemRecord,
-    ProblemSeverity,
-    ensure_json_safe_mapping,
-)
-from .sinks import (
-    DebugEventRecord,
+from ..json import JSONValue
+from ._router import (
     emit_debug_event,
     emit_log,
     emit_problem,
     is_debug_event_enabled,
 )
+from ._time import monotonic_ms, utc_now_iso
+from .context import current_context
+from .projection import ensure_json_safe_mapping
+from .records import DebugEventRecord, ProblemRecord, ProblemSeverity
 
 
 @dataclass(frozen=True)
