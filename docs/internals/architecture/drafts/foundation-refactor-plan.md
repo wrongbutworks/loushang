@@ -64,8 +64,8 @@ position inconsistently:
   which makes ownership unclear even though callers should see one JSON value
   type.
 
-At the time of this draft, 59 production files directly import one or both
-current packages: 43 import `loushang.protocol` and 17 import
+At the Phase 0 baseline, 60 production files directly import one or both
+current packages: 43 import `loushang.protocol` and 18 import
 `loushang.observability`, with one file importing both. This breadth requires
 a compatibility-first migration rather than a repository-wide rename in one
 change.
@@ -671,7 +671,7 @@ compatibility deletion in one commit.
 | strict and diagnostic JSON behavior accidentally merged | one type owner, separately named policies, characterization tests |
 | import cycles from a broad root facade | minimal Foundation root; direct leaf imports; router inversion |
 | trace output silently changes | preserve private fallback initially; exact output tests |
-| large 59-file consumer churn hides regressions | compatibility-first migration in small subsystem batches |
+| large 60-file consumer churn hides regressions | compatibility-first migration in small subsystem batches |
 | old direct submodule imports break | provide forwarding modules for the complete observed path inventory |
 | Foundation becomes a dumping ground | admission rule and standard-library-only/import-direction gates |
 | `runtime.py` absorbs Product policy | retain only Observability lifecycle; audit helpers after mechanical move |
