@@ -13,6 +13,7 @@ Use long-lived worktree lanes for major module work:
 - `.worktrees/method` is the long-lived method/work-runtime lane when method-layer work is active. For `loushang.method`, method execution semantics, MethodPlan/WorkEvent projection, and work/method integration work, create or switch task branches inside this lane.
 - `.worktrees/ai` is the long-lived AI/provider lane when AI-layer work is active. For AI/provider/model/usage/auth work, create or switch task branches inside this lane.
 - `.worktrees/agent` is the long-lived agent-runtime lane when agent-layer work is active. For agent loop/session orchestration/queue/tool-call semantics work, create or switch task branches inside this lane.
+- `.worktrees/ontology` is the long-lived ontology lane. For `loushang.ontology`, operational ontology infrastructure, semantic schema/runtime, ontology actions/functions, standards interoperability, data fusion, and ontology architecture docs, create or switch task branches inside this lane. Use `lane/ontology` as its integration branch and keep it synchronized with the control lane's latest `main`.
 
 Only the control lane should normally check out `main`. Other lanes should use task branches based on `main` or `origin/main` and should regularly rebase or merge the latest `main`. Before switching branches in any lane, check dirty state and preserve user changes.
 
