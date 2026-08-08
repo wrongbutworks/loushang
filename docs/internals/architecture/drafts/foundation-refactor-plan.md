@@ -64,8 +64,8 @@ position inconsistently:
   which makes ownership unclear even though callers should see one JSON value
   type.
 
-At the Phase 0 baseline, 60 production files directly import one or both
-current packages: 43 import `loushang.protocol` and 18 import
+At the Phase 0 baseline, 59 production files directly import one or both
+current packages: 43 import `loushang.protocol` and 17 import
 `loushang.observability`, with one file importing both. This breadth requires
 a compatibility-first migration rather than a repository-wide rename in one
 change.

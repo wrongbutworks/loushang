@@ -74,9 +74,10 @@ Product-neutral playback substrate 验证。详细设计见
 - `loushang.tui`
 - `loushang.harnesswork`
 - `loushang.work`
+- `loushang.foundation`
 - `loushang.observability`
 - `loushang.ontology`
-- `loushang.protocol`
+- `loushang.protocol`（严格 JSON 的迁移期 compatibility namespace）
 
 `loushang.channel` 提供承载 `WorkOperation` / `WorkEvent` 以及已投影
 `RuntimeEventView` 的边界协议，及 `rpc_jsonl` 的 JSONL framing、request
@@ -101,6 +102,7 @@ loushang/
       method/
       tui/
       work/
+      foundation/
       observability/
       ontology/
       protocol/
@@ -165,8 +167,9 @@ CLI / TUI
 - `coding` 提供产品化装配；产品语义留在 feature-local adapter，
   `loushang.coding.ui` 只完成最终 UI composition 与 terminal binding
 - `channel` 定义边界通信协议类型，当前已落地最小 envelope / endpoint surface
-- `protocol` 提供不依赖产品、Harness、Agent 或 AI 的严格 JSON wire-value
-  algebra，供上述层共同使用
+- `foundation.json` 提供不依赖产品、Harness、Agent 或 AI 的严格 JSON
+  wire-value algebra，供上述层共同使用；`protocol` 暂时只转发这一 canonical
+  contract，不再拥有独立实现
 
 ## Agent and Channel Documentation
 

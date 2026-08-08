@@ -25,7 +25,8 @@ loushang.harness.session -> loushang.agent -> loushang.ai
 Related data contracts live with their actual lower-layer owner rather than in
 Harness:
 
-- `loushang.protocol` owns the strict cross-layer JSON value algebra;
+- `loushang.foundation.json` owns the strict cross-layer JSON value algebra;
+  `loushang.protocol` is its migration compatibility facade;
 - `loushang.ai.json_codec` owns AI message, content-part, usage, and assistant
   event JSON codecs;
 - `loushang.ai.model.ModelSelection` owns stable model references;

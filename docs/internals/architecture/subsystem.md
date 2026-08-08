@@ -22,9 +22,10 @@
 
 当前已落地的支撑/实验性包包括：
 
+- `loushang.foundation`
 - `loushang.observability`
 - `loushang.ontology`
-- `loushang.protocol`
+- `loushang.protocol`（严格 JSON 的迁移期 compatibility namespace）
 
 `loushang.runtime` 不再作为子系统保留。若某个 worktree 中仍存在
 `src/loushang/runtime`，它只是待删除的旧 command/effect 临时路径；迁移目标是
@@ -44,6 +45,17 @@ command substrate 的目标归属是 `loushang.harness`，见
 命令表与 UI payload 不属于长期 Channel core。
 
 ## Subsystem Responsibilities
+
+### loushang-foundation
+
+产品无关、只依赖 Python 标准库的共同底座。当前 canonical implementation 是
+`loushang.foundation.json`，负责唯一的严格 `JSONValue` algebra、校验、复制
+与编码。`loushang.protocol` 暂时保留根包和 `json_value` 子模块转发，但不拥有
+第二份实现；现有生产调用方将在后续独立阶段按子系统迁移。
+
+Foundation 不负责 Product 策略、Agent/Harness 编排、Work 权威事件、Channel
+schema、诊断投影或任意 Python 对象到 JSON 的容错转换。Observability 仍是当前
+独立包，其迁入 Foundation 属于后续阶段。
 
 ### loushang-ai
 

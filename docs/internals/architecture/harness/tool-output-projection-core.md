@@ -12,15 +12,16 @@ direction: the core contract belongs below Harness rather than being placed in
 ## Ownership Stack
 
 ```text
-loushang.protocol              # strict JSON value algebra
+loushang.foundation.json       # canonical strict JSON value algebra
+  -> loushang.protocol         # migration compatibility facade
   -> loushang.ai               # durable AI message schema and codec
   -> loushang.agent            # raw tool result plus boundary projectors
   -> loushang.harness          # strict journals and shared presentation runtime
   -> Product adapter           # event/RPC schemas, artifacts, UI, domain details
 ```
 
-`loushang.protocol` owns `JSONValue` for the strict wire algebra used by this
-core, plus `JsonValueError`, validation, copying, and JSON dumping with
+`loushang.foundation.json` owns `JSONValue` for the strict wire algebra used by
+this core, plus `JsonValueError`, validation, copying, and JSON dumping with
 `allow_nan=False`. It accepts only null, exact built-in booleans, valid UTF-8
 strings, encoder-supported integers, finite floats, exact lists, and exact
 string-keyed dictionaries. It rejects scalar and container subclasses,
@@ -29,16 +30,21 @@ the runtime. It never implicitly converts `Path`, tuple, set, dataclass, enum,
 bytes, arbitrary `__dict__`, or an unknown object through `repr()`. Diagnostic
 error paths escape control characters and bound attacker-controlled key text.
 
+`loushang.protocol` is the migration compatibility facade for this contract.
+Its root and `json_value` submodule forward the canonical Foundation objects;
+they do not define a second type, exception, validator, or encoder.
+
 The contract lives below AI because AI, Agent, Harness, Work, Channel, and
 future products all need the same wire-value invariant. AI must not import
 Agent or Harness, and Agent must not import Harness.
 
 `loushang.observability` remains a documented compatibility exception. Its
 stdlib-only `ProblemRecord`, AI error, provider trace, and structured-schema
-paths retain the older logging-oriented `JSONValue` helper until that package
-can adopt a stdlib-only shared primitive. That helper is not an owner for new
-transcript, event, journal, Channel, or product wire schemas; architecture
-tests freeze its existing consumers so the exception cannot expand silently.
+paths retain the older logging-oriented `JSONValue` helper until the later
+Observability migration adopts the canonical Foundation type. That helper is
+not an owner for new transcript, event, journal, Channel, or product wire
+schemas; architecture tests freeze its existing consumers so the exception
+cannot expand silently.
 
 ## Agent Ownership
 
@@ -129,8 +135,8 @@ diagnostic. The source file is not rewritten implicitly. Harness journal parsing
 and every new append remain strict JSON. The syntax-only
 `parse_legacy_jsonl_line()` helper is explicit and opt-in; it returns legacy
 constants without assigning migration semantics, while Coding owns the value
-conversion and dumps the migrated temporary line through the strict Protocol
-JSON dumper.
+conversion and writes the migrated temporary line with the strict Foundation
+JSON dumper through the Protocol compatibility facade.
 
 Harness journal codecs validate every encoded mapping before opening a durable
 write, reject non-standard constants and invalid strict values while reading,
@@ -199,6 +205,6 @@ The boundary is complete while all of these remain true:
   rejected without coercion, and importing Channel does not load Agent or AI;
 - Coding tests cover event, RPC, branch-summary, print, export, and transcript
   compatibility;
-- architecture tests preserve the Protocol -> AI -> Agent -> Harness ->
-  Product dependency direction;
+- architecture tests preserve the Foundation -> Protocol compatibility -> AI
+  -> Agent -> Harness -> Product dependency direction;
 - the full non-live repository test suite passes.

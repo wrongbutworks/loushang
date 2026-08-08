@@ -58,7 +58,7 @@ packages' relative internal imports.
 | Subsystem | Protocol | Observability |
 |---|---:|---:|
 | Agent | 4 | 1 |
-| AI | 2 | 7 |
+| AI | 2 | 6 |
 | Channel | 2 | 0 |
 | Coding | 1 | 4 |
 | Harness | 30 | 5 |
@@ -66,10 +66,10 @@ packages' relative internal imports.
 | HarnessWork | 2 | 0 |
 | Ontology | 1 | 0 |
 | TUI | 0 | 1 |
-| Total | 43 | 18 |
+| Total | 43 | 17 |
 
 `src/loushang/agent/agent_loop.py` is the only file importing both packages,
-so the union is 60 production files.
+so the union is 59 production files.
 
 ## Direct Submodule Imports
 

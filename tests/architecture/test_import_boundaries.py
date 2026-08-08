@@ -5185,7 +5185,8 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
     required_phrases = {
         "Tool Output Projection Core Boundary",
         "implementation complete for integration into `lane/harness`",
-        "`loushang.protocol` owns `JSONValue`",
+        "`loushang.foundation.json` owns `JSONValue`",
+        "`loushang.protocol` is the migration compatibility facade",
         "`ToolOutputProjector[TDetails]`",
         "Transcript, event, and hook projections are snapshotted independently",
         "`tool_output_projection_failed`",
@@ -5195,7 +5196,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
         "Channel envelope encoding validates the complete wire object",
         "`loushang.observability` remains a documented compatibility exception",
         "Product adapters still own tool-specific detail vocabulary",
-        "Protocol -> AI -> Agent -> Harness -> Product dependency direction",
+        "Foundation -> Protocol compatibility -> AI -> Agent -> Harness -> Product dependency direction",
     }
     assert (
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
@@ -5212,7 +5213,8 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
     assert "multi-view tool-output projection core live in Agent" in inventory_text
 
     from loushang.agent import AgentToolResult, ToolOutputProjector
-    from loushang.protocol import JSONValue, require_json_value
+    from loushang.foundation.json import JSONValue, require_json_value
+    from loushang.protocol import JSONValue as CompatibilityJSONValue
 
     assert (
         AgentToolResult.__annotations__["projector"] == "ToolOutputProjector[TDetails]"
@@ -5220,6 +5222,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
     assert ToolOutputProjector is not None
     assert require_json_value({"ok": True}) == {"ok": True}
     assert JSONValue is not None
+    assert CompatibilityJSONValue is JSONValue
 
 
 def test_observability_json_compatibility_exception_does_not_expand() -> None:
