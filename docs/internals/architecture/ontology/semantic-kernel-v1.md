@@ -83,6 +83,9 @@ Legacy Python property validators remain available only when the dynamic facade
 is used. They are process-local compatibility extensions and are deliberately
 not serialized, loaded, or treated as portable schema semantics.
 
+The field-by-field enforcement boundary is normative for V1 and is recorded in
+[Runtime Enforcement Matrix V1](runtime-enforcement-v1.md).
+
 ## Non-Goals
 
 V1 does not add:

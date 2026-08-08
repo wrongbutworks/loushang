@@ -73,21 +73,42 @@ class ObjectType:
 
     def all_properties(self, registry: dict[str, ObjectType] | None = None) -> list[Property]:
         """获取所有属性（含继承自父类型的）."""
-        props = list(self.properties)
-        if registry:
-            for parent_name in self.parent_types:
-                parent = registry.get(parent_name)
-                if parent:
-                    props.extend(parent.all_properties(registry))
-        return props
+        if not registry:
+            return list(self.properties)
+        return self._all_properties(registry, visiting=set())
 
-    def validate_properties(self, data: dict[str, object]) -> dict[str, object]:
+    def _all_properties(
+        self,
+        registry: dict[str, ObjectType],
+        *,
+        visiting: set[str],
+    ) -> list[Property]:
+        if self.name in visiting:
+            return []
+        visiting.add(self.name)
+        resolved: dict[str, Property] = {}
+        for parent_name in self.parent_types:
+            parent = registry.get(parent_name)
+            if parent is not None:
+                for prop in parent._all_properties(registry, visiting=visiting):
+                    resolved[prop.name] = prop
+        visiting.remove(self.name)
+        for prop in self.properties:
+            resolved[prop.name] = prop
+        return list(resolved.values())
+
+    def validate_properties(
+        self,
+        data: dict[str, object],
+        registry: dict[str, ObjectType] | None = None,
+    ) -> dict[str, object]:
         """校验并填充默认值，返回处理后的数据字典."""
         result = dict(data)
-        prop_map = {p.name: p for p in self.properties}
+        properties = self.all_properties(registry)
+        prop_map = {p.name: p for p in properties}
 
         # 检查必填
-        for prop in self.properties:
+        for prop in properties:
             if prop.required and prop.name not in result:
                 if prop.default is not None:
                     result[prop.name] = prop.default

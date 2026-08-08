@@ -121,9 +121,11 @@ class ObjectStore:
         type_def = self._object_types.get(object_type)
         if type_def is None:
             raise ValueError(f"Object type '{object_type}' not registered")
+        if type_def.abstract:
+            raise ValueError(f"Object type '{object_type}' is abstract and cannot be instantiated")
 
         # 校验并填充默认值
-        validated = type_def.validate_properties(properties or {})
+        validated = type_def.validate_properties(properties or {}, self._object_types)
 
         obj = OntologyObject(object_type=object_type, obj_id=obj_id)
         for name, value in validated.items():
@@ -133,7 +135,7 @@ class ObjectStore:
         self._type_index[object_type].add(obj.id)
 
         # 更新属性索引
-        for prop in type_def.properties:
+        for prop in type_def.all_properties(self._object_types):
             if prop.indexed and prop.name in validated:
                 self._property_index.setdefault(prop.name, {}).setdefault(validated[prop.name], set()).add(obj.id)
 
@@ -156,7 +158,7 @@ class ObjectStore:
         # 清理属性索引
         type_def = self._object_types.get(obj.object_type)
         if type_def:
-            for prop in type_def.properties:
+            for prop in type_def.all_properties(self._object_types):
                 if prop.indexed:
                     idx = self._property_index.get(prop.name, {})
                     for value_set in idx.values():
@@ -194,6 +196,8 @@ class ObjectStore:
             raise TypeError(
                 f"Link '{link_type}' target must be {link_def.target_type}, got {target.object_type}"
             )
+
+        _validate_link_cardinality(link_def, source, target)
 
         source.link(link_type, target, timestamp=timestamp, properties=properties)
 
@@ -281,3 +285,22 @@ class ObjectStore:
 
     def count(self) -> int:
         return len(self._objects)
+
+
+def _validate_link_cardinality(
+    link_def: LinkType,
+    source: OntologyObject,
+    target: OntologyObject,
+) -> None:
+    if not link_def.allows_multiple_targets():
+        active_targets = source.get_links(link_def.name)
+        if any(link.target_id != target.id for link in active_targets):
+            raise ValueError(
+                f"Link '{link_def.name}' cardinality allows only one target per source"
+            )
+    if not link_def.allows_multiple_sources():
+        active_sources = target.get_incoming(link_def.name)
+        if any(link.target_id != source.id for link in active_sources):
+            raise ValueError(
+                f"Link '{link_def.name}' cardinality allows only one source per target"
+            )

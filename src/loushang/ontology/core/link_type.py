@@ -24,7 +24,7 @@ class LinkType:
         source_type: 源对象类型名
         target_type: 目标对象类型名
         cardinality: 基数约束
-        required: 源对象是否必须至少有一个此关系
+        required: 必需关系声明（V1 仅作为 metadata，尚无事务级强制）
         inverse_name: 反向关系名称，如 "owned_by"
         temporal: 关系是否带时间戳（支持历史关系查询）
         description: 人类可读描述

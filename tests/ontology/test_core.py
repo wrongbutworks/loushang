@@ -254,7 +254,12 @@ class TestOntology:
         onto = Ontology()
         onto.define_object_type("Person", properties=[Property("name", str)])
         onto.define_object_type("Company", properties=[Property("name", str)])
-        onto.define_link_type("works_for", "Person", "Company")
+        onto.define_link_type(
+            "works_for",
+            "Person",
+            "Company",
+            cardinality=Cardinality.MANY_TO_ONE,
+        )
 
         alice = onto.create("Person", name="Alice")
         bob = onto.create("Person", name="Bob")

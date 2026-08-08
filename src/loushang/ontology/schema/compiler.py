@@ -299,6 +299,8 @@ class OntologyCompiler:
                         )
                     )
 
+        _validate_parent_cycles(draft.object_types, diagnostics)
+
         compiled_links: list[CompiledLinkTypeDefinition] = []
         link_names: set[str] = set()
         for link_index, link_type in enumerate(draft.link_types):
@@ -379,6 +381,53 @@ def _validate_identifier(
                 "identifier must start with a letter and contain only letters, digits, '.', '_' or '-'",
             )
         )
+
+
+def _validate_parent_cycles(
+    object_types: tuple[ObjectTypeDefinition, ...] | list[ObjectTypeDefinition],
+    diagnostics: list[SchemaDiagnostic],
+) -> None:
+    by_name = {object_type.name: object_type for object_type in object_types}
+    object_indexes = {object_type.name: index for index, object_type in enumerate(object_types)}
+    state: dict[str, int] = {}
+    stack: list[str] = []
+    reported_cycles: set[frozenset[str]] = set()
+
+    def visit(name: str) -> None:
+        state[name] = 1
+        stack.append(name)
+        object_type = by_name[name]
+        for parent_index, parent_name in enumerate(object_type.parent_types):
+            if parent_name not in by_name:
+                continue
+            if state.get(parent_name, 0) == 0:
+                visit(parent_name)
+                continue
+            if state.get(parent_name) != 1:
+                continue
+
+            cycle_start = stack.index(parent_name)
+            cycle = stack[cycle_start:] + [parent_name]
+            cycle_key = frozenset(cycle)
+            if cycle_key in reported_cycles:
+                continue
+            reported_cycles.add(cycle_key)
+            diagnostics.append(
+                SchemaDiagnostic(
+                    "parent_type_cycle",
+                    (
+                        f"$.object_types[{object_indexes[name]}]"
+                        f".parent_types[{parent_index}]"
+                    ),
+                    f"parent type cycle detected: {' -> '.join(cycle)}",
+                )
+            )
+        stack.pop()
+        state[name] = 2
+
+    for object_type in object_types:
+        if state.get(object_type.name, 0) == 0:
+            visit(object_type.name)
 
 
 def _normalize_value_type(value: object) -> ValueType | None:
