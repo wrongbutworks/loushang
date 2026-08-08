@@ -800,6 +800,90 @@ def test_screen_coding_tui_rerenders_current_streaming_table_block(monkeypatch) 
 
 
 @pytest.mark.tui_render_contract
+def test_screen_coding_tui_repaints_table_when_late_row_widens_column() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.tui import FakeTerminalPort, RenderLoop, TerminalSize, TuiRuntime
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd1234",
+        now=lambda: 10.0,
+        active_transcript_line_budget=10_000,
+    )
+    app.start_prompt("stream table", started_at=9.0)
+    app.begin_assistant()
+
+    runtime = TuiRuntime(
+        render_loop=RenderLoop(app),
+        terminal=FakeTerminalPort(size=TerminalSize(columns=120, rows=40)),
+    )
+    short_table = (
+        "| 子包 | 文件数 | 行数 |\n"
+        "| --- | --- | --- |\n"
+        + "".join(
+            f"| package_{index:04d} | {index} | {index * 10:,} |\n"
+            for index in range(1, 1_000)
+        )
+    )
+    wide_package_name = "agent_transcript_" + ("x" * 63)
+    late_row = f"| {wide_package_name} | 1,000 | 100,000 |\n"
+
+    app.append_assistant_chunk(short_table)
+    runtime.render_now()
+    app.append_assistant_chunk(late_row)
+    step = runtime.render_now()
+
+    actual = tuple(
+        strip_control_sequences(line).rstrip()
+        for line in step.diagnostics.current_logical_lines
+    )
+    screen = (
+        tuple(
+            strip_control_sequences(line).rstrip()
+            for line in step.frame.screen_after.visible_lines
+        )
+        if step.frame is not None
+        else ()
+    )
+    expected = _fresh_flat_streaming_oracle_lines(
+        short_table + late_row,
+        records=(UserPromptRecord("stream table"),),
+        theme=app.transcript_theme,
+        width=120,
+        max_height=10_000,
+    )
+
+    def table_block(lines: tuple[str, ...]) -> tuple[str, ...]:
+        start = next(index for index, line in enumerate(lines) if "┌" in line)
+        end = start + next(
+            offset
+            for offset, line in enumerate(lines[start:], start=1)
+            if "└" in line
+        )
+        return lines[start:end]
+
+    expected_table = table_block(tuple(line.rstrip() for line in expected))
+    actual_table = table_block(actual)
+
+    assert actual_table == expected_table
+    assert len(actual_table) == 2_003
+    assert wide_package_name in actual_table[-2]
+    assert step.diagnostics.changed_line_range is not None
+    table_start = next(index for index, line in enumerate(actual) if "┌" in line)
+    assert step.diagnostics.changed_line_range[0] == table_start
+    viewport_top = step.diagnostics.viewport_top
+    expected_screen = tuple(
+        actual[viewport_top : viewport_top + len(screen)]
+    )
+    assert screen == expected_screen
+    assert table_start == next(
+        index for index, line in enumerate(actual) if "┌" in line
+    )
+
+
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_clears_transient_draft_cache_after_assistant_commit() -> (
     None
 ):
