@@ -5226,10 +5226,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
     assert CompatibilityJSONValue is JSONValue
 
 
-def test_diagnostic_projection_compatibility_exception_does_not_expand() -> None:
-    allowed_consumers = {
-        "src/loushang/ai/structured.py",
-    }
+def test_legacy_observability_problem_imports_are_retired() -> None:
     actual_consumers: set[str] = set()
     for path in Path("src/loushang").rglob("*.py"):
         if path.is_relative_to("src/loushang/observability"):
@@ -5240,7 +5237,7 @@ def test_diagnostic_projection_compatibility_exception_does_not_expand() -> None
         ):
             actual_consumers.add(path.as_posix())
 
-    assert actual_consumers == allowed_consumers
+    assert actual_consumers == set()
 
 
 def test_coding_internal_run_state_imports_use_harness_owner() -> None:

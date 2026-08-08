@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from typing import Any, cast
 
 import pytest
 
@@ -22,6 +23,7 @@ from loushang.ai.structured import (
     parse_structured_output,
 )
 from loushang.ai.types import AssistantMessage, TextPart, Usage
+from loushang.foundation.json import JsonValueError
 
 
 def _assistant_json(text: str) -> AssistantMessage:
@@ -92,6 +94,26 @@ def test_structured_output_formats_openai_payloads_from_schema_type() -> None:
             "strict": True,
         }
     }
+
+
+def test_structured_output_rejects_non_strict_json_schema_values() -> None:
+    schema = cast(
+        Any,
+        {
+            "title": "TupleSchema",
+            "type": "object",
+            "required": ("answer",),
+        },
+    )
+    options = CallOptions(
+        output=StructuredOutputOptions(mode="json_schema", schema=schema)
+    )
+
+    with pytest.raises(JsonValueError) as exc_info:
+        openai_chat_response_format(options)
+
+    assert exc_info.value.path == "schema.required"
+    assert exc_info.value.value_type == "tuple"
 
 
 def test_structured_output_json_object_parses_raw_message() -> None:

@@ -59,13 +59,6 @@ _BASELINE_PROTOCOL_IMPORTERS = frozenset(
     }
 )
 
-_BASELINE_OBSERVABILITY_IMPORTERS = frozenset(
-    {
-        "src/loushang/ai/structured.py",
-    }
-)
-
-
 def test_foundation_uses_only_stdlib_and_relative_imports() -> None:
     failures: list[str] = []
     for path in FOUNDATION_ROOT.rglob("*.py"):
@@ -153,7 +146,7 @@ def test_legacy_protocol_importers_do_not_expand() -> None:
     assert actual_importers <= _BASELINE_PROTOCOL_IMPORTERS
 
 
-def test_legacy_observability_importers_do_not_expand() -> None:
+def test_production_does_not_import_legacy_observability() -> None:
     actual_importers = {
         path.as_posix()
         for path in Path("src/loushang").rglob("*.py")
@@ -161,7 +154,7 @@ def test_legacy_observability_importers_do_not_expand() -> None:
         if _imports_legacy_observability(path)
     }
 
-    assert actual_importers <= _BASELINE_OBSERVABILITY_IMPORTERS
+    assert actual_importers == set()
 
 
 def _runtime_implementation_modules(root: Path) -> list[str]:
