@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
+
+if TYPE_CHECKING:
+    from loushang.ontology.core.mutation import ManagedObjectMutationPort
 
 
 @dataclass
@@ -54,6 +57,7 @@ class OntologyObject:
         # link_type_name -> [versions, newest last]
         self._outgoing: dict[str, list[LinkVersion]] = outgoing_links or {}
         self._incoming: dict[str, list[LinkVersion]] = incoming_links or {}
+        self._mutation_port: ManagedObjectMutationPort | None = None
 
     # ------------------------------------------------------------------
     # 属性操作（时序版本）
@@ -68,6 +72,34 @@ class OntologyObject:
         source: str | None = None,
     ) -> None:
         """设置属性值，创建新版本."""
+        if self._mutation_port is not None:
+            self._mutation_port.set_property(
+                self,
+                name,
+                value,
+                timestamp=timestamp,
+                author=author,
+                source=source,
+            )
+            return
+        self._set_unchecked(
+            name,
+            value,
+            timestamp=timestamp,
+            author=author,
+            source=source,
+        )
+
+    def _set_unchecked(
+        self,
+        name: str,
+        value: Any,
+        *,
+        timestamp: float | None = None,
+        author: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        """Append a property version after the owning runtime has validated it."""
         import time
 
         ts = timestamp if timestamp is not None else time.time()
@@ -118,6 +150,33 @@ class OntologyObject:
         properties: dict[str, Any] | None = None,
     ) -> None:
         """建立 outgoing 关系."""
+        if self._mutation_port is not None:
+            self._mutation_port.link_objects(
+                self,
+                link_type,
+                target,
+                timestamp=timestamp,
+                properties=properties,
+            )
+            return
+        if target._mutation_port is not None:
+            raise ValueError("Cannot link a standalone object to a managed object")
+        self._link_unchecked(
+            link_type,
+            target,
+            timestamp=timestamp,
+            properties=properties,
+        )
+
+    def _link_unchecked(
+        self,
+        link_type: str,
+        target: OntologyObject,
+        *,
+        timestamp: float | None = None,
+        properties: dict[str, Any] | None = None,
+    ) -> None:
+        """Append an outgoing link after the owning runtime has validated it."""
         import time
 
         ts = timestamp if timestamp is not None else time.time()
@@ -136,6 +195,26 @@ class OntologyObject:
         timestamp: float | None = None,
     ) -> None:
         """软删除关系（追加失效版本，保留历史）."""
+        if self._mutation_port is not None:
+            self._mutation_port.unlink_objects(
+                self,
+                link_type,
+                target,
+                timestamp=timestamp,
+            )
+            return
+        if target._mutation_port is not None:
+            raise ValueError("Cannot unlink a standalone object from a managed object")
+        self._unlink_unchecked(link_type, target, timestamp=timestamp)
+
+    def _unlink_unchecked(
+        self,
+        link_type: str,
+        target: OntologyObject,
+        *,
+        timestamp: float | None = None,
+    ) -> None:
+        """Append an unlink version after the owning runtime has validated it."""
         import time
 
         ts = timestamp if timestamp is not None else time.time()
@@ -148,6 +227,13 @@ class OntologyObject:
             properties={},
         )
         self._outgoing.setdefault(link_type, []).append(version)
+
+    def _bind_mutation_port(self, port: ManagedObjectMutationPort) -> None:
+        """Bind this object to one owning runtime for its remaining lifetime."""
+
+        if self._mutation_port is not None and self._mutation_port is not port:
+            raise RuntimeError("Ontology object is already managed by another runtime")
+        self._mutation_port = port
 
     def get_links(
         self,

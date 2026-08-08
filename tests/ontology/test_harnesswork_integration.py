@@ -122,3 +122,55 @@ def test_atomic_ontology_action_failure_does_not_publish_commit() -> None:
         ]
 
     asyncio.run(scenario())
+
+
+def test_ontology_action_handler_cannot_bypass_managed_value_validation() -> None:
+    from loushang.harnesswork import InMemoryEventLogBackend
+    from loushang.ontology import Ontology, Property
+    from loushang.ontology.integrations.harnesswork import (
+        OntologyActionWorkRequest,
+        create_ontology_action_operation,
+        create_ontology_action_runtime,
+    )
+
+    ontology = Ontology()
+    ontology.define_object_type("Record", properties=[Property("value", int)])
+    record = ontology.create("Record", value=10)
+
+    class InvalidActionHandler:
+        async def execute(self, action):
+            target = ontology.get(record.id)
+            assert target is not None
+            target.set("value", action.parameters["value"])
+            return {"value": action.parameters["value"]}
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        runtime = create_ontology_action_runtime(
+            handler=InvalidActionHandler(),
+            event_log=event_log,
+        )
+        operation = create_ontology_action_operation(
+            OntologyActionWorkRequest(
+                action_type="Record.UpdateValue",
+                object_id=str(record.id),
+                parameters={"value": "invalid"},
+            ),
+            operation_id="record-update-invalid-1",
+            session_id="ontology-session-1",
+        )
+
+        accepted = await runtime.accept(operation)
+        with pytest.raises(ValueError, match="value"):
+            await runtime.wait(accepted.run_id)
+
+        assert record.get("value") == 10
+        assert len(record.history("value")) == 1
+        assert [entry.payload["kind"] for entry in event_log.query(run_id=accepted.run_id)] == [
+            "ExecuteOntologyAction",
+            "WorkRunStarted",
+            "OntologyActionStarted",
+            "WorkRunFailed",
+        ]
+
+    asyncio.run(scenario())

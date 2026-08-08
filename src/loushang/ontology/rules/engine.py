@@ -108,7 +108,7 @@ class RuleEngine:
 
         def action(onto: Ontology, obj: OntologyObject) -> None:
             new_value = value_fn(obj)
-            obj.set(target_property, new_value)
+            onto.set_property(obj, target_property, new_value)
 
         return Rule(
             name=name,

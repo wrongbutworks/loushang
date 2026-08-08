@@ -1,6 +1,8 @@
 """规则引擎测试."""
 
 
+import pytest
+
 from loushang.ontology import Ontology, Property, RuleEngine
 
 
@@ -137,3 +139,23 @@ class TestRuleEngine:
         engine.register(rule)
         assert engine.unregister("test_rule") is True
         assert engine.unregister("test_rule") is False
+
+    def test_property_rule_cannot_bypass_managed_value_validation(self) -> None:
+        onto = Ontology()
+        onto.define_object_type("Item", properties=[Property("count", int)])
+        engine = RuleEngine(onto)
+        engine.register(
+            RuleEngine.property_rule(
+                name="invalid_count",
+                condition=lambda obj: True,
+                target_property="count",
+                value_fn=lambda obj: "invalid",
+            )
+        )
+        item = onto.create("Item", count=1)
+
+        with pytest.raises(ValueError, match="count"):
+            engine.evaluate(item, "property_change")
+
+        assert item.get("count") == 1
+        assert len(item.history("count")) == 1

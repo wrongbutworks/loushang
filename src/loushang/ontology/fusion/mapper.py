@@ -135,4 +135,4 @@ class DataFusion:
             if value is not None:
                 if fm.transform is not None:
                     value = fm.transform(value)
-                obj.set(fm.target_property, value)
+                self._ontology.set_property(obj, fm.target_property, value)

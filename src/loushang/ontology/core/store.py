@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from loushang.ontology.schema import CompiledOntologySchema
 
 
+_MISSING = object()
+
+
 class ObjectStore:
     """内存对象存储，管理所有本体实例.
 
@@ -127,19 +130,78 @@ class ObjectStore:
         # 校验并填充默认值
         validated = type_def.validate_properties(properties or {}, self._object_types)
 
+        indexed_properties = {
+            prop.name: prop
+            for prop in type_def.all_properties(self._object_types)
+            if prop.indexed and prop.name in validated
+        }
+        for name, prop in indexed_properties.items():
+            _require_indexable_value(prop.name, validated[name])
+
         obj = OntologyObject(object_type=object_type, obj_id=obj_id)
         for name, value in validated.items():
-            obj.set(name, value)
+            obj._set_unchecked(name, value)
 
         self._objects[obj.id] = obj
         self._type_index[object_type].add(obj.id)
 
         # 更新属性索引
-        for prop in type_def.all_properties(self._object_types):
-            if prop.indexed and prop.name in validated:
-                self._property_index.setdefault(prop.name, {}).setdefault(validated[prop.name], set()).add(obj.id)
+        for name in indexed_properties:
+            self._property_index.setdefault(name, {}).setdefault(
+                validated[name], set()
+            ).add(obj.id)
+
+        obj._bind_mutation_port(self)
 
         return obj
+
+    def set_property(
+        self,
+        obj: OntologyObject,
+        name: str,
+        value: Any,
+        *,
+        timestamp: float | None = None,
+        author: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        """Validate and update one property on an object owned by this store."""
+
+        self._require_owned_object(obj)
+        type_def = self._object_types[obj.object_type]
+        prop = next(
+            (
+                candidate
+                for candidate in type_def.all_properties(self._object_types)
+                if candidate.name == name
+            ),
+            None,
+        )
+        if prop is not None:
+            prop.validate(value)
+
+        previous_versions = obj.history(name)
+        previous_value = previous_versions[-1].value if previous_versions else _MISSING
+        if prop is not None and prop.indexed:
+            _require_indexable_value(prop.name, value)
+
+        obj._set_unchecked(
+            name,
+            value,
+            timestamp=timestamp,
+            author=author,
+            source=source,
+        )
+
+        if prop is not None and prop.indexed:
+            index = self._property_index.setdefault(prop.name, {})
+            if previous_value is not _MISSING:
+                previous_ids = index.get(previous_value)
+                if previous_ids is not None:
+                    previous_ids.discard(obj.id)
+                    if not previous_ids:
+                        del index[previous_value]
+            index.setdefault(value, set()).add(obj.id)
 
     def get(self, obj_id: UUID) -> OntologyObject | None:
         """按 UUID 获取对象."""
@@ -169,6 +231,27 @@ class ObjectStore:
     # 关系管理（维护双向索引）
     # ------------------------------------------------------------------
 
+    def link_objects(
+        self,
+        source: OntologyObject,
+        link_type: str,
+        target: OntologyObject,
+        *,
+        timestamp: float | None = None,
+        properties: dict[str, Any] | None = None,
+    ) -> None:
+        """Establish a relation between two objects owned by this store."""
+
+        self._require_owned_object(source)
+        self._require_owned_object(target)
+        self._link_owned(
+            source,
+            link_type,
+            target,
+            timestamp=timestamp,
+            properties=properties,
+        )
+
     def link(
         self,
         source_id: UUID,
@@ -178,14 +261,31 @@ class ObjectStore:
         properties: dict[str, Any] | None = None,
     ) -> None:
         """建立关系，并维护双向索引."""
-        link_def = self._link_types.get(link_type)
-        if link_def is None:
-            raise ValueError(f"Link type '{link_type}' not registered")
-
         source = self._objects.get(source_id)
         target = self._objects.get(target_id)
         if source is None or target is None:
             raise ValueError("Source or target object not found")
+
+        self._link_owned(
+            source,
+            link_type,
+            target,
+            timestamp=timestamp,
+            properties=properties,
+        )
+
+    def _link_owned(
+        self,
+        source: OntologyObject,
+        link_type: str,
+        target: OntologyObject,
+        *,
+        timestamp: float | None = None,
+        properties: dict[str, Any] | None = None,
+    ) -> None:
+        link_def = self._link_types.get(link_type)
+        if link_def is None:
+            raise ValueError(f"Link type '{link_type}' not registered")
 
         # 校验类型
         if source.object_type != link_def.source_type:
@@ -199,33 +299,89 @@ class ObjectStore:
 
         _validate_link_cardinality(link_def, source, target)
 
-        source.link(link_type, target, timestamp=timestamp, properties=properties)
-
-        # 维护 target 的 incoming 索引
         import time
 
         ts = timestamp if timestamp is not None else time.time()
-        incoming = LinkVersion(target_id=source_id, timestamp=ts, active=True, properties=properties or {})
+        source._link_unchecked(
+            link_type,
+            target,
+            timestamp=ts,
+            properties=properties,
+        )
+
+        # 维护 target 的 incoming 索引
+        incoming = LinkVersion(
+            target_id=source.id,
+            timestamp=ts,
+            active=True,
+            properties=properties or {},
+        )
         target._incoming.setdefault(link_type, []).append(incoming)
 
-    def unlink(self, source_id: UUID, link_type: str, target_id: UUID, timestamp: float | None = None) -> None:
+    def unlink_objects(
+        self,
+        source: OntologyObject,
+        link_type: str,
+        target: OntologyObject,
+        *,
+        timestamp: float | None = None,
+    ) -> None:
+        """Remove a relation between two objects owned by this store."""
+
+        self._require_owned_object(source)
+        self._require_owned_object(target)
+        self._unlink_owned(source, link_type, target, timestamp=timestamp)
+
+    def unlink(
+        self,
+        source_id: UUID,
+        link_type: str,
+        target_id: UUID,
+        timestamp: float | None = None,
+    ) -> None:
         """删除关系."""
         source = self._objects.get(source_id)
         target = self._objects.get(target_id)
         if source is None or target is None:
             return
 
-        source.unlink(link_type, target, timestamp=timestamp)
+        self._unlink_owned(source, link_type, target, timestamp=timestamp)
 
-        # 标记 target 的 incoming 失效
+    def _unlink_owned(
+        self,
+        source: OntologyObject,
+        link_type: str,
+        target: OntologyObject,
+        *,
+        timestamp: float | None = None,
+    ) -> None:
+        link_def = self._link_types.get(link_type)
+        if link_def is None:
+            raise ValueError(f"Link type '{link_type}' not registered")
+        if source.object_type != link_def.source_type:
+            raise TypeError(
+                f"Link '{link_type}' source must be {link_def.source_type}, "
+                f"got {source.object_type}"
+            )
+        if target.object_type != link_def.target_type:
+            raise TypeError(
+                f"Link '{link_type}' target must be {link_def.target_type}, "
+                f"got {target.object_type}"
+            )
+
         import time
 
         ts = timestamp if timestamp is not None else time.time()
-        for v in reversed(target._incoming.get(link_type, [])):
-            if v.target_id == source_id and v.active:
-                v.active = False
-                v.timestamp = ts
-                break
+        source._unlink_unchecked(link_type, target, timestamp=ts)
+
+        # incoming 也追加 tombstone，与 outgoing 保持相同的时序语义。
+        target._incoming.setdefault(link_type, []).append(
+            LinkVersion(target_id=source.id, timestamp=ts, active=False)
+        )
+
+    def _require_owned_object(self, obj: OntologyObject) -> None:
+        if self._objects.get(obj.id) is not obj:
+            raise ValueError(f"Ontology object {obj.id} is not managed by this store")
 
     # ------------------------------------------------------------------
     # 查询
@@ -304,3 +460,12 @@ def _validate_link_cardinality(
             raise ValueError(
                 f"Link '{link_def.name}' cardinality allows only one source per target"
             )
+
+
+def _require_indexable_value(property_name: str, value: Any) -> None:
+    try:
+        hash(value)
+    except TypeError as exc:
+        raise ValueError(
+            f"Indexed property '{property_name}' requires a hashable value"
+        ) from exc

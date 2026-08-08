@@ -251,6 +251,27 @@ class Ontology:
         """删除对象."""
         return self._store.delete(obj_id)
 
+    def set_property(
+        self,
+        obj: OntologyObject,
+        name: str,
+        value: Any,
+        *,
+        timestamp: float | None = None,
+        author: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        """Validate and update a property on an object managed by this ontology."""
+
+        self._store.set_property(
+            obj,
+            name,
+            value,
+            timestamp=timestamp,
+            author=author,
+            source=source,
+        )
+
     # ------------------------------------------------------------------
     # 关系操作
     # ------------------------------------------------------------------
@@ -263,7 +284,7 @@ class Ontology:
         **kwargs: Any,
     ) -> None:
         """建立关系."""
-        self._store.link(source.id, link_type, target.id, **kwargs)
+        self._store.link_objects(source, link_type, target, **kwargs)
 
     def unlink(
         self,
@@ -273,7 +294,7 @@ class Ontology:
         **kwargs: Any,
     ) -> None:
         """删除关系."""
-        self._store.unlink(source.id, link_type, target.id, **kwargs)
+        self._store.unlink_objects(source, link_type, target, **kwargs)
 
     # ------------------------------------------------------------------
     # 查询

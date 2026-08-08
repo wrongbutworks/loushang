@@ -85,6 +85,8 @@ not serialized, loaded, or treated as portable schema semantics.
 
 The field-by-field enforcement boundary is normative for V1 and is recorded in
 [Runtime Enforcement Matrix V1](runtime-enforcement-v1.md).
+Managed runtime writes are further constrained by
+[Ontology Managed Mutation Boundary V1](managed-mutation-boundary-v1.md).
 
 Offline compatibility classification is defined separately in
 [Ontology Schema Evolution V1](schema-evolution-v1.md); it does not authorize
@@ -97,7 +99,8 @@ V1 does not add:
 - ActionType, DecisionType, authorization, approval, or MutationPlan;
 - SQLite, Neo4j, distributed indexing, or a generic backend registry;
 - OWL, SHACL, JSON-LD, MCP, or LLM authoring;
-- new Rule, Fusion, QueryBuilder, or temporal-query behavior;
+- new Rule, Fusion, QueryBuilder, or temporal-query semantics beyond routing
+  existing writes through the managed mutation boundary;
 - a project-management or environmental domain package.
 
 Those capabilities require a stable compiled schema and separately accepted
@@ -111,4 +114,6 @@ contracts.
 - invalid identifiers, duplicates, unknown link endpoints, invalid
   cardinality, and unsupported Python types fail with stable diagnostics;
 - all existing Ontology tests remain green through the compatibility facade;
+- managed object compatibility writes cannot bypass schema, indexes, ownership,
+  or link-cardinality checks;
 - no Ontology production module imports a legacy Foundation facade.
