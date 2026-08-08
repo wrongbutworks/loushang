@@ -61,24 +61,12 @@ _BASELINE_PROTOCOL_IMPORTERS = frozenset(
 
 _BASELINE_OBSERVABILITY_IMPORTERS = frozenset(
     {
-        "src/loushang/agent/agent_loop.py",
-        "src/loushang/ai/api/streaming.py",
-        "src/loushang/ai/auth/support.py",
         "src/loushang/ai/errors.py",
-        "src/loushang/ai/event_stream/raw_parts.py",
-        "src/loushang/ai/provider/errors.py",
         "src/loushang/ai/structured.py",
-        "src/loushang/ai/trace.py",
         "src/loushang/coding/diagnostics/debug_status.py",
         "src/loushang/coding/diagnostics/profile.py",
-        "src/loushang/coding/ui/mode.py",
-        "src/loushang/coding/ui/product_binding.py",
         "src/loushang/harness/diagnostics/observability_bridge.py",
         "src/loushang/harness/diagnostics/observability_runtime.py",
-        "src/loushang/harness/model_catalog.py",
-        "src/loushang/harness/session/queue_controller.py",
-        "src/loushang/harness/transcript/session_catalog.py",
-        "src/loushang/tui/runtime.py",
     }
 )
 

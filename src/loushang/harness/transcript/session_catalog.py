@@ -18,6 +18,7 @@ from typing import Any, Generic, Literal, TypeVar
 
 from loushang.agent.types import AgentMessage
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
+from loushang.foundation.observability import get_log
 from loushang.harness.conversation import (
     ConversationCatalog,
     ConversationHeader,
@@ -50,7 +51,6 @@ from loushang.harness.transcript.types import (
     ExtensionData,
     RecordAnnotationPatch,
 )
-from loushang.observability import get_log
 
 RecordT = TypeVar("RecordT")
 

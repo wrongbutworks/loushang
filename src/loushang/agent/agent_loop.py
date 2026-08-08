@@ -36,7 +36,7 @@ from loushang.ai.types import (
     ToolResultMessage,
     Usage,
 )
-from loushang.observability import get_log
+from loushang.foundation.observability import get_log
 from loushang.protocol import JSONValue
 
 AgentEventSink = Callable[[AgentEvent], Awaitable[None] | None]

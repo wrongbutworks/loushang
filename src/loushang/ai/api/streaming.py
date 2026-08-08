@@ -218,7 +218,7 @@ def _emit_normalization_diagnostics(
     if not diagnostics:
         return
     from loushang.ai.trace import emit_trace
-    from loushang.observability import get_log
+    from loushang.foundation.observability import get_log
 
     log = get_log(__name__).bind(component="AINormalization")
     for diagnostic in diagnostics:

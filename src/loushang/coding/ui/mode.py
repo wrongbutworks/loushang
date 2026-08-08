@@ -18,6 +18,7 @@ from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import CODING_SCREEN_RUN_PROFILE
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.startup import load_coding_tui_startup_view
+from loushang.foundation.observability import get_log, log_context
 from loushang.harness.diagnostics import observability_runtime
 from loushang.harnesstui.conversation.agent_application import (
     AgentPlainConversationApplicationBinding,
@@ -36,7 +37,6 @@ from loushang.harnesstui.conversation.run_context import (
     RebindableEventSource,
     StableEmit,
 )
-from loushang.observability import get_log, log_context
 from loushang.tui import CompletionProvider
 from loushang.tui.launch import TuiLaunchProfile, run_tui_launch_shell
 from loushang.tui.prompt import run_non_interactive_prompt_loop

@@ -23,7 +23,7 @@ from loushang.ai.model.registry import (
     resolve_model_ref,
 )
 from loushang.ai.model.selection import ModelSelection
-from loushang.observability import get_log
+from loushang.foundation.observability import get_log
 
 log = get_log(__name__).bind(component="ModelCatalog")
 

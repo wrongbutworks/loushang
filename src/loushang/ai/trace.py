@@ -6,7 +6,7 @@ from contextlib import suppress
 from typing import Any, cast
 
 from loushang.foundation.json import JSONValue
-from loushang.observability import get_log
+from loushang.foundation.observability import get_log
 
 _log = get_log(__name__).bind(component="AITrace")
 TRACE_SCHEMA = "loushang.ai.trace.v1"
