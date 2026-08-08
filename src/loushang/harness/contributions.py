@@ -20,6 +20,7 @@ ExtensionSurfaceType = Literal[
     "resource_root",
     "policy",
     "approval",
+    "runtime_capability",
 ]
 
 

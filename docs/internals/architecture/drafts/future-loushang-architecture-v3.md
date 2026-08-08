@@ -8,9 +8,10 @@
 Status: proposed target architecture.
 
 This document explains the decisions and invariants shown in the v3 diagram.
-It is not a description of the current package surface and does not authorize
-creating AppService, a daemon, WebSocket transport, a relay, or distributed
-state synchronization ahead of an accepted delivery requirement.
+It is not a description of the current Python package or public API surface and
+does not authorize creating AppService, a daemon, WebSocket transport, a relay,
+or distributed state synchronization ahead of an accepted delivery
+requirement.
 
 Current code, tests, and accepted ARDs remain authoritative. When this document
 conflicts with them, the live source wins until a later ARD explicitly accepts
@@ -111,7 +112,7 @@ not a synonym for every message, turn, Agent invocation, or in-process task.
 A hosted Product runtime binding contains narrow capabilities rather than one
 universal Product interface:
 
-- Conversation capability: prompts, tool profile, policy, and Session
+- Conversation capability: prompts, admitted tool selection, policy, and Session
   operations;
 - Work preparer: Product intent to `WorkOperation`, current `WorkRunSpec`, and a
   future frozen `WorkPlanSpec`;
@@ -123,6 +124,145 @@ universal Product interface:
 Product bindings retain domain language, prompts, model and provider policy,
 tool selection, artifact content, validation, event vocabulary, and
 presentation decisions. They do not reimplement AppService, Work, or Harness.
+
+### 4. Match remote Agent contracts to interaction semantics
+
+Remote placement does not imply a persistent Agent session. A remote Agent may
+be exposed as one of three progressively stronger capabilities:
+
+| Interaction semantics | Minimum contract | Architectural treatment |
+|---|---|---|
+| One-shot invocation | `invoke(request) -> result` | Ordinary admitted Harness tool/capability; not multiagent |
+| One-shot asynchronous job | `submit(request) -> RunRef`, `await_result`, `cancel` | Job/delegation capability; no addressable collaboration actor |
+| Stateful collaboration | `spawn`, `send`, `wait`, `list`, `interrupt`, `close` | Multiagent collaboration port with follow-up and steering semantics |
+
+An execution may have progress without requiring one stateful server process,
+and an asynchronous `RunRef` does not imply an attachable Agent session. Job
+state may live in a queue or store and be served by interchangeable instances.
+V3 therefore does not define one universal provider containing `invoke`,
+`submit`, `attach`, `send`, `inspect`, `cancel`, and `close`.
+
+The LSP analogy applies only to the local-client/remote-service boundary. The
+model calls a stable admitted tool; its handler invokes an injected capability
+client; a transport adapter calls the remote service. The model-visible tool
+schema is not the wire protocol. The client adds protocol version, request and
+caller identity, idempotency, authorization scope, and event cursor fields that
+the model must not control.
+
+```text
+local Agent
+  -> admitted tool
+  -> capability client
+  -> stdio JSON-RPC | IPC | HTTP | gRPC | A2A adapter
+  -> remote capability service
+```
+
+The first collaboration implementation binds one explicitly selected provider
+for a Session-scoped collaboration Capability: either the current local
+`SessionMultiAgentRuntime` or one remote collaboration service behind the same
+tool façade. If alternative providers are admitted, this is an Exclusive
+Replacement surface: Plugin identity and discovery order are not selection
+policy, although a Plugin may carry an admitted Extension provider. The first
+implementation does not require per-child mixing of multiple local and remote
+providers in one logical tree. That simpler choice keeps the remote service
+free to own its child tree and mailbox while the local Host retains Capability
+admission, authority, bounded result projection, and Product interaction
+routing.
+
+An internal `AgentExecutionPort` is optional and deferred. It is justified only
+when the Host must transparently mix physical backends inside one logical tree
+or provide attach, lease, fencing, checkpoint, orphan detection, and recovery
+under one local control model. It is then extracted from at least two proven
+backends. A remote `invoke` client, an asynchronous job service, or a
+Session-level remote collaboration adapter does not by itself require that
+port.
+
+AppService is not a dependency of the capability client. Product/Host
+composition admits and injects the client. Channel is not its worker transport,
+and Work participates only when the invocation is also an accepted durable
+business commitment. A2A may be one adapter for an independent external Agent;
+a Loushang-controlled service may use a smaller worker protocol without
+changing the tool contract. See
+[Remote Agent Capability Boundary](../harness/multiagent/remote-agent-capability-boundary.md).
+The implemented local CLI P0 is documented in
+[One-Shot Agent Invocation Tool Boundary](../harness/agent-invocation-tool-boundary.md):
+it proves the admitted-tool path without introducing an execution provider,
+job lifecycle, or new multi-agent runtime abstraction.
+
+### 5. Keep model-contingent cognition outside the stable substrate
+
+Model capability may absorb more planning, decomposition, reflection, context
+selection, generic verifier prompting, and tool-selection heuristics over time.
+Those features are model-contingent cognitive scaffolds, not durable system
+authority. V3 therefore does not grow the Agent loop or AppService around the
+current limitations of a particular model generation.
+
+The stable Loushang substrate owns invariants that remain necessary even when a
+model becomes substantially more capable:
+
+- authority, Policy, Approval, sandboxing, and least privilege;
+- effectful tool execution, idempotency, cancellation, retry, and failure
+  convergence;
+- Conversation, transcript, Session, event ordering, persistence, and recovery;
+- Product-owned Capability admission, tenant/workspace isolation, and secret
+  boundaries;
+- multi-agent communication, concurrency, and cross-process coordination
+  contracts; and
+- Work admission, authoritative events, artifacts, evidence, acceptance, and
+  terminal outcome.
+
+The low-level Agent loop remains a mechanical model/tool protocol engine. It
+may expose narrow seams for context transformation, tool preflight, result
+projection, events, and cancellation, but it does not own a planner, verifier,
+plan mode, todo policy, memory policy, or Product semantics. Model-contingent
+features belong in Product-owned strategies behind declared Capability Slots,
+admitted Extensions or Skills, or explicitly selected Runtime Profile
+bindings.
+
+Planning and verification each have a durable and a disposable form:
+
+```text
+plan as cognitive aid
+  -> replaceable model strategy
+
+plan as coordination / approval / resume / audit contract
+  -> Product binding and Work-owned fact after acceptance
+
+self-verification prompt or fixed verdict format
+  -> replaceable model strategy
+
+compiler / test / scanner / independent-environment evidence
+  -> Product-interpreted evidence correlated by Work
+```
+
+At the Method boundary, the durable rule is: **Method specifies what must hold;
+the model decides how to achieve it.** Method owns reusable roles,
+constraints, gates, expected artifacts, acceptance conditions, and evidence
+requirements. Within that envelope the model may change its decomposition,
+tool order, reasoning strategy, or use of subagents as model capability evolves.
+When a plan must coordinate people or agents, gate approval, survive restart,
+or support audit, the Product binds it into a run-specific contract and Work
+accepts it as an authoritative fact. See [Method Architecture](../method/README.md).
+
+Presentation invariants are also part of the stable substrate. Native TUI
+playback scripts input, streaming, resize, surface, and control-flow events
+through render planning and terminal-operation boundaries, while HarnessTUI
+playback adds neutral conversation routing, state snapshots, and real
+screen-loop fixtures. This playback is not a second transcript or Work replay
+engine: it is an executable client contract proving that snapshots and events
+produce bounded, cursor-safe, scrollback-safe, deterministic terminal effects.
+The same playback substrate remains useful for embedded and AppClient-backed
+profiles and across different Products. See [TUI Architecture](../tui/README.md)
+and [Terminal Playback Harness](../tui/native-terminal-core/key-designs/KD-010-terminal-playback-harness.md).
+
+An architectural feature should not become kernel ownership or an
+irreversible persistent schema merely because today's models need it. A useful
+test is: if a future model with materially stronger native reasoning could
+remove the feature without weakening authority, evidence, persistence, or
+coordination, the feature stays outside the stable substrate.
+
+Model capability may swallow Agent cognition; it must not swallow authority,
+effect control, evidence, persistence, coordination, or Work truth.
 
 ## Client And Process Profiles
 
@@ -256,7 +396,8 @@ At composition time AppService receives an explicit `ProductResolver` plus
 host-owned providers for admitted Session, Work, and optional Channel ports.
 The exact provider protocols remain part of the first vertical slice; the
 invariant is that AppService never consults a global registry, imports a
-Product package, or performs provider discovery while dispatching a request.
+Product implementation Python package, or performs provider discovery while
+dispatching a request.
 
 The host maintains a live Session routing table, not a filesystem directory or
 persistent Session catalog.
@@ -288,32 +429,33 @@ Likewise, an Agent turn does not own a Work run.
 
 Harness owns reusable Session, transcript, context, tools, approval integration,
 retry, compaction, workspace, and sandbox mechanisms. Harness does not import
-Work or a Product package. The Product executor is the adapter that connects a
-Work step to Harness without reversing that dependency.
+`loushang.work` or a Product implementation Python package. The Product executor
+is the adapter that connects a Work step to Harness without reversing that
+dependency.
 
 Agent owns the execution loop and calls AI. Harness and Agent coordinate tool
 execution through admitted tools and sandbox policy; the AI layer remains
 independent of Harness and Product code.
 
-### Product capability requirements and scoped activation
+### Product Capability Requirement resolution and scoped activation
 
-Method and Skill resources may declare opaque Product capability requirements,
-such as `coding.arch`. They do not name Harness `ToolPackDefinition` values,
-register executable handlers, or grant themselves execution authority. For
-structured work, the Product work preparer carries the requirement into the
+Method and Skill resources may declare opaque Product Capability Requirement
+values, such as `coding.arch`. They do not name Harness `ToolPackDefinition`
+values, register executable handlers, or grant themselves execution authority.
+For structured work, the Product work preparer carries the requirement into the
 run-specific Work contract and the Product executor resolves it through the
-Product's admitted capability catalog. For a lightweight Session turn, the
+Product's admitted Capability catalog. For a lightweight Session turn, the
 Product conversation binding performs the equivalent resolution without
 creating a Work run.
 
-A Product capability may resolve to an admitted Product Capability Bundle and
-one or more family-specific Capability Packs, including a named tool pack. The
-Product retains the mapping, mount defaults, and policy; Harness retains
-contribution resolution, allow-list enforcement, live tool rebinding, sandbox
-and approval integration, and scoped activation mechanics. A Product may expose
-`disabled`, `on_demand`, and `always` mount modes, but no mode may override host
-admission, delegated execution restrictions, Session allow-lists, or tool
-policy.
+A Product Capability Requirement may resolve to an admitted Product Capability
+Bundle and one or more family-specific Capability Packs, including a named tool
+pack. The Product retains the mapping, mount defaults, and policy; Harness
+retains contribution resolution, allow-list enforcement, live tool rebinding,
+sandbox and approval integration, and scoped activation mechanics. A Product
+may expose `disabled`, `on_demand`, and `always` mount modes, but no mode may
+bypass or widen host admission, delegated execution restrictions, Session
+allow-lists, or tool policy.
 
 Scoped activation is additive and owner-aware. Manual selection, Product
 defaults, a Skill invocation, and a Method/Work step may independently request
@@ -329,7 +471,7 @@ V3 does not add `MethodPlanStatus` or `MethodStepStatus` to the base App
 protocol. When a Product first needs to render method progress, its projection
 may derive a Product-facing application view from Method identity and
 Work-owned plan/step facts. Harnesstui consumes that view without importing the
-Method package.
+`loushang.method` Python package.
 
 A stable Method editing, steering, or inspection protocol is added only after a
 Product surface requires it and defines its compatibility needs. The target
@@ -434,12 +576,14 @@ The v3 target does not require:
 - turning Channel into the universal App protocol;
 - sharing mutable runtime instances across processes;
 - automatic Embedded-to-Daemon transcript merge;
-- AppService-owned approval or extension-interaction futures;
+- AppService-owned approval or Extension-interaction futures;
 - a public P2P relay in the first AppService release;
 - a base App protocol for MethodPlan/MethodStep state before a Product needs to
   render, inspect, or steer it;
+- treating every remote Agent call as a stateful collaboration Session;
+- one universal remote-Agent interface or a mandatory `AgentExecutionPort`;
 - Product imports inside AppService; or
-- one generic Product profile capable of arbitrary runtime injection.
+- one universal Product runtime binding capable of arbitrary injection.
 
 ## Staged Delivery
 
@@ -475,6 +619,10 @@ Two capabilities have independent gates rather than mandatory phase numbers:
 - Before exposing Method progress, inspection, or steering, a Product identifies
   a consuming surface and defines the minimum Product-facing projection and
   compatibility contract.
+- A remote Agent starts with the weakest sufficient contract: `invoke`, then an
+  asynchronous job only when execution outlives one tool call, then
+  collaboration only when steering or follow-up is required. Transparent mixed
+  placement and a common execution port require a separate proven need.
 
 Each phase must preserve the embedded fast path, Product neutrality, Work and
 Harness dependency direction, and a single lifecycle owner for every pending
@@ -485,7 +633,10 @@ interaction.
 - [Application Service Refactor](application-service-refactor.md)
 - [Agent, Harness, And Product Adapters](../agent/ARD-001-agent-harness-and-product-adapters.md)
 - [Harness Product Runtime Core Boundary](../harness/product-runtime-core-boundary.md)
+- [Capability Variation And Replacement Boundary](../harness/capability-variation-and-replacement-boundary.md)
 - [Session Facade Boundary](../harness/session-facade-boundary.md)
 - [Channel Architecture](../channel/README.md)
 - [Work Architecture](../work/README.md)
 - [Method Architecture](../method/README.md)
+- [Remote Agent Capability Boundary](../harness/multiagent/remote-agent-capability-boundary.md)
+- [One-Shot Agent Invocation Tool Boundary](../harness/agent-invocation-tool-boundary.md)

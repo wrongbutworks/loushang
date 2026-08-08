@@ -6,7 +6,7 @@ prepare and run agent work without depending on another product package.
 It is intentionally narrower than a product framework and broader than the
 initial prepared-run facade. Harness owns product-neutral contracts, helper
 engines, registries, and lifecycle shapes that `coding`, `design`, `research`,
-`ppt`, `cowork`, and OEM products can share.
+`ppt`, `cowork`, and Products supplied or configured by OEMs can share.
 
 Harness may provide explicitly overridable cross-product platform defaults. It
 does not own domain content/defaults, product stores, product UI state, method
@@ -31,8 +31,14 @@ description.
 ## Boundary And Migration Document Catalog
 
 - [Product And OEM Glossary](../../glossary/loushang-product.md) defines the
-  canonical Product, OEM, Product Package, Capability Pack, Product Capability
-  Bundle, Plugin, and multi-Product launch vocabulary used by these boundaries.
+  canonical Product, OEM, Capability, Harness Capability, Package, Plugin,
+  Extension, Product Capability Bundle, and multi-Product launch vocabulary
+  used by these boundaries.
+- [Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md)
+  defines aggregate contribution, ordered interception and decoration,
+  exclusive replacement, protocol injection, composition-root ownership, and
+  the invariant enforcement layer that Product and Plugin variation cannot
+  bypass.
 - [Refactoring Principles](refactoring-principles.md) defines what may move
   into harness and how migration slices should be shaped.
 - [Shared Capability Boundaries](shared-capability-boundaries.md) maps tools,
@@ -106,12 +112,20 @@ description.
   authorized bindings, typed common effects, a session-owned authorization
   gateway, and the migration that removes raw tool execution bypasses without
   changing permission behavior.
+- [One-Shot Agent Invocation Tool Boundary](agent-invocation-tool-boundary.md)
+  records the implemented `delegate_agent` P0: a finite authorized subprocess
+  tool, Coding-owned CLI semantics, non-widening child tools, bounded output,
+  and the evidence gates before jobs or multi-agent semantics are introduced.
 - [Harness Tool Authoring](tool-authoring-guide.md) is the short developer guide
   for pure tools, common filesystem actions, and custom action adapters.
 - [Sandbox Runtime Boundary](sandbox-runtime-boundary.md) defines the optional,
   disabled-by-default process containment service, its cross-platform
   Protocols, centralized host detection and backend selection, existing
   `ExecService` integration, and session/child lifecycle.
+- [Process Hosting Boundary](process-hosting-boundary.md) defines the narrow
+  session-owned long-lived child-process substrate, fixed lifecycle limits,
+  public contract restraint, execution-scope authorization, private Sandbox
+  containment planning, and ordered Session fallback cleanup.
 - [Context Budget And Accounting Boundary](context-budget-accounting-boundary.md)
   defines deterministic compaction-budget and usage-estimate record ownership
   while keeping message estimation and compaction policy in product adapters.
@@ -297,7 +311,11 @@ description.
   [control](multiagent/control-boundary.md),
   [registry](multiagent/registry-boundary.md),
   [limits and projection](multiagent/limits-and-projection-boundary.md),
-  [tool surface](multiagent/tool-surface-boundary.md).
+  [tool surface](multiagent/tool-surface-boundary.md). The proposed
+  [remote Agent capability boundary](multiagent/remote-agent-capability-boundary.md)
+  keeps one-shot invocation, asynchronous jobs, and persistent collaboration
+  as separate contracts and defers a common execution port until mixed
+  placement or recovery proves it necessary.
 - [Workspace Execution Boundary](workspace-execution-boundary.md) defines
   harness-owned truncation, exec records, backend protocols, process execution,
   and coding compatibility ownership.

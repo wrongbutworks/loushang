@@ -12,9 +12,15 @@ multiagent 内核之外唯一依赖 agent 工具框架的位置：它把
 Control / AgentInputFacade / Registry 的能力封装为模型可调用工具，
 并承载提示纪律（briefing 要求、通知纪律）这一模型行为的关键杠杆。
 
+这套工具面表达的是“可持续寻址的协作 actor”，不是所有由 Agent 实现的
+远端能力。一次性远端 Agent 应注册为普通 `invoke -> result` tool；长时但
+不可交互的调用应使用最小 job contract。只有需要 steering、follow-up、
+等待 activity 或显式关闭时，才使用本工具面。远程与本地的边界决策见
+[Remote Agent Capability Boundary](remote-agent-capability-boundary.md)。
+
 本文定义：
 
-- 三件套工具的参数面与结果 shape
+- 六件套工具的参数面与结果 shape
 - 参数校验与错误语义
 - 提示纪律资源（可替换）
 - 产品裁剪（暴露子集、类型白名单）

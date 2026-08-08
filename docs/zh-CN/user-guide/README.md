@@ -67,6 +67,73 @@ loushang --tools bash,write -p "Inspect this project."
 loushang --no-tools -p "Explain the repository from context only."
 ```
 
+### LSP 语义工具
+
+`coding.lsp` 是可选的高频 Coding 能力，提供 `inspect_symbol` 和
+`document_outline`。默认是 `on_demand`；要让它们进入当前 agent 的默认工具集：
+
+```bash
+loushang --capability coding.lsp=always
+loushang lsp status
+loushang lsp doctor
+```
+
+Server 仍只会在第一次语义查询时惰性启动。独立 CLI 的 `status` 和 `doctor` 标记为
+`scope=catalog`：它们只检查配置与可执行文件，不构造 Session，也不会启动或安装任何
+Server。Loushang 会探测已安装的 Pyright、TypeScript Language Server、rust-analyzer、
+gopls 和 clangd。
+
+TypeScript 预设覆盖 `.ts`、`.tsx`、`.js`、`.jsx` 及其标准模块变体，并选择最近的
+`tsconfig.json`、`jsconfig.json`、`package.json` 或 `.git` 作为根。用户需要自行安装
+`typescript-language-server` 和兼容的 `typescript` 包；缺少可用 Server 时，普通 Coding
+工具仍可继续工作，Loushang 不会自动安装任何包。
+
+在交互式 Coding Session 内，使用独立的 Session 运行态表面：
+
+```text
+/lsp status
+/lsp stop <server-id> <root>
+```
+
+`/lsp status` 只报告当前 Session 已知的 Server，包括生命周期、打开文档数、请求、超时、
+替换次数和已丢弃诊断发布数；查询本身不会启动 Server。`/lsp stop` 优雅关闭精确匹配的
+Session Server，下一次语义查询可以按需启动替代实例。嵌入方可使用
+`session.get_lsp_status()` 和 `await session.stop_lsp_server(...)` 取得同一份有界状态。
+TUI 会直接执行同一个 Session 命令；RPC 客户端可以先用 `get_commands` 发现命令，再在不经过
+模型回合的情况下执行：
+
+```json
+{"id":"lsp-status","type":"execute_command","command":"lsp","args":"status"}
+```
+
+响应会把命令的结构化结果放在 `data.result`。
+
+已经把 `pyright-langserver` 放入 `PATH` 的贡献者可以运行可选真实 Server 门：
+`uv run pytest tests/integration/coding/test_pyright_lsp_live.py -q`。未安装 Pyright 时测试会
+跳过，测试自身不会安装它。
+
+TypeScript 的对应兼容性门是
+`uv run pytest tests/integration/coding/test_typescript_lsp_live.py -q`，默认从 `PATH`
+查找 `typescript-language-server`，也可通过 `LOUSHANG_TEST_TYPESCRIPT_LANGSERVER`
+指定可执行文件；测试同样不会安装 Server。
+
+自定义 Server 写入 `~/.loushang/coding/lsp.json`：
+
+```json
+{
+  "servers": [
+    {
+      "id": "python-custom",
+      "command": ["my-language-server", "--stdio"],
+      "language_extensions": {"python": [".py", ".pyi"]}
+    }
+  ]
+}
+```
+
+项目的 `.loushang/lsp.json` 可以调整产品默认或用户已声明的 Server，但在通用 workspace
+trust 机制完成前，不能从仓库配置引入新的可执行文件或环境变量。
+
 ## 扩展
 
 扩展是可以注册生命周期 hooks、工具、动态资源、命令和 flags 的 Python 文件。可以先阅读 [examples/coding/extensions](../../../examples/coding/extensions/) 中的可运行扩展示例。

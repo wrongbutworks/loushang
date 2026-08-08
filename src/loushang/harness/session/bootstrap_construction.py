@@ -428,6 +428,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         Sequence[ToolDefinition],
     ]
     get_tool_source_info: Callable[[StandardExtensionT, str], object | None]
+    bind_session_capabilities: (
+        Callable[[StandardExtensionT], CapabilityCompositionRuntime] | None
+    ) = None
     product_tool_pack_id: str = "product.registry"
     extension_tool_pack_id: str = "product.extensions"
 
@@ -473,70 +476,133 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         """Build the canonical request and delegate all execution to its owner."""
 
         settings = services.settings_manager.get_settings()
-        capability_runtime = self.bind_capabilities()
-        return AgentProductConstructionRuntime[
-            AgentT,
-            SessionT,
-            StandardExtensionT,
-        ]().construct(
-            AgentProductConstructionRequest(
-                configuration=StandardAgentSessionConfigurationRequest(
-                    settings=settings,
-                    settings_manager=services.settings_manager,
-                    model_registry=services.model_registry,
-                    resource_loader=services.resource_loader,
-                    diagnostics_service=services.diagnostics_service,
-                    package_materializer=package_materializer,
-                    skill_activation_runtime=capability_runtime.skill_activation,
-                    session_id=session_id,
-                    cwd=cwd,
-                    create_extension_runtime=self.create_extension_runtime,
-                    source_identity_check=self.source_identity_check,
-                    extension_flag_values=extension_flag_values,
-                ),
-                ports=AgentProductConstructionPorts(
-                    activate_resources=capability_runtime.activate_resources,
-                    prompt_section_composer=capability_runtime.prompt_section_composer,
-                    tool_pack_composer=capability_runtime.tool_pack_composer,
-                    list_tool_definitions=self.list_tool_definitions,
-                    get_tool_source_info=self.get_tool_source_info,
-                    dispose_capabilities=capability_runtime.dispose,
-                ),
-                default_system_prompt=self.default_system_prompt,
-                explicit_system_prompt=explicit_system_prompt,
-                append_system_prompt=append_system_prompt,
-                model=model,
-                thinking_level=(
-                    settings.thinking_level
-                    if thinking_level is None
-                    else thinking_level
-                ),
-                tools=tools,
-                tool_registry=tool_registry,
-                allowed_tool_names=allowed_tool_names,
-                active_tool_names=active_tool_names,
-                no_tools=no_tools,
-                stream_fn=stream_fn,
-                convert_to_llm=convert_to_llm,
-                agent_factory=agent_factory,
-                session_factory=lambda agent, bundle, extensions, registry, active, prompt, mode: (
-                    session_factory(
-                        capability_runtime,
-                        agent,
-                        bundle,
-                        extensions,
-                        registry,
-                        active,
-                        prompt,
-                        mode,
-                    )
-                ),
-                on_default_model_unavailable=on_default_model_unavailable,
-                set_scoped_models=set_scoped_models,
-                product_tool_pack_id=self.product_tool_pack_id,
-                extension_tool_pack_id=self.extension_tool_pack_id,
+        bootstrap_capability_runtime = self.bind_capabilities()
+        session_capability_runtimes: list[CapabilityCompositionRuntime] = []
+
+        def create_session(
+            agent: AgentT,
+            bundle: ResourceBundle,
+            extension_runtime: StandardExtensionT,
+            registry: WorkspaceToolRegistry | None,
+            active: list[str] | None,
+            prompt: str,
+            mode: NoToolsMode | None,
+        ) -> SessionT:
+            capability_runtime = (
+                self.bind_session_capabilities(extension_runtime)
+                if self.bind_session_capabilities is not None
+                else bootstrap_capability_runtime
             )
-        )
+            session_capability_runtimes.append(capability_runtime)
+            return session_factory(
+                capability_runtime,
+                agent,
+                bundle,
+                extension_runtime,
+                registry,
+                active,
+                prompt,
+                mode,
+            )
+
+        try:
+            result = AgentProductConstructionRuntime[
+                AgentT,
+                SessionT,
+                StandardExtensionT,
+            ]().construct(
+                AgentProductConstructionRequest(
+                    configuration=StandardAgentSessionConfigurationRequest(
+                        settings=settings,
+                        settings_manager=services.settings_manager,
+                        model_registry=services.model_registry,
+                        resource_loader=services.resource_loader,
+                        diagnostics_service=services.diagnostics_service,
+                        package_materializer=package_materializer,
+                        skill_activation_runtime=(
+                            bootstrap_capability_runtime.skill_activation
+                        ),
+                        session_id=session_id,
+                        cwd=cwd,
+                        create_extension_runtime=self.create_extension_runtime,
+                        source_identity_check=self.source_identity_check,
+                        extension_flag_values=extension_flag_values,
+                    ),
+                    ports=AgentProductConstructionPorts(
+                        activate_resources=(
+                            bootstrap_capability_runtime.activate_resources
+                        ),
+                        prompt_section_composer=(
+                            bootstrap_capability_runtime.prompt_section_composer
+                        ),
+                        tool_pack_composer=(
+                            bootstrap_capability_runtime.tool_pack_composer
+                        ),
+                        list_tool_definitions=self.list_tool_definitions,
+                        get_tool_source_info=self.get_tool_source_info,
+                        dispose_capabilities=bootstrap_capability_runtime.dispose,
+                    ),
+                    default_system_prompt=self.default_system_prompt,
+                    explicit_system_prompt=explicit_system_prompt,
+                    append_system_prompt=append_system_prompt,
+                    model=model,
+                    thinking_level=(
+                        settings.thinking_level
+                        if thinking_level is None
+                        else thinking_level
+                    ),
+                    tools=tools,
+                    tool_registry=tool_registry,
+                    allowed_tool_names=allowed_tool_names,
+                    active_tool_names=active_tool_names,
+                    no_tools=no_tools,
+                    stream_fn=stream_fn,
+                    convert_to_llm=convert_to_llm,
+                    agent_factory=agent_factory,
+                    session_factory=create_session,
+                    on_default_model_unavailable=on_default_model_unavailable,
+                    set_scoped_models=set_scoped_models,
+                    product_tool_pack_id=self.product_tool_pack_id,
+                    extension_tool_pack_id=self.extension_tool_pack_id,
+                )
+            )
+        except BaseException as error:
+            for capability_runtime in reversed(session_capability_runtimes):
+                if capability_runtime is bootstrap_capability_runtime:
+                    continue
+                try:
+                    capability_runtime.dispose()
+                except BaseException as cleanup_error:
+                    error.add_note(
+                        f"final Session capability cleanup also failed: {cleanup_error}"
+                    )
+            try:
+                bootstrap_capability_runtime.dispose()
+            except BaseException as cleanup_error:
+                error.add_note(
+                    "bootstrap capability cleanup also failed: "
+                    f"{cleanup_error}"
+                )
+            raise
+
+        if session_capability_runtimes and (
+            session_capability_runtimes[-1] is not bootstrap_capability_runtime
+        ):
+            try:
+                bootstrap_capability_runtime.dispose()
+            except BaseException as error:
+                for capability_runtime in reversed(session_capability_runtimes):
+                    if capability_runtime is bootstrap_capability_runtime:
+                        continue
+                    try:
+                        capability_runtime.dispose()
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "final Session capability cleanup also failed: "
+                            f"{cleanup_error}"
+                        )
+                raise
+        return result
 
 
 __all__ = [

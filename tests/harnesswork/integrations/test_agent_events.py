@@ -4,7 +4,9 @@ from datetime import UTC, datetime
 
 
 def _context(sequence: int = 1):
-    from loushang.work import WorkEventProjectionContext
+    from loushang.harnesswork.integrations.agent_events import (
+        WorkEventProjectionContext,
+    )
 
     return WorkEventProjectionContext(
         run_id="run-1",
@@ -19,7 +21,9 @@ def _context(sequence: int = 1):
 
 
 def test_project_agent_start_and_end_events() -> None:
-    from loushang.work import project_agent_event_to_work_events
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
 
     started = project_agent_event_to_work_events(
         {"type": "agent_start"}, context=_context(1)
@@ -41,7 +45,9 @@ def test_project_agent_start_and_end_events() -> None:
 
 
 def test_project_message_update_to_coalesced_content_delta() -> None:
-    from loushang.work import project_agent_event_to_work_events
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
 
     events = project_agent_event_to_work_events(
         {
@@ -66,7 +72,9 @@ def test_project_message_update_to_coalesced_content_delta() -> None:
 
 def test_project_messages_with_existing_ai_codecs() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.work import project_agent_event_to_work_events
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
 
     assistant = AssistantMessage(
         role="assistant",
@@ -140,7 +148,9 @@ def test_project_messages_with_existing_ai_codecs() -> None:
 
 
 def test_project_tool_events_to_tool_call_work_events() -> None:
-    from loushang.work import project_agent_event_to_work_events
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
 
     started = project_agent_event_to_work_events(
         {
@@ -180,7 +190,9 @@ def test_project_tool_update_and_end_use_agent_event_projection() -> None:
 
     from loushang.agent import AgentToolResult, FunctionalToolOutputProjector
     from loushang.ai.types import TextPart
-    from loushang.work import project_agent_event_to_work_events
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
 
     @dataclass(frozen=True)
     class RichDetails:
@@ -252,7 +264,9 @@ def test_work_projection_rejects_malformed_tool_result_content() -> None:
 
     from loushang.agent import AgentToolResult, ToolOutputProjectionError
     from loushang.ai.types import TextPart
-    from loushang.work import project_agent_event_to_work_events
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
 
     result = AgentToolResult(
         content=[TextPart(type="image", text="oops")],  # type: ignore[arg-type]
@@ -274,7 +288,9 @@ def test_work_projection_rejects_malformed_tool_result_content() -> None:
 
 
 def test_project_gateway_audit_sequence_to_safe_work_events() -> None:
-    from loushang.work import project_agent_event_to_work_events
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
 
     common = {
         "tool_call_id": "tool-1",
@@ -385,7 +401,9 @@ def test_project_gateway_audit_sequence_to_safe_work_events() -> None:
 
 
 def test_project_queue_update_to_coalesced_queue_metadata_event() -> None:
-    from loushang.work import project_agent_event_to_work_events
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
 
     events = project_agent_event_to_work_events(
         {"type": "queue_update", "steering": ["wait"], "follow_up": ["then test"]},
@@ -407,8 +425,10 @@ def test_work_event_bridge_rejects_non_json_payloads() -> None:
 
     import pytest
 
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
     from loushang.protocol import JsonValueError
-    from loushang.work import project_agent_event_to_work_events
 
     cases = (
         (
@@ -441,7 +461,9 @@ def test_work_event_bridge_rejects_non_json_payloads() -> None:
 
 
 def test_work_event_bridge_snapshots_source_payloads() -> None:
-    from loushang.work import project_agent_event_to_work_events
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
 
     steering = ["first"]
     source_event = {
@@ -460,7 +482,9 @@ def test_work_event_bridge_accepts_product_message_serializer() -> None:
     from dataclasses import dataclass, replace
 
     from loushang.agent import CustomAgentMessage
-    from loushang.work import project_agent_event_to_work_events
+    from loushang.harnesswork.integrations.agent_events import (
+        project_agent_event_to_work_events,
+    )
 
     @dataclass(frozen=True)
     class ProductMessage(CustomAgentMessage):

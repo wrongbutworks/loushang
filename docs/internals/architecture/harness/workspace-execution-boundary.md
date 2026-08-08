@@ -67,6 +67,13 @@ The request capture fields remain caller-supplied neutral configuration. Their
 current defaults are preserved for compatibility; harness does not decide which
 commands a product may run.
 
+`retain_output_artifacts` defaults to `True`, preserving the diagnostic artifact
+contract for existing callers. A finite consumer that never publishes artifact
+paths may set it to `False`; the execution backend must then return bounded
+preview metadata without retaining capture files. Artifact creation and cleanup
+remain backend-owned mechanics rather than a tool-specific `unlink()` escape
+hatch.
+
 `materialize_exec_request()` freezes inherited cwd and the complete merged
 environment before a request crosses an asynchronous policy or execution
 boundary. `ExecRequest.env` remains the caller-visible override set;

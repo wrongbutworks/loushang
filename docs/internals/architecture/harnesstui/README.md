@@ -18,7 +18,7 @@ direction is:
 
 The reverse dependencies are forbidden. In particular, `loushang.harnesstui`
 must not import `loushang.coding`, `loushang.agent`, AI message/model/provider
-packages, or product-specific policy. `loushang.harness` and `loushang.tui` are
+Python packages, or product-specific policy. `loushang.harness` and `loushang.tui` are
 independent peers: Harnesstui may depend on both, but neither peer may depend on
 Harnesstui or on the other peer.
 
@@ -84,7 +84,7 @@ caller-supplied descriptors and choices.
 The explicit module paths `loushang.harnesstui.commands.source`,
 `loushang.harnesstui.commands.interaction`, and
 `loushang.harnesstui.selection.interaction` are the stable entrypoints for
-these workflows. Package initializers do not add convenience re-exports.
+these workflows. Python package initializers do not add convenience re-exports.
 
 ## Settings and Prepared Surfaces
 
@@ -123,8 +123,8 @@ hard-code a Coding workspace layout.
 
 The explicit module path
 `loushang.harnesstui.conversation.attachments` is the stable entrypoint for this
-capability. The conversation package initializer does not add a convenience
-re-export.
+capability. The conversation Python package initializer does not add a
+convenience re-export.
 
 ## Conversation State, Queue, and Reader
 
@@ -171,8 +171,8 @@ The stable imports introduced by this slice are the explicit module paths
 `loushang.harnesstui.conversation.window_budget`,
 `loushang.harnesstui.conversation.queue`,
 `loushang.harnesstui.conversation.reader` and
-`loushang.harnesstui.conversation.source`. The conversation package does not
-yet expose a broader convenience API.
+`loushang.harnesstui.conversation.source`. The conversation Python package does
+not yet expose a broader convenience API.
 
 ## Tool Transcript and Status Profile
 
@@ -234,8 +234,8 @@ projection over presentation-ready status values. Coding continues to own live
 Session reads, the concrete settings store, scope choice, and provider update
 timing. Removed Coding status modules are not compatibility re-exported.
 
-These explicit module paths are the stable imports for this slice. The package
-initializers do not need to provide convenience re-exports.
+These explicit module paths are the stable imports for this slice. The Python
+package initializers do not need to provide convenience re-exports.
 
 ## Conversation Event Projection
 
@@ -279,8 +279,8 @@ test exercises the complete adapter-to-projector-to-target delta path, so the
 existing `make test-tui-render-contract` gate covers this new boundary.
 
 The explicit `projection`, `plain_target`, and `screen_target` module paths
-above are the stable imports for this capability. The package initializer does
-not provide convenience re-exports.
+above are the stable imports for this capability. The Python package initializer
+does not provide convenience re-exports.
 
 ## Conversation Screen Composition
 
@@ -301,7 +301,7 @@ composer prompts, frame copy, theme, welcome panel, transcript presentation,
 320-line budget, compaction wording, path compaction, and tool-output preview
 policy. The shared app does not import Coding, AI, Agent, or raw product events.
 The explicit `screen_frame` and `screen_app` module paths are stable; the
-conversation package initializer does not re-export them.
+conversation Python package initializer does not re-export them.
 
 ## Conversation Transcript Styling
 
@@ -318,7 +318,7 @@ does not participate in segmentation, cache invalidation, frame planning, or
 terminal writes; its module-level regular expressions, span ordering, and
 per-line call shape remain part of the frozen render-performance contract.
 The explicit module path above is stable and is not re-exported by the
-conversation package initializer.
+conversation Python package initializer.
 
 ## Conversation Interaction Control
 
@@ -362,7 +362,7 @@ The screen runner coordinates existing rendering calls but does not move or
 replace transcript segmentation, invalidation, render caches, frame
 composition, or terminal writes. Those hot-path responsibilities and the
 independent render-performance contract remain unchanged. The conversation
-package initializer intentionally does not re-export these entrypoints.
+Python package initializer intentionally does not re-export these entrypoints.
 
 `AgentScreenConversationApplicationBinding` and
 `AgentPlainConversationApplicationBinding` compose these existing ports for
@@ -389,12 +389,46 @@ policy, surface presentation, and fallback copy supplied to the binding.
 product-neutral interaction ports above. Its dependency direction is
 `tests/coding/tui_support` -> `loushang.harnesstui.testing` ->
 `loushang.harnesstui` / `loushang.tui`. The reverse direction is forbidden:
-production Harnesstui must never import its testing package, and the generic
-TUI remains independent of both Harnesstui layers.
+production Harnesstui must never import its testing Python package, and the
+generic TUI remains independent of both Harnesstui layers.
 
-The shared testing package must not import Coding, AI, Agent, or Harness
-runtime packages. It owns only reusable terminal test mechanics over neutral
-ports:
+Playback is an architectural boundary test, not only UI snapshot convenience.
+It proves that a Product can bind neutral Harness conversation facts into the
+shared TUI without creating Product-specific input, routing, rendering, or
+screen-loop semantics. The production dependency remains one-way even though
+the testing layer can drive the same public ports with deterministic fixtures.
+
+Three playback forms cover different failure classes:
+
+| Playback form | Real boundaries exercised | Evidence captured |
+|---|---|---|
+| Direct render scenario | prepared app state -> render planning -> fake terminal | logical/visible frames, terminal operations, repaint diagnostics |
+| Decoded-input playback | raw chunks -> `InputReader` -> keybindings -> conversation router -> render loop | routed actions, per-step state, frames and terminal trace |
+| Screen-loop playback | timed TTY-like chunks -> reusable async screen runner -> Product callbacks | raw terminal output, normalized text, exit/result facts and final state |
+
+This layering detects sequence bugs that isolated widget tests and final-screen
+goldens cannot: an intermediate wrong focus owner, duplicate optimistic user
+echo, stale pending queue, abort/steer/follow-up misrouting, transient cursor
+movement, unnecessary repaint, accidental clear-screen, or state that looks
+correct only after a later frame repairs it.
+
+The testing contracts are intentionally Product-neutral. Coding supplies its
+app factory, scenario catalog, policy, copy, and Product-only assertions, while
+future Research, PPT, or Cowork products can reuse the same input, render, and
+screen-loop drivers. This makes playback evidence useful when extracting shared
+behavior: reuse is demonstrated through explicit ports rather than inferred by
+copying Coding fixtures into HarnessTUI.
+
+Playback artifacts also separate semantic and physical evidence. Neutral action
+results and conversation state explain what the router decided; logical frames
+explain what the renderer intended; serialized terminal output explains what
+the host would receive. Keeping all three prevents a passing high-level state
+assertion from hiding a terminal regression, and prevents a visual golden from
+hiding incorrect conversation control flow.
+
+The shared testing Python package must not import Coding, AI, Agent, or Harness
+runtime Python packages. It owns only reusable terminal test mechanics over
+neutral ports:
 
 - `loushang.harnesstui.testing.ports` defines the application, router,
   snapshot, result, and factory protocols used by playback drivers;
@@ -416,18 +450,18 @@ ports:
   under `loushang.harnesstui.testing.scenarios` provide reusable recipe
   builders. They do not construct a product catalog at import time.
 
-These explicit modules are the stable testing entrypoints. The testing package
-initializer intentionally does not re-export them. `ConversationRenderScenario`,
-the input and screen-loop drivers, and the scenario factory own the reusable
-fixture mechanics; `loushang.tui.playback_suite.run_playback_cli` owns catalog
-selection and reporting. Repository-local support in `tests/coding/tui_support`
-only binds those facilities into a concrete Coding catalog and retains
-product-only scenarios, fakes, copy, fixture volumes, and render-performance
-budgets. The repository manual runner is `scripts/run_tui_playback.py`;
-none of this product test support is part of the installed Coding package. The
-temporary
+These explicit modules are the stable testing entrypoints. The testing Python
+package initializer intentionally does not re-export them.
+`ConversationRenderScenario`, the input and screen-loop drivers, and the
+scenario factory own the reusable fixture mechanics;
+`loushang.tui.playback_suite.run_playback_cli` owns catalog selection and
+reporting. Repository-local support in `tests/coding/tui_support` only binds
+those facilities into a concrete Coding catalog and retains product-only
+scenarios, fakes, copy, fixture volumes, and render-performance budgets. The
+repository manual runner is `scripts/run_tui_playback.py`; none of this product
+test support is part of the installed Coding Python package. The temporary
 `loushang.coding.ui.playback*` and `loushang.coding.ui.perf_probe` compatibility
-paths were retired after their consumers moved to the canonical testing
+paths were retired after their consumers moved to the canonical testing Python
 packages. Persisted Coding Session materialization remains in
 `loushang.coding.presentation.tui.history`.
 
@@ -509,8 +543,8 @@ renderer and `loushang.tui`.
 
 The stable imports are the explicit module paths
 `loushang.harnesstui.plain.renderer` and
-`loushang.harnesstui.conversation.plain_target`; their package initializers do
-not provide convenience re-exports.
+`loushang.harnesstui.conversation.plain_target`; their Python package
+initializers do not provide convenience re-exports.
 
 ## Settings, Selection, and Surface Composition
 
@@ -568,7 +602,8 @@ persisted; Harnesstui never calls a Session or settings manager.
 
 The explicit module paths above are the stable imports. Coding binds prepared
 product data and callbacks directly, without subclassing or re-exporting these
-shared implementations; package initializers do not add convenience exports.
+shared implementations; Python package initializers do not add convenience
+exports.
 
 ## Quality Gate
 

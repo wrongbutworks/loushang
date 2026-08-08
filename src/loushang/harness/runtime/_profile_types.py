@@ -10,6 +10,11 @@ from loushang.protocol import JSONValue, require_json_mapping
 
 RuntimeProfileSource = Literal["product", "oem", "extension", "session"]
 RuntimeCapabilityShape = Literal["single", "ordered", "exclusive", "append_only"]
+RuntimeCapabilityVariationSemantic = Literal[
+    "aggregate_contribution",
+    "ordered_interception",
+    "exclusive_replacement",
+]
 RuntimeCapabilityScope = Literal[
     "process", "tenant", "workspace", "session", "turn", "channel"
 ]
@@ -21,10 +26,19 @@ _SOURCES: frozenset[RuntimeProfileSource] = frozenset(
 _SHAPES: frozenset[RuntimeCapabilityShape] = frozenset(
     {"single", "ordered", "exclusive", "append_only"}
 )
+_VARIATION_SEMANTICS: frozenset[RuntimeCapabilityVariationSemantic] = frozenset(
+    {
+        "aggregate_contribution",
+        "ordered_interception",
+        "exclusive_replacement",
+    }
+)
 _SCOPES: frozenset[RuntimeCapabilityScope] = frozenset(
     {"process", "tenant", "workspace", "session", "turn", "channel"}
 )
 _REFRESH_BOUNDARIES: frozenset[RuntimeRefreshBoundary] = frozenset({"sealed", "turn"})
+
+
 def _require_nonempty_string(value: object, *, name: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{name} must be a non-empty string")
@@ -65,6 +79,7 @@ class RuntimeCapabilitySlot:
     refresh_boundary: RuntimeRefreshBoundary
     allowed_sources: frozenset[RuntimeProfileSource]
     required: bool = True
+    variation_semantic: RuntimeCapabilityVariationSemantic | None = None
 
     def __post_init__(self) -> None:
         _require_nonempty_string(self.key, name="slot key")
@@ -84,6 +99,36 @@ class RuntimeCapabilitySlot:
             _require_choice(source, name="slot allowed source", choices=_SOURCES)
         if self.shape == "exclusive" and self.refresh_boundary != "sealed":
             raise ValueError("exclusive slots must use the sealed refresh boundary")
+        if self.variation_semantic is not None:
+            _require_choice(
+                self.variation_semantic,
+                name="slot variation semantic",
+                choices=_VARIATION_SEMANTICS,
+            )
+        if (
+            sources != frozenset({"product"})
+            or self.shape in {"ordered", "append_only"}
+        ) and self.variation_semantic is None:
+            raise ValueError(
+                "externally variable or multi-value slots must declare a variation "
+                "semantic"
+            )
+        if (
+            self.variation_semantic == "exclusive_replacement"
+            and self.shape not in {"single", "exclusive"}
+        ):
+            raise ValueError(
+                "exclusive replacement requires a single or exclusive slot shape"
+            )
+        if (
+            self.variation_semantic
+            in {"aggregate_contribution", "ordered_interception"}
+            and self.shape not in {"ordered", "append_only"}
+        ):
+            raise ValueError(
+                "aggregate contribution and ordered interception require an "
+                "ordered or append_only slot shape"
+            )
         object.__setattr__(self, "allowed_sources", sources)
 
 
@@ -319,6 +364,7 @@ class RuntimeProfileSnapshotCapability:
     scope: RuntimeCapabilityScope
     refresh_boundary: RuntimeRefreshBoundary
     selections: tuple[RuntimeProfileSnapshotSelection, ...]
+    variation_semantic: RuntimeCapabilityVariationSemantic | None = None
 
     def __post_init__(self) -> None:
         _require_nonempty_string(self.slot, name="snapshot slot")
@@ -329,6 +375,12 @@ class RuntimeProfileSnapshotCapability:
             name="snapshot refresh boundary",
             choices=_REFRESH_BOUNDARIES,
         )
+        if self.variation_semantic is not None:
+            _require_choice(
+                self.variation_semantic,
+                name="snapshot variation semantic",
+                choices=_VARIATION_SEMANTICS,
+            )
         selections = tuple(self.selections)
         if any(
             not isinstance(selection, RuntimeProfileSnapshotSelection)
@@ -358,6 +410,15 @@ class RuntimeProfileSnapshotCapability:
                 name=f"{name}.refreshBoundary",
                 choices=_REFRESH_BOUNDARIES,
             ),
+            variation_semantic=(
+                _require_choice(
+                    mapping.get("variationSemantic"),
+                    name=f"{name}.variationSemantic",
+                    choices=_VARIATION_SEMANTICS,
+                )
+                if mapping.get("variationSemantic") is not None
+                else None
+            ),
             selections=tuple(
                 RuntimeProfileSnapshotSelection.from_json(
                     selection, name=f"{name}.selections[{index}]"
@@ -367,13 +428,16 @@ class RuntimeProfileSnapshotCapability:
         )
 
     def to_json(self) -> dict[str, JSONValue]:
-        return {
+        result: dict[str, JSONValue] = {
             "slot": self.slot,
             "shape": self.shape,
             "scope": self.scope,
             "refreshBoundary": self.refresh_boundary,
             "selections": [selection.to_json() for selection in self.selections],
         }
+        if self.variation_semantic is not None:
+            result["variationSemantic"] = self.variation_semantic
+        return result
 
 
 @dataclass(frozen=True)
@@ -483,6 +547,7 @@ class ResolvedRuntimeProfile:
                     shape=capability.slot.shape,
                     scope=capability.slot.scope,
                     refresh_boundary=capability.slot.refresh_boundary,
+                    variation_semantic=capability.slot.variation_semantic,
                     selections=tuple(
                         RuntimeProfileSnapshotSelection(
                             implementation=resolved.selection.implementation,

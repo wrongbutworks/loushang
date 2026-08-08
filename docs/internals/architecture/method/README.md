@@ -31,6 +31,46 @@ Policy = Permission and approval boundary
 Work   = Business intent enactment and authoritative runtime facts
 ```
 
+## Model Autonomy Boundary
+
+**Method 规定“什么必须成立”，模型决定“怎样达到”。**
+
+Method 应稳定表达一类工作的目标、适用条件、角色责任、约束、audit
+points、gates、预期产物、验收条件和证据要求。它不应把某一代模型需要的
+认知脚手架固化成长期流程，例如：
+
+- 强制每个普通任务先生成 todo；
+- 固定的逐步推理、反思或 self-critique 模板；
+- 每隔若干工具调用注入一次进度提醒；
+- 仅靠 prompt 约束的通用 verifier 流程；
+- 静态模型路由或工具选择启发式。
+
+在 Method 的约束和 Product/Harness 授权边界内，模型可以自主选择任务分解、
+工具顺序、局部推理策略、是否使用子 agent，以及是否维护临时计划。模型能力
+增强时，这些内部策略可以减少、替换或消失，而不要求修改 Method contract。
+
+需要区分两种计划：
+
+```text
+帮助模型思考的临时 plan
+  -> model- or Product-owned strategy, admitted Extension, or Skill
+
+供人、团队和系统共同遵守的 plan
+  -> Product binding -> Work acceptance -> Work-owned fact
+```
+
+当计划涉及跨 agent 协作、人工审批、预算、恢复、审计或验收时，它不再只是
+模型的认知辅助。Product 必须把它绑定成 run-specific Work contract，由 Work
+接受、排序和记录；执行中的改变应成为显式 revision 或 deviation，而不是模型
+静默改写历史。
+
+同样，Method 可以规定“必须提供哪些验证证据”，但不应默认规定模型必须使用
+某个通用 verifier prompt。Product 解释编译、测试、扫描、领域校验和独立执行
+环境产生的证据，Work 记录这些证据及其对 outcome 的影响。
+
+这个边界使更强的模型获得更大的局部自主性，同时保持 Method 的组织约束、
+Work 的权威事实以及 Loushang substrate 的权限、证据、持久化和协调边界稳定。
+
 ## Current Boundary
 
 `loushang.method` owns:
@@ -56,17 +96,17 @@ Current Coding-specific method usage is bridged through
 runtime, not a separate long-term DomainApp execution layer. In the v3 target,
 the Coding Product work preparer consumes the Method plan and its Product work
 executor binds each admitted step to Harness. When a method is enacted,
-`loushang.work` owns the resulting run, plan, step, outcome, event-log, replay,
+`loushang.harnesswork` owns the resulting run, plan, step, outcome, event-log, replay,
 artifact-reference, and deviation facts.
 
 ## Relation To Agent Harness And Products
 
 `loushang.method` is optional for product execution.
 
-Product packages such as `loushang.coding`, and future `loushang.research`,
-`loushang.ppt`, and `loushang.cowork`, may call `loushang.harness` directly for
-lightweight turns. They may also write or project through
-`loushang.work` directly.
+Product implementation Python packages such as `loushang.coding`, and future
+`loushang.research`, `loushang.ppt`, and `loushang.cowork`, may call
+`loushang.harness` directly for lightweight turns. They may also write or
+project through `loushang.harnesswork` directly.
 
 Use `method` when the product needs structured work: planning, staged execution,
 review gates, method-specific constraints, or acceptance criteria. Do not route
@@ -80,22 +120,23 @@ and `ppt`; it is not the name of the shared work or collaboration abstraction.
 Method defines expected artifacts: what a structured workflow or method step
 should produce.
 
-`loushang.work` records actual artifact references: what was produced, where it
+`loushang.harnesswork` records actual artifact references: what was produced, where it
 is, which run or step produced it, and how it relates to the expected artifact.
 
-Product packages such as `coding`, `research`, `ppt`, and `cowork` own concrete
-artifact types, content, loading, rendering, validation, and materialization.
+Products such as Coding, Research, PPT, and Cowork own concrete artifact types,
+content, loading, rendering, validation, and materialization.
 
 Therefore the shared work layer should prefer a lightweight `ArtifactRef` over a
 shared abstract `Artifact` base class.
 
 ## Capability Boundary
 
-Method resources may describe an opaque Product capability requirement, but
+Method resources may describe an opaque Product Capability Requirement, but
 they do not select a Harness tool pack, register executable tools, or grant
 runtime authority. A Product work preparer interprets the requirement in its
 domain and carries it into the run-specific Work contract; the Product executor
-then resolves it through admitted Product capabilities before invoking Harness.
+then resolves it through the Product's admitted Capability catalog before
+invoking Harness.
 
 `MethodApplicability.capabilities` remains an applicability and matching fact.
 It must not silently become a runtime authorization or ToolPack activation
@@ -154,7 +195,7 @@ scenarios. LouShang currently claims only SPEM-aligned terminology and a partial
 subset, not SPEM compliance.
 
 `loushang.method` owns definitions, selection, compilation, and tailoring.
-`loushang.work` is the runtime enactment layer; it is not SPEM `WorkDefinition`
+`loushang.harnesswork` is the runtime enactment layer; it is not SPEM `WorkDefinition`
 and must not copy the SPEM metamodel. The detailed current/target mapping lives in
 [Loushang Work Architecture](../work/README.md#spem-20-alignment).
 
@@ -180,9 +221,15 @@ These fields are not yet closed enums. The experimental methodology documents re
 - Store and project method metadata before enforcing it.
 - Treat `MethodApplicability` shape as stable, but do not freeze the final ontology too early.
 - Bind skills step-locally in the future instead of globally injecting all method-related skills.
+- Define durable outcomes, constraints, artifacts, gates, and evidence; keep
+  model-contingent planning, reflection, and verifier choreography replaceable.
 
 ## Related Documents
 
+- [HarnessWork Durable Enactment Architecture](../harnesswork/README.md)
+  is the accepted consolidation of the product-neutral `loushang.work` kernel into an optional
+  Harness extension. Its [migration ledger](../harnesswork/migration-ledger.md) defines which owner
+  changes are already implemented; `loushang.work` remains only a tested compatibility namespace.
 - [Architecture Overview](../architecture-overview.md)
 - [Loushang Work Architecture](../work/README.md)
 - [Coding Domain Component](../coding/component-interfaces/domain.md)

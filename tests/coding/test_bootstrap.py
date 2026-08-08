@@ -217,6 +217,163 @@ def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
     assert session._approval_resolver is resolver
 
 
+def test_create_agent_session_binds_always_on_lsp_to_sandbox_scope(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp import (
+        INSPECT_SYMBOL_TOOL_NAME,
+        LspServerDefinition,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.sandbox import SandboxExecutionRuntime
+
+    class _NeverLauncher:
+        async def start(self, *args, **kwargs):
+            del args, kwargs
+            raise AssertionError("LSP process startup must remain lazy")
+
+    scopes = []
+
+    def bind_process_launcher(self, scope):
+        del self
+        scopes.append(scope)
+        return _NeverLauncher()
+
+    monkeypatch.setattr(
+        SandboxExecutionRuntime,
+        "bind_process_launcher",
+        bind_process_launcher,
+    )
+    project = tmp_path / "project"
+    project.mkdir()
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(capabilities={"coding.lsp": "always"})
+        )
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project),
+            persist=False,
+        )
+    )
+
+    session = create_agent_session(
+        session_manager=manager,
+        model=_model(),
+        services=services,
+        lsp_definitions=(
+            LspServerDefinition(
+                id="python-test",
+                command=("python-language-server", "--stdio"),
+                language_extensions={"python": (".py",)},
+            ),
+        ),
+        lsp_baseline_environment={"PATH": "/admitted/bin"},
+    )
+
+    assert INSPECT_SYMBOL_TOOL_NAME in session.get_active_tool_names()
+    assert len(scopes) == 1
+    assert scopes[0].audit_sink is not None
+    assert scopes[0].execution_profile_ceiling is getattr(
+        session._sandbox_runtime.exec_service,
+        "execution_profile",
+        None,
+    )
+    asyncio.run(session.dispose())
+
+
+def test_create_agent_session_projects_default_lsp_environment(tmp_path) -> None:
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.lsp import INSPECT_SYMBOL_TOOL_NAME, LspServerDefinition
+    from loushang.coding.session_manager import SessionManager
+
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+    )
+
+    session = create_agent_session(
+        session_manager=manager,
+        model=_model(),
+        lsp_definitions=(
+            LspServerDefinition(
+                id="python-test",
+                command=("python-language-server", "--stdio"),
+                language_extensions={"python": (".py",)},
+            ),
+        ),
+    )
+
+    assert INSPECT_SYMBOL_TOOL_NAME in {
+        definition.name for definition in session.get_all_tools()
+    }
+    asyncio.run(session.dispose())
+
+
+def test_on_demand_lsp_discovers_installed_product_defaults(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp import LspServerDefinition
+    from loushang.coding.session_manager import SessionManager
+
+    executable_dir = tmp_path / "bin"
+    executable_dir.mkdir()
+    executable = executable_dir / "pyright-langserver"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    project = tmp_path / "project"
+    project.mkdir()
+    captured_definitions: list[LspServerDefinition] = []
+    bind_runtime = coding_bootstrap.bind_coding_lsp_runtime
+
+    def capture_definitions(**kwargs):
+        captured_definitions.extend(kwargs["definitions"])
+        return bind_runtime(**kwargs)
+
+    monkeypatch.setattr(
+        coding_bootstrap,
+        "bind_coding_lsp_runtime",
+        capture_definitions,
+    )
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(capabilities={"coding.lsp": "on_demand"}),
+            global_settings_path=tmp_path / "config" / "settings.json",
+            project_settings_path=project / ".loushang" / "settings.json",
+        )
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project),
+            persist=False,
+        )
+    )
+
+    session = create_agent_session(
+        session_manager=manager,
+        model=_model(),
+        services=services,
+        lsp_baseline_environment={"PATH": str(executable_dir)},
+    )
+
+    assert [definition.id for definition in captured_definitions] == ["pyright"]
+    assert captured_definitions[0].command == (str(executable.resolve()), "--stdio")
+    asyncio.run(session.dispose())
+
+
 def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> None:
     from loushang.coding import CreateAgentSessionResult, create_agent_session_result
     from loushang.coding.bootstrap import create_services
@@ -1432,6 +1589,8 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
         "grep",
         "write",
         "edit",
+        "inspect_symbol",
+        "document_outline",
     ]
     assert "Available tools:" in session.agent.system_prompt
 
@@ -1501,6 +1660,8 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         "write",
         "edit",
         "custom_tool",
+        "inspect_symbol",
+        "document_outline",
     ]
     assert "- custom_tool:" not in session.agent.system_prompt
     assert "- grep:" in session.agent.system_prompt
@@ -1797,6 +1958,8 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
 def test_create_agent_session_passes_resource_loader_into_agent_session(
     tmp_path,
 ) -> None:
+    from pathlib import Path
+
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
@@ -1824,7 +1987,8 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
     )
 
     assert session._resource_loader is loader
-    assert loader.discover_calls == ["/tmp/project"]
+    # /tmp is a symlink to /private/tmp on macOS; assert the resolved form.
+    assert loader.discover_calls == [str(Path("/tmp/project").resolve())]
 
 
 def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> None:
@@ -2080,8 +2244,15 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
         in session.agent.system_prompt
     )
     assert session.get_active_tool_names() == ["ext_tool"]
-    assert [definition.name for definition in session.get_all_tools()] == ["ext_tool"]
-    assert session.get_all_tool_infos()[0]["sourceInfo"] == {
+    assert [definition.name for definition in session.get_all_tools()] == [
+        "inspect_symbol",
+        "document_outline",
+        "ext_tool",
+    ]
+    extension_info = next(
+        info for info in session.get_all_tool_infos() if info["name"] == "ext_tool"
+    )
+    assert extension_info["sourceInfo"] == {
         "path": "/tmp/extensions/demo",
         "source": "filesystem",
         "scope": "project",

@@ -4,7 +4,13 @@
 
 ## Status
 
-Canonical architecture note for `loushang.work`.
+Canonical compatibility note for the legacy `loushang.work` namespace.
+
+The product-neutral kernel is being migrated to `loushang.harnesswork`; see the accepted
+[HarnessWork Architecture](../harnesswork/README.md) and active
+[Migration Ledger](../harnesswork/migration-ledger.md). During migration this document remains the
+contract for existing Work semantics, while `loushang.work` forwards migrated kernel symbols to the
+single canonical implementation.
 
 代码和测试定义当前已实现契约。本文件同时记录目标边界，但所有尚未落地的对象或
 语义都明确标为 target；不得把 target 描述当作当前公共 API。

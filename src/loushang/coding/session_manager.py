@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from loushang.coding.product_plan import (
     CODING_CAPABILITY_PROFILE,
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
@@ -29,10 +31,18 @@ _LIFECYCLE = AgentTranscriptLifecycle(
 def _coding_header_metadata(
     runtime_profile: ResolvedRuntimeProfile,
 ) -> dict[str, JSONValue]:
+    capability_snapshot = CODING_CAPABILITY_PROFILE.snapshot()
     return {
         **CODING_TRANSCRIPT_RUNTIME.snapshot_metadata(runtime_profile),
         CODING_CAPABILITY_PROFILE_METADATA_KEY: (
-            CODING_CAPABILITY_PROFILE.snapshot().to_json()
+            replace(
+                capability_snapshot,
+                capabilities=tuple(
+                    capability
+                    for capability in capability_snapshot.capabilities
+                    if capability.slot != SIDE_QUESTION_PROVIDER_SLOT.key
+                ),
+            ).to_json()
         ),
     }
 
@@ -60,8 +70,12 @@ def _validate_coding_restored_header(
         )
     current_capability_snapshot = CODING_CAPABILITY_PROFILE.snapshot()
     if persist and _selected_capabilities(
-        capability_snapshot
-    ) != _selected_capabilities(current_capability_snapshot):
+        capability_snapshot,
+        current=current_capability_snapshot,
+    ) != _selected_capabilities(
+        current_capability_snapshot,
+        current=current_capability_snapshot,
+    ):
         raise ValueError(
             "Coding cannot resume a session with an unsupported capability profile"
         )
@@ -69,11 +83,25 @@ def _validate_coding_restored_header(
 
 def _selected_capabilities(
     snapshot: RuntimeProfileSnapshot,
+    *,
+    current: RuntimeProfileSnapshot,
 ) -> tuple[RuntimeProfileSnapshotCapability, ...]:
     """Compare continuity-critical slots; auxiliary interaction is additive."""
 
+    current_capabilities = {
+        capability.slot: capability for capability in current.capabilities
+    }
     return tuple(
-        capability
+        replace(
+            capability,
+            shape=current_capabilities[capability.slot].shape,
+            variation_semantic=current_capabilities[
+                capability.slot
+            ].variation_semantic,
+        )
+        if capability.variation_semantic is None
+        and capability.slot in current_capabilities
+        else capability
         for capability in snapshot.capabilities
         if capability.selections
         and capability.slot != SIDE_QUESTION_PROVIDER_SLOT.key

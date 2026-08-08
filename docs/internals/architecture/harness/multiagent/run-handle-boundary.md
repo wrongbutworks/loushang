@@ -6,8 +6,8 @@
 ## Scope
 
 `SubagentRunHandle` 是每个子 agent incarnation 一份的运行载体：它把
-一次性的 `run_agent()` 调用组织成跨多轮、可投递、可中断、可关闭、
-可恢复的长生命周期执行实体。它持有的是 incarnation-safe `AgentRef`，
+一次性的 `run_agent()` 调用组织成跨多轮、可投递、可中断、可关闭的
+session-owned 执行实体。它持有的是 incarnation-safe `AgentRef`，
 不只是一条可复用的 path。
 
 本文定义：
@@ -95,12 +95,27 @@ SubagentRunHandle
 deliver(message)
 run_round(round_id, prompt | continue) -> SubagentRoundResult
 abort()
-dispose()
+dispose() -> SubagentDisposeResult
 ```
 
 这不是可 attach 的 `AgentExecutionPort`，也不承诺跨进程恢复。driver
 必须保证：已经接受到当前轮的 follow-up，在 `run_round()` 返回终态前
 已由既有 queue/agent-loop 语义消费；handle 不建立第二套 input queue。
+
+Product factory 不再通过 driver 上的约定俗成属性泄漏可选能力，而是
+显式返回：
+
+```text
+SessionSubagentBinding
+  driver: SubagentRoundDriver
+  input_activity: AgentInputActivityPort | None
+  workspace_ref: str | None
+```
+
+同样，workspace 释放结果由 `SubagentDisposeResult.released_workspace`
+返回。`SessionMultiAgentRuntime` 不使用 `getattr` 探测 `input_facade`、
+`workspace_ref` 或 `released_workspace`。这个 binding 只描述当前
+in-process、session-owned 组合，不是远端 wire schema。
 
 ## Product Injection Seams（参数化与扩展）
 
@@ -244,7 +259,8 @@ round 2: deliver(消息)  ──run_agent(continue)──► ...
 - `deliver` 到 closed 实体 → 结构化错误返回给投递方（经 AgentInputFacade 作为
   工具错误结果，不抛异常）。
 - `close` 幂等：重复 close 返回当前状态。
-- dispose 失败：仍在 task 已终止之后提交 closed，错误随
+- dispose 返回显式 `SubagentDisposeResult`；workspace 释放快照在提交
+  closed 前投影到 Control。结构化 `dispose_error` 或意外抛错最终都随
   `HandleCloseResult.dispose_error` 返回；不得因为资源收尾异常让逻辑
   path 永久占用名额。
 - `interrupt` 对 idle 实体是 no-op，返回当前状态。

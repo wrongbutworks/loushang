@@ -95,8 +95,13 @@ class SideQuestionCoordinator:
         task = self._active_task
         if task is None or task.done():
             return False
-        self._provider.cancel()
-        task.cancel()
+        # Detach first so repeated Session-finalization paths cannot invoke an
+        # external Provider's cancellation side effect more than once.
+        self._active_task = None
+        try:
+            self._provider.cancel()
+        finally:
+            task.cancel()
         return True
 
 

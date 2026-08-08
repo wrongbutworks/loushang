@@ -65,8 +65,8 @@ placement at the Product package root does not imply Product ownership.
 
 | Removed or reduced Coding region | Canonical owner | Retained Product input |
 | --- | --- | --- |
-| removed `work_executor.py`, `work_runtime.py`, `work_shell.py`, and `work.coding` | `work.session.SessionWorkRuntime` composed over the existing `work.WorkRuntime` | `coding.domain.work` supplies `domain="coding"`, `SubmitCodingTurn`, and the Agent-event fact projector. |
-| `prompt_command.py` and print/channel/CLI Work bindings | existing `harnesstui.conversation` hosts plus `work.session` | Coding retains its renderer, failure wording, Method metadata preparation, and Product binding names. |
+| removed `work_executor.py`, `work_runtime.py`, `work_shell.py`, and `work.coding` | `harnesswork.integrations.session.SessionWorkRuntime` composed over `harnesswork.WorkRuntime` | `coding.adapters.harnesswork` supplies `domain="coding"`, `SubmitCodingTurn`, and the Agent-event fact projector binding. |
+| `prompt_command.py` and print/channel/CLI Work bindings | existing `harnesstui.conversation` hosts plus `harnesswork.integrations.session` | Coding retains its renderer, failure wording, Method metadata preparation, and Product binding names. |
 | removed `diag_export.py`, `observability.py`, and `source_info.py` | existing Harness diagnostics and Observability packages | `coding.diagnostics.profile` supplies only source aliases and runtime-identity labels. |
 | `sdk_surface.py` | `harness.sdk_surface` inspection algorithm | Coding retains the required public entry-name tuple and default module binding. |
 | `bootstrap.py` standard activation effects | existing `harness.session.bootstrap` activation graph and `StandardAgentSessionConfigurationRuntime` | Coding supplies Extension construction, source-identity check, prompt/model/tool/session factories, and Product defaults. |
@@ -82,7 +82,7 @@ Implementation accounting, excluding tests and documentation:
   Coding-deletion/shared-addition ratio of approximately 0.86.
 
 The old Coding files are deleted rather than retained as aliases. Architecture
-probes require `work.session`, `harness.sdk_surface`, Harness diagnostics, and
+probes require `harnesswork.integrations.session`, `harness.sdk_surface`, Harness diagnostics, and
 the standard session bootstrap runtime to remain free of Coding imports.
 
 ## Root Product Plan And Shared Adapters (Complete)
@@ -794,8 +794,8 @@ projector, or transport.
 | Agent CLI mode precedence and prepared-turn lifecycle | `harness.cli.run_agent_cli_host` plus `CliApplicationRuntime` and `run_keyword_cli_turns` | input/Method preparation and runner binding | Complete |
 | standard Agent plain JSON event projection | `harnesstui.conversation.agent_binding` plus existing `PlainHost` | plain renderer selection | Complete |
 | prompt and fixed-plan subscribe/failure/worked/dispose lifecycle | existing `plain_prompt_host` with Agent binding helpers | model preparation and Coding Work factory | Complete |
-| host metadata to session Work turns | `work.session.SessionWorkHostPort` over `SessionWorkRuntime` | Coding Work profile | Complete |
-| Work operation acceptance, cancellation and Channel delivery | `channel.adapters.session_work.SessionWorkChannelPort` over `ChannelHost` | `coding` domain and `SubmitCodingTurn` vocabulary | Complete |
+| host metadata to session Work turns | `harnesswork.integrations.session.SessionWorkHostPort` over `SessionWorkRuntime` | Coding Work profile | Complete |
+| Work operation acceptance, cancellation and Channel delivery | `channel.adapters.harnesswork.SessionWorkChannelPort` over `ChannelHost` | `coding` domain and `SubmitCodingTurn` vocabulary | Complete |
 | standard Agent runtime views to Channel envelopes | `harness.host.AgentRuntimeChannelProjection` | event-view selection | Complete |
 
 Production accounting: `src/loushang/coding` changed from 9,519 to 9,071
@@ -824,8 +824,8 @@ session, package, Method, Work, CLI, or presentation engine:
 | standard session command source composition | `harness.session.StandardSessionCommandController` | no duplicate Coding controller | Complete |
 | plain conversation app, resume hint, and Agent session history | existing `harnesstui.conversation` app/binding/resume/history components | title/copy, command prefix, Product session loader, and renderer | Complete |
 | Method domain discovery/select/compile/project/prompt preparation | `method.MethodDomainRuntime` over the existing Method components | `domain="coding"` and guidance template | Complete |
-| Agent RuntimeEvent to Work facts and session Work factory | `work.agent_projection` plus existing `SessionWorkRuntime` | `CODING_WORK_PROFILE` | Complete |
-| prepared domain turn to CLI/Work turn projection, prompt error boundary, package listing, Work-log inspection | existing `harness.cli` and `work` CLI/session components | argument mapping, Product callbacks, and wording | Complete |
+| Agent RuntimeEvent to Work facts and session Work factory | `harnesswork.integrations.agent_session` plus existing `SessionWorkRuntime` | `CODING_WORK_PROFILE` | Complete |
+| prepared domain turn to CLI/Work turn projection, prompt error boundary, package listing, Work-log inspection | existing `harness.cli` and `harnesswork` CLI/session components | argument mapping, Product callbacks, and wording | Complete |
 
 Deleted canonical Coding modules:
 
@@ -846,7 +846,7 @@ by 1,764 LOC. Notable final sizes are:
   mechanics delegated to shared owners;
 - `coding.ui.plain_app`: 103 LOC, a Product binding over the HarnessTUI plain
   app;
-- `coding.domain.app` plus `coding.domain.work`: 94 LOC, containing only
+- `coding.domain.app` plus `coding.adapters.harnesswork`: 94 LOC, containing only
   Product profiles and thin bindings.
 
 Independent Research/Design-style contract probes exercise the Method runtime,

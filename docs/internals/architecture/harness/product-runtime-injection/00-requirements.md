@@ -20,6 +20,11 @@ facts, deterministic replay, permissions, or compatibility.
 
 ## Terms
 
+Canonical Capability and composition vocabulary comes from the
+[Product And OEM Glossary](../../../glossary/loushang-product.md). The
+[Capability Variation And Replacement Boundary](../capability-variation-and-replacement-boundary.md)
+is authoritative for executable composition semantics.
+
 | Term | Meaning |
 | --- | --- |
 | Capability | A named runtime concern, such as a conversation store, memory provider, compaction planner, or tool pack. |
@@ -41,9 +46,13 @@ store, artifact, approval, model, or presentation defaults.
 
 ### PDRI-002: Explicit Slot Semantics
 
-Every injectable capability must declare whether it is a single selection, an
-ordered composition, an exclusive replacement, or an append-only contribution.
-It must also declare its binding scope and mutability.
+Every injectable capability must declare a `single`, `exclusive`, `ordered`,
+or `append_only` Runtime Capability Shape, plus its binding scope and
+mutability. When the resolved behavior is externally composable or
+replaceable, its detailed boundary must separately declare Aggregate
+Contribution, Ordered Interception/Decoration, or Exclusive Replacement
+semantics. A data-resource surface may instead declare Resource Overlay
+semantics with explicit identity and precedence rules.
 
 ### PDRI-003: Controlled Sources
 
@@ -140,7 +149,8 @@ This wave does not:
 ## Acceptance Criteria For Detailed Designs
 
 Each component design must trace its requirements by identifier, specify its
-slot semantics and lifecycle, and define Product, OEM, extension, and session
-override authority. A detailed design is not implementation-ready until it
+slot shape, lifecycle, and any behavioral variation semantic, and define
+Product, OEM, extension, and session override authority. A detailed design is
+not implementation-ready until it
 also defines its runtime snapshot, failure behavior, diagnostics, and contract
 tests.

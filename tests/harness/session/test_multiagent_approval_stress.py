@@ -20,12 +20,14 @@ from loushang.harness.multiagent import (
     AgentTypeSpec,
     HostCaller,
     MultiAgentControl,
+    SubagentDisposeResult,
     SubagentRoundResult,
 )
 from loushang.harness.multiagent.run_handle import RoundMode
 from loushang.harness.policy import PolicyDecision
 from loushang.harness.session.multiagent import (
     SessionMultiAgentRuntime,
+    SessionSubagentBinding,
     SessionSubagentRequest,
 )
 from loushang.harness.tools import (
@@ -114,11 +116,7 @@ class _ApprovalStressDriver:
         self._approval.open_session()
         result = await self._tool.execute(
             f"stress-{self._cycle}-{self.ref}-round-{round_id}",
-            {
-                "path": (
-                    f"/tmp/stress-target-{self._cycle}-{self.ref.path.name}"
-                )
-            },
+            {"path": (f"/tmp/stress-target-{self._cycle}-{self.ref.path.name}")},
         )
         return SubagentRoundResult(
             status="completed",
@@ -128,9 +126,10 @@ class _ApprovalStressDriver:
     def abort(self) -> None:
         self._approval.close_session("Child agent interrupted")
 
-    async def dispose(self) -> None:
+    async def dispose(self) -> SubagentDisposeResult:
         self.dispose_calls += 1
         self._approval.end_session("Child agent closed")
+        return SubagentDisposeResult()
 
 
 class _ApprovalStressFactory:
@@ -146,10 +145,10 @@ class _ApprovalStressFactory:
         self._cycle = cycle
         self.drivers: dict[AgentRef, _ApprovalStressDriver] = {}
 
-    async def create_driver(
+    async def create(
         self,
         request: SessionSubagentRequest,
-    ) -> _ApprovalStressDriver:
+    ) -> SessionSubagentBinding:
         driver = _ApprovalStressDriver(
             ref=request.record.ref,
             resolver=self._resolver,
@@ -157,7 +156,7 @@ class _ApprovalStressFactory:
             cycle=self._cycle,
         )
         self.drivers[request.record.ref] = driver
-        return driver
+        return SessionSubagentBinding(driver=driver)
 
 
 async def _wait_until(predicate: Callable[[], bool]) -> None:
@@ -313,20 +312,22 @@ def test_concurrent_child_approval_races_preserve_lifecycle_invariants() -> None
                 ]
                 assert event_types.count("tool_execution_started") <= 1
                 terminal_audit_count = sum(
-                    event_type
-                    in {"tool_execution_completed", "tool_execution_failed"}
+                    event_type in {"tool_execution_completed", "tool_execution_failed"}
                     for event_type in event_types
                 )
                 assert terminal_audit_count == event_types.count(
                     "tool_execution_started"
                 )
-                assert len(
-                    {
-                        event["action_fingerprint"]
-                        for event in events
-                        if "action_fingerprint" in event
-                    }
-                ) == 1
+                assert (
+                    len(
+                        {
+                            event["action_fingerprint"]
+                            for event in events
+                            if "action_fingerprint" in event
+                        }
+                    )
+                    == 1
+                )
                 assert "stress-target" not in json.dumps(events)
             assert resolver.permissions_snapshot().pending == ()
             assert not await resolver.handle_result(
@@ -370,9 +371,7 @@ def test_concurrent_child_approval_races_preserve_lifecycle_invariants() -> None
             )
             assert reincarnated_terminal.status == "completed"
             assert effect_calls[reincarnated.ref] == 1
-            reincarnated_events = factory.drivers[
-                reincarnated.ref
-            ].audit_events
+            reincarnated_events = factory.drivers[reincarnated.ref].audit_events
             assert [event["type"] for event in reincarnated_events][-2:] == [
                 "tool_execution_started",
                 "tool_execution_completed",

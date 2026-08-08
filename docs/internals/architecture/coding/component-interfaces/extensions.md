@@ -1,5 +1,13 @@
 # `extensions`
 
+## Status
+
+Superseded as a Coding-owned shared runtime. Product-neutral Extension loading,
+routing, and lifecycle composition now belong to the
+[Harness Extension Runtime Core](../../harness/extension-runtime-core-boundary.md).
+The Product-specific semantics described below are retained as historical
+adapter requirements.
+
 ## Role
 
 - coding 扩展执行侧协调组件，以及可选的扩展发现/装载边界

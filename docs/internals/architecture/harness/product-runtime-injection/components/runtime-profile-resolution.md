@@ -67,11 +67,11 @@ provider instance, or a Product object.
 The first shared vocabulary is deliberately limited to these neutral slot
 identifiers:
 
-| Slot | Shape | Refresh | Intended contract owner |
-| --- | --- | --- | --- |
-| `conversation.store` | single | sealed | `harness.storage` |
-| `agent.transcript_profile` | single | sealed | `harness.transcript` |
-| `context.compaction` | single | turn | `harness.context` |
+| Slot | Shape | Variation semantic | Refresh | Intended contract owner |
+| --- | --- | --- | --- | --- |
+| `conversation.store` | single | Exclusive Replacement | sealed | `harness.storage` |
+| `agent.transcript_profile` | single | Exclusive Replacement | sealed | `harness.transcript` |
+| `context.compaction` | single | Exclusive Replacement | turn | `harness.context` |
 
 The vocabulary does not import or prescribe an implementation. A Product can
 bind a memory, file, database, or OEM store factory only when its plan and
@@ -92,7 +92,10 @@ sort by priority, implementation key, version, and canonical JSON
 configuration. The resolver never uses discovery order or factory side
 effects.
 
-- A `single` or `exclusive` slot chooses the final authorized selection.
+- A `single` or `exclusive` slot retains only the final authorized selection
+  under the declared source/layer/selection precedence. When its variation
+  semantic is Exclusive Replacement, that selected implementation is the only
+  active provider.
 - An `ordered` slot replaces an earlier selection with the same
   `(implementation, version)` identity while retaining a deterministic
   sequence for distinct identities.
@@ -100,7 +103,14 @@ effects.
   identities, in deterministic order.
 - An undeclared slot, forbidden source, duplicate source/layer identity, or
   ambiguous single selection fails with `RuntimeProfileDiagnostic` values.
-- Missing required slots fail rather than falling back implicitly.
+- Missing required slots and failed bindings fail rather than falling back
+  implicitly.
+
+`RuntimeCapabilitySlot.variation_semantic` separately declares
+`aggregate_contribution`, `ordered_interception`, or `exclusive_replacement`.
+Non-Product or multi-value surfaces must provide it, and the slot constructor
+rejects shape/semantic combinations that cannot be executed by the generic
+resolver and binder.
 
 The resolver accepts `RuntimeProfileLayer` data; it does not decide whether a
 particular extension is trusted. Extension manifests, permissions, dependency
@@ -111,9 +121,12 @@ to the resolver (PDRI-003, PDRI-009).
 
 `ResolvedRuntimeProfile.snapshot()` produces `RuntimeProfileSnapshot` schema
 version 1. The JSON form records the Product, slot shape/scope/refresh boundary,
-selected implementation key/version/configuration, and source-layer
-provenance. `RuntimeProfileSnapshot.from_json()` validates that the entire
-payload is strict JSON and rejects boolean or malformed version values.
+variation semantic, selected implementation key/version/configuration, and
+source-layer provenance. The variation field is an additive schema-v1 field:
+legacy snapshots without it remain readable and Product resume validation
+normalizes them against the current declared slot contract.
+`RuntimeProfileSnapshot.from_json()` validates that the payload is strict JSON
+and rejects boolean or malformed version values.
 
 The snapshot is evidence of what a current Loushang session used; it is not a
 factory registry and is not an implicit compatibility importer. Native load
@@ -200,6 +213,12 @@ new memory/file sessions select the correct factory, headers retain the
 snapshot, persistent resume validates it, transient open does not rewrite the
 durable file choice, and `AgentSession` consumes then disposes the selected
 compaction behavior.
+
+`tests/coding/test_capability_profile.py` verifies the first real external
+replacement path: an Agent Extension registers a side-question Provider
+factory, Coding derives an explicit grant from its effective policy, the
+runtime profile selects one deterministic winner, only that factory binds, and
+Session shutdown cancels the active Provider before disposing the factory.
 
 ## Non-Goals
 

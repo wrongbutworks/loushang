@@ -20,17 +20,20 @@
 3. [Technical Runtime, Scheduling, And Tools](technical-runtime-and-tools.md)
    最新的实施收敛：技术态与调度态的分层、四个内核模块、workspace
    lease、模型可调用协作 tools 与长期 Work execution 的接缝。
-4. [Workspace Collaboration And Git Handoff](workspace-collaboration-and-git-handoff.md)
+4. [Remote Agent Capability Boundary](remote-agent-capability-boundary.md)
+   远程 Agent 的渐进契约：一次性 capability、异步 job、持续 collaboration；
+   明确何时不需要、何时才需要统一 execution port。
+5. [Workspace Collaboration And Git Handoff](workspace-collaboration-and-git-handoff.md)
    workspace scope 与 Git checkout 的正交模型；共享写入、detached
    artifact 交付以及延后的 branch-backed workspace。
-5. [Temporary Implementation Plan](implementation-plan.md)
+6. [Temporary Implementation Plan](implementation-plan.md)
    分阶段的执行检查表；实施稳定后将删除或转为正式开发记录。
-6. Accepted-direction ARDs:
+7. Accepted-direction ARDs:
    - [ARD-001: Harness Ownership](ARD-001-harness-ownership.md) —
      为什么是 `loushang.harness.multiagent` 而非顶层包或 agent 内核。
    - [ARD-002: Async-Only Execution And Recovery](ARD-002-async-execution-and-recovery.md) —
      一期全异步、消息驱动恢复、open/closed 区分。
-7. Component boundaries（按依赖序阅读）:
+8. Component boundaries（按依赖序阅读）:
    - [Tool Surface](tool-surface-boundary.md) — 模型可见的六个通用协作
      tools 与提示纪律；一期最小闭环仍以 spawn / send / wait 为核心。
    - [Control](control-boundary.md) — spawn 流水线与消息路由的编排。
@@ -78,8 +81,9 @@
 - `loushang.method` / `loushang.work`：业务态编排层；method 角色可
   编译为 agent 类型（装配层职责），work 可消费 agent 树事实做业务
   投影——multiagent 不依赖它们。
-- `loushang.channel`：未来承载远端/多客户端订阅；multiagent 的事实
-  经装配层投影后才可能进入 channel。
+- `loushang.channel`：承载其明确接纳的 Work/runtime-view 订阅与投影；
+  multiagent 的事实经装配层投影后才可能进入 Channel。远端 Agent RPC、
+  job 和 managed-worker transport 不属于 Channel。
 - 产品装配层（coding / design / …）：注入类型注册表、策略参数、
   事件消费者、审批出口；决定工具面暴露范围。
 
@@ -161,7 +165,12 @@ artifact 引用、diff review、显式批准 apply 与 discard。
 
 1. **技术一期**：session-owned 控制树、异步协作 tools、消息驱动唤醒、
    Coding Git workspace lease、事实驱动的跨产品 TUI；无 LRU 回收。
-2. **调度一期**：Work-backed durable execution、checkpoint、orphan
-   recovery 与 attach/cancel。
-3. **后续**：LRU 驻留回收、远端执行（channel 承载 transport）、Method
-   编译的 stage 级派生、验收和工作产品调度。
+2. **远端能力（按需独立演进）**：先用普通 tool/capability 支持一次性
+   `invoke`；执行确实越过单次调用生命周期时才增加 job；需要 steering /
+   follow-up 时才增加 remote collaboration backend。
+3. **持久调度**：仅对已接受的 durable Work，把 Work-owned 业务履约与
+   Host-owned execution backend 显式关联，增加 checkpoint、orphan recovery
+   与 attach/cancel。
+4. **后续**：LRU 驻留回收、确有混合 placement 后提炼的 execution port、
+   Method 编译的 stage 级派生、验收和工作产品调度；Channel 不作为远端
+   capability、job 或受管 worker 的 transport。

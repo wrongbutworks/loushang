@@ -10,6 +10,13 @@ from loushang.coding.compaction.adapter import (
 from loushang.coding.compaction.adapter import (
     execute_coding_compaction as _execute_coding_compaction,
 )
+from loushang.coding.lsp.commands import (
+    LSP_SESSION_COMMAND_NAME,
+    execute_lsp_session_command,
+    lsp_session_command_descriptor,
+)
+from loushang.coding.lsp.runtime import CodingLspRuntime
+from loushang.coding.lsp.status import LspSessionStatus, disabled_lsp_session_status
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -18,12 +25,16 @@ from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
 from loushang.coding.resource_runtime import summarize_coding_package_root
+from loushang.coding.runtime_capability_admission import (
+    bind_coding_capability_composition_runtime,
+)
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
 )
+from loushang.harness.commands import normalize_command_name
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.events import RuntimeEvent
@@ -122,15 +133,20 @@ class AgentSession(AgentProductSession):
         tool_policy_evaluator: PolicyEvaluator | None = None,
         capability_runtime: CapabilityCompositionRuntime | None = None,
         sandbox_runtime: SandboxExecutionRuntime | None = None,
+        lsp_runtime: CodingLspRuntime | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
     ) -> None:
         self._sandbox_runtime = sandbox_runtime
+        self._lsp_runtime = lsp_runtime
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
-        resolved_capability_runtime = (
-            capability_runtime
-            or bind_capability_composition_runtime(CODING_CAPABILITY_PROFILE)
-        )
+        resolved_capability_runtime = capability_runtime
+        if resolved_capability_runtime is None:
+            resolved_capability_runtime = (
+                bind_coding_capability_composition_runtime(extension_runner)
+                if extension_runner is not None
+                else bind_capability_composition_runtime(CODING_CAPABILITY_PROFILE)
+            )
         super().__init__(
             agent=agent,
             session_manager=session_manager,
@@ -177,9 +193,76 @@ class AgentSession(AgentProductSession):
             return SandboxStatus(state="disabled")
         return self._sandbox_runtime.status()
 
+    def get_lsp_status(self) -> LspSessionStatus:
+        if self._lsp_runtime is None:
+            return disabled_lsp_session_status()
+        return self._lsp_runtime.status()
+
+    async def stop_lsp_server(
+        self,
+        *,
+        definition_id: str,
+        workspace_root: str,
+    ) -> bool:
+        if self._lsp_runtime is None:
+            return False
+        return await self._lsp_runtime.stop(
+            definition_id=definition_id,
+            workspace_root=workspace_root,
+        )
+
+    def list_commands(self) -> list[object]:
+        commands = list(super().list_commands())
+        if not any(
+            getattr(command, "name", None) == LSP_SESSION_COMMAND_NAME
+            for command in commands
+        ):
+            commands.append(lsp_session_command_descriptor())
+        return commands
+
+    async def execute_command_async(
+        self,
+        invocation_name: str,
+        args: str,
+    ) -> object | None:
+        if normalize_command_name(invocation_name) == LSP_SESSION_COMMAND_NAME:
+            return await execute_lsp_session_command(self._lsp_runtime, args)
+        return await super().execute_command_async(invocation_name, args)
+
+    async def emit_product_tool_audit_event(
+        self,
+        event: Mapping[str, object],
+    ) -> None:
+        """Route a Product-owned runtime action through the session event stream."""
+
+        await self._dispatch_event(dict(event))
+
     async def _dispose_session_runtime_profile(self) -> None:
+        primary_error: BaseException | None = None
         try:
             await super()._dispose_session_runtime_profile()
-        finally:
-            if self._sandbox_runtime is not None:
+        except BaseException as exc:
+            primary_error = exc
+        lsp_runtime = getattr(self, "_lsp_runtime", None)
+        if lsp_runtime is not None:
+            try:
+                await lsp_runtime.close()
+            except BaseException as cleanup_error:
+                if primary_error is None:
+                    primary_error = cleanup_error
+                else:
+                    primary_error.add_note(
+                        f"Coding LSP cleanup also failed: {cleanup_error}"
+                    )
+        if self._sandbox_runtime is not None:
+            try:
                 await self._sandbox_runtime.close()
+            except BaseException as cleanup_error:
+                if primary_error is None:
+                    primary_error = cleanup_error
+                else:
+                    primary_error.add_note(
+                        f"process host or sandbox cleanup also failed: {cleanup_error}"
+                    )
+        if primary_error is not None:
+            raise primary_error

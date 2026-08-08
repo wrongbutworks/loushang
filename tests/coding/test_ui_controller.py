@@ -268,6 +268,32 @@ def test_controller_prefers_session_command_display_text_for_status() -> None:
     )
 
 
+def test_controller_dispatches_coding_lsp_session_status_without_model_prompt() -> None:
+    from loushang.coding.lsp.commands import (
+        execute_lsp_session_command,
+        lsp_session_command_descriptor,
+    )
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
+
+    class LspCommandSession(_Session):
+        def list_commands(self) -> list[object]:
+            return [lsp_session_command_descriptor()]
+
+        async def execute_command_async(self, invocation_name: str, args: str) -> object:
+            assert invocation_name == "lsp"
+            return await execute_lsp_session_command(None, args)
+
+    session = LspCommandSession()
+    controller = build_coding_ui_controller(session=session)
+
+    result = asyncio.run(controller.dispatch(PromptIntent(text="/lsp status")))
+
+    assert result.error_message is None
+    assert result.status_message == "LSP session capability: disabled"
+    assert session.prompts == []
+
+
 def test_controller_leaves_prompt_resource_commands_on_prompt_path() -> None:
     from loushang.coding.ui.product_binding import build_coding_ui_controller
     from loushang.harnesstui.conversation.intents import PromptIntent

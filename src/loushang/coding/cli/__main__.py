@@ -11,6 +11,11 @@ from loushang.ai.model import (
     parse_model_selection_reference,
 )
 from loushang.ai.model.registry import get_default_model_registry
+from loushang.coding.adapters.harnesswork import (
+    create_coding_work_runtime,
+    run_coding_work_channel,
+)
+from loushang.coding.agent_invocation import register_coding_agent_delegate_tool
 from loushang.coding.arch.tool import INSPECT_IMPORT_GRAPH_TOOL_NAME
 from loushang.coding.arch.tool_pack import register_coding_arch_tools
 from loushang.coding.bootstrap import (
@@ -24,6 +29,7 @@ from loushang.coding.capabilities import (
     coding_capability_mount_mode,
 )
 from loushang.coding.cli.args import CliArgs, ExtensionFlag, help_text, parse_args
+from loushang.coding.cli.lsp import extract_lsp_argv, run_coding_lsp_command
 from loushang.coding.cli.multiagent import run_coding_multiagent_command
 from loushang.coding.cli.workspace import (
     extract_workspace_argv,
@@ -46,10 +52,6 @@ from loushang.coding.domain import (
     CodingDomainApp,
     CodingDomainPreparedTurn,
     CodingDomainRequest,
-)
-from loushang.coding.domain.work import (
-    create_coding_work_runtime,
-    run_coding_work_channel,
 )
 from loushang.coding.model_selection import (
     apply_model_selection,
@@ -128,6 +130,7 @@ from loushang.harness.resources.packages import (
 from loushang.harness.resources.packages.security import PackageSecurityPolicy
 from loushang.harness.resources.plugins import is_remote_plugin_source
 from loushang.harness.scenario import run_fake_workflow_cli
+from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
 from loushang.harness.tools.workspace import (
     WorkspaceToolRuntimeSettings,
     workspace_tool_runtime_settings,
@@ -139,19 +142,19 @@ from loushang.harnesstui.conversation.agent_binding import (
     run_agent_plain_mode,
     run_agent_plain_plan_mode,
 )
+from loushang.harnesswork import (
+    create_work_event_log,
+    run_work_log_inspection_operation,
+)
+from loushang.harnesswork.integrations.session import (
+    SessionWorkHostPort,
+    project_prepared_session_work_turns,
+)
 from loushang.method import (
     MethodCompiler,
     MethodContext,
     MethodLoader,
     resolve_method_policy,
-)
-from loushang.work import (
-    create_work_event_log,
-    run_work_log_inspection_operation,
-)
-from loushang.work.session import (
-    SessionWorkHostPort,
-    project_prepared_session_work_turns,
 )
 
 _WORK_LOG_INSPECT_LIMIT = 20
@@ -230,6 +233,21 @@ def default_runtime_builder(
             ),
         )
     allowed_tool_names, active_tool_names = agent_tool_selection(args)
+    runtime_tool_registry = tool_registry.copy()
+    if (
+        not getattr(args, "no_builtin_tools", False)
+        and allowed_tool_names is not None
+        and AGENT_DELEGATE_TOOL_NAME in allowed_tool_names
+    ):
+        registered_parent_tools = tuple(
+            definition.name
+            for definition in runtime_tool_registry.list_enabled_definitions()
+            if allowed_tool_names is None or definition.name in allowed_tool_names
+        )
+        register_coding_agent_delegate_tool(
+            runtime_tool_registry,
+            parent_allowed_tools=registered_parent_tools,
+        )
     resource_loader_options = configure_agent_resource_loader(
         services.resource_loader,
         args,
@@ -243,7 +261,7 @@ def default_runtime_builder(
         session_dir=session_dir,
         services=services,
         services_factory=services_factory,
-        tool_registry=tool_registry,
+        tool_registry=runtime_tool_registry,
         allowed_tool_names=allowed_tool_names,
         active_tool_names=active_tool_names,
         persist=not args.no_session,
@@ -272,6 +290,7 @@ async def run_cli(
     continuity_runner=run_continuity_picker,
     multiagent_runner=run_coding_multiagent_command,
     workspace_runner=run_coding_workspace_command,
+    lsp_runner=run_coding_lsp_command,
 ) -> int:
     raw_argv = tuple(argv or ())
     workspace_argv = extract_workspace_argv(raw_argv)
@@ -282,6 +301,17 @@ async def run_cli(
             stdout=stdout or sys.stdout,
             stderr=stderr or sys.stderr,
             cwd=cwd,
+        )
+    lsp_argv = extract_lsp_argv(raw_argv)
+    if lsp_argv is not None:
+        return await lsp_runner(
+            lsp_argv,
+            stdin=stdin or sys.stdin,
+            stdout=stdout or sys.stdout,
+            stderr=stderr or sys.stderr,
+            cwd=cwd,
+            services=services,
+            build_services=build_default_services,
         )
     multiagent_argv = extract_multiagent_argv(raw_argv)
     if multiagent_argv is not None:

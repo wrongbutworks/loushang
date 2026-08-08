@@ -320,6 +320,10 @@ src/loushang/harness/session/multiagent.py
   adapts its already-prepared session/`run_agent()` round through the narrow
   `SubagentRoundDriver`; do not introduce a phase-one attachable
   `AgentExecutionPort` abstraction.
+- Return the driver, optional input-activity capability, and initial workspace
+  reference through an explicit `SessionSubagentBinding`; return workspace
+  release and cleanup errors through `SubagentDisposeResult`, without probing
+  implementation attributes.
 - Implement session-owned spawn, send, wait, list, interrupt, and close.
 - Translate completion notices through `AgentInputFacade` into the hidden
   system mailbox; its policy decides whether an idle parent is awakened.
@@ -559,12 +563,40 @@ concurrency, cancellation, tamper, stale-plan, and restart cases remain
 real-Git tests under `tests/harness/workspace`; they are not simulated as TUI
 frames.
 
-## Phase 3 — Durable Work Execution
+## Independent Gate — Remote Agent Capabilities
+
+Remote Agent access is not coupled to the durable hosted-execution phase. Add
+only the weakest interaction contract required by a concrete Product:
+
+1. For an Agent that runs once and returns a result, register a normal admitted
+   capability with `invoke(request) -> result`. It is not a multiagent child.
+2. If execution must outlive one tool call but does not accept follow-up, add a
+   job client with `submit / await_result / cancel` and a stable `RunRef`.
+3. If the caller needs steering or follow-up, bind `MultiAgentToolPack` to one
+   remote collaboration client for the Session / capability profile and retain
+   the existing `spawn / send / wait / list / interrupt / close` semantics.
+
+The tool handler owns bounded input/output projection and injects protocol,
+identity, idempotency and authorization metadata; model-visible tool schemas
+are not reused as wire schemas. A service may externalize job or actor state,
+so asynchronous execution does not require a stateful server process.
+
+Do not mix local/plugin/remote children transparently in one tree in this gate.
+Do not introduce `AgentExecutionPort`, AppService, Channel, or Work merely to
+support remote placement. See
+[Remote Agent Capability Boundary](remote-agent-capability-boundary.md).
+
+## Phase 3 — Durable Work Correlation And Hosted Execution
 
 ### Scope
 
-Add a Work-owned durable agent operation model. Work owns the authority for
-long-running execution; session control attaches to it when available.
+Add durable Work correlation for agent-backed business operations together
+with a Host-owned execution backend. Work owns the accepted business lifecycle,
+terminal outcome, evidence, and replayable facts. Host infrastructure owns
+physical placement, worker leases, process health, and execution attachment.
+Neither side duplicates the other's authority. This phase is entered for
+durability, attach/recovery, or transparent mixed-placement requirements, not
+because an Agent capability happens to be remote.
 
 ```text
 agent_requested
@@ -578,15 +610,22 @@ agent_retry_scheduled | agent_orphaned
 workspace_retained | workspace_released
 ```
 
-- Implement durable execution, attach, cancel, checkpoint, orphan detection,
-  retry, and recovery over `WorkRuntime` / `EventLogBackend`.
-- Extract an `AgentExecutionPort` only after the phase-one session execution
-  behaviour supplies a proven common contract.
+- Implement Work correlation, accepted lifecycle, retry policy, and replay over
+  `WorkRuntime` / `EventLogBackend`; map technical execution facts through the
+  Product `WorkDomainExecutor` rather than teaching Work about agent workers.
+- Add one real Host-owned plugin or remote-worker backend with the attach,
+  cancel, checkpoint, fencing, orphan detection, and recovery semantics that
+  the admitted durable operation actually requires.
+- Extract an `AgentExecutionPort` only if the Host must preserve one logical
+  control model while transparently mixing physical backends, and only from the
+  proven common behavior of the existing in-process path and that second
+  physical backend.
 - Preserve workspace/artifact references across detach and re-attach.
 
 ### Exit Criteria
 
-- A durable worker survives session replacement as a Work operation.
+- A durable worker can survive session replacement while remaining explicitly
+  correlated with, but not authoritative for, its Work operation.
 - A later session can attach, inspect state, cancel, or resume according to
   Work policy.
 - Process restart never silently loses the task: it recovers or is explicitly

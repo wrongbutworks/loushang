@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal, TypeAlias
 
 from loushang.harness.events.projection import RuntimeEventView
-from loushang.work.types import WorkEvent, WorkOperation
+from loushang.harnesswork.types import WorkEvent, WorkOperation
 
 ChannelEnvelopeKind: TypeAlias = Literal["operation", "event"]
 ChannelPayload: TypeAlias = WorkOperation | WorkEvent | RuntimeEventView

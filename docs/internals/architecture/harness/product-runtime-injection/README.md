@@ -80,6 +80,7 @@ Every implementation wave that introduces a new injectable capability must:
 
 ## Related Boundaries
 
+- [Capability Variation And Replacement Boundary](../capability-variation-and-replacement-boundary.md)
 - [Shared Capability Boundaries](../shared-capability-boundaries.md)
 - [Product Runtime Core Boundary](../product-runtime-core-boundary.md)
 - [Product Configuration Runtime Boundary](../product-configuration-runtime-boundary.md)

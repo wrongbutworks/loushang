@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from dataclasses import replace
 
 import pytest
@@ -15,7 +16,7 @@ from loushang.coding.product_plan import (
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.conversation import FileConversationStore, MemoryConversationStore
-from loushang.harness.runtime import RuntimeProfileSnapshot
+from loushang.harness.runtime import SIDE_QUESTION_PROVIDER_SLOT, RuntimeProfileSnapshot
 from loushang.harness.transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
@@ -37,6 +38,18 @@ def _model() -> Model:
     )
 
 
+def _durable_capability_snapshot() -> dict[str, object]:
+    snapshot = CODING_CAPABILITY_PROFILE.snapshot()
+    return replace(
+        snapshot,
+        capabilities=tuple(
+            capability
+            for capability in snapshot.capabilities
+            if capability.slot != SIDE_QUESTION_PROVIDER_SLOT.key
+        ),
+    ).to_json()
+
+
 def test_in_memory_session_binds_the_coding_runtime_profile_and_records_snapshot(
     tmp_path,
 ) -> None:
@@ -55,10 +68,7 @@ def test_in_memory_session_binds_the_coding_runtime_profile_and_records_snapshot
 
         assert manager.runtime_profile.product_id == "coding"
         assert snapshot.to_json() == manager.runtime_profile.snapshot().to_json()
-        assert (
-            capability_snapshot.to_json()
-            == CODING_CAPABILITY_PROFILE.snapshot().to_json()
-        )
+        assert capability_snapshot.to_json() == _durable_capability_snapshot()
         assert isinstance(
             manager.get_runtime_capability("conversation.store"),
             MemoryConversationStore,
@@ -98,7 +108,7 @@ def test_persistent_session_resumes_the_snapshotted_file_profile(tmp_path) -> No
             UserMessage(role="user", content="materialize", timestamp=0.0)
         )
         expected_snapshot = manager.runtime_profile.snapshot().to_json()
-        expected_capability_snapshot = CODING_CAPABILITY_PROFILE.snapshot().to_json()
+        expected_capability_snapshot = _durable_capability_snapshot()
 
         resumed = await SessionManager.load(manager.session_file, persist=True)
 
@@ -157,6 +167,47 @@ def test_persistent_session_accepts_snapshot_without_auxiliary_side_question(
                 CODING_CAPABILITY_PROFILE_METADATA_KEY: capability_snapshot,
             },
         )
+        write_session_file(manager.session_file, header, manager.get_entries())
+        await manager.dispose_runtime_profile()
+
+        resumed = await SessionManager.load(manager.session_file, persist=True)
+        await resumed.dispose_runtime_profile()
+
+    asyncio.run(scenario())
+
+
+def test_persistent_session_accepts_legacy_capability_semantic_snapshot(
+    tmp_path,
+) -> None:
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=True,
+        )
+        assert manager.session_file is not None
+        await manager.append_message(
+            UserMessage(role="user", content="materialize", timestamp=0.0)
+        )
+        metadata = deepcopy(dict(manager.header.metadata))
+        for metadata_key in (
+            CODING_RUNTIME_PROFILE_METADATA_KEY,
+            CODING_CAPABILITY_PROFILE_METADATA_KEY,
+        ):
+            snapshot = metadata[metadata_key]
+            assert isinstance(snapshot, dict)
+            capabilities = snapshot["capabilities"]
+            assert isinstance(capabilities, list)
+            for capability in capabilities:
+                assert isinstance(capability, dict)
+                capability.pop("variationSemantic")
+                if capability["slot"] in {
+                    "prompt.sections",
+                    "tool.packs",
+                    "command.packs",
+                }:
+                    capability["shape"] = "ordered"
+        header = replace(manager.header, metadata=metadata)
         write_session_file(manager.session_file, header, manager.get_entries())
         await manager.dispose_runtime_profile()
 

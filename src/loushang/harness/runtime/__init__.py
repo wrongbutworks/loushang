@@ -41,6 +41,7 @@ from loushang.harness.runtime.profile import (
     RuntimeCapabilitySelection,
     RuntimeCapabilityShape,
     RuntimeCapabilitySlot,
+    RuntimeCapabilityVariationSemantic,
     RuntimeProfileAdmission,
     RuntimeProfileAdmissionPolicy,
     RuntimeProfileBinder,
@@ -59,6 +60,7 @@ from loushang.harness.runtime.profile import (
     SealedRuntimeCapabilityError,
     standard_agent_session_slots,
     standard_capability_composition_slots,
+    standard_runtime_capability_slots,
 )
 from loushang.harness.runtime.retry import RetryCoordinator, RetryPolicy
 from loushang.harness.runtime.scheduling import CoalescingScheduler
@@ -129,6 +131,7 @@ __all__ = [
     "RuntimeCapabilitySelection",
     "RuntimeCapabilityShape",
     "RuntimeCapabilitySlot",
+    "RuntimeCapabilityVariationSemantic",
     "RuntimeProfileBinder",
     "RuntimeProfileBinding",
     "RuntimeProfileBindings",
@@ -177,4 +180,5 @@ __all__ = [
     "stage_file_import",
     "standard_agent_session_slots",
     "standard_capability_composition_slots",
+    "standard_runtime_capability_slots",
 ]

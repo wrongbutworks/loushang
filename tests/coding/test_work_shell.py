@@ -4,10 +4,13 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 
-from loushang.coding.domain.work import create_coding_work_runtime
+from loushang.coding.adapters.harnesswork import create_coding_work_runtime
 from loushang.harness.events import RuntimeEvent
-from loushang.work.event_log import EventLogBackend
-from loushang.work.session import SessionWorkRuntime, SessionWorkTurn
+from loushang.harnesswork.event_log import EventLogBackend
+from loushang.harnesswork.integrations.session import (
+    SessionWorkRuntime,
+    SessionWorkTurn,
+)
 
 
 class FakePromptSession:
