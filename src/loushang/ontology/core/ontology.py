@@ -110,7 +110,6 @@ class Ontology:
             description=description,
             display_name_property=display_name_property,
         )
-        self._store.register_object_type(obj_type)
         self._defined_object_types.append(obj_type)
         return obj_type
 
@@ -124,15 +123,27 @@ class Ontology:
         """注册关系类型."""
         self._require_mutable_schema()
         link_type = LinkType(name=name, source_type=source_type, target_type=target_type, **kwargs)
-        self._store.register_link_type(link_type)
         self._defined_link_types.append(link_type)
+        source = self._draft_object_type(source_type)
+        if source is not None:
+            source.add_outgoing_link_type(name)
+        target = self._draft_object_type(target_type)
+        if target is not None:
+            target.add_incoming_link_type(name)
         return link_type
 
     def get_object_type(self, name: str) -> ObjectType | None:
-        return self._store.get_object_type(name)
+        if self._compiled_schema is not None:
+            return self._store.get_object_type(name)
+        return self._draft_object_type(name)
 
     def get_link_type(self, name: str) -> LinkType | None:
-        return self._store.get_link_type(name)
+        if self._compiled_schema is not None:
+            return self._store.get_link_type(name)
+        return next(
+            (link_type for link_type in reversed(self._defined_link_types) if link_type.name == name),
+            None,
+        )
 
     @property
     def compiled_schema(self) -> CompiledOntologySchema | None:
@@ -143,6 +154,8 @@ class Ontology:
     def compile_schema(self) -> CompiledOntologySchema:
         """Compile the current definitions without changing facade state."""
 
+        if self._compiled_schema is not None:
+            return self._compiled_schema
         return OntologyCompiler().compile(
             OntologyPackageDraft(
                 package_id=self._package_id,
@@ -165,13 +178,52 @@ class Ontology:
         if self._compiled_schema is not None:
             return self._compiled_schema
         compiled = self.compile_schema()
-        self._store.bind_schema(compiled)
+        self._store.bind_schema(
+            compiled,
+            property_validators={
+                (object_type.name, prop.name): prop.validator
+                for object_type in self._defined_object_types
+                for prop in object_type.properties
+                if prop.validator is not None
+            },
+        )
+        for object_type in self._defined_object_types:
+            object_type.freeze_schema()
         self._compiled_schema = compiled
         return compiled
+
+    @classmethod
+    def from_schema(cls, schema: CompiledOntologySchema) -> Ontology:
+        """Create a frozen runtime backed by an existing compiled schema."""
+
+        ontology = cls(
+            package_id=schema.package_id,
+            namespace=schema.namespace,
+            schema_version=schema.version,
+        )
+        ontology._store.bind_schema(schema)
+        ontology._compiled_schema = schema
+        return ontology
+
+    @classmethod
+    def from_schema_json(cls, payload: str) -> Ontology:
+        """Load canonical schema JSON and create a frozen runtime."""
+
+        return cls.from_schema(OntologyCompiler().load_json(payload))
 
     def _require_mutable_schema(self) -> None:
         if self._compiled_schema is not None:
             raise RuntimeError("Ontology schema is frozen; type definitions cannot be changed")
+
+    def _draft_object_type(self, name: str) -> ObjectType | None:
+        return next(
+            (
+                object_type
+                for object_type in reversed(self._defined_object_types)
+                if object_type.name == name
+            ),
+            None,
+        )
 
     # ------------------------------------------------------------------
     # 对象生命周期
@@ -186,7 +238,7 @@ class Ontology:
         """创建对象实例."""
         # Preserve the historical unknown-type error without freezing an empty
         # or incomplete schema after a failed create attempt.
-        if self._store.get_object_type(object_type) is None:
+        if self.get_object_type(object_type) is None:
             raise ValueError(f"Object type '{object_type}' not registered")
         self.freeze_schema()
         return self._store.create(object_type, properties=properties, obj_id=obj_id)

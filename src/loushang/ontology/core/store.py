@@ -8,6 +8,10 @@ from uuid import UUID
 from loushang.ontology.core.link_type import LinkType
 from loushang.ontology.core.object import LinkVersion, OntologyObject
 from loushang.ontology.core.object_type import ObjectType
+from loushang.ontology.core.schema_runtime import (
+    PropertyValidators,
+    materialize_compiled_schema,
+)
 
 if TYPE_CHECKING:
     from loushang.ontology.schema import CompiledOntologySchema
@@ -48,15 +52,32 @@ class ObjectStore:
 
         return self._schema
 
-    def bind_schema(self, schema: CompiledOntologySchema) -> None:
-        """Bind one immutable schema snapshot before runtime objects exist."""
+    def bind_schema(
+        self,
+        schema: CompiledOntologySchema,
+        *,
+        property_validators: PropertyValidators | None = None,
+    ) -> None:
+        """Atomically materialize and bind one immutable schema snapshot."""
 
         if self._schema is schema:
             return
         if self._schema is not None:
             raise RuntimeError("ObjectStore already has a compiled schema")
-        if self._objects:
-            raise RuntimeError("Cannot bind a compiled schema to a populated ObjectStore")
+        if self._objects or self._object_types or self._link_types:
+            raise RuntimeError("Cannot bind a compiled schema to an initialized ObjectStore")
+
+        materialized = materialize_compiled_schema(
+            schema,
+            property_validators=property_validators,
+        )
+        self._object_types = {
+            object_type.name: object_type for object_type in materialized.object_types
+        }
+        self._link_types = {
+            link_type.name: link_type for link_type in materialized.link_types
+        }
+        self._type_index = {object_type.name: set() for object_type in materialized.object_types}
         self._schema = schema
 
     def register_object_type(self, obj_type: ObjectType) -> None:
@@ -74,11 +95,11 @@ class ObjectStore:
         # 更新源类型的 outgoing
         src_type = self._object_types.get(link_type.source_type)
         if src_type:
-            src_type.outgoing_link_types.add(link_type.name)
+            src_type.add_outgoing_link_type(link_type.name)
         # 更新目标类型的 incoming
         tgt_type = self._object_types.get(link_type.target_type)
         if tgt_type:
-            tgt_type.incoming_link_types.add(link_type.name)
+            tgt_type.add_incoming_link_type(link_type.name)
 
     def get_object_type(self, name: str) -> ObjectType | None:
         return self._object_types.get(name)

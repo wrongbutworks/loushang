@@ -64,6 +64,25 @@ The facade translates supported Python scalar classes to symbolic value types.
 Once runtime object creation starts, schema definitions are frozen. V1 does not
 silently migrate an already-populated store to a new schema.
 
+The compatibility facade is a draft adapter, not a second runtime registry.
+Before compilation, its definitions are not registered in `ObjectStore`.
+After successful compilation, the store atomically materializes its runtime
+types from the compiled snapshot and binds that snapshot exactly once. A failed
+compilation therefore leaves the runtime store untouched.
+
+An already compiled schema can start a runtime without using the dynamic
+definition facade:
+
+```python
+schema = OntologyCompiler().load_json(payload)
+ontology = Ontology.from_schema(schema)
+```
+
+`Ontology.from_schema_json(payload)` is the equivalent convenience entry point.
+Legacy Python property validators remain available only when the dynamic facade
+is used. They are process-local compatibility extensions and are deliberately
+not serialized, loaded, or treated as portable schema semantics.
+
 ## Non-Goals
 
 V1 does not add:

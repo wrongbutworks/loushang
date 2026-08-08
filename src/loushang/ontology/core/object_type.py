@@ -26,16 +26,43 @@ class ObjectType:
     """
 
     name: str
-    properties: list[Property] = field(default_factory=list)
-    parent_types: list[str] = field(default_factory=list)
+    properties: list[Property] | tuple[Property, ...] = field(default_factory=list)
+    parent_types: list[str] | tuple[str, ...] = field(default_factory=list)
     abstract: bool = False
     icon: str | None = None
     description: str = ""
     display_name_property: str | None = None
 
     # 运行时注册的关系名（由 Ontology 在 define_link_type 时填充）
-    outgoing_link_types: set[str] = field(default_factory=set, repr=False)
-    incoming_link_types: set[str] = field(default_factory=set, repr=False)
+    outgoing_link_types: set[str] | frozenset[str] = field(default_factory=set, repr=False)
+    incoming_link_types: set[str] | frozenset[str] = field(default_factory=set, repr=False)
+    _schema_frozen: bool = field(default=False, init=False, repr=False)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name != "_schema_frozen" and getattr(self, "_schema_frozen", False):
+            raise RuntimeError(f"Object type '{self.name}' schema is frozen")
+        object.__setattr__(self, name, value)
+
+    def add_outgoing_link_type(self, name: str) -> None:
+        if not isinstance(self.outgoing_link_types, set):
+            raise RuntimeError(f"Object type '{self.name}' schema is frozen")
+        self.outgoing_link_types.add(name)
+
+    def add_incoming_link_type(self, name: str) -> None:
+        if not isinstance(self.incoming_link_types, set):
+            raise RuntimeError(f"Object type '{self.name}' schema is frozen")
+        self.incoming_link_types.add(name)
+
+    def freeze_schema(self) -> None:
+        """Make all schema-bearing collections immutable."""
+
+        if self._schema_frozen:
+            return
+        object.__setattr__(self, "properties", tuple(self.properties))
+        object.__setattr__(self, "parent_types", tuple(self.parent_types))
+        object.__setattr__(self, "outgoing_link_types", frozenset(self.outgoing_link_types))
+        object.__setattr__(self, "incoming_link_types", frozenset(self.incoming_link_types))
+        object.__setattr__(self, "_schema_frozen", True)
 
     def get_property(self, name: str) -> Property | None:
         """按名称查找属性定义."""
