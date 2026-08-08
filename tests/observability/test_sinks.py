@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from loushang.observability import (
     DebugEventRecord,
     InMemoryProblemStore,
+    ProblemRecord,
+    capture_observability,
     configure_debug_logging,
     configure_observability,
     current_context,
@@ -13,6 +16,7 @@ from loushang.observability import (
     is_debug_event_enabled,
     log_context,
     reset_observability,
+    restore_observability,
 )
 from loushang.observability.debug_log import DebugLogSink
 from loushang.observability.trace import TraceJSONLSink
@@ -345,3 +349,177 @@ def test_trace_sink_stringifies_non_finite_floats(tmp_path) -> None:
     assert "Infinity" not in raw_text
     assert record["data"]["nan_value"] == "nan"
     assert record["data"]["inf_value"] == "inf"
+
+
+def test_records_preserve_exact_dictionary_shapes() -> None:
+    problem = ProblemRecord(
+        code="provider_failed",
+        severity="warning",
+        source="provider",
+        message="retrying",
+        recoverable=True,
+        details={"attempt": 2},
+        exception_type="RuntimeError",
+        exception_message="temporary",
+        time="2026-08-08T12:00:00Z",
+        monotonic_ms=42,
+        module="loushang.tests.provider",
+        component="Provider",
+        session_id="session-1",
+        run_id=3,
+        cwd="/repo",
+        mode="tui",
+    )
+    debug_event = DebugEventRecord(
+        scope="provider",
+        name="retry",
+        data={"attempt": 2},
+        time="2026-08-08T12:00:01Z",
+        monotonic_ms=43,
+        module="loushang.tests.provider",
+        component="Provider",
+        session_id="session-1",
+        run_id=3,
+        cwd="/repo",
+        mode="tui",
+    )
+
+    assert problem.to_dict() == {
+        "code": "provider_failed",
+        "severity": "warning",
+        "source": "provider",
+        "message": "retrying",
+        "recoverable": True,
+        "details": {"attempt": 2},
+        "exception_type": "RuntimeError",
+        "exception_message": "temporary",
+        "time": "2026-08-08T12:00:00Z",
+        "monotonic_ms": 42,
+        "module": "loushang.tests.provider",
+        "component": "Provider",
+        "session_id": "session-1",
+        "run_id": 3,
+        "cwd": "/repo",
+        "mode": "tui",
+    }
+    assert debug_event.to_dict() == {
+        "scope": "provider",
+        "name": "retry",
+        "data": {"attempt": 2},
+        "time": "2026-08-08T12:00:01Z",
+        "monotonic_ms": 43,
+        "module": "loushang.tests.provider",
+        "component": "Provider",
+        "session_id": "session-1",
+        "run_id": 3,
+        "cwd": "/repo",
+        "mode": "tui",
+    }
+
+
+def test_debug_sink_preserves_exact_problem_and_debug_event_text(tmp_path) -> None:
+    debug_path = tmp_path / "debug.log"
+    sink = DebugLogSink(debug_path)
+
+    sink.write_problem(
+        ProblemRecord(
+            code="provider_failed",
+            severity="warning",
+            source="provider",
+            message="line one\nline two",
+            recoverable=True,
+            details={"attempt": 2, "payload": {"ok": False}},
+            time="2026-08-08T12:00:00Z",
+            module="loushang.tests.provider",
+            component="Provider",
+            session_id="session-1",
+            run_id=3,
+        )
+    )
+    sink.write_debug_event(
+        DebugEventRecord(
+            scope="provider",
+            name="retry",
+            data={"attempt": 2, "reason": "temporary"},
+            time="2026-08-08T12:00:01Z",
+            module="loushang.tests.provider",
+            component="Provider",
+            session_id="session-1",
+            run_id=3,
+        )
+    )
+
+    assert debug_path.read_text(encoding="utf-8") == (
+        "2026-08-08T12:00:00Z PROBLEM warning provider_failed "
+        "source=provider module=loushang.tests.provider component=Provider "
+        "session=session-1 run=3 recoverable=True line one\\nline two "
+        'attempt=2 payload={"ok":false}\n'
+        "2026-08-08T12:00:01Z DEBUG_EVENT provider retry "
+        "module=loushang.tests.provider component=Provider session=session-1 "
+        "run=3 attempt=2 reason=temporary\n"
+    )
+
+
+def test_trace_sink_preserves_exact_fallback_and_jsonl_shape(tmp_path) -> None:
+    trace_path = tmp_path / "trace.jsonl"
+    sink = TraceJSONLSink(trace_path)
+
+    sink.write_debug_event(
+        DebugEventRecord(
+            scope="provider",
+            name="usage",
+            data={
+                "location": Path("notes.txt"),
+                "numbers": (1, 2),
+                "not_finite": float("nan"),
+                "mapping": {1: "one"},
+            },
+            time="2026-08-08T12:00:00Z",
+            monotonic_ms=42,
+            module="loushang.tests.provider",
+            component="Provider",
+            session_id="session-1",
+            run_id=3,
+            cwd="/repo",
+            mode="tui",
+        )
+    )
+
+    assert trace_path.read_text(encoding="utf-8") == (
+        '{"component": "Provider", "cwd": "/repo", '
+        '"data": {"location": "notes.txt", "mapping": {"1": "one"}, '
+        '"not_finite": "nan", "numbers": [1, 2]}, '
+        '"kind": "debug_event", "mode": "tui", "module": '
+        '"loushang.tests.provider", "monotonic_ms": 42, "name": "usage", '
+        '"run_id": 3, "scope": "provider", "session_id": "session-1", '
+        '"time": "2026-08-08T12:00:00Z"}\n'
+    )
+
+
+def test_capture_restore_and_reset_preserve_router_state_identity(tmp_path) -> None:
+    first_path = tmp_path / "first.log"
+    second_path = tmp_path / "second.log"
+    first_store = InMemoryProblemStore()
+    second_store = InMemoryProblemStore()
+
+    configure_observability(
+        problem_sink=first_store,
+        debug_sink=DebugLogSink(first_path),
+        debug_scopes={"provider"},
+    )
+    snapshot = capture_observability()
+    configure_observability(
+        problem_sink=second_store,
+        debug_sink=DebugLogSink(second_path),
+        debug_scopes={"tui"},
+    )
+
+    restore_observability(snapshot)
+    assert get_problem_store() is first_store
+    get_log("loushang.tests.provider").debug_event("provider", "restored")
+    assert "restored" in first_path.read_text(encoding="utf-8")
+    assert not second_path.exists()
+
+    reset_observability()
+    assert get_problem_store() is not first_store
+    assert not is_debug_event_enabled("provider")

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextvars import copy_context
+
 from loushang.observability import current_context, log_context
 
 
@@ -23,6 +25,19 @@ def test_log_context_binds_nested_values_and_restores_previous_context() -> None
         restored = current_context()
         assert restored.session_id == "s1"
         assert restored.run_id == 4
+
+    assert current_context().session_id is None
+    assert current_context().run_id is None
+
+
+def test_log_context_isolated_copy_retains_its_captured_value() -> None:
+    with log_context(session_id="captured", run_id=1):
+        captured = copy_context()
+
+    with log_context(session_id="current", run_id=2):
+        assert current_context().session_id == "current"
+        assert captured.run(current_context).session_id == "captured"
+        assert captured.run(current_context).run_id == 1
 
     assert current_context().session_id is None
     assert current_context().run_id is None
