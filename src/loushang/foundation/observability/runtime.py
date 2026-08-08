@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from ._router import (
+    InMemoryProblemStore,
     capture_observability,
     configure_debug_logging,
     configure_observability,
+    get_problem_store,
     restore_observability,
 )
 from .context import log_context
@@ -123,8 +125,10 @@ def session_log_label(
 
 
 __all__ = [
+    "InMemoryProblemStore",
     "disable_debug_file",
     "enable_debug_file",
+    "get_problem_store",
     "observability_runtime_context",
     "parse_scopes",
     "path_from_args_or_env",

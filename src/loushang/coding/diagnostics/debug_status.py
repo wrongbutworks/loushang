@@ -3,11 +3,11 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
-from loushang.observability import get_problem_store
-from loushang.observability.problem_text import (
+from loushang.foundation.observability.problem_text import (
     is_problem_log_line,
     recent_problem_store_lines,
 )
+from loushang.foundation.observability.runtime import get_problem_store
 
 
 def debug_status_text(

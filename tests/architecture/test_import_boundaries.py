@@ -5228,7 +5228,6 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
 
 def test_diagnostic_projection_compatibility_exception_does_not_expand() -> None:
     allowed_consumers = {
-        "src/loushang/ai/errors.py",
         "src/loushang/ai/structured.py",
     }
     actual_consumers: set[str] = set()

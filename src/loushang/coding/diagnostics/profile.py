@@ -5,14 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from loushang.harness.diagnostics.observability_bridge import (
-    diagnostic_source_for_problem,
-)
-from loushang.observability import (
-    ProblemRecord,
+from loushang.foundation.observability.records import ProblemRecord
+from loushang.foundation.observability.runtime_identity import (
     RuntimeIdentityProfile,
     collect_profiled_runtime_identity,
     format_profiled_runtime_identity_text,
+)
+from loushang.harness.diagnostics.observability_bridge import (
+    diagnostic_source_for_problem,
 )
 
 CODING_RUNTIME_IDENTITY_PROFILE = RuntimeIdentityProfile(

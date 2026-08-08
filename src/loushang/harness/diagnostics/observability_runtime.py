@@ -1,8 +1,8 @@
 """Product-neutral session observability binding.
 
-The low-level sinks live in :mod:`loushang.observability`; this module only
-binds CLI/session values to one runtime context and diagnostic problem sink.
-Products may supply source classification and output directories.
+The low-level sinks live in :mod:`loushang.foundation.observability`; this
+module only binds CLI/session values to one runtime context and diagnostic
+problem sink. Products may supply source classification and output directories.
 """
 
 from __future__ import annotations
@@ -14,13 +14,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from loushang.harness.diagnostics.observability_bridge import (
-    DiagnosticsProblemStore,
-    diagnostic_source_for_problem,
-)
-from loushang.harness.diagnostics.types import DiagnosticSource
-from loushang.observability import (
-    ProblemRecord,
+from loushang.foundation.observability.records import ProblemRecord
+from loushang.foundation.observability.runtime import (
     disable_debug_file,
     enable_debug_file,
     observability_runtime_context,
@@ -29,6 +24,11 @@ from loushang.observability import (
     session_log_label,
     value_from_args_or_env,
 )
+from loushang.harness.diagnostics.observability_bridge import (
+    DiagnosticsProblemStore,
+    diagnostic_source_for_problem,
+)
+from loushang.harness.diagnostics.types import DiagnosticSource
 
 ProblemSourceResolver = Callable[[ProblemRecord], DiagnosticSource]
 

@@ -61,12 +61,7 @@ _BASELINE_PROTOCOL_IMPORTERS = frozenset(
 
 _BASELINE_OBSERVABILITY_IMPORTERS = frozenset(
     {
-        "src/loushang/ai/errors.py",
         "src/loushang/ai/structured.py",
-        "src/loushang/coding/diagnostics/debug_status.py",
-        "src/loushang/coding/diagnostics/profile.py",
-        "src/loushang/harness/diagnostics/observability_bridge.py",
-        "src/loushang/harness/diagnostics/observability_runtime.py",
     }
 )
 

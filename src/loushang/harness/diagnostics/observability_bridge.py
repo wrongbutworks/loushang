@@ -1,8 +1,9 @@
-"""Optional bridge from observability facts to session diagnostics.
+"""Optional bridge from Foundation Observability facts to session diagnostics.
 
-The diagnostics core stays independent of :mod:`loushang.observability`.
-Products that opt into both systems can use this adapter to retain an
-observability problem record and publish its normalized diagnostic counterpart.
+The diagnostics core stays independent of
+:mod:`loushang.foundation.observability`. Products that opt into both systems
+can use this adapter to retain an observability problem record and publish its
+normalized diagnostic counterpart.
 """
 
 from __future__ import annotations
@@ -10,12 +11,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, cast
 
+from loushang.foundation.observability.records import ProblemRecord
+from loushang.foundation.observability.runtime import InMemoryProblemStore
 from loushang.harness.diagnostics.types import (
     DiagnosticPhase,
     DiagnosticRecord,
     DiagnosticSource,
 )
-from loushang.observability import InMemoryProblemStore, ProblemRecord
 
 
 class DiagnosticRecorder(Protocol):

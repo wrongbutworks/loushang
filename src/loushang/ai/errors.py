@@ -6,8 +6,8 @@ from enum import Enum
 from typing import Self
 
 from loushang.ai.utils.redaction import is_header_container_key, is_sensitive_key
-from loushang.observability.problem import (
-    JSONValue,
+from loushang.foundation.json import JSONValue
+from loushang.foundation.observability.projection import (
     ensure_json_safe_mapping,
     ensure_json_safe_value,
 )
