@@ -8,6 +8,7 @@ from pathlib import Path
 
 FOUNDATION_ROOT = Path("src/loushang/foundation")
 PROTOCOL_ROOT = Path("src/loushang/protocol")
+OBSERVABILITY_COMPATIBILITY_ROOT = Path("src/loushang/observability")
 
 _BASELINE_PROTOCOL_IMPORTERS = frozenset(
     {
@@ -54,6 +55,29 @@ _BASELINE_PROTOCOL_IMPORTERS = frozenset(
         "src/loushang/harnesswork/event_log.py",
         "src/loushang/harnesswork/integrations/agent_session.py",
         "src/loushang/ontology/integrations/harnesswork.py",
+    }
+)
+
+_BASELINE_OBSERVABILITY_IMPORTERS = frozenset(
+    {
+        "src/loushang/agent/agent_loop.py",
+        "src/loushang/ai/api/streaming.py",
+        "src/loushang/ai/auth/support.py",
+        "src/loushang/ai/errors.py",
+        "src/loushang/ai/event_stream/raw_parts.py",
+        "src/loushang/ai/provider/errors.py",
+        "src/loushang/ai/structured.py",
+        "src/loushang/ai/trace.py",
+        "src/loushang/coding/diagnostics/debug_status.py",
+        "src/loushang/coding/diagnostics/profile.py",
+        "src/loushang/coding/ui/mode.py",
+        "src/loushang/coding/ui/product_binding.py",
+        "src/loushang/harness/diagnostics/observability_bridge.py",
+        "src/loushang/harness/diagnostics/observability_runtime.py",
+        "src/loushang/harness/model_catalog.py",
+        "src/loushang/harness/session/queue_controller.py",
+        "src/loushang/harness/transcript/session_catalog.py",
+        "src/loushang/tui/runtime.py",
     }
 )
 
@@ -104,14 +128,11 @@ def test_foundation_json_import_does_not_load_observability() -> None:
 
 
 def test_protocol_compatibility_modules_define_no_runtime_implementation() -> None:
-    forbidden_nodes = (ast.AsyncFunctionDef, ast.ClassDef, ast.FunctionDef)
-    offenders: list[str] = []
-    for path in PROTOCOL_ROOT.rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        if any(isinstance(node, forbidden_nodes) for node in ast.walk(tree)):
-            offenders.append(path.as_posix())
+    assert _runtime_implementation_modules(PROTOCOL_ROOT) == []
 
-    assert offenders == []
+
+def test_observability_compatibility_modules_define_no_runtime_implementation() -> None:
+    assert _runtime_implementation_modules(OBSERVABILITY_COMPATIBILITY_ROOT) == []
 
 
 def test_legacy_protocol_importers_do_not_expand() -> None:
@@ -125,6 +146,27 @@ def test_legacy_protocol_importers_do_not_expand() -> None:
     assert actual_importers <= _BASELINE_PROTOCOL_IMPORTERS
 
 
+def test_legacy_observability_importers_do_not_expand() -> None:
+    actual_importers = {
+        path.as_posix()
+        for path in Path("src/loushang").rglob("*.py")
+        if not path.is_relative_to(OBSERVABILITY_COMPATIBILITY_ROOT)
+        if _imports_legacy_observability(path)
+    }
+
+    assert actual_importers <= _BASELINE_OBSERVABILITY_IMPORTERS
+
+
+def _runtime_implementation_modules(root: Path) -> list[str]:
+    forbidden_nodes = (ast.AsyncFunctionDef, ast.ClassDef, ast.FunctionDef)
+    offenders: list[str] = []
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        if any(isinstance(node, forbidden_nodes) for node in ast.walk(tree)):
+            offenders.append(path.as_posix())
+    return offenders
+
+
 def _imports_legacy_protocol(path: Path) -> bool:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in ast.walk(tree):
@@ -136,6 +178,25 @@ def _imports_legacy_protocol(path: Path) -> bool:
                 return True
             if node.module == "loushang" and any(
                 alias.name == "protocol" for alias in node.names
+            ):
+                return True
+    return False
+
+
+def _imports_legacy_observability(path: Path) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(
+                alias.name.startswith("loushang.observability")
+                for alias in node.names
+            ):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.module.startswith("loushang.observability"):
+                return True
+            if node.module == "loushang" and any(
+                alias.name == "observability" for alias in node.names
             ):
                 return True
     return False
