@@ -65,8 +65,8 @@ position inconsistently:
   type.
 
 At the time of this draft, 59 production files directly import one or both
-current packages: 43 import `loushang.protocol` and 18 import
-`loushang.observability`, with two files importing both. This breadth requires
+current packages: 43 import `loushang.protocol` and 17 import
+`loushang.observability`, with one file importing both. This breadth requires
 a compatibility-first migration rather than a repository-wide rename in one
 change.
 
