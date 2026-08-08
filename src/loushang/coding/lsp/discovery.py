@@ -144,6 +144,7 @@ def product_default_lsp_definitions() -> tuple[LspServerDefinition, ...]:
             id="pyright",
             command=("pyright-langserver", "--stdio"),
             language_extensions={"python": (".py", ".pyi")},
+            root_markers=("pyrightconfig.json", "pyproject.toml", ".git"),
             source="product-default",
         ),
         LspServerDefinition(
@@ -162,12 +163,14 @@ def product_default_lsp_definitions() -> tuple[LspServerDefinition, ...]:
             id="rust-analyzer",
             command=("rust-analyzer",),
             language_extensions={"rust": (".rs",)},
+            root_markers=("rust-project.json", "Cargo.toml", ".git"),
             source="product-default",
         ),
         LspServerDefinition(
             id="gopls",
             command=("gopls", "serve"),
             language_extensions={"go": (".go",)},
+            root_markers=("go.work", "go.mod", ".git"),
             source="product-default",
         ),
         LspServerDefinition(
@@ -177,6 +180,12 @@ def product_default_lsp_definitions() -> tuple[LspServerDefinition, ...]:
                 "c": (".c", ".h"),
                 "cpp": (".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx"),
             },
+            root_markers=(
+                ".clangd",
+                "compile_commands.json",
+                "compile_flags.txt",
+                ".git",
+            ),
             source="product-default",
         ),
     )

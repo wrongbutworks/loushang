@@ -88,6 +88,11 @@ TypeScript 预设覆盖 `.ts`、`.tsx`、`.js`、`.jsx` 及其标准模块变体
 `typescript-language-server` 和兼容的 `typescript` 包；缺少可用 Server 时，普通 Coding
 工具仍可继续工作，Loushang 不会自动安装任何包。
 
+其他默认预设同样选择最近的语言原生项目根：Pyright 使用 `pyrightconfig.json` 或
+`pyproject.toml`，rust-analyzer 使用 `rust-project.json` 或 `Cargo.toml`，gopls 使用
+`go.work` 或 `go.mod`，clangd 使用 `.clangd`、`compile_commands.json` 或
+`compile_flags.txt`；它们也都会回退到最近的 `.git` 根。
+
 在交互式 Coding Session 内，使用独立的 Session 运行态表面：
 
 ```text
@@ -116,6 +121,15 @@ TypeScript 的对应兼容性门是
 `uv run pytest tests/integration/coding/test_typescript_lsp_live.py -q`，默认从 `PATH`
 查找 `typescript-language-server`，也可通过 `LOUSHANG_TEST_TYPESCRIPT_LANGSERVER`
 指定可执行文件；测试同样不会安装 Server。
+
+gopls 的兼容性门是 `uv run pytest
+tests/integration/coding/test_gopls_lsp_live.py -q`，默认从 `PATH` 查找 `gopls`，
+也可通过 `LOUSHANG_TEST_GOPLS` 指定；安装仍是独立的开发者或 CI 步骤。
+
+rust-analyzer 的兼容性门是 `uv run pytest
+tests/integration/coding/test_rust_analyzer_lsp_live.py -q`，默认从 `PATH` 查找
+`rust-analyzer`，也可通过 `LOUSHANG_TEST_RUST_ANALYZER` 指定；贡献者应通过 rustup
+安装相互匹配的稳定 toolchain、`rust-analyzer` 与 `rust-src`。
 
 自定义 Server 写入 `~/.loushang/coding/lsp.json`：
 
