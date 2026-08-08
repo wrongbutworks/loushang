@@ -1,0 +1,88 @@
+# Ontology Semantic Kernel v1
+
+## Status
+
+Accepted implementation boundary for the first versioned semantic-kernel
+slice. This document narrows the larger operational-ontology draft; it does not
+accept the later storage, Action, Decision, standards, or domain waves.
+
+## Objective
+
+Separate serializable ontology definitions from mutable runtime objects:
+
+```text
+OntologyPackageDraft
+        -> OntologyCompiler
+        -> CompiledOntologySchema | SchemaDiagnostics
+        -> existing Memory ObjectStore
+```
+
+The existing `Ontology` class remains the compatibility facade. New schema
+contracts live below it and do not depend on Query, Rules, Fusion, HarnessWork,
+Agent, Product, or storage implementations.
+
+## V1 Contracts
+
+V1 defines:
+
+- stable package ID, namespace, and schema version;
+- symbolic `ValueType` values instead of Python classes in serialized schema;
+- immutable property, object-type, and link-type definitions;
+- immutable compiled schema snapshots;
+- deterministic strict-JSON serialization and loading;
+- diagnostics for duplicate names, invalid identifiers, unsupported value
+  types, unknown link endpoints, and invalid cardinality;
+- a compatibility mapping for the existing `Property(..., str/int/...)` API;
+- an explicit schema freeze before the compatibility facade creates runtime
+  objects.
+
+The compiler is a pure boundary. It does not register global state, mutate an
+ObjectStore, execute rules, open files, or perform I/O.
+
+## Dependency Direction
+
+```text
+ontology schema definitions -> loushang.foundation.json
+ontology compiler           -> schema definitions + foundation.json
+ontology facade             -> compiler + existing Memory ObjectStore
+ontology HarnessWork adapter -> public ontology contracts + HarnessWork
+```
+
+Ontology production code must not import the legacy `loushang.protocol` or
+`loushang.observability` compatibility packages.
+
+## Compatibility Boundary
+
+The current dynamic facade remains available:
+
+```python
+ontology.define_object_type("Person", properties=[Property("name", str)])
+person = ontology.create("Person", name="Alice")
+```
+
+The facade translates supported Python scalar classes to symbolic value types.
+Once runtime object creation starts, schema definitions are frozen. V1 does not
+silently migrate an already-populated store to a new schema.
+
+## Non-Goals
+
+V1 does not add:
+
+- ActionType, DecisionType, authorization, approval, or MutationPlan;
+- SQLite, Neo4j, distributed indexing, or a generic backend registry;
+- OWL, SHACL, JSON-LD, MCP, or LLM authoring;
+- new Rule, Fusion, QueryBuilder, or temporal-query behavior;
+- a project-management or environmental domain package.
+
+Those capabilities require a stable compiled schema and separately accepted
+contracts.
+
+## Acceptance Gates
+
+- the same draft produces byte-equivalent canonical JSON;
+- compiled snapshots do not change when caller-owned draft inputs change;
+- schema JSON round-trips to an equivalent compiled snapshot;
+- invalid identifiers, duplicates, unknown link endpoints, invalid
+  cardinality, and unsupported Python types fail with stable diagnostics;
+- all existing Ontology tests remain green through the compatibility facade;
+- no Ontology production module imports a legacy Foundation facade.

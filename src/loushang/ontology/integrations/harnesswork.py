@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 
+from loushang.foundation.json import require_json_mapping
 from loushang.harnesswork import (
     EventLogBackend,
     WorkEventFact,
@@ -22,7 +23,6 @@ from loushang.harnesswork import (
     WorkOperation,
     WorkRuntime,
 )
-from loushang.protocol import require_json_mapping
 
 
 @dataclass(frozen=True, slots=True)

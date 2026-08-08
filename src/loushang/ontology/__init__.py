@@ -1,4 +1,8 @@
-"""通用动态本体系统——Palantir 式知识图谱框架.
+"""实验性的 operational ontology infrastructure.
+
+当前公开 facade 保留动态对象图原型的兼容行为。版本化 schema 编译、运行时
+snapshot 和受控 mutation 正在逐步建立；本包不宣称实现完整 Palantir Foundry、
+OWL 推理器或生产级图存储。
 
 核心模块:
     core    - 本体引擎（对象类型、属性、关系、存储）
