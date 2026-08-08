@@ -4,6 +4,8 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
+import pytest
+
 from loushang.coding.lsp import (
     LspCatalog,
     LspSelector,
@@ -252,47 +254,101 @@ def test_product_defaults_report_unavailable_without_installing_or_starting(
     assert {record.state for record in snapshot.records} == {"unavailable"}
 
 
-def test_typescript_product_preset_maps_languages_and_selects_nearest_root(
+@pytest.mark.parametrize(
+    (
+        "definition_id",
+        "expected_command",
+        "expected_languages",
+        "expected_root_markers",
+    ),
+    [
+        pytest.param(
+            "pyright",
+            ("pyright-langserver", "--stdio"),
+            {"python": (".py", ".pyi")},
+            ("pyrightconfig.json", "pyproject.toml", ".git"),
+            id="pyright",
+        ),
+        pytest.param(
+            "typescript-language-server",
+            ("typescript-language-server", "--stdio"),
+            {
+                "javascript": (".js", ".mjs", ".cjs"),
+                "javascriptreact": (".jsx",),
+                "typescript": (".ts", ".mts", ".cts"),
+                "typescriptreact": (".tsx",),
+            },
+            ("tsconfig.json", "jsconfig.json", "package.json", ".git"),
+            id="typescript-language-server",
+        ),
+        pytest.param(
+            "rust-analyzer",
+            ("rust-analyzer",),
+            {"rust": (".rs",)},
+            ("rust-project.json", "Cargo.toml", ".git"),
+            id="rust-analyzer",
+        ),
+        pytest.param(
+            "gopls",
+            ("gopls", "serve"),
+            {"go": (".go",)},
+            ("go.work", "go.mod", ".git"),
+            id="gopls",
+        ),
+        pytest.param(
+            "clangd",
+            ("clangd",),
+            {
+                "c": (".c", ".h"),
+                "cpp": (".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx"),
+            },
+            (".clangd", "compile_commands.json", "compile_flags.txt", ".git"),
+            id="clangd",
+        ),
+    ],
+)
+def test_product_presets_map_languages_and_select_every_nearest_root_marker(
     tmp_path: Path,
+    definition_id: str,
+    expected_command: tuple[str, ...],
+    expected_languages: dict[str, tuple[str, ...]],
+    expected_root_markers: tuple[str, ...],
 ) -> None:
     definition = next(
-        item
-        for item in product_default_lsp_definitions()
-        if item.id == "typescript-language-server"
-    )
-    package_root = tmp_path / "packages" / "web"
-    source_root = package_root / "src"
-    source_root.mkdir(parents=True)
-    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
-    (package_root / "tsconfig.json").write_text("{}", encoding="utf-8")
-    selector = LspSelector(
-        workspace_root=tmp_path,
-        catalog=LspCatalog((definition,)),
+        item for item in product_default_lsp_definitions() if item.id == definition_id
     )
 
-    assert definition.command == ("typescript-language-server", "--stdio")
-    assert definition.language_extensions == {
-        "javascript": (".js", ".mjs", ".cjs"),
-        "javascriptreact": (".jsx",),
-        "typescript": (".ts", ".mts", ".cts"),
-        "typescriptreact": (".tsx",),
-    }
-    assert definition.root_markers == (
-        "tsconfig.json",
-        "jsconfig.json",
-        "package.json",
-        ".git",
-    )
-    assert selector.select(source_root / "component.tsx").language_id == (
-        "typescriptreact"
-    )
-    assert selector.select(source_root / "component.jsx").language_id == (
-        "javascriptreact"
-    )
-    selection = selector.select(source_root / "main.ts")
-    assert selection.language_id == "typescript"
-    assert selection.workspace_root == package_root
-    assert selection.reason_code == "nearest_root"
+    assert definition.command == expected_command
+    assert definition.language_extensions == expected_languages
+    assert definition.root_markers == expected_root_markers
+    assert definition.source == "product-default"
+    for language_id, extensions in expected_languages.items():
+        for extension in extensions:
+            assert definition.language_for_filename(f"sample{extension}") == language_id
+
+    sample_extension = next(iter(expected_languages.values()))[0]
+    for index, marker in enumerate(expected_root_markers):
+        workspace_root = tmp_path / f"marker-{index}"
+        package_root = workspace_root / "packages" / "nested"
+        source_root = package_root / "src"
+        source_root.mkdir(parents=True)
+        fallback_marker = expected_root_markers[
+            (index + 1) % len(expected_root_markers)
+        ]
+        (workspace_root / fallback_marker).touch()
+        (package_root / marker).touch()
+        source = source_root / f"main{sample_extension}"
+        source.touch()
+        selector = LspSelector(
+            workspace_root=workspace_root,
+            catalog=LspCatalog((definition,)),
+        )
+
+        selection = selector.select(source)
+
+        assert selection.definition_id == definition_id
+        assert selection.workspace_root == package_root
+        assert selection.reason_code == "nearest_root"
 
 
 def test_typescript_product_preset_is_admitted_only_when_binary_exists(

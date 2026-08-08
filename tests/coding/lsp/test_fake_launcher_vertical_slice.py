@@ -95,6 +95,7 @@ class FakeLspServer:
         position_encoding: str,
         server_capabilities: Mapping[str, object],
         crash_on_definition: bool,
+        content_modified_references: int,
         ignore_exit: bool,
     ) -> None:
         self.stdin: asyncio.Queue[bytes | None] = asyncio.Queue()
@@ -110,6 +111,7 @@ class FakeLspServer:
         self.position_encoding = position_encoding
         self.server_capabilities = dict(server_capabilities)
         self.crash_on_definition = crash_on_definition
+        self.content_modified_references = content_modified_references
         self.ignore_exit = ignore_exit
         self.messages: list[dict[str, object]] = []
         self._response_tasks: set[asyncio.Task[None]] = set()
@@ -174,6 +176,22 @@ class FakeLspServer:
                         ),
                     )
                 elif method == "textDocument/references":
+                    if self.content_modified_references:
+                        self.content_modified_references -= 1
+                        self._schedule_response(
+                            None,
+                            _frame(
+                                {
+                                    "jsonrpc": "2.0",
+                                    "id": request_id,
+                                    "error": {
+                                        "code": -32801,
+                                        "message": "content modified",
+                                    },
+                                }
+                            ),
+                        )
+                        continue
                     self._schedule_response(
                         None,
                         _frame(
@@ -332,6 +350,7 @@ class FakeLauncher:
         position_encoding: str = "utf-16",
         server_capabilities: Mapping[str, object] | None = None,
         crash_first_definition: bool = False,
+        content_modified_references: int = 0,
         ignore_exit: bool = False,
     ) -> None:
         self.definition_result = definition_result
@@ -355,6 +374,7 @@ class FakeLauncher:
             else server_capabilities
         )
         self.crash_first_definition = crash_first_definition
+        self.content_modified_references = content_modified_references
         self.ignore_exit = ignore_exit
         self.requests: list[ProcessLaunchRequest] = []
         self.correlation_ids: list[str] = []
@@ -382,6 +402,7 @@ class FakeLauncher:
             position_encoding=self.position_encoding,
             server_capabilities=self.server_capabilities,
             crash_on_definition=self.crash_first_definition and not self.handles,
+            content_modified_references=self.content_modified_references,
             ignore_exit=self.ignore_exit,
         )
         handle = FakeProcessHandle(server)
@@ -627,6 +648,71 @@ def test_inspect_symbol_supports_references_implementation_and_hover(
         assert "textDocument/implementation" in server.methods()
         assert "textDocument/hover" in server.methods()
         await binding.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_inspect_symbol_retries_content_modified_responses_with_a_bound(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        files = {source.resolve(): "target = 1\nprint(target)\n"}
+        location = {
+            "uri": source.resolve().as_uri(),
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 6},
+            },
+        }
+
+        recovered_launcher = FakeLauncher(
+            definition_result=None,
+            references_result=[location],
+            content_modified_references=2,
+        )
+        recovered_binding = _binding(tmp_path, recovered_launcher, files)
+        recovered = await recovered_binding.inspect_symbol(
+            path="main.py",
+            line=2,
+            character=7,
+            query="references",
+            correlation_id="content-modified-recovered",
+        )
+
+        assert recovered.count == 1
+        assert (
+            recovered_launcher.handles[0]
+            .server.methods()
+            .count("textDocument/references")
+            == 3
+        )
+        assert recovered_binding.status().servers[0].last_error is None
+        await recovered_binding.dispose()
+
+        exhausted_launcher = FakeLauncher(
+            definition_result=None,
+            references_result=[location],
+            content_modified_references=3,
+        )
+        exhausted_binding = _binding(tmp_path, exhausted_launcher, files)
+        with pytest.raises(LspProtocolError, match="content modified"):
+            await exhausted_binding.inspect_symbol(
+                path="main.py",
+                line=2,
+                character=7,
+                query="references",
+                correlation_id="content-modified-exhausted",
+            )
+        assert (
+            exhausted_launcher.handles[0]
+            .server.methods()
+            .count("textDocument/references")
+            == 3
+        )
+        await exhausted_binding.dispose()
 
     asyncio.run(scenario())
 
@@ -1589,72 +1675,94 @@ def test_language_mapping_catalog_freeze_and_literal_root_markers(
         )
 
 
-def test_python_and_typescript_servers_are_selected_independently_in_one_session(
+def test_product_presets_run_independently_in_one_monorepo_session(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
-        python_root = tmp_path / "python-service"
-        typescript_root = tmp_path / "web-app"
-        python_root.mkdir()
-        typescript_root.mkdir()
-        (python_root / "pyproject.toml").touch()
-        (typescript_root / "tsconfig.json").write_text("{}", encoding="utf-8")
-        python_source = python_root / "main.py"
-        typescript_source = typescript_root / "main.ts"
-        tsx_source = typescript_root / "component.tsx"
-        for source in (python_source, typescript_source, tsx_source):
-            source.touch()
-        files = {
-            python_source.resolve(): "value = 1\n",
-            typescript_source.resolve(): "export const value = 1;\n",
-            tsx_source.resolve(): "export const View = () => null;\n",
-        }
-        typescript_definition = next(
-            item
-            for item in product_default_lsp_definitions()
-            if item.id == "typescript-language-server"
+        projects = (
+            (
+                "pyright",
+                ("pyright-langserver", "--stdio"),
+                "python-service",
+                "pyrightconfig.json",
+                "main.py",
+                "value = 1\n",
+            ),
+            (
+                "typescript-language-server",
+                ("typescript-language-server", "--stdio"),
+                "web-app",
+                "tsconfig.json",
+                "main.ts",
+                "export const value = 1;\n",
+            ),
+            (
+                "rust-analyzer",
+                ("rust-analyzer",),
+                "rust-service",
+                "Cargo.toml",
+                "main.rs",
+                "fn main() {}\n",
+            ),
+            (
+                "gopls",
+                ("gopls", "serve"),
+                "go-service",
+                "go.mod",
+                "main.go",
+                "package main\n",
+            ),
+            (
+                "clangd",
+                ("clangd",),
+                "native-service",
+                "compile_commands.json",
+                "main.cpp",
+                "int main() { return 0; }\n",
+            ),
         )
+        files: dict[Path, str] = {}
+        sources: list[Path] = []
+        for _, _, directory, marker, filename, content in projects:
+            project_root = tmp_path / directory
+            project_root.mkdir()
+            (project_root / marker).touch()
+            source = project_root / filename
+            source.touch()
+            sources.append(source)
+            files[source.resolve()] = content
         launcher = FakeLauncher(definition_result=None, outline_result=None)
         binding = CodingLspBinding(
             workspace_root=tmp_path,
-            definitions=(_definition(), typescript_definition),
+            definitions=product_default_lsp_definitions(),
             launcher=launcher,
             read_text=lambda path: files[path],
             baseline_environment={"PATH": "/admitted/bin"},
         )
 
-        await binding.inspect_symbol(
-            path="python-service/main.py",
-            line=1,
-            character=1,
-            correlation_id="python-query",
-        )
-        await binding.inspect_symbol(
-            path="web-app/main.ts",
-            line=1,
-            character=14,
-            correlation_id="typescript-query",
-        )
-        await binding.document_outline(
-            path="web-app/component.tsx",
-            correlation_id="tsx-query",
-        )
+        for index, source in enumerate(sources):
+            await binding.document_outline(
+                path=str(source.relative_to(tmp_path)),
+                correlation_id=f"preset-query-{index}",
+            )
 
         assert [request.command for request in launcher.requests] == [
-            ("fake-language-server", "--stdio"),
-            ("typescript-language-server", "--stdio"),
+            command for _, command, _, _, _, _ in projects
         ]
         assert [request.cwd for request in launcher.requests] == [
-            str(python_root.resolve()),
-            str(typescript_root.resolve()),
+            str((tmp_path / directory).resolve())
+            for _, _, directory, _, _, _ in projects
         ]
         status_by_id = {
             server.definition_id: server for server in binding.status().servers
         }
-        assert status_by_id["fake-python"].runtime_id == 1
-        assert status_by_id["fake-python"].open_document_count == 1
-        assert status_by_id["typescript-language-server"].runtime_id == 2
-        assert status_by_id["typescript-language-server"].open_document_count == 2
+        assert set(status_by_id) == {item[0] for item in projects}
+        for runtime_id, (definition_id, _, _, _, _, _) in enumerate(
+            projects,
+            start=1,
+        ):
+            assert status_by_id[definition_id].runtime_id == runtime_id
+            assert status_by_id[definition_id].open_document_count == 1
         await binding.dispose()
 
     asyncio.run(scenario())

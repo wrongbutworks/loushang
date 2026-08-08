@@ -148,12 +148,20 @@ Rules:
 This conservative project rule is the P0 substitute for the future general
 workspace-trust gate.
 
-The built-in TypeScript Language Server preset recognizes JavaScript,
-JavaScript React, TypeScript, and TypeScript React as distinct language ids. It
-selects the nearest `tsconfig.json`, `jsconfig.json`, `package.json`, or `.git`
-root and starts `typescript-language-server --stdio` only after a semantic
-query. If the executable is absent, catalog discovery reports the preset as
-unavailable without installing or starting anything.
+Built-in presets use these nearest-root contracts:
+
+| Server | Root markers |
+| --- | --- |
+| Pyright | `pyrightconfig.json`, `pyproject.toml`, `.git` |
+| TypeScript Language Server | `tsconfig.json`, `jsconfig.json`, `package.json`, `.git` |
+| rust-analyzer | `rust-project.json`, `Cargo.toml`, `.git` |
+| gopls | `go.work`, `go.mod`, `.git` |
+| clangd | `.clangd`, `compile_commands.json`, `compile_flags.txt`, `.git` |
+
+The TypeScript preset recognizes JavaScript, JavaScript React, TypeScript, and
+TypeScript React as distinct language ids. Every built-in preset starts only
+after a matching semantic query. If its executable is absent, catalog discovery
+reports it as unavailable without installing or starting anything.
 
 ## 4. Core Data Contracts
 
@@ -830,9 +838,11 @@ direct subprocess launcher as a temporary production bypass.
 - H4.1 bounded, version-aware passive diagnostic reception and lifecycle
   cleanup, without model delivery;
 - fake Server tests;
-- path-scoped CI compatibility gates against pinned real Pyright and
-  TypeScript Language Servers; the TypeScript gate pins the language-server
-  wrapper and its TypeScript runtime as a tested pair;
+- path-scoped CI compatibility gates against pinned real Pyright, TypeScript,
+  gopls, and rust-analyzer Servers; the TypeScript gate pins the language-server
+  wrapper and its TypeScript runtime as a tested pair, the gopls gate pins both
+  Go and gopls, and the rust-analyzer gate uses the component from one pinned
+  Rust toolchain;
 - clean degradation when no Server exists.
 
 ### Deferred

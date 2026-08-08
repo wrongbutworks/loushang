@@ -16,9 +16,17 @@ _MAX_HEADER_BYTES = 16 * 1024
 _MAX_MESSAGE_BYTES = 4 * 1024 * 1024
 _MAX_PENDING_REQUESTS = 128
 _MAX_CONFIGURATION_ITEMS = 64
+_CONTENT_MODIFIED_ERROR_CODE = -32801
+_MAX_CONTENT_MODIFIED_RETRIES = 2
 
 DiagnosticPublicationHandler = Callable[[Mapping[str, object]], bool]
 ConnectionClosedHandler = Callable[[], None]
+
+
+class _LspResponseError(LspProtocolError):
+    def __init__(self, error: object) -> None:
+        super().__init__(f"LSP response error: {error!r}")
+        self.code = error.get("code") if isinstance(error, Mapping) else None
 
 
 class LspClient:
@@ -173,12 +181,23 @@ class LspClient:
         *,
         timeout_seconds: float | None = None,
     ) -> object:
-        return await self._request(
-            method,
-            params,
-            timeout_seconds=timeout_seconds,
-            allow_closing=False,
-        )
+        for attempt in range(_MAX_CONTENT_MODIFIED_RETRIES + 1):
+            try:
+                return await self._request(
+                    method,
+                    params,
+                    timeout_seconds=timeout_seconds,
+                    allow_closing=False,
+                )
+            except _LspResponseError as exc:
+                if (
+                    exc.code != _CONTENT_MODIFIED_ERROR_CODE
+                    or attempt >= _MAX_CONTENT_MODIFIED_RETRIES
+                ):
+                    self._last_error = "request_failed"
+                    raise
+                await asyncio.sleep(0)
+        raise AssertionError("bounded LSP response retry loop did not return")
 
     async def _request(
         self,
@@ -231,6 +250,10 @@ class LspClient:
                         {"id": request_id},
                         allow_closing=allow_closing,
                     )
+                raise
+            except _LspResponseError as exc:
+                if exc.code != _CONTENT_MODIFIED_ERROR_CODE:
+                    self._last_error = "request_failed"
                 raise
             except BaseException:
                 self._last_error = "request_failed"
@@ -452,8 +475,7 @@ class LspClient:
             return
         error = message.get("error")
         if error is not None:
-            self._last_error = "request_failed"
-            future.set_exception(LspProtocolError(f"LSP response error: {error!r}"))
+            future.set_exception(_LspResponseError(error))
         else:
             future.set_result(message.get("result"))
 
