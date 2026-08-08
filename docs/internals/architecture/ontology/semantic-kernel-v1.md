@@ -86,6 +86,10 @@ not serialized, loaded, or treated as portable schema semantics.
 The field-by-field enforcement boundary is normative for V1 and is recorded in
 [Runtime Enforcement Matrix V1](runtime-enforcement-v1.md).
 
+Offline compatibility classification is defined separately in
+[Ontology Schema Evolution V1](schema-evolution-v1.md); it does not authorize
+runtime schema replacement or data migration.
+
 ## Non-Goals
 
 V1 does not add:

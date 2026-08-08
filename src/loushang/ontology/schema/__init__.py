@@ -21,13 +21,23 @@ from loushang.ontology.schema.diagnostics import (
     SchemaCompilationError,
     SchemaDiagnostic,
 )
+from loushang.ontology.schema.evolution import (
+    SCHEMA_DIFF_FORMAT,
+    ChangeImpact,
+    SchemaChange,
+    SchemaDiff,
+    SchemaLineageError,
+    compare_schemas,
+)
 
 __all__ = [
     "SCHEMA_FORMAT",
+    "SCHEMA_DIFF_FORMAT",
     "CompiledLinkTypeDefinition",
     "CompiledObjectTypeDefinition",
     "CompiledOntologySchema",
     "CompiledPropertyDefinition",
+    "ChangeImpact",
     "LinkCardinality",
     "LinkTypeDefinition",
     "ObjectTypeDefinition",
@@ -35,7 +45,11 @@ __all__ = [
     "OntologyPackageDraft",
     "PropertyDefinition",
     "SchemaCompilationError",
+    "SchemaChange",
     "SchemaDiagnostic",
+    "SchemaDiff",
+    "SchemaLineageError",
     "SchemaVersion",
     "ValueType",
+    "compare_schemas",
 ]
