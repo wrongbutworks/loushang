@@ -1,19 +1,24 @@
-"""Lightweight observability primitives for Loushang.
+"""Compatibility facade for :mod:`loushang.foundation.observability`."""
 
-This package intentionally depends only on the Python standard library.
-"""
-
-from .context import LogContext, current_context, log_context
-from .debug_log import DebugLogSink
-from .logger import ObservabilityLog, get_log
-from .problem import JSONValue, ProblemRecord, ProblemSeverity
-from .problem_text import (
+from loushang.foundation.observability.context import (
+    LogContext,
+    current_context,
+    log_context,
+)
+from loushang.foundation.observability.debug_log import DebugLogSink
+from loushang.foundation.observability.logger import ObservabilityLog, get_log
+from loushang.foundation.observability.problem import (
+    JSONValue,
+    ProblemRecord,
+    ProblemSeverity,
+)
+from loushang.foundation.observability.problem_text import (
     ProblemRecordReader,
     format_problem_summary,
     is_problem_log_line,
     recent_problem_store_lines,
 )
-from .runtime import (
+from loushang.foundation.observability.runtime import (
     disable_debug_file,
     enable_debug_file,
     observability_runtime_context,
@@ -22,14 +27,14 @@ from .runtime import (
     session_log_label,
     value_from_args_or_env,
 )
-from .runtime_identity import (
+from loushang.foundation.observability.runtime_identity import (
     RuntimeIdentityProfile,
     collect_profiled_runtime_identity,
     collect_runtime_identity,
     format_profiled_runtime_identity_text,
     format_runtime_identity_text,
 )
-from .sinks import (
+from loushang.foundation.observability.sinks import (
     DebugEventRecord,
     InMemoryProblemStore,
     capture_observability,
@@ -40,7 +45,7 @@ from .sinks import (
     reset_observability,
     restore_observability,
 )
-from .trace import TraceJSONLSink
+from loushang.foundation.observability.trace import TraceJSONLSink
 
 __all__ = [
     "DebugEventRecord",
