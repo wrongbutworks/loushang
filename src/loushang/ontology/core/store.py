@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from loushang.ontology.core.link_type import LinkType
 from loushang.ontology.core.object import LinkVersion, OntologyObject
 from loushang.ontology.core.object_type import ObjectType
+
+if TYPE_CHECKING:
+    from loushang.ontology.schema import CompiledOntologySchema
 
 
 class ObjectStore:
@@ -32,18 +35,41 @@ class ObjectStore:
         # 注册的对象类型和关系类型
         self._object_types: dict[str, ObjectType] = {}
         self._link_types: dict[str, LinkType] = {}
+        # The immutable semantic contract bound by the compatibility facade.
+        self._schema: CompiledOntologySchema | None = None
 
     # ------------------------------------------------------------------
     # 类型注册
     # ------------------------------------------------------------------
 
+    @property
+    def schema(self) -> CompiledOntologySchema | None:
+        """Return the compiled schema bound to this store, if any."""
+
+        return self._schema
+
+    def bind_schema(self, schema: CompiledOntologySchema) -> None:
+        """Bind one immutable schema snapshot before runtime objects exist."""
+
+        if self._schema is schema:
+            return
+        if self._schema is not None:
+            raise RuntimeError("ObjectStore already has a compiled schema")
+        if self._objects:
+            raise RuntimeError("Cannot bind a compiled schema to a populated ObjectStore")
+        self._schema = schema
+
     def register_object_type(self, obj_type: ObjectType) -> None:
         """注册对象类型."""
+        if self._schema is not None:
+            raise RuntimeError("ObjectStore schema is frozen; object types cannot be registered")
         self._object_types[obj_type.name] = obj_type
         self._type_index.setdefault(obj_type.name, set())
 
     def register_link_type(self, link_type: LinkType) -> None:
         """注册关系类型，并更新相关对象类型的关系集合."""
+        if self._schema is not None:
+            raise RuntimeError("ObjectStore schema is frozen; link types cannot be registered")
         self._link_types[link_type.name] = link_type
         # 更新源类型的 outgoing
         src_type = self._object_types.get(link_type.source_type)

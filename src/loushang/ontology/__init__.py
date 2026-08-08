@@ -34,6 +34,19 @@ from loushang.ontology.core.store import ObjectStore
 from loushang.ontology.fusion.mapper import DataFusion, FieldMapping, SourceMapping
 from loushang.ontology.query.builder import QueryBuilder
 from loushang.ontology.rules.engine import Rule, RuleEngine
+from loushang.ontology.schema import (
+    CompiledOntologySchema,
+    LinkCardinality,
+    LinkTypeDefinition,
+    ObjectTypeDefinition,
+    OntologyCompiler,
+    OntologyPackageDraft,
+    PropertyDefinition,
+    SchemaCompilationError,
+    SchemaDiagnostic,
+    SchemaVersion,
+    ValueType,
+)
 
 __all__ = [
     "Ontology",
@@ -51,4 +64,15 @@ __all__ = [
     "DataFusion",
     "FieldMapping",
     "SourceMapping",
+    "CompiledOntologySchema",
+    "LinkCardinality",
+    "LinkTypeDefinition",
+    "ObjectTypeDefinition",
+    "OntologyCompiler",
+    "OntologyPackageDraft",
+    "PropertyDefinition",
+    "SchemaCompilationError",
+    "SchemaDiagnostic",
+    "SchemaVersion",
+    "ValueType",
 ]
