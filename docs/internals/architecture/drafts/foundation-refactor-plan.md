@@ -2,11 +2,13 @@
 
 ## Status
 
-Accepted, in progress. Phases 0 through 2 are implemented: Foundation owns the
-strict JSON contract and the canonical Observability runtime, while the old
-packages remain compatibility facades. The later internal module split,
-production-consumer migration, semantic tightening, and facade retirement are
-not implemented by this phase.
+Accepted, in progress. Phases 0 through 2 and the dependency-bearing part of
+Phase 3 are implemented: `records`, `projection`, and `_router` now own the
+canonical Observability internals. All production Observability consumers have
+moved to Foundation, and `ai.structured` now uses strict schema validation.
+The Protocol consumer migration, cosmetic Observability module renames,
+diagnostic projection API renames, and compatibility-facade retirement remain
+separate work.
 
 The refactor is intentionally limited to package ownership, dependency
 direction, API clarity, and compatibility. It does not add new logging,
@@ -550,6 +552,12 @@ splitting.
 
 ### Phase 3: Restructure Canonical Observability
 
+Implementation status: the `records.py`, `projection.py`, and `_router.py`
+split is complete. `problem.py` and `sinks.py` are identity-preserving internal
+compatibility facades. The cosmetic `debug_log.py`, `trace.py`, and
+`runtime_identity.py` renames are deliberately deferred because they do not
+improve the current dependency graph.
+
 With callers still protected by compatibility facades, split and rename only
 inside the canonical package:
 
@@ -570,6 +578,11 @@ canonical diagnostic projection APIs. Compatibility modules retain the old
 names as aliases while old callers exist.
 
 ### Phase 4: Migrate Consumers by Semantics
+
+Implementation status: all production imports from the old Observability
+package are retired, including the dedicated strict `ai.structured` schema
+change. Migration of the remaining Protocol consumers to `foundation.json` is
+not part of that Observability batch and remains pending.
 
 Migrate production callers in narrow batches:
 
@@ -592,8 +605,8 @@ After canonical imports are adopted:
    architecture overview and subsystem documentation;
 2. update documents that currently state that `loushang.protocol` owns
    `JSONValue`;
-3. remove the documented diagnostic-projection compatibility exception after
-   its consumers are migrated;
+3. document diagnostic projection as a canonical policy rather than a JSON
+   ownership compatibility exception;
 4. add Foundation standard-library-only and no-upward-dependency tests;
 5. prohibit new production imports from old packages; and
 6. require explicit allowlisting only for the forwarding modules themselves.

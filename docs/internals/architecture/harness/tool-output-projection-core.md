@@ -40,12 +40,11 @@ Agent or Harness, and Agent must not import Harness.
 
 `loushang.foundation.observability` owns the canonical diagnostics runtime and
 uses `loushang.foundation.json.JSONValue`; `loushang.observability` is now only
-a forwarding compatibility namespace. Its `ensure_json_safe_*` helpers remain
-a documented diagnostic-projection compatibility exception: existing AI
-error, provider trace, and structured-schema paths may still use their more
-permissive ingress policy, but that policy is not an owner for new transcript,
-event, journal, Channel, or product wire schemas. Architecture tests freeze
-its existing consumers so the exception cannot expand silently.
+a forwarding compatibility namespace. Diagnostic projection remains an
+explicit canonical policy for log and Problem details; it is not a second JSON
+algebra. `ai.structured` validates schemas through strict `foundation.json`,
+and transcript, event, journal, Channel, and product wire schemas must do the
+same.
 
 ## Agent Ownership
 

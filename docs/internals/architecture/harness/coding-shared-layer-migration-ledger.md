@@ -39,7 +39,7 @@ they must not own provider registration, credentials, or product model policy.
 | Source region | Shared owner | Product injection or retained Coding owner | Status |
 | --- | --- | --- | --- |
 | `coding.diagnostics.problem_bridge` | `harness.diagnostics.observability_bridge` | Products may supply phase/source resolvers. Coding supplies its `config -> model` source override. | Complete: the Coding bridge was deleted. |
-| `coding.diagnostics.debug_status` problem-store formatting | `observability.problem_text` | Coding keeps CLI text and default diagnostic export command. | Complete: reusable formatting has no Coding import. |
+| `coding.diagnostics.debug_status` problem-store formatting | `foundation.observability.problem_text` | Coding keeps CLI text and default diagnostic export command. | Complete: reusable formatting has no Coding import. |
 | removed `coding.diag_export` archive writer and redaction | `harness.diagnostics.export` | Products may replace the shared `DiagnosticBundleProfile`; Loushang products use the standard archive, manifest, README, artifact set, and diagnostic projection. | Complete: Coding imports the shared bundle operation directly. |
 | `coding.source_info` descriptor conversion | `harness.resources.source` | Coding only supplies its resource descriptor values. | Complete: production resource consumers import Harness directly. |
 | removed `coding.source_info` executable, package, and Git inspection | `observability.runtime_identity` | `coding.diagnostics.profile` supplies package/module aliases, executable name, and display title through `RuntimeIdentityProfile`. | Complete: Coding has no source-info facade, subprocess, package metadata, or PATH logic. |

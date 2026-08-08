@@ -2644,11 +2644,19 @@ def test_harness_diagnostics_core_does_not_import_resources_or_observability() -
     paths_and_forbidden_prefixes = (
         (
             Path("src/loushang/harness/diagnostics/types.py"),
-            ("loushang.harness.resources", "loushang.observability"),
+            (
+                "loushang.harness.resources",
+                "loushang.foundation.observability",
+                "loushang.observability",
+            ),
         ),
         (
             Path("src/loushang/harness/diagnostics/service.py"),
-            ("loushang.harness.resources", "loushang.observability"),
+            (
+                "loushang.harness.resources",
+                "loushang.foundation.observability",
+                "loushang.observability",
+            ),
         ),
         (
             Path("src/loushang/harness/diagnostics/observability_bridge.py"),
@@ -5195,7 +5203,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
         "In-memory and JSONL event logs enforce the same strict snapshot contract",
         "Channel envelope encoding validates the complete wire object",
         "`loushang.foundation.observability` owns the canonical diagnostics runtime",
-        "a documented diagnostic-projection compatibility exception",
+        "`ai.structured` validates schemas through strict `foundation.json`",
         "Product adapters still own tool-specific detail vocabulary",
         "Foundation -> Protocol compatibility -> AI -> Agent -> Harness -> Product dependency direction",
     }

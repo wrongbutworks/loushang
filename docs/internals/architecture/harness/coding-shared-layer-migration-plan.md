@@ -34,7 +34,7 @@ contracts at both ends belongs to the appropriate shared owner.
 | Harness-conversation to terminal presentation bridge | `loushang.harnesstui` |
 | Terminal controls, input, and layout primitives | `loushang.tui` |
 | Model normalization and provider/model contracts | `loushang.ai` |
-| Logs, traces, problem records, and reusable observability context | `loushang.observability` |
+| Logs, traces, problem records, and reusable observability context | `loushang.foundation.observability` |
 | Method preparation and plan mechanics | `loushang.method` |
 | Work operations, events, and projections | `loushang.work` |
 | Product content, choices, policy, compatibility, and final contracts | `loushang.coding` |
