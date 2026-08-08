@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Protocol
 
-from loushang.harness.commands import complete_slash_commands
+from loushang.harness.commands import complete_slash_commands, normalize_command_name
+from loushang.harness.host.json_projection import (
+    HostJsonProjectionError,
+    project_host_value,
+)
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.host.rpc.routing import LegacyRpcHandler
 from loushang.harness.host.rpc.wire import project_command_descriptor
@@ -21,6 +26,12 @@ class _CommandCatalogSession(Protocol):
         command: str,
         prefix: str,
     ) -> Awaitable[Sequence[object] | None]: ...
+
+    def execute_command_async(
+        self,
+        invocation_name: str,
+        args: str,
+    ) -> Awaitable[object | None]: ...
 
 
 class RpcCommandCatalogCommands:
@@ -39,6 +50,100 @@ class RpcCommandCatalogCommands:
         return (
             ("get_commands", self.get_commands),
             ("get_command_completions", self.get_command_completions),
+            ("execute_command", self.execute_command),
+        )
+
+    async def execute_command(
+        self,
+        command_id: str | None,
+        payload: dict[str, Any],
+    ) -> None:
+        command_name = payload.get("command")
+        if not isinstance(command_name, str):
+            self._error(
+                command_id,
+                "execute_command",
+                "execute_command requires a non-empty string command.",
+                code="invalid_request",
+            )
+            return
+        invocation_name = normalize_command_name(command_name)
+        if not invocation_name:
+            self._error(
+                command_id,
+                "execute_command",
+                "execute_command requires a non-empty string command.",
+                code="invalid_request",
+            )
+            return
+        args = payload.get("args", "")
+        if not isinstance(args, str):
+            self._error(
+                command_id,
+                "execute_command",
+                "execute_command args must be a string.",
+                code="invalid_request",
+            )
+            return
+        executor = getattr(self._get_session(), "execute_command_async", None)
+        if not callable(executor):
+            self._error(
+                command_id,
+                "execute_command",
+                "Command execution is not available.",
+                code="command_execution_unavailable",
+            )
+            return
+        try:
+            execution = executor(invocation_name, args)
+            if inspect.isawaitable(execution):
+                execution = await execution
+        except Exception as error:
+            self._error(
+                command_id,
+                "execute_command",
+                f"Failed to execute command {invocation_name!r}: {error}",
+                code="command_execution_failed",
+            )
+            return
+        if execution is None:
+            self._error(
+                command_id,
+                "execute_command",
+                f"Command not found: {invocation_name}",
+                code="command_not_found",
+            )
+            return
+        result = getattr(execution, "result", execution)
+        projected_invocation_name = getattr(
+            execution,
+            "invocation_name",
+            invocation_name,
+        )
+        if not isinstance(projected_invocation_name, str):
+            projected_invocation_name = invocation_name
+        try:
+            projected_result = project_host_value(
+                result,
+                name="command_result",
+                surface="RPC command",
+            )
+        except HostJsonProjectionError:
+            self._error(
+                command_id,
+                "execute_command",
+                f"Command result is not serializable: {invocation_name}",
+                code="command_result_not_serializable",
+            )
+            return
+        self._output.success(
+            request_id=command_id,
+            command="execute_command",
+            data={
+                "invocationName": projected_invocation_name,
+                "args": args,
+                "result": projected_result,
+            },
         )
 
     def get_commands(

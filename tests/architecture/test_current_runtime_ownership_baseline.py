@@ -26,24 +26,29 @@ def _loushang_dependencies(package: str) -> set[str]:
 
 def test_current_top_level_runtime_dependency_direction() -> None:
     harness_dependencies = _loushang_dependencies("harness")
+    harnesswork_dependencies = _loushang_dependencies("harnesswork")
     harnesstui_dependencies = _loushang_dependencies("harnesstui")
     work_dependencies = _loushang_dependencies("work")
     channel_dependencies = _loushang_dependencies("channel")
     coding_dependencies = _loushang_dependencies("coding")
 
     assert harness_dependencies.isdisjoint(
+        {"channel", "work", "harnesswork", "harnesstui", "coding"}
+    )
+    assert harnesswork_dependencies.isdisjoint(
         {"channel", "work", "harnesstui", "coding"}
     )
+    assert "harness" in harnesswork_dependencies
     assert harnesstui_dependencies.isdisjoint({"channel", "work", "coding"})
     assert "harness" in harnesstui_dependencies
 
     assert work_dependencies.isdisjoint({"channel", "harnesstui", "coding"})
-    assert "harness" in work_dependencies
+    assert work_dependencies == {"harnesswork"}
 
     assert channel_dependencies.isdisjoint({"harnesstui", "coding"})
-    assert {"harness", "work"} <= channel_dependencies
+    assert {"harness", "harnesswork"} <= channel_dependencies
 
-    assert {"channel", "harness", "harnesstui", "work"} <= coding_dependencies
+    assert {"channel", "harness", "harnesswork", "harnesstui"} <= coding_dependencies
 
 
 def test_retired_product_sources_and_distinct_jsonl_owners_stay_retired() -> None:

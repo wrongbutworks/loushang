@@ -680,6 +680,69 @@ def test_rpc_mode_discovers_coding_lsp_session_command() -> None:
     assert command["argumentHint"] == "[status | stop <server-id> <root>]"
 
 
+def test_rpc_mode_executes_coding_lsp_session_command() -> None:
+    from loushang.coding.lsp.commands import (
+        execute_lsp_session_command,
+        lsp_session_command_descriptor,
+    )
+    from loushang.harness.host.rpc import RpcHost as RpcMode
+
+    class LspCommandSession(FakeSession):
+        def list_commands(self):
+            return [lsp_session_command_descriptor()]
+
+        async def execute_command_async(self, invocation_name: str, args: str):
+            assert invocation_name == "lsp"
+            return await execute_lsp_session_command(None, args)
+
+    session = LspCommandSession(session_id="session-a", cwd="/tmp/project")
+    runtime = FakeRuntime(session)
+    stdin = StringIO(
+        json.dumps(
+            {
+                "id": "lsp-status",
+                "type": "execute_command",
+                "command": "lsp",
+                "args": "status",
+            }
+        )
+        + "\n"
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        mode = RpcMode(runtime=runtime, stdin=stdin, stdout=stdout)
+        assert await mode.run() == 0
+
+    asyncio.run(scenario())
+
+    assert _parse_jsonl(stdout) == [
+        {
+            "id": "lsp-status",
+            "type": "response",
+            "command": "execute_command",
+            "success": True,
+            "data": {
+                "invocationName": "lsp",
+                "args": "status",
+                "result": {
+                    "source": "builtin",
+                    "command": "lsp",
+                    "status": "ok",
+                    "scope": "session",
+                    "enabled": False,
+                    "disposed": False,
+                    "servers": [],
+                    "starting_count": 0,
+                    "ready_count": 0,
+                    "failed_count": 0,
+                    "display": "LSP session capability: disabled",
+                },
+            },
+        }
+    ]
+
+
 def test_rpc_mode_get_commands_projects_session_command_descriptors() -> None:
     from loushang.harness.host.rpc import RpcHost as RpcMode
 

@@ -91,6 +91,41 @@ This product kernel is what differentiates `coding`, `design`, `research`,
 small as Harness grows, but these semantics must not migrate merely to reduce
 the number of lines in a product package.
 
+## Code-Enabled Products And The Coding Product
+
+The canonical principle is:
+
+> **Every Product may be code-enabled, but not every Product is the Coding Product.**
+
+A PPT, Research, Design, Method, or OEM-defined Product may mount an admitted
+subset of Harness workspace, file, process, Sandbox, Approval, and automation
+Capabilities. That composition remains one Product Runtime and one Product
+Session. It does not import or embed the Coding Product, and it does not gain
+repository-engineering authority merely by mounting a shared tool pack.
+
+Harness owns the reusable mechanisms for workspace read, list, search, write,
+edit, and process execution. A Product owns their activation, allowed roots,
+effective grants, approval and Sandbox policy, Product-tuned descriptions,
+artifact meanings, and final presentation. Full repository engineering may
+add Coding-owned Git workflow, session compatibility, prompts, diagnostics,
+and other Product Kernel semantics without pulling the neutral mechanisms back
+into Coding.
+
+In the current implementation, the only Coding-specific Capability Mount
+identities are `coding.arch` and `coding.lsp`. Architecture import-graph
+analysis and language-server selection, synchronization, and tool semantics
+remain Coding capabilities while they have a Coding-specific contract. They
+may reuse Harness workspace, process-hosting, and Sandbox foundations. This
+inventory statement does not imply that Coding has only two Product-specific
+semantics; it distinguishes named Capability Mounts from the rest of the
+Coding Product Kernel.
+
+If another Product needs bounded file or script automation, it should select
+Harness capabilities. If it needs a durable repository-engineering Session,
+Git/LSP lifecycle, and Coding compatibility semantics, it should perform an
+explicit Product Handoff or delegation to the Coding Product instead of
+copying or importing that Product runtime.
+
 ## Tools
 
 Harness may own:

@@ -26,6 +26,7 @@ Current live references:
 
 ## Documents
 
+- [Foundation Refactor Plan](foundation-refactor-plan.md)
 - [Loushang Future Target Architecture v3](future-loushang-architecture-v3.md)
 - [Application Service Refactor](application-service-refactor.md)
 - [Loushang Runtime Architecture](loushang-runtime-architecture.md)

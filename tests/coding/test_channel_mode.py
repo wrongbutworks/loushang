@@ -12,16 +12,16 @@ from loushang.channel import (
     ChannelOperationRequest,
     encode_rpc_jsonl_frame,
 )
+from loushang.channel.adapters.harnesswork import SessionWorkChannelPort
 from loushang.channel.adapters.runtime_events import AgentRuntimeChannelProjection
-from loushang.channel.adapters.session_work import SessionWorkChannelPort
 from loushang.channel.types import ChannelEnvelope
-from loushang.coding.domain.work import (
+from loushang.coding.adapters.harnesswork import (
     CODING_WORK_CHANNEL_PROFILE,
     create_coding_work_runtime,
     run_coding_work_channel,
 )
 from loushang.harness.events import RuntimeEvent, RuntimeEventView
-from loushang.work import InMemoryEventLogBackend, WorkEvent, WorkOperation
+from loushang.harnesswork import InMemoryEventLogBackend, WorkEvent, WorkOperation
 
 
 class _FakeSession:

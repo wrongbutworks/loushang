@@ -216,6 +216,24 @@ vertical，不是 `work` 的协作语义层名称。
 详见
 [Agent Harness and Product Adapter Boundaries](../agent/ARD-001-agent-harness-and-product-adapters.md)。
 
+### 11. 共享代码机制与 Coding 专属 Capability Mount 分离
+
+每个 Product 都可以具备适合自己的代码能力，但并非每个 Product 都是 Coding
+Product。read、list、search、write、edit 和进程执行的公共契约、实现与不可绕过
+执行边界属于 `loushang.harness`；Coding 只选择其缺省 pack、产品文案、允许根、
+权限、审批、Sandbox、激活和呈现策略。
+
+当前 Coding 专属的 Capability Mount 身份只有：
+
+- `coding.arch`：Coding 的仓库 import-graph 分析语义与工具面；
+- `coding.lsp`：Coding 的 language-server 选择、文档同步、生命周期与工具语义。
+
+两者可以依赖 Harness 的 workspace、process-hosting 和 Sandbox 基础，但其他
+Product 不应为了获得 read/write/edit 或受限脚本执行而依赖 `loushang.coding`。
+反过来，这份 mount inventory 也不表示 Coding 只有两个 Product 专属关注点；
+Coding Prompt、仓库/Git 工作流、Session 兼容性、诊断、Artifact 和呈现仍属于
+Coding Product Kernel。
+
 ## Rationale
 
 本次决定采用“先稳住产品骨架，再后置跨边界协议层”的策略，理由是：

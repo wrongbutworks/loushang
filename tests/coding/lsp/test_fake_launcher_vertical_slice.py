@@ -22,6 +22,7 @@ from loushang.coding.lsp import (
     ProcessStderrTail,
     create_document_outline_tool_definition,
     create_inspect_symbol_tool_definition,
+    product_default_lsp_definitions,
 )
 from loushang.harness.tools import ToolContext
 from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
@@ -244,6 +245,29 @@ class FakeLspServer:
         task = asyncio.create_task(send(), name="fake-lsp-response")
         self._response_tasks.add(task)
         task.add_done_callback(self._response_tasks.discard)
+
+    async def publish_diagnostics(
+        self,
+        *,
+        uri: str,
+        diagnostics: list[object],
+        version: int | None = None,
+    ) -> None:
+        params: dict[str, object] = {
+            "uri": uri,
+            "diagnostics": diagnostics,
+        }
+        if version is not None:
+            params["version"] = version
+        await self.stdout.put(
+            _frame(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/publishDiagnostics",
+                    "params": params,
+                }
+            )
+        )
 
     def methods(self) -> list[str]:
         return [
@@ -1062,6 +1086,7 @@ def test_runtime_status_is_read_only_and_explicit_stop_allows_replacement(
         assert ready_server.request_count == 2
         assert ready_server.timeout_count == 0
         assert ready_server.replacement_count == 0
+        assert ready_server.accepted_diagnostic_publications == 0
         assert ready_server.discarded_diagnostic_publications == 1
         assert ready_server.last_request_duration_ms is not None
         assert ready_server.last_error is None
@@ -1105,6 +1130,167 @@ def test_runtime_status_is_read_only_and_explicit_stop_allows_replacement(
         disposed = binding.status()
         assert disposed.disposed is True
         assert disposed.servers[0].state == "stopped"
+
+    asyncio.run(scenario())
+
+
+def test_passive_diagnostics_are_versioned_replaced_bounded_and_released(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        files = {source.resolve(): "value = 1\n"}
+        launcher = FakeLauncher(definition_result=None)
+        binding = _binding(tmp_path, launcher, files)
+
+        await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            correlation_id="diagnostic-open",
+        )
+        server = launcher.handles[0].server
+        diagnostic = {
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 5},
+            },
+            "severity": 1,
+            "message": "invalid value",
+            "source": "fake",
+        }
+
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            version=1,
+            diagnostics=[diagnostic],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].current_diagnostic_count == 1:
+                break
+            await asyncio.sleep(0)
+        ready = binding.status().servers[0]
+        assert ready.diagnostic_document_count == 1
+        assert ready.current_diagnostic_count == 1
+        assert ready.accepted_diagnostic_publications == 1
+        assert ready.discarded_diagnostic_publications == 1
+
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            version=0,
+            diagnostics=[],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].discarded_diagnostic_publications == 2:
+                break
+            await asyncio.sleep(0)
+        stale = binding.status().servers[0]
+        assert stale.current_diagnostic_count == 1
+        assert stale.accepted_diagnostic_publications == 1
+        assert stale.discarded_diagnostic_publications == 2
+
+        files[source.resolve()] = "value = 2\n"
+        changed = await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            correlation_id="diagnostic-change",
+        )
+        assert changed.document_version == 2
+        assert binding.status().servers[0].current_diagnostic_count == 0
+
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            version=2,
+            diagnostics=[diagnostic, {**diagnostic, "message": "second"}],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].current_diagnostic_count == 2:
+                break
+            await asyncio.sleep(0)
+        assert binding.status().servers[0].current_diagnostic_count == 2
+        assert binding.status().servers[0].accepted_diagnostic_publications == 2
+
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            version=2,
+            diagnostics=[],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].current_diagnostic_count == 0:
+                break
+            await asyncio.sleep(0)
+        assert binding.status().servers[0].diagnostic_document_count == 0
+        assert binding.status().servers[0].accepted_diagnostic_publications == 3
+
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            diagnostics=[diagnostic],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].current_diagnostic_count == 1:
+                break
+            await asyncio.sleep(0)
+        assert await binding.stop(
+            definition_id="fake-python",
+            workspace_root=tmp_path,
+        )
+        stopped = binding.status().servers[0]
+        assert stopped.diagnostic_document_count == 0
+        assert stopped.current_diagnostic_count == 0
+        await binding.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_passive_diagnostics_are_released_when_server_stdout_closes(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        (tmp_path / "pyproject.toml").touch()
+        source = tmp_path / "main.py"
+        source.touch()
+        launcher = FakeLauncher(definition_result=None)
+        binding = _binding(tmp_path, launcher, {source.resolve(): "value = 1\n"})
+        await binding.inspect_symbol(
+            path="main.py",
+            line=1,
+            character=1,
+            correlation_id="diagnostic-before-crash",
+        )
+        server = launcher.handles[0].server
+        await server.publish_diagnostics(
+            uri=source.resolve().as_uri(),
+            version=1,
+            diagnostics=[
+                {
+                    "range": {
+                        "start": {"line": 0, "character": 0},
+                        "end": {"line": 0, "character": 1},
+                    },
+                    "message": "before crash",
+                }
+            ],
+        )
+        for _ in range(100):
+            if binding.status().servers[0].current_diagnostic_count == 1:
+                break
+            await asyncio.sleep(0)
+        assert binding.status().servers[0].current_diagnostic_count == 1
+
+        await server.stdout.put(None)
+        for _ in range(100):
+            status = binding.status().servers[0]
+            if status.state == "failed":
+                break
+            await asyncio.sleep(0)
+        failed = binding.status().servers[0]
+        assert failed.state == "failed"
+        assert failed.diagnostic_document_count == 0
+        assert failed.current_diagnostic_count == 0
+        await binding.dispose()
 
     asyncio.run(scenario())
 
@@ -1401,3 +1587,74 @@ def test_language_mapping_catalog_freeze_and_literal_root_markers(
                 "other": (".ts",),
             },
         )
+
+
+def test_python_and_typescript_servers_are_selected_independently_in_one_session(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        python_root = tmp_path / "python-service"
+        typescript_root = tmp_path / "web-app"
+        python_root.mkdir()
+        typescript_root.mkdir()
+        (python_root / "pyproject.toml").touch()
+        (typescript_root / "tsconfig.json").write_text("{}", encoding="utf-8")
+        python_source = python_root / "main.py"
+        typescript_source = typescript_root / "main.ts"
+        tsx_source = typescript_root / "component.tsx"
+        for source in (python_source, typescript_source, tsx_source):
+            source.touch()
+        files = {
+            python_source.resolve(): "value = 1\n",
+            typescript_source.resolve(): "export const value = 1;\n",
+            tsx_source.resolve(): "export const View = () => null;\n",
+        }
+        typescript_definition = next(
+            item
+            for item in product_default_lsp_definitions()
+            if item.id == "typescript-language-server"
+        )
+        launcher = FakeLauncher(definition_result=None, outline_result=None)
+        binding = CodingLspBinding(
+            workspace_root=tmp_path,
+            definitions=(_definition(), typescript_definition),
+            launcher=launcher,
+            read_text=lambda path: files[path],
+            baseline_environment={"PATH": "/admitted/bin"},
+        )
+
+        await binding.inspect_symbol(
+            path="python-service/main.py",
+            line=1,
+            character=1,
+            correlation_id="python-query",
+        )
+        await binding.inspect_symbol(
+            path="web-app/main.ts",
+            line=1,
+            character=14,
+            correlation_id="typescript-query",
+        )
+        await binding.document_outline(
+            path="web-app/component.tsx",
+            correlation_id="tsx-query",
+        )
+
+        assert [request.command for request in launcher.requests] == [
+            ("fake-language-server", "--stdio"),
+            ("typescript-language-server", "--stdio"),
+        ]
+        assert [request.cwd for request in launcher.requests] == [
+            str(python_root.resolve()),
+            str(typescript_root.resolve()),
+        ]
+        status_by_id = {
+            server.definition_id: server for server in binding.status().servers
+        }
+        assert status_by_id["fake-python"].runtime_id == 1
+        assert status_by_id["fake-python"].open_document_count == 1
+        assert status_by_id["typescript-language-server"].runtime_id == 2
+        assert status_by_id["typescript-language-server"].open_document_count == 2
+        await binding.dispose()
+
+    asyncio.run(scenario())

@@ -31,10 +31,18 @@ _LIFECYCLE = AgentTranscriptLifecycle(
 def _coding_header_metadata(
     runtime_profile: ResolvedRuntimeProfile,
 ) -> dict[str, JSONValue]:
+    capability_snapshot = CODING_CAPABILITY_PROFILE.snapshot()
     return {
         **CODING_TRANSCRIPT_RUNTIME.snapshot_metadata(runtime_profile),
         CODING_CAPABILITY_PROFILE_METADATA_KEY: (
-            CODING_CAPABILITY_PROFILE.snapshot().to_json()
+            replace(
+                capability_snapshot,
+                capabilities=tuple(
+                    capability
+                    for capability in capability_snapshot.capabilities
+                    if capability.slot != SIDE_QUESTION_PROVIDER_SLOT.key
+                ),
+            ).to_json()
         ),
     }
 

@@ -88,9 +88,18 @@ Extension        → 向已准入运行时扩展面贡献行为
 | Active Product | 活跃 Product | 拥有当前 Product Session，并解释其输入、上下文、策略、Artifact 和呈现的 Product。 |
 | Product Session | Product 会话 | 由一个 Product 及其 Session schema 和兼容策略拥有的持久或临时交互范围。 |
 | Product Handoff | Product 移交 | 在不同 Product Session 之间显式转交 Work、Artifact 引用或用户意图。 |
+| Code-Enabled Product | 具备代码能力的 Product | 挂载 Product 已批准的 Harness workspace、文件、进程、Sandbox、Approval 或自动化能力，但不因此获得 Coding Product 身份或完整仓库工程生命周期。 |
+| Coding Product | Coding Product／代码产品 | 拥有完整仓库工程体验、Coding Prompt、工具包缺省、Git 工作流、Session 兼容性、诊断与呈现语义的 Product。 |
 
 一个 Product Session 恰好有一个 Active Product。平台可以同时承载多个 Product，
 但不能在不迁移的情况下把一个 Session 的 `product_id` 原地改成另一个 Product。
+
+每个 Product 都可以具备适合自己的代码能力，但并非每个 Product 都是 Coding
+Product。挂载 Harness 所有的 read、list、search、write、edit 或进程执行机制，
+不会创建第二个 Product，也不会自动授予不受限 shell、网络、依赖安装或工作区
+访问权。当前 Coding 专属的 Capability Mount 身份只有 `coding.arch` 和
+`coding.lsp`；Coding 对共享 workspace 工具的缺省 pack、文案、策略和激活选择，
+以及其他 Product Kernel 语义仍由 Coding 拥有。
 
 ## OEM 模型
 
