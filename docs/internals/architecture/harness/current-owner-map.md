@@ -15,7 +15,7 @@ Product owns domain language, prompts, policy choices, presentation semantics,
 and the conversion from user intent or Method output into Product operations.
 
 Harness does not import Product packages. In particular, Harness must not
-depend on `loushang.coding`, `loushang.work`, `loushang.method`,
+depend on `loushang.coding`, `loushang.harnesswork`, `loushang.work`, `loushang.method`,
 `loushang.channel`, `loushang.harnesstui`, or Product UI packages.
 
 ## Implemented Owners
@@ -69,7 +69,7 @@ AppService / Product host
         -> Product narrow ports
         -> Harness Session or Work adapter
 
-Harness -/-> Product, Work, Method, Channel, Harnesstui, or Product UI
+Harness -/-> Product, HarnessWork/Work, Method, Channel, Harnesstui, or Product UI
 ```
 
 `session` is an assembly owner and therefore has high fan-out. High fan-out is

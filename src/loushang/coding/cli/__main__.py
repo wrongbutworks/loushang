@@ -11,6 +11,10 @@ from loushang.ai.model import (
     parse_model_selection_reference,
 )
 from loushang.ai.model.registry import get_default_model_registry
+from loushang.coding.adapters.harnesswork import (
+    create_coding_work_runtime,
+    run_coding_work_channel,
+)
 from loushang.coding.agent_invocation import register_coding_agent_delegate_tool
 from loushang.coding.arch.tool import INSPECT_IMPORT_GRAPH_TOOL_NAME
 from loushang.coding.arch.tool_pack import register_coding_arch_tools
@@ -48,10 +52,6 @@ from loushang.coding.domain import (
     CodingDomainApp,
     CodingDomainPreparedTurn,
     CodingDomainRequest,
-)
-from loushang.coding.domain.work import (
-    create_coding_work_runtime,
-    run_coding_work_channel,
 )
 from loushang.coding.model_selection import (
     apply_model_selection,
@@ -142,19 +142,19 @@ from loushang.harnesstui.conversation.agent_binding import (
     run_agent_plain_mode,
     run_agent_plain_plan_mode,
 )
+from loushang.harnesswork import (
+    create_work_event_log,
+    run_work_log_inspection_operation,
+)
+from loushang.harnesswork.integrations.session import (
+    SessionWorkHostPort,
+    project_prepared_session_work_turns,
+)
 from loushang.method import (
     MethodCompiler,
     MethodContext,
     MethodLoader,
     resolve_method_policy,
-)
-from loushang.work import (
-    create_work_event_log,
-    run_work_log_inspection_operation,
-)
-from loushang.work.session import (
-    SessionWorkHostPort,
-    project_prepared_session_work_turns,
 )
 
 _WORK_LOG_INSPECT_LIMIT = 20

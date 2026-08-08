@@ -54,6 +54,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.channel",
                 "loushang.coding",
                 "loushang.harness",
+                "loushang.harnesswork",
                 "loushang.method",
                 "loushang.observability",
                 "loushang.ontology",
@@ -70,6 +71,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.channel",
                 "loushang.coding",
                 "loushang.harness",
+                "loushang.harnesswork",
                 "loushang.method",
                 "loushang.tui",
                 "loushang.work",
@@ -81,6 +83,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             forbidden_prefixes=(
                 "loushang.coding",
                 "loushang.harness",
+                "loushang.harnesswork",
                 "loushang.method",
                 "loushang.tui",
                 "loushang.work",
@@ -97,6 +100,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.coding",
                 "loushang.method",
                 "loushang.tui",
+                "loushang.harnesswork",
                 "loushang.work",
             ),
             allowed_paths=frozenset(
@@ -110,6 +114,43 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             ),
         ),
         ImportBoundary(
+            name="harnesswork",
+            root=Path("src/loushang/harnesswork"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.channel",
+                "loushang.coding",
+                "loushang.harnesstui",
+                "loushang.method",
+                "loushang.observability",
+                "loushang.ontology",
+                "loushang.resource",
+                "loushang.runtime",
+                "loushang.tui",
+                "loushang.work",
+            ),
+            allowed_paths=frozenset(
+                {
+                    "src/loushang/harnesswork/integrations/agent_events.py",
+                    "src/loushang/harnesswork/integrations/agent_session.py",
+                }
+            ),
+        ),
+        ImportBoundary(
+            name="harnesswork integrations",
+            root=Path("src/loushang/harnesswork/integrations"),
+            forbidden_prefixes=(
+                "loushang.channel",
+                "loushang.coding",
+                "loushang.harnesstui",
+                "loushang.method",
+                "loushang.ontology",
+                "loushang.tui",
+                "loushang.work",
+            ),
+        ),
+        ImportBoundary(
             name="work",
             root=Path("src/loushang/work"),
             forbidden_prefixes=(
@@ -119,19 +160,35 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.method",
                 "loushang.tui",
             ),
-            allowed_paths=frozenset(
-                {
-                    "src/loushang/work/agent_projection.py",
-                    "src/loushang/work/coding.py",
-                }
-            ),
         ),
         ImportBoundary(
             name="method",
             root=Path("src/loushang/method"),
             forbidden_prefixes=(
                 "loushang.coding",
+                "loushang.harnesswork",
                 "loushang.tui",
+                "loushang.work",
+            ),
+        ),
+        ImportBoundary(
+            name="ontology core",
+            root=Path("src/loushang/ontology"),
+            forbidden_prefixes=(
+                "loushang.harness",
+                "loushang.harnesswork",
+                "loushang.work",
+            ),
+            allowed_paths=frozenset(
+                {"src/loushang/ontology/integrations/harnesswork.py"}
+            ),
+        ),
+        ImportBoundary(
+            name="ontology HarnessWork integration",
+            root=Path("src/loushang/ontology/integrations"),
+            forbidden_prefixes=(
+                "loushang.harness",
+                "loushang.work",
             ),
         ),
         ImportBoundary(
@@ -285,16 +342,29 @@ def test_session_modules_do_not_import_their_public_barrel() -> None:
 def test_harness_work_channel_dependency_graph_is_one_way() -> None:
     graph = _package_dependency_graph(
         Path("src/loushang"),
-        packages=frozenset({"harness", "work", "channel"}),
+        packages=frozenset({"harness", "harnesswork", "work", "channel"}),
     )
 
-    assert graph["harness"].isdisjoint({"work", "channel"})
+    assert graph["harness"].isdisjoint({"harnesswork", "work", "channel"})
+    assert graph["harnesswork"].isdisjoint({"work", "channel"})
     assert "channel" not in graph["work"]
     assert [
         component
         for component in _strongly_connected_components(graph)
         if len(component) > 1
     ] == []
+
+
+def test_internal_consumers_use_harnesswork_instead_of_legacy_work() -> None:
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for package in ("channel", "coding", "harnesswork", "ontology")
+        for path in sorted((Path("src/loushang") / package).rglob("*.py"))
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, ("loushang.work",))
+    ]
+
+    assert offenders == []
 
 
 def test_runtime_event_layers_follow_declared_dependency_direction() -> None:
@@ -566,10 +636,10 @@ def test_scenario_runtime_is_product_neutral_and_never_executes_shell() -> None:
 
 
 def test_shared_session_work_projection_subscribes_to_runtime_events() -> None:
-    session_work_source = Path("src/loushang/work/session.py").read_text(
-        encoding="utf-8"
-    )
-    coding_binding = Path("src/loushang/coding/domain/work.py").read_text(
+    session_work_source = Path(
+        "src/loushang/harnesswork/integrations/session.py"
+    ).read_text(encoding="utf-8")
+    coding_binding = Path("src/loushang/coding/adapters/harnesswork.py").read_text(
         encoding="utf-8"
     )
 
@@ -579,28 +649,32 @@ def test_shared_session_work_projection_subscribes_to_runtime_events() -> None:
     assert "subscribe_runtime_events" not in coding_binding
 
 
-def test_agent_work_projection_is_work_owned() -> None:
-    work_projection = Path("src/loushang/work/agent_projection.py").read_text(
+def test_agent_work_projection_is_harnesswork_integration_owned() -> None:
+    work_projection = Path(
+        "src/loushang/harnesswork/integrations/agent_session.py"
+    ).read_text(
         encoding="utf-8"
     )
-    work_event_projection = Path("src/loushang/work/projection.py").read_text(
+    work_event_projection = Path(
+        "src/loushang/harnesswork/integrations/agent_events.py"
+    ).read_text(
         encoding="utf-8"
     )
-    coding_binding = Path("src/loushang/coding/domain/work.py").read_text(
+    coding_binding = Path("src/loushang/coding/adapters/harnesswork.py").read_text(
         encoding="utf-8"
     )
 
     assert "def project_agent_event_to_work_facts" in work_projection
     assert "loushang.coding" not in work_projection
     assert "loushang.coding" not in work_event_projection
-    assert "loushang.work.agent_projection" in coding_binding
+    assert "loushang.harnesswork.integrations.agent_session" in coding_binding
     assert not Path("src/loushang/coding/work_projection.py").exists()
 
     completed = subprocess.run(
         [
             sys.executable,
             "-c",
-            "import sys; import loushang.work.agent_projection; "
+            "import sys; import loushang.harnesswork.integrations.agent_session; "
             "assert not any(name == 'loushang.coding' or "
             "name.startswith('loushang.coding.') for name in sys.modules)",
         ],
@@ -896,7 +970,7 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     coding_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
-    channel_source = Path("src/loushang/coding/domain/work.py").read_text(
+    channel_source = Path("src/loushang/coding/adapters/harnesswork.py").read_text(
         encoding="utf-8"
     )
     rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
@@ -1005,7 +1079,9 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
         encoding="utf-8"
     )
     rpc_source = _read_python_package(Path("src/loushang/harness/host/rpc"))
-    channel_adapter_source = Path("src/loushang/coding/domain/work.py").read_text(
+    channel_adapter_source = Path(
+        "src/loushang/coding/adapters/harnesswork.py"
+    ).read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -1108,7 +1184,9 @@ def test_mode_host_implementation_is_shared_and_coding_is_thin() -> None:
     agent_binding = Path(
         "src/loushang/harnesstui/conversation/agent_binding.py"
     ).read_text(encoding="utf-8")
-    coding_work = Path("src/loushang/coding/domain/work.py").read_text(encoding="utf-8")
+    coding_work = Path("src/loushang/coding/adapters/harnesswork.py").read_text(
+        encoding="utf-8"
+    )
     boundary = Path(
         "docs/internals/architecture/harness/mode-host-boundary.md"
     ).read_text(encoding="utf-8")
@@ -1357,7 +1435,9 @@ def test_plain_services_and_work_bindings_remove_coding_duplication() -> None:
     coding_bootstrap = Path("src/loushang/coding/bootstrap.py").read_text(
         encoding="utf-8"
     )
-    work_session = Path("src/loushang/work/session.py").read_text(encoding="utf-8")
+    work_session = Path(
+        "src/loushang/harnesswork/integrations/session.py"
+    ).read_text(encoding="utf-8")
     coding_prompt = Path("src/loushang/coding/prompt_command.py").read_text(
         encoding="utf-8"
     )
@@ -2096,6 +2176,8 @@ forbidden = sorted(
     or name.startswith("loushang.ai.")
     or name == "loushang.work.agent_projection"
     or name == "loushang.work.projection"
+    or name == "loushang.harnesswork.integrations.agent_session"
+    or name == "loushang.harnesswork.integrations.agent_events"
 )
 assert forbidden == [], forbidden
 """
@@ -2427,8 +2509,8 @@ def test_agent_product_host_bindings_use_existing_shared_owners() -> None:
             forbidden_prefixes=("loushang.coding",),
         ),
         ImportBoundary(
-            name="session Work Channel binding",
-            root=Path("src/loushang/channel/adapters/session_work.py"),
+            name="HarnessWork Channel binding",
+            root=Path("src/loushang/channel/adapters/harnesswork.py"),
             forbidden_prefixes=("loushang.coding",),
         ),
     )
@@ -2440,7 +2522,7 @@ def test_agent_product_host_bindings_use_existing_shared_owners() -> None:
     ] == []
 
     cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
-    coding_work_source = Path("src/loushang/coding/domain/work.py").read_text(
+    coding_work_source = Path("src/loushang/coding/adapters/harnesswork.py").read_text(
         encoding="utf-8"
     )
     assert "host_binding.bind(host_runners)" in cli_source
@@ -2762,7 +2844,7 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
             "loushang.harness.transcript.AgentTranscriptSessionFactory",
             "loushang.harness.transcript.ProductTranscriptSession",
         },
-        Path("src/loushang/work/event_log.py"): {
+        Path("src/loushang/harnesswork/event_log.py"): {
             "loushang.harness.journal.FunctionalJournalRecordCodec",
             "loushang.harness.journal.JsonlJournal",
         },
