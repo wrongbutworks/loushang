@@ -5,6 +5,11 @@
 Accepted contract for offline comparison of two compiled Semantic Kernel
 schemas. It describes compatibility; it does not mutate runtime state or data.
 
+> [Proposed ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
+> would replace the current name-as-identity rule with explicit stable semantic
+> IDs. Until that proposal is accepted and implemented, this document remains
+> the current contract.
+
 ## Identity and Lineage
 
 - `package_id` identifies one schema lineage. Schemas with different package

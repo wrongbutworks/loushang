@@ -76,6 +76,13 @@ than a writable storage system. `AssertionKind` answers how a semantic assertion
 was produced.
 `ValueOrigin` answers which immutable input produced a projected value.
 
+The shared word `derived` does not collapse the first two dimensions. A
+transient value with `derived` StateAuthority has no `AssertionKind`, because it
+is not a Fact. If that value is published as a Fact, the Fact must use
+`AssertionKind.DERIVED`. Conversely, a derived Fact does not declare the
+`StateAuthority` of the state it describes; the schema declaration still does
+that independently.
+
 FactStore remains the semantic record authority for the records inside its
 declared scope. It is not renamed to, or confused with, `StateAuthority`.
 
@@ -133,14 +140,24 @@ MappedSourceInput
   binding_id
   mapping_version
   source_revision
-  immutable mapped snapshot or change set
+  payload:
+    immutable mapped snapshot
+    | immutable mapped change set + base_revision
 ```
 
 The contract does not require raw source data to be copied into Ontology. It
 does require an immutable or content-addressed input that can reproduce the
-selected object, property, and link values. A connector that exposes neither a
-stable revision nor an immutable snapshot reports unknown coverage rather than
-claiming current data.
+selected object, property, and link values. A change set is reproducible only
+when its base revision and the required immutable chain are available. A
+connector that exposes neither a stable revision nor a reproducible snapshot or
+change chain reports unknown coverage rather than claiming current data.
+
+The Product or deployment integration is responsible for retaining or
+reacquiring the mapped inputs named by an installed cut for as long as it
+promises rebuildability. Ontology owns the input identity and validation
+contract, not the raw-source retention system. If a required input can no longer
+be obtained, diagnostics report rebuildability as unknown or degraded rather
+than silently weakening the rebuild guarantee.
 
 Application-version mappings resolve source record identities to canonical
 object IDs and preserve alternate keys. Uncertain identities remain separate
@@ -233,6 +250,18 @@ installed snapshot's build coordinates. A query or coordinator compares the
 snapshot cut with observed heads. Per-query dependency-aware freshness can be
 added later; the initial contract may report projection-wide status.
 
+The initial freshness evaluator is pure: its inputs are the immutable snapshot
+cut, the current Fact watermark, and source-head observations supplied by the
+Product or deployment integration. A missing source-head observation yields
+`unknown`; Ontology does not infer `current` from the absence of evidence.
+
+ProjectionStore installation validates snapshot structure and monotonic
+projection version, not freshness through adapter-local knowledge. A caller may
+require a current cut before installation, but it does so through the same
+explicit comparison contract for Memory and SQLite. SQLite co-location with a
+FactStore must not create a hidden coverage check that the Memory adapter cannot
+implement.
+
 SQLite projection reconstruction must run within one read transaction, and
 Memory and SQLite must pass the same freshness conformance suite.
 
@@ -303,6 +332,14 @@ layout. If this proposal is accepted, a later implementation decision will
 replace only its Fact-only materialization/freshness assumptions and physical
 layout as needed. No compatibility reader or migration is implied.
 
+If accepted, this ARD also supersedes the identity rule in
+[Schema Evolution](schema-evolution.md): object-type, property, and link-type
+names stop being stable identity keys and become versioned metadata; explicit
+stable semantic IDs drive comparison and rename recognition. The remaining
+offline comparison, impact classification, determinism, and non-goal rules stay
+in force. Until this proposal is accepted and implemented, the current
+name-keyed comparator remains authoritative.
+
 ## Consequences
 
 Benefits:
@@ -343,13 +380,17 @@ This proposal does not add:
 - Fact selection and watermark are captured atomically in Memory and SQLite;
 - SQLite projection reconstruction uses one read transaction;
 - Memory and SQLite expose identical snapshot and freshness semantics;
+- ProjectionStore installation has no SQLite-only hidden freshness or coverage
+  check;
 - one Memory-only slice combines one source-backed value, one ontology-owned
   Fact, and one schema default into a deterministic projection;
 - every projected value exposes a supported `ValueOrigin`;
 - the initial slice contains no transient derived value until a computation
   origin is defined;
 - an ambiguous multi-source value fails visibly rather than choosing silently;
-- source revision changes make an older cut stale without mutating that cut;
+- in the one-source slice, a supplied newer source revision makes an older cut
+  stale without mutating that cut, while a missing source-head observation
+  produces `unknown`;
 - mappings and authority declarations use stable semantic IDs;
 - Ontology gains no import dependency on Harness, HarnessWork, Method, Product,
   or a concrete source adapter.

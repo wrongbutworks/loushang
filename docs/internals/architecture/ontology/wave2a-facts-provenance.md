@@ -44,11 +44,11 @@ Source / future Adapter
  QueryRequest -> QueryResult
 ```
 
-The SQLite v2 layout still contains the historical operational mutation journal,
-but it is an internal physical-format artifact rather than a public semantic
-API. It is not a Fact and does not acquire source, evidence, confidence, or
-bitemporal meaning. Applications append `FactRecord` values; object mutation is
-not an alternative authority path.
+The original Wave 2A SQLite v2 layout contained an operational mutation journal.
+ARD-002 removed that table when it reset the undeployed v2 layout to Phase 2;
+the current adapter rejects `mutation_journal` as a legacy table. Applications
+append `FactRecord` values; object mutation is not an alternative authority
+path.
 
 ## Fact Envelope
 
