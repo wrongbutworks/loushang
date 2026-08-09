@@ -15,6 +15,7 @@ from loushang.ontology.schema import (
 from loushang.ontology.storage import (
     SQLITE_STORAGE_FORMAT,
     SQLITE_STORAGE_FORMAT_VERSION,
+    SQLITE_STORAGE_LAYOUT,
     SQLiteFactStore,
     SQLiteStorageFormatError,
     SQLiteStoreCompatibilityError,
@@ -23,10 +24,7 @@ from loushang.ontology.storage import (
 
 
 def _schema(*, version: str = "1.0.0", extra_property: bool = False):
-    properties = [
-        PropertyDefinition("code", ValueType.STRING, required=True, unique=True),
-        PropertyDefinition("score", ValueType.INTEGER),
-    ]
+    properties = [PropertyDefinition("code", ValueType.STRING)]
     if extra_property:
         properties.append(PropertyDefinition("description", ValueType.STRING))
     return OntologyCompiler().compile(
@@ -50,18 +48,37 @@ def _tables(database: Path) -> set[str]:
         }
 
 
-def test_new_database_records_an_explicit_storage_format(tmp_path: Path) -> None:
+def test_new_database_uses_only_the_phase2_v2_layout(tmp_path: Path) -> None:
     database = tmp_path / "ontology.sqlite3"
-
     SQLiteFactStore(database).close()
 
     with sqlite3.connect(database) as connection:
         metadata = dict(connection.execute("SELECT key, value FROM ontology_metadata"))
-    assert metadata["storage_format"] == SQLITE_STORAGE_FORMAT
-    assert metadata["storage_format_version"] == str(SQLITE_STORAGE_FORMAT_VERSION)
+
+    assert metadata == {
+        "storage_format": SQLITE_STORAGE_FORMAT,
+        "storage_format_version": str(SQLITE_STORAGE_FORMAT_VERSION),
+        "storage_layout": SQLITE_STORAGE_LAYOUT,
+        "fact_watermark": "0",
+    }
+    assert _tables(database) == {
+        "ontology_metadata",
+        "ontology_schema",
+        "semantic_facts",
+        "fact_batches",
+        "projection_metadata",
+        "projection_objects",
+        "projection_properties",
+        "projection_links",
+    }
+    assert not {
+        "authority_objects",
+        "mutation_journal",
+        "projection_unique_values",
+    } & _tables(database)
 
 
-def test_non_ontology_database_is_rejected_without_silent_initialization(
+def test_non_ontology_database_is_rejected_without_initialization(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "other.sqlite3"
@@ -75,9 +92,7 @@ def test_non_ontology_database_is_rejected_without_silent_initialization(
     assert _tables(database) == before
 
 
-def test_unsupported_storage_version_is_rejected_without_upgrade(
-    tmp_path: Path,
-) -> None:
+def test_unsupported_version_is_rejected_without_upgrade(tmp_path: Path) -> None:
     database = tmp_path / "future.sqlite3"
     SQLiteFactStore(database).close()
     future_version = SQLITE_STORAGE_FORMAT_VERSION + 1
@@ -92,101 +107,81 @@ def test_unsupported_storage_version_is_rejected_without_upgrade(
 
     assert exc_info.value.expected_version == SQLITE_STORAGE_FORMAT_VERSION
     assert exc_info.value.found_version == str(future_version)
-    with sqlite3.connect(database) as connection:
-        stored = connection.execute(
-            "SELECT value FROM ontology_metadata WHERE key = 'storage_format_version'"
-        ).fetchone()
-    assert stored == (str(future_version),)
 
 
-def test_versioned_database_missing_a_required_table_is_rejected(
+def test_pre_phase2_v2_store_is_rejected_for_explicit_recreation(
     tmp_path: Path,
 ) -> None:
-    database = tmp_path / "incomplete.sqlite3"
+    database = tmp_path / "old-v2.sqlite3"
     SQLiteFactStore(database).close()
     with sqlite3.connect(database) as connection:
+        connection.execute("DELETE FROM ontology_metadata WHERE key = 'storage_layout'")
+        connection.execute("CREATE TABLE authority_objects(object_id TEXT PRIMARY KEY)")
+    before = database.read_bytes()
+
+    with pytest.raises(
+        SQLiteStorageFormatError, match="recreate the development store"
+    ):
+        SQLiteFactStore(database)
+
+    assert database.read_bytes() == before
+
+
+def test_missing_required_table_or_metadata_is_rejected(tmp_path: Path) -> None:
+    missing_table = tmp_path / "missing-table.sqlite3"
+    SQLiteFactStore(missing_table).close()
+    with sqlite3.connect(missing_table) as connection:
         connection.execute("DROP TABLE projection_links")
-
     with pytest.raises(SQLiteStorageFormatError, match="projection_links"):
-        SQLiteFactStore(database)
+        SQLiteFactStore(missing_table)
+
+    missing_metadata = tmp_path / "missing-metadata.sqlite3"
+    SQLiteFactStore(missing_metadata).close()
+    with sqlite3.connect(missing_metadata) as connection:
+        connection.execute("DELETE FROM ontology_metadata WHERE key = 'fact_watermark'")
+    with pytest.raises(SQLiteStorageFormatError, match="fact_watermark"):
+        SQLiteFactStore(missing_metadata)
 
 
-def test_versioned_database_missing_runtime_metadata_is_rejected(
+def test_schema_corruption_and_content_mismatch_are_public_failures(
     tmp_path: Path,
 ) -> None:
-    database = tmp_path / "incomplete-metadata.sqlite3"
-    SQLiteFactStore(database).close()
-    with sqlite3.connect(database) as connection:
-        connection.execute(
-            "DELETE FROM ontology_metadata WHERE key = 'source_watermark'"
-        )
-
-    with pytest.raises(SQLiteStorageFormatError, match="source_watermark"):
-        SQLiteFactStore(database)
-
-
-def test_corrupt_stored_schema_is_reported_as_storage_format_failure(
-    tmp_path: Path,
-) -> None:
-    database = tmp_path / "corrupt.sqlite3"
+    database = tmp_path / "schema.sqlite3"
+    schema = _schema()
     store = SQLiteFactStore(database)
-    store.bind_schema(_schema())
+    store.bind_schema(schema)
     store.close()
+
+    reopened = SQLiteFactStore(database, expected_schema=schema)
+    reopened.close()
+    with pytest.raises(SQLiteStoredSchemaMismatchError) as mismatch:
+        SQLiteFactStore(database, expected_schema=_schema(extra_property=True))
+    assert mismatch.value.stored_schema == schema
+
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "UPDATE ontology_schema SET payload = ? WHERE singleton = 1",
-            ("{not-json",),
+            "UPDATE ontology_schema SET payload = '{not-json' WHERE singleton = 1"
         )
-
     with pytest.raises(SQLiteStorageFormatError, match="stored ontology schema"):
         SQLiteFactStore(database)
 
 
-def test_expected_schema_rejects_same_version_with_different_content(
-    tmp_path: Path,
-) -> None:
-    database = tmp_path / "schema.sqlite3"
-    stored_schema = _schema()
-    store = SQLiteFactStore(database)
-    store.bind_schema(stored_schema)
-    store.close()
-
-    reopened = SQLiteFactStore(database, expected_schema=stored_schema)
-    reopened.close()
-
-    with pytest.raises(SQLiteStoredSchemaMismatchError) as exc_info:
-        SQLiteFactStore(
-            database,
-            expected_schema=_schema(extra_property=True),
-        )
-
-    assert exc_info.value.stored_schema == stored_schema
-    assert exc_info.value.expected_schema.version == stored_schema.version
-
-
-def test_bind_schema_uses_the_same_public_mismatch_failure(tmp_path: Path) -> None:
-    store = SQLiteFactStore(tmp_path / "schema.sqlite3")
-    store.bind_schema(_schema())
-
-    with pytest.raises(SQLiteStoredSchemaMismatchError):
-        store.bind_schema(_schema(extra_property=True))
-
-    store.close()
-
-
-def test_backup_does_not_overwrite_without_explicit_permission(tmp_path: Path) -> None:
+def test_bind_schema_and_backup_have_explicit_failure_contracts(tmp_path: Path) -> None:
     database = tmp_path / "ontology.sqlite3"
     backup = tmp_path / "backup.sqlite3"
     store = SQLiteFactStore(database)
-    backup.write_text("keep", encoding="utf-8")
+    store.bind_schema(_schema())
+    with pytest.raises(SQLiteStoredSchemaMismatchError):
+        store.bind_schema(_schema(extra_property=True))
 
+    backup.write_text("keep", encoding="utf-8")
     with pytest.raises(FileExistsError, match="backup destination"):
         store.backup_to(backup)
-
     assert backup.read_text(encoding="utf-8") == "keep"
     store.backup_to(backup, overwrite=True)
-    SQLiteFactStore(backup).close()
+    SQLiteFactStore(backup, expected_schema=_schema()).close()
     store.close()
     store.close()
+
     assert issubclass(SQLiteStorageFormatError, SQLiteStoreCompatibilityError)
     assert issubclass(SQLiteStoredSchemaMismatchError, SQLiteStoreCompatibilityError)

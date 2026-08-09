@@ -1,5 +1,10 @@
-"""Public semantic Fact/Provenance contracts for Ontology Wave 2A."""
+"""Semantic Fact/Provenance models, ports, and pure commit services."""
 
+from loushang.ontology.facts.commit import (
+    CommittedFactBatch,
+    PreparedFactCommit,
+    prepare_fact_commit,
+)
 from loushang.ontology.facts.model import (
     FACT_BATCH_FORMAT,
     FACT_FORMAT,
@@ -12,18 +17,11 @@ from loushang.ontology.facts.model import (
     ObjectAssertion,
     PropertyAssertion,
 )
-from loushang.ontology.facts.projection import (
-    FactProjection,
-    FactProjectionDiagnostic,
-    FactProjectionError,
-    project_facts,
-)
-from loushang.ontology.facts.store import (
+from loushang.ontology.facts.ports import (
     FactBatchConflictError,
     FactCommit,
     FactReadStore,
     FactStore,
-    MemoryFactStore,
     StoredFact,
 )
 
@@ -31,21 +29,19 @@ __all__ = [
     "FACT_BATCH_FORMAT",
     "FACT_FORMAT",
     "AssertionKind",
+    "CommittedFactBatch",
     "FactAssertion",
     "FactBatch",
     "FactBatchConflictError",
     "FactCommit",
-    "FactProjection",
-    "FactProjectionDiagnostic",
-    "FactProjectionError",
     "FactReadStore",
     "FactRecord",
     "FactStore",
     "FactValidationError",
     "LinkAssertion",
-    "MemoryFactStore",
     "ObjectAssertion",
     "PropertyAssertion",
+    "PreparedFactCommit",
     "StoredFact",
-    "project_facts",
+    "prepare_fact_commit",
 ]

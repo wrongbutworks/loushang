@@ -40,19 +40,23 @@ Foundry 的逐功能复刻，也不把 OWL 编辑器、图数据库、数据集�
 ## 当前实现基线
 
 当前 `src/loushang/ontology/` 已完成 versioned schema kernel、Wave 2A
-Fact/Provenance spine，以及 [ARD-001](../ARD-001-factstore-semantic-authority.md)
-规定的单一权威收口。它已经具备：
+Fact/Provenance spine、[ARD-001](../ARD-001-factstore-semantic-authority.md)
+规定的单一权威收口，以及
+[ARD-002](../ARD-002-ports-immutable-projection-and-sqlite-v2.md) 规定的 Phase 2
+端口和适配器拆分。它已经具备：
 
 - package/namespace/version、类型、接口、约束、编译与 schema evolution；
 - asserted/derived/inferred Fact、双时间、provenance、correction lineage；
-- append-only Memory/SQLite v2 FactStore 和 idempotent FactBatch；
-- 确定性 Fact materializer、sealed object/link projection 和 typed query；
-- SQLite v2 严格格式检测、重启和在线备份。
+- append-only Memory/SQLite v2 FactStore、纯 commit planner 和 idempotent FactBatch；
+- 确定性 Fact materializer、immutable ProjectionSnapshot 和 typed query；
+- 原子 whole-snapshot ProjectionStore replacement，以及独立的 Memory/SQLite adapters；
+- 带 `storage_layout=phase2` 的 SQLite v2 严格格式检测、重启和在线备份。
 
 动态 `Ontology` facade、Callable RuleEngine、直接 DataFusion、公开 ObjectStore mutation
-以及尚无正式 Action 语义的 HarnessWork bridge 已删除。当前主要缺口是：
+以及尚无正式 Action 语义的 HarnessWork bridge 已删除；`ontology.core` 也已整体退出
+源码。当前主要缺口是：
 
-- 还没有 runtime/materialization coordinator、projection failure/freshness lifecycle；
+- 还没有负责调度、重试和发布 diagnostics 的 runtime/materialization coordinator；
 - FactBatch 尚未绑定明确的 published schema identity；
 - 还没有 CRUD command 到 deterministic FactBatch 的编译层；
 - safe derivation 和 source mapping 尚未以 Fact-producing contract 重建；

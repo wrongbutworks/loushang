@@ -1,6 +1,5 @@
 from loushang.ontology.query.builder import QueryBuilder
 from loushang.ontology.query.contracts import (
-    AsOf,
     Limit,
     ObjectTypeFilter,
     Offset,
@@ -16,7 +15,6 @@ from loushang.ontology.query.contracts import (
 )
 
 __all__ = [
-    "AsOf",
     "Limit",
     "ObjectTypeFilter",
     "Offset",

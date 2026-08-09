@@ -1,8 +1,8 @@
 """Public contracts for the Loushang operational ontology kernel.
 
-The semantic write authority is the append-only :class:`FactStore`.  Object,
-property, and link graphs are read-only projections and are intentionally not
-published as a second mutation surface.
+The semantic write authority is the append-only :class:`FactStore`. Object,
+property, and link graphs are immutable, replaceable snapshots and never a
+second business-mutation surface.
 """
 
 from loushang.ontology.facts import (
@@ -13,19 +13,28 @@ from loushang.ontology.facts import (
     FactBatch,
     FactBatchConflictError,
     FactCommit,
-    FactProjection,
-    FactProjectionDiagnostic,
-    FactProjectionError,
     FactReadStore,
     FactRecord,
     FactStore,
     FactValidationError,
     LinkAssertion,
-    MemoryFactStore,
     ObjectAssertion,
     PropertyAssertion,
     StoredFact,
-    project_facts,
+)
+from loushang.ontology.projection import (
+    ProjectedLink,
+    ProjectedObject,
+    ProjectedProperty,
+    ProjectionDiagnostic,
+    ProjectionMaterializationError,
+    ProjectionReadStore,
+    ProjectionSnapshot,
+    ProjectionStaleError,
+    ProjectionState,
+    ProjectionStore,
+    ProjectionUnavailableError,
+    materialize_projection,
 )
 from loushang.ontology.query import QueryBuilder, QueryRequest, QueryResult
 from loushang.ontology.schema import (
@@ -53,6 +62,7 @@ from loushang.ontology.schema import (
     ValueType,
     compare_schemas,
 )
+from loushang.ontology.storage import MemoryFactStore, MemoryProjectionStore
 
 __all__ = [
     "FACT_BATCH_FORMAT",
@@ -70,9 +80,6 @@ __all__ = [
     "FactBatch",
     "FactBatchConflictError",
     "FactCommit",
-    "FactProjection",
-    "FactProjectionDiagnostic",
-    "FactProjectionError",
     "FactReadStore",
     "FactRecord",
     "FactStore",
@@ -82,12 +89,24 @@ __all__ = [
     "LinkCardinality",
     "LinkTypeDefinition",
     "MemoryFactStore",
+    "MemoryProjectionStore",
     "ObjectAssertion",
     "ObjectTypeDefinition",
     "OntologyCompiler",
     "OntologyPackageDraft",
     "PropertyAssertion",
     "PropertyDefinition",
+    "ProjectedLink",
+    "ProjectedObject",
+    "ProjectedProperty",
+    "ProjectionDiagnostic",
+    "ProjectionMaterializationError",
+    "ProjectionReadStore",
+    "ProjectionSnapshot",
+    "ProjectionStaleError",
+    "ProjectionState",
+    "ProjectionStore",
+    "ProjectionUnavailableError",
     "QueryBuilder",
     "QueryRequest",
     "QueryResult",
@@ -100,5 +119,5 @@ __all__ = [
     "StoredFact",
     "ValueType",
     "compare_schemas",
-    "project_facts",
+    "materialize_projection",
 ]

@@ -69,8 +69,10 @@ Product / Domain Adapter
           | FactBatch
           v
      +----------+-------> Memory / SQLite v2 FactStore
-     | Ontology |<------- sealed materialized projection
-     +----------+-------> typed QueryResult
+     | Ontology |-------> immutable ProjectionSnapshot
+     +----------+-------> Memory / SQLite ProjectionStore
+          |
+          +-------------> typed QueryResult
 
 Ontology -> Foundation JSON
 ```
@@ -79,11 +81,13 @@ Ontology core 不依赖 Harness、HarnessWork、Agent、AI、Channel 或 Product
 当前没有 ontology/HarnessWork Action bridge；未来 Action contract 成立后由
 Product adapter 同时依赖两者，HarnessWork 不反向拥有 ontology 类型。
 
-当前已完成 Wave 1 与 Wave 2A：除 versioned schema、约束、Memory/SQLite
-内部 projection builder、同步 projection 和 typed query 外，还提供 immutable
-Fact/Provenance、双时间选择、Memory/SQLite FactStore conformance，以及确定性的
-Fact-to-Object projection。SQLite 当前格式直接为 v2，不提供 v1 reader 或迁移器。
-FactStore 是唯一语义权威，直接对象 mutation 与兼容 facade 已退出公共面。
+当前已完成 schema kernel、Wave 2A 和 Phase 2：除 immutable
+Fact/Provenance、双时间选择和 typed query 外，还提供独立的 Fact/Projection
+端口、纯 commit planner、不可变 ProjectionSnapshot、全量原子 replace，以及互不
+委托的 Memory/SQLite adapters。SQLite 当前格式直接为带
+`storage_layout=phase2` 的 v2；不提供 v1 或旧 v2 reader/migrator。
+FactStore 是唯一语义权威，`ontology.core`、直接对象 mutation 与兼容 facade
+已退出源码和公共面。
 它尚不包含 OWL/SHACL、Action/Decision runtime、SDK 生成、分布式 serving 或行业领域包。详见
 [Loushang Ontology Architecture](./ontology/README.md)。
 

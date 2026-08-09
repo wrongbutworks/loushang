@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TypeAlias
 from uuid import UUID
 
-from loushang.ontology.core.projection import ProjectionState
+from loushang.ontology.projection import ProjectionState
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,11 +73,6 @@ class Limit:
             raise ValueError("limit must not be negative")
 
 
-@dataclass(frozen=True, slots=True)
-class AsOf:
-    timestamp: float
-
-
 QueryStep: TypeAlias = (
     StartFromIds
     | StartFromType
@@ -88,7 +83,6 @@ QueryStep: TypeAlias = (
     | SortBy
     | Offset
     | Limit
-    | AsOf
 )
 
 
@@ -122,7 +116,6 @@ class QueryResult:
 
 
 __all__ = [
-    "AsOf",
     "Limit",
     "ObjectTypeFilter",
     "Offset",

@@ -1,8 +1,15 @@
 # Ontology SQLite Storage Compatibility
 
+> Historical contract. ARD-002 replaced the undeployed combined v2 layout
+> with `storage_layout=phase2`, removed Wave 1 authority/journal tables, and
+> added direct FactStore and immutable ProjectionStore adapters. Consult
+> [ARD-002](ARD-002-ports-immutable-projection-and-sqlite-v2.md) for the current
+> physical contract. This document is retained only as implementation history.
+
 ## Status
 
-Accepted physical compatibility contract for the SQLite v2 FactStore adapter.
+Superseded physical compatibility contract for the former combined SQLite v2
+backend.
 Wave 2A retained the Wave 1 detection, schema-snapshot, and backup rules while
 replacing the development-only physical format v1 with v2. ARD-001 later
 removed the public mutable object-store surface without rewriting the v2 file

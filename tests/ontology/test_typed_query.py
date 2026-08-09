@@ -9,11 +9,10 @@ from loushang.ontology.facts import (
     FactBatch,
     FactRecord,
     LinkAssertion,
-    MemoryFactStore,
     ObjectAssertion,
     PropertyAssertion,
-    project_facts,
 )
+from loushang.ontology.projection import materialize_projection
 from loushang.ontology.query import (
     PropertyFilter,
     QueryBuilder,
@@ -29,6 +28,7 @@ from loushang.ontology.schema import (
     PropertyDefinition,
     ValueType,
 )
+from loushang.ontology.storage import MemoryFactStore
 
 SELECTED_ID = UUID("00000000-0000-0000-0000-000000000001")
 OTHER_ID = UUID("00000000-0000-0000-0000-000000000002")
@@ -70,7 +70,7 @@ def _projected_assets():
     ]
     facts = MemoryFactStore()
     facts.commit_fact_batch(FactBatch("query-fixture", records))
-    return project_facts(facts, schema, valid_at=10, recorded_at=10)
+    return materialize_projection(facts, schema, valid_at=10, recorded_at=10)
 
 
 def _fact(suffix: int, subject_id: UUID, assertion: object) -> FactRecord:
@@ -90,7 +90,7 @@ def test_typed_query_reports_schema_and_projection_freshness() -> None:
     projection = _projected_assets()
 
     result = execute_query(
-        projection.view,
+        projection,
         QueryRequest(
             schema_version="2.0.0",
             steps=(
@@ -110,7 +110,7 @@ def test_query_schema_mismatch_is_visible_without_returning_objects() -> None:
     projection = _projected_assets()
 
     result = execute_query(
-        projection.view,
+        projection,
         QueryRequest(
             schema_version="1.0.0",
             steps=(StartFromType("Asset"),),
@@ -127,7 +127,7 @@ def test_query_builder_operates_only_on_a_projection_view() -> None:
     projection = _projected_assets()
 
     result = (
-        QueryBuilder(projection.view)
+        QueryBuilder(projection)
         .start_from_type("Asset")
         .where("score", ">", 1)
         .execute_result()
@@ -139,11 +139,11 @@ def test_query_builder_operates_only_on_a_projection_view() -> None:
 
 def test_query_builder_covers_read_only_traversal_sort_and_window_operations() -> None:
     projection = _projected_assets()
-    selected = projection.view.get(SELECTED_ID)
+    selected = projection.get(SELECTED_ID)
     assert selected is not None
 
     owners = (
-        QueryBuilder(projection.view)
+        QueryBuilder(projection)
         .start_from(selected)
         .follow("owned_by")
         .where("name", "==", "Operations")
@@ -151,10 +151,10 @@ def test_query_builder_covers_read_only_traversal_sort_and_window_operations() -
     assert owners.execute_ids() == [OWNER_ID]
     assert owners.execute_count() == 1
     assert owners.execute_exists() is True
-    assert owners.execute_first() == projection.view.get(OWNER_ID)
+    assert owners.execute_first() == projection.get(OWNER_ID)
 
     window = (
-        QueryBuilder(projection.view)
+        QueryBuilder(projection)
         .start_all()
         .where_type("Asset")
         .sort_by("score", ascending=False)
@@ -164,20 +164,12 @@ def test_query_builder_covers_read_only_traversal_sort_and_window_operations() -
     assert window.execute_ids() == [OTHER_ID]
 
     incoming = (
-        QueryBuilder(projection.view)
+        QueryBuilder(projection)
         .start_from(OWNER_ID)
         .follow("owned_by", direction="incoming")
         .execute_ids()
     )
     assert incoming == [SELECTED_ID]
-    assert (
-        QueryBuilder(projection.view)
-        .start_from(SELECTED_ID)
-        .as_of(-1)
-        .follow("owned_by")
-        .execute_ids()
-        == []
-    )
 
 
 @pytest.mark.parametrize(
@@ -201,7 +193,7 @@ def test_query_property_operators(
     property_name = "score" if operator in {"<", "<=", ">", ">="} else "code"
 
     result = execute_query(
-        projection.view,
+        projection,
         QueryRequest(
             steps=(
                 StartFromType("Asset"),
@@ -218,7 +210,7 @@ def test_query_rejects_an_unknown_operator() -> None:
 
     with pytest.raises(ValueError, match="Unsupported operator"):
         execute_query(
-            projection.view,
+            projection,
             QueryRequest(
                 steps=(
                     StartFromType("Asset"),

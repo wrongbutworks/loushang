@@ -63,21 +63,20 @@ The following rules are normative:
 The current public semantic surface is:
 
 - versioned schema definitions, compiler, snapshots, and evolution values;
-- Fact/Provenance models, FactStore ports, MemoryFactStore, and Fact projection;
+- Fact/Provenance models, FactStore ports, and pure commit planning;
+- immutable projection models, read/replace ports, and pure materialization;
 - read-only typed query contracts;
-- `SQLiteFactStore`, which exposes only FactStore, schema binding, backup, and
-  lifecycle operations.
+- independent Memory and SQLite FactStore/ProjectionStore adapters.
 
-`core.store.ObjectStore` and the combined SQLite object backend remain internal
-projection/storage builders until Phase 2 splits the ports and adapters. Their
-presence does not authorize application imports or direct business writes.
-Architecture gates protect the public boundary and the returned Fact
-projection is sealed at runtime.
+[ARD-002](ARD-002-ports-immutable-projection-and-sqlite-v2.md) completed the
+port and adapter split. `ontology.core`, the mutable ObjectStore builder, and
+the combined SQLite object backend no longer exist. Materialization now returns
+an immutable `ProjectionSnapshot`, and SQLite implements FactStore and
+ProjectionStore directly as independent adapters.
 
-SQLite physical format v2 remains unchanged in this phase. Its historical
-Wave 1 object, journal, and projection tables remain readable internally so
-the format is not silently rewritten. There is still no v1 reader or migration
-path.
+ARD-002 also reset the undeployed SQLite v2 layout to its Phase 2 table set.
+Pre-Phase-2 v2 development files are rejected and recreated; v1 remains
+unsupported.
 
 ## Removed Alternatives
 
@@ -105,8 +104,6 @@ Benefits:
 
 Costs:
 
-- the current internal projection builder still contains Wave 1 mutation
-  mechanics until Phase 2 separates ports/adapters;
 - there is temporarily no convenience CRUD facade;
 - there is temporarily no ontology-to-HarnessWork execution adapter;
 - callers must construct facts explicitly until the command compiler exists.
@@ -115,15 +112,18 @@ These costs are intentional. Reintroducing convenience APIs before they
 compile to the sole authority would recreate the ambiguity this decision
 removes.
 
-## Phase Boundary
+## Original Phase Boundary
+
+The items below described the boundary when ARD-001 was accepted. The
+Memory/SQLite split and persistent projection replacement were subsequently
+completed by ARD-002; the other exclusions remain current.
 
 This phase does not implement:
 
-- the runtime/materialization coordinator or persistent projection refresh;
+- the runtime/materialization coordinator;
 - schema-bound FactBatch changes;
 - CRUD command compilation;
 - safe derivation, source adapters, standards, Action, or Decision contracts;
-- the Phase 2 Memory/SQLite port and adapter split.
 
 Those capabilities must preserve this decision rather than add a second write
 authority.

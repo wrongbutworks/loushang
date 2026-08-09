@@ -1,5 +1,11 @@
 # Ontology Wave 2A Facts And Provenance
 
+> The Fact envelope, lineage, and bitemporal authority in this document remain
+> accepted. ARD-002 supersedes its projection API and SQLite table-layout
+> descriptions: current code uses `ProjectionSnapshot`,
+> `materialize_projection`, independent adapters, and the Phase 2 v2 layout.
+> See [ARD-002](ARD-002-ports-immutable-projection-and-sqlite-v2.md).
+
 ## Status
 
 Accepted implementation boundary for Wave 2A. This wave introduces the

@@ -14,7 +14,6 @@ from loushang.ontology.facts import (
     FactRecord,
     FactStore,
     FactValidationError,
-    MemoryFactStore,
     ObjectAssertion,
     PropertyAssertion,
 )
@@ -23,7 +22,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
 )
-from loushang.ontology.storage import SQLiteFactStore
+from loushang.ontology.storage import MemoryFactStore, SQLiteFactStore
 
 SUBJECT_ID = UUID("00000000-0000-0000-0000-000000000001")
 FACT_1 = UUID("10000000-0000-0000-0000-000000000001")
