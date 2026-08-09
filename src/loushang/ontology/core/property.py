@@ -73,8 +73,8 @@ def _matches_data_type(data_type: type | str, value: Any) -> bool:
         return True
     if isinstance(data_type, type):
         return isinstance(value, data_type)
-    # Preserve direct ObjectStore compatibility for application-defined type
-    # names. Portable schemas reject unknown symbolic value types at compile.
+    # Internal projection builders may use Python type names. Published schemas
+    # reject unknown symbolic value types at compile time.
     return True
 
 

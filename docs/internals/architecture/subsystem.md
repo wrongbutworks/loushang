@@ -61,30 +61,29 @@ Python 对象到 JSON 的容错转换。
 ### loushang-ontology
 
 可选的 operational ontology infrastructure。它把 Product / Domain adapter
-提供的版本化 schema、对象/关系 mutation 和 typed query 转成受约束的语义对象图，
-并返回稳定对象 ID、查询结果、投影 freshness 与完整性 diagnostics。
+提供的版本化 schema 和 immutable FactBatch 转成受约束、可重建的语义对象图，
+并返回稳定对象 ID、typed query、投影 freshness 与完整性 diagnostics。
 
 ```text
 Product / Domain Adapter
-          |
+          | FactBatch
           v
-     +----------+-------> Memory / SQLite Store
-     | Ontology |<------- authority + materialized projection
-     +----------+
-          |
-          +-------------> optional HarnessWork integration adapter
+     +----------+-------> Memory / SQLite v2 FactStore
+     | Ontology |<------- sealed materialized projection
+     +----------+-------> typed QueryResult
 
 Ontology -> Foundation JSON
 ```
 
-Ontology core 不依赖 Harness、Agent、AI、Channel 或 Product。只有
-`ontology.integrations.harnesswork` 可以依赖 HarnessWork，把已经属于本体的
-Action bridge 到可选履约层；HarnessWork 不反向拥有 ontology 类型。
+Ontology core 不依赖 Harness、HarnessWork、Agent、AI、Channel 或 Product。
+当前没有 ontology/HarnessWork Action bridge；未来 Action contract 成立后由
+Product adapter 同时依赖两者，HarnessWork 不反向拥有 ontology 类型。
 
 当前已完成 Wave 1 与 Wave 2A：除 versioned schema、约束、Memory/SQLite
-Object Store、同步 projection 和 typed query 外，还提供 immutable
+内部 projection builder、同步 projection 和 typed query 外，还提供 immutable
 Fact/Provenance、双时间选择、Memory/SQLite FactStore conformance，以及确定性的
 Fact-to-Object projection。SQLite 当前格式直接为 v2，不提供 v1 reader 或迁移器。
+FactStore 是唯一语义权威，直接对象 mutation 与兼容 facade 已退出公共面。
 它尚不包含 OWL/SHACL、Action/Decision runtime、SDK 生成、分布式 serving 或行业领域包。详见
 [Loushang Ontology Architecture](./ontology/README.md)。
 
@@ -376,7 +375,6 @@ loushang.coding
 loushang.method -> Product adapter -> loushang.harnesswork
 loushang.coding.adapters.harnesswork -> loushang.harnesswork
 loushang.channel.adapters.harnesswork -> loushang.harnesswork
-loushang.ontology.integrations.harnesswork -> loushang.harnesswork
 loushang.coding.ui -> loushang.coding feature-local TUI adapters
 loushang.coding.ui -> loushang.harnesstui -> loushang.tui
 loushang.coding feature-local TUI adapters -> loushang.harnesstui

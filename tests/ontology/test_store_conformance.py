@@ -17,7 +17,9 @@ from loushang.ontology.schema import (
     PropertyDefinition,
     ValueType,
 )
-from loushang.ontology.storage.sqlite import SQLiteObjectStore
+from loushang.ontology.storage.sqlite import (
+    _SQLiteObjectStore as SQLiteProjectionBackend,
+)
 
 StoreFactory = Callable[[], ObjectStore]
 
@@ -61,7 +63,7 @@ def store_factory(request: pytest.FixtureRequest, tmp_path: Path) -> StoreFactor
     if request.param == "memory":
         return ObjectStore
     database = tmp_path / "ontology.sqlite3"
-    return lambda: SQLiteObjectStore(database)
+    return lambda: SQLiteProjectionBackend(database)
 
 
 def test_memory_and_sqlite_share_mutation_projection_contract(
@@ -147,7 +149,7 @@ def test_invalid_mutation_metadata_is_rejected_before_commit(
 
 def test_sqlite_restart_restores_authority_history_and_projection(tmp_path: Path) -> None:
     database = tmp_path / "ontology.sqlite3"
-    store = SQLiteObjectStore(database)
+    store = SQLiteProjectionBackend(database)
     schema = _compiled_schema()
     store.bind_schema(schema)
     asset = store.create("Asset", {"code": "A-1", "score": 1})
@@ -158,7 +160,7 @@ def test_sqlite_restart_restores_authority_history_and_projection(tmp_path: Path
     owner_id = owner.id
     store.close()
 
-    reopened = SQLiteObjectStore(database)
+    reopened = SQLiteProjectionBackend(database)
     restored = reopened.get(asset_id)
     assert reopened.schema == schema
     assert restored is not None
@@ -287,7 +289,7 @@ def test_property_index_does_not_hide_an_unindexed_same_named_property(
 
 def test_sqlite_transaction_failure_restores_last_committed_state(tmp_path: Path) -> None:
     database = tmp_path / "ontology.sqlite3"
-    store = SQLiteObjectStore(database)
+    store = SQLiteProjectionBackend(database)
     store.bind_schema(_compiled_schema())
     asset = store.create("Asset", {"code": "A-1", "score": 1})
     with sqlite3.connect(database) as connection:

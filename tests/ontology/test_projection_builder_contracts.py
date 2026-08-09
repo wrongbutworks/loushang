@@ -1,4 +1,4 @@
-"""Runtime enforcement promised by the Semantic Kernel V1 schema."""
+"""Validation contracts used by the internal Fact projection builder."""
 
 from __future__ import annotations
 
@@ -6,8 +6,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from loushang.ontology import Cardinality, Ontology, OntologyObject
+from loushang.ontology.core.object import OntologyObject
+from loushang.ontology.core.store import ObjectStore
 from loushang.ontology.schema import (
+    LinkCardinality,
     LinkTypeDefinition,
     ObjectTypeDefinition,
     OntologyCompiler,
@@ -18,9 +20,10 @@ from loushang.ontology.schema import (
 )
 
 
-def _runtime_from_draft(draft: OntologyPackageDraft) -> Ontology:
-    payload = OntologyCompiler().compile(draft).to_json()
-    return Ontology.from_schema_json(payload)
+def _builder_from_draft(draft: OntologyPackageDraft) -> ObjectStore:
+    store = ObjectStore()
+    store.bind_schema(OntologyCompiler().compile(draft))
+    return store
 
 
 def _values_draft() -> OntologyPackageDraft:
@@ -44,18 +47,20 @@ def _values_draft() -> OntologyPackageDraft:
     )
 
 
-def test_loaded_schema_enforces_supported_value_types_on_create() -> None:
-    ontology = _runtime_from_draft(_values_draft())
+def test_builder_enforces_supported_projection_value_types() -> None:
+    store = _builder_from_draft(_values_draft())
     observed_at = datetime(2026, 8, 8, tzinfo=UTC)
 
-    created = ontology.create(
+    created = store.create(
         "Values",
-        text="ready",
-        count=3,
-        ratio=2.5,
-        enabled=True,
-        observed_at=observed_at,
-        payload={"labels": ["a", "b"]},
+        {
+            "text": "ready",
+            "count": 3,
+            "ratio": 2.5,
+            "enabled": True,
+            "observed_at": observed_at,
+            "payload": {"labels": ["a", "b"]},
+        },
     )
 
     assert created.get("observed_at") == observed_at
@@ -73,26 +78,26 @@ def test_loaded_schema_enforces_supported_value_types_on_create() -> None:
         ("payload", ("not", "json")),
     ],
 )
-def test_loaded_schema_rejects_invalid_value_types(
+def test_builder_rejects_invalid_projection_value_types(
     property_name: str,
     invalid_value: object,
 ) -> None:
-    ontology = _runtime_from_draft(_values_draft())
+    store = _builder_from_draft(_values_draft())
 
     with pytest.raises(ValueError, match=property_name):
-        ontology.create("Values", **{property_name: invalid_value})
+        store.create("Values", {property_name: invalid_value})
 
 
 def test_number_accepts_json_integer_but_not_boolean() -> None:
-    ontology = _runtime_from_draft(_values_draft())
+    store = _builder_from_draft(_values_draft())
 
-    assert ontology.create("Values", ratio=2).get("ratio") == 2
+    assert store.create("Values", {"ratio": 2}).get("ratio") == 2
     with pytest.raises(ValueError, match="ratio"):
-        ontology.create("Values", ratio=False)
+        store.create("Values", {"ratio": False})
 
 
-def test_abstract_object_type_cannot_be_instantiated() -> None:
-    ontology = _runtime_from_draft(
+def test_abstract_object_type_cannot_be_projected() -> None:
+    store = _builder_from_draft(
         OntologyPackageDraft(
             package_id="test.abstract",
             namespace="urn:test:abstract",
@@ -102,11 +107,11 @@ def test_abstract_object_type_cannot_be_instantiated() -> None:
     )
 
     with pytest.raises(ValueError, match="abstract"):
-        ontology.create("Resource")
+        store.create("Resource")
 
 
 def test_inherited_properties_are_required_validated_and_indexed() -> None:
-    ontology = _runtime_from_draft(
+    store = _builder_from_draft(
         OntologyPackageDraft(
             package_id="test.inheritance",
             namespace="urn:test:inheritance",
@@ -133,12 +138,12 @@ def test_inherited_properties_are_required_validated_and_indexed() -> None:
     )
 
     with pytest.raises(ValueError, match="code"):
-        ontology.create("Project", budget=10)
+        store.create("Project", {"budget": 10})
     with pytest.raises(ValueError, match="code"):
-        ontology.create("Project", code=100, budget=10)
+        store.create("Project", {"code": 100, "budget": 10})
 
-    project = ontology.create("Project", code="P-1", budget=10)
-    assert ontology.find_by_property("code", "P-1", "Project") == [project]
+    project = store.create("Project", {"code": "P-1", "budget": 10})
+    assert store.find_by_property("code", "P-1", "Project") == [project]
 
 
 def test_compiler_rejects_parent_type_cycles() -> None:
@@ -160,10 +165,10 @@ def test_compiler_rejects_parent_type_cycles() -> None:
     ]
 
 
-def _cardinality_runtime(
-    cardinality: Cardinality,
-) -> tuple[Ontology, list[OntologyObject]]:
-    ontology = _runtime_from_draft(
+def _cardinality_builder(
+    cardinality: LinkCardinality,
+) -> tuple[ObjectStore, list[OntologyObject]]:
+    store = _builder_from_draft(
         OntologyPackageDraft(
             package_id="test.cardinality",
             namespace="urn:test:cardinality",
@@ -177,59 +182,57 @@ def _cardinality_runtime(
                     name="relates_to",
                     source_type="Source",
                     target_type="Target",
-                    cardinality=cardinality.name.lower(),
+                    cardinality=cardinality,
                 )
             ],
         )
     )
     objects = [
-        ontology.create("Source"),
-        ontology.create("Source"),
-        ontology.create("Target"),
-        ontology.create("Target"),
+        store.create("Source"),
+        store.create("Source"),
+        store.create("Target"),
+        store.create("Target"),
     ]
-    return ontology, objects
+    return store, objects
 
 
 @pytest.mark.parametrize(
     ("cardinality", "reject_second_target", "reject_second_source"),
     [
-        (Cardinality.ONE_TO_ONE, True, True),
-        (Cardinality.ONE_TO_MANY, False, True),
-        (Cardinality.MANY_TO_ONE, True, False),
-        (Cardinality.MANY_TO_MANY, False, False),
+        (LinkCardinality.ONE_TO_ONE, True, True),
+        (LinkCardinality.ONE_TO_MANY, False, True),
+        (LinkCardinality.MANY_TO_ONE, True, False),
+        (LinkCardinality.MANY_TO_MANY, False, False),
     ],
 )
-def test_link_cardinality_is_enforced(
-    cardinality: Cardinality,
+def test_link_cardinality_is_enforced_during_materialization(
+    cardinality: LinkCardinality,
     reject_second_target: bool,
     reject_second_source: bool,
 ) -> None:
-    ontology, objects = _cardinality_runtime(cardinality)
+    store, objects = _cardinality_builder(cardinality)
     source_1, source_2, target_1, target_2 = objects
-    ontology.link(source_1, "relates_to", target_1)
+    store.link_objects(source_1, "relates_to", target_1)
 
     if reject_second_target:
         with pytest.raises(ValueError, match="cardinality"):
-            ontology.link(source_1, "relates_to", target_2)
+            store.link_objects(source_1, "relates_to", target_2)
     else:
-        ontology.link(source_1, "relates_to", target_2)
+        store.link_objects(source_1, "relates_to", target_2)
 
     if reject_second_source:
         with pytest.raises(ValueError, match="cardinality"):
-            ontology.link(source_2, "relates_to", target_1)
+            store.link_objects(source_2, "relates_to", target_1)
     else:
-        ontology.link(source_2, "relates_to", target_1)
+        store.link_objects(source_2, "relates_to", target_1)
 
 
-def test_unlink_releases_cardinality_slot() -> None:
-    ontology, objects = _cardinality_runtime(Cardinality.ONE_TO_ONE)
+def test_unlink_releases_internal_cardinality_slot() -> None:
+    store, objects = _cardinality_builder(LinkCardinality.ONE_TO_ONE)
     source_1, _, target_1, target_2 = objects
-    ontology.link(source_1, "relates_to", target_1)
+    store.link_objects(source_1, "relates_to", target_1)
 
-    ontology.unlink(source_1, "relates_to", target_1)
-    ontology.link(source_1, "relates_to", target_2)
+    store.unlink_objects(source_1, "relates_to", target_1)
+    store.link_objects(source_1, "relates_to", target_2)
 
-    assert ontology.query().start_from(source_1).follow("relates_to").execute() == [
-        target_2
-    ]
+    assert store.find_neighbors(source_1.id, "relates_to") == [target_2]

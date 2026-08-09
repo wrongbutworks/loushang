@@ -21,7 +21,7 @@ from loushang.ontology.schema import (
 )
 from loushang.ontology.storage import (
     SQLITE_STORAGE_FORMAT_VERSION,
-    SQLiteObjectStore,
+    SQLiteFactStore,
     SQLiteStorageFormatError,
 )
 
@@ -94,7 +94,7 @@ def _classification_batch() -> FactBatch:
 
 def test_sqlite_v2_records_fact_tables_and_watermark(tmp_path: Path) -> None:
     database = tmp_path / "facts.sqlite3"
-    store = SQLiteObjectStore(database)
+    store = SQLiteFactStore(database)
     store.bind_schema(_schema())
     store.commit_fact_batch(_batch())
     store.close()
@@ -114,7 +114,11 @@ def test_sqlite_v2_records_fact_tables_and_watermark(tmp_path: Path) -> None:
 
 
 def test_sqlite_fact_commit_requires_a_bound_semantic_schema(tmp_path: Path) -> None:
-    store = SQLiteObjectStore(tmp_path / "unbound.sqlite3")
+    store = SQLiteFactStore(tmp_path / "unbound.sqlite3")
+
+    assert not hasattr(store, "create")
+    assert not hasattr(store, "set_property")
+    assert not hasattr(store, "link_objects")
 
     with pytest.raises(RuntimeError, match="bound schema"):
         store.commit_fact_batch(_batch())
@@ -125,7 +129,7 @@ def test_sqlite_fact_commit_requires_a_bound_semantic_schema(tmp_path: Path) -> 
 
 def test_sqlite_v1_is_rejected_without_migration_or_mutation(tmp_path: Path) -> None:
     database = tmp_path / "v1.sqlite3"
-    SQLiteObjectStore(database).close()
+    SQLiteFactStore(database).close()
     with sqlite3.connect(database) as connection:
         connection.execute(
             "UPDATE ontology_metadata SET value = '1' "
@@ -134,7 +138,7 @@ def test_sqlite_v1_is_rejected_without_migration_or_mutation(tmp_path: Path) -> 
     before = database.read_bytes()
 
     with pytest.raises(SQLiteStorageFormatError) as exc_info:
-        SQLiteObjectStore(database)
+        SQLiteFactStore(database)
 
     assert exc_info.value.expected_version == 2
     assert exc_info.value.found_version == "1"
@@ -143,12 +147,12 @@ def test_sqlite_v1_is_rejected_without_migration_or_mutation(tmp_path: Path) -> 
 
 def test_sqlite_v2_rejects_an_incomplete_fact_layout(tmp_path: Path) -> None:
     database = tmp_path / "incomplete-v2.sqlite3"
-    SQLiteObjectStore(database).close()
+    SQLiteFactStore(database).close()
     with sqlite3.connect(database) as connection:
         connection.execute("DROP TABLE semantic_facts")
 
     with pytest.raises(SQLiteStorageFormatError, match="incomplete"):
-        SQLiteObjectStore(database)
+        SQLiteFactStore(database)
 
 
 def test_sqlite_v2_restart_and_backup_restore_fact_authority_and_projection(
@@ -157,14 +161,14 @@ def test_sqlite_v2_restart_and_backup_restore_fact_authority_and_projection(
     database = tmp_path / "facts.sqlite3"
     backup = tmp_path / "backup.sqlite3"
     schema = _schema()
-    store = SQLiteObjectStore(database)
+    store = SQLiteFactStore(database)
     store.bind_schema(schema)
     original = store.commit_fact_batch(_batch())
     store.commit_fact_batch(_classification_batch())
     store.backup_to(backup)
     store.close()
 
-    restored = SQLiteObjectStore(backup, expected_schema=schema)
+    restored = SQLiteFactStore(backup, expected_schema=schema)
     assert restored.fact_watermark == 3
     assert restored.get_fact(FACT_ID).fact.evidence_refs == ("evidence:row-1",)
     assert (
@@ -180,7 +184,7 @@ def test_sqlite_v2_restart_and_backup_restore_fact_authority_and_projection(
     assert replay.last_sequence == original.last_sequence
     assert replay.replayed is True
     projection = project_facts(restored, schema, valid_at=20, recorded_at=20)
-    assert projection.store.get(SUBJECT_ID) is not None
+    assert projection.view.get(SUBJECT_ID) is not None
     restored.close()
 
 
@@ -188,7 +192,7 @@ def test_failed_sqlite_fact_transaction_leaves_memory_and_watermark_unchanged(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "facts.sqlite3"
-    store = SQLiteObjectStore(database)
+    store = SQLiteFactStore(database)
     store.bind_schema(_schema())
     with sqlite3.connect(database) as connection:
         connection.executescript(
@@ -245,7 +249,7 @@ def test_sqlite_v2_rejects_corrupt_fact_state(
     message: str,
 ) -> None:
     database = tmp_path / "facts.sqlite3"
-    store = SQLiteObjectStore(database)
+    store = SQLiteFactStore(database)
     store.bind_schema(_schema())
     store.commit_fact_batch(_batch())
     store.close()
@@ -253,4 +257,4 @@ def test_sqlite_v2_rejects_corrupt_fact_state(
         connection.execute(corruption)
 
     with pytest.raises(SQLiteStorageFormatError, match=message):
-        SQLiteObjectStore(database)
+        SQLiteFactStore(database)

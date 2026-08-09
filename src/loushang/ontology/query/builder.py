@@ -1,4 +1,4 @@
-"""Compatibility chain builder that compiles to a typed query request."""
+"""Typed chain builder over a read-only ontology projection."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 class QueryBuilder:
-    """Preserve the chain API while producing one immutable request contract."""
+    """Build one immutable request and evaluate it against a projection view."""
 
     def __init__(self, store: OntologyReadStore) -> None:
         self._store = store

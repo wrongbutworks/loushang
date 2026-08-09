@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 class ManagedObjectMutationPort(Protocol):
-    """Route compatibility object writes through their owning runtime."""
+    """Route internal projection-builder writes through their owning runtime."""
 
     def set_property(
         self,

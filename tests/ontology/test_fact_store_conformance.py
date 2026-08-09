@@ -23,7 +23,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
 )
-from loushang.ontology.storage import SQLiteObjectStore
+from loushang.ontology.storage import SQLiteFactStore
 
 SUBJECT_ID = UUID("00000000-0000-0000-0000-000000000001")
 FACT_1 = UUID("10000000-0000-0000-0000-000000000001")
@@ -76,7 +76,7 @@ def fact_store(
     if request.param == "memory":
         yield MemoryFactStore()
         return
-    store = SQLiteObjectStore(tmp_path / "facts.sqlite3")
+    store = SQLiteFactStore(tmp_path / "facts.sqlite3")
     store.bind_schema(_schema())
     try:
         yield store

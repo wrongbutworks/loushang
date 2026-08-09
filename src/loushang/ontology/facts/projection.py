@@ -8,8 +8,10 @@ from typing import cast
 from uuid import UUID
 
 from loushang.foundation.json import JSONValue, dump_json_value
-from loushang.ontology.core.object import PropertyVersion
+from loushang.ontology.core.object import OntologyObject, PropertyVersion
+from loushang.ontology.core.projection import ProjectionState
 from loushang.ontology.core.store import ObjectStore
+from loushang.ontology.core.store_port import OntologyReadStore
 from loushang.ontology.facts.model import (
     LinkAssertion,
     ObjectAssertion,
@@ -47,12 +49,54 @@ class FactProjectionError(ValueError):
 class FactProjection:
     """One detached object/link graph built from an explicit bitemporal view."""
 
-    store: ObjectStore
+    view: OntologyReadStore
     schema_version: str
     source_fact_watermark: int
     valid_at: float
     recorded_at: float
     fact_ids: tuple[UUID, ...]
+
+
+class _ReadOnlyProjection:
+    """Capability wrapper that exposes no projection-builder mutation methods."""
+
+    __slots__ = ("__store",)
+
+    def __init__(self, store: ObjectStore) -> None:
+        self.__store = store
+
+    @property
+    def schema(self) -> CompiledOntologySchema | None:
+        return self.__store.schema
+
+    @property
+    def projection_state(self) -> ProjectionState:
+        return self.__store.projection_state
+
+    def get(self, obj_id: UUID) -> OntologyObject | None:
+        return self.__store.get(obj_id)
+
+    def get_by_type(self, object_type: str) -> list[OntologyObject]:
+        return self.__store.get_by_type(object_type)
+
+    def find_neighbors(
+        self,
+        obj_id: UUID,
+        link_type: str,
+        direction: str = "outgoing",
+        as_of: float | None = None,
+        active_only: bool = True,
+    ) -> list[OntologyObject]:
+        return self.__store.find_neighbors(
+            obj_id,
+            link_type,
+            direction=direction,
+            as_of=as_of,
+            active_only=active_only,
+        )
+
+    def all_objects(self) -> list[OntologyObject]:
+        return self.__store.all_objects()
 
 
 def project_facts(
@@ -333,8 +377,9 @@ def project_facts(
     store._projected_watermark = 0
     store._projection_version = 1
     store._projection_built_at = float(recorded_at)
+    store._seal_projection()
     return FactProjection(
-        store=store,
+        view=_ReadOnlyProjection(store),
         schema_version=str(schema.version),
         source_fact_watermark=facts.fact_watermark,
         valid_at=float(valid_at),

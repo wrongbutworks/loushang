@@ -1,9 +1,9 @@
-"""Public persistent ontology store adapters and compatibility failures."""
+"""Public persistent FactStore adapters and physical-format failures."""
 
 from loushang.ontology.storage.sqlite import (
     SQLITE_STORAGE_FORMAT,
     SQLITE_STORAGE_FORMAT_VERSION,
-    SQLiteObjectStore,
+    SQLiteFactStore,
     SQLiteStorageFormatError,
     SQLiteStoreCompatibilityError,
     SQLiteStoredSchemaMismatchError,
@@ -12,7 +12,7 @@ from loushang.ontology.storage.sqlite import (
 __all__ = [
     "SQLITE_STORAGE_FORMAT",
     "SQLITE_STORAGE_FORMAT_VERSION",
-    "SQLiteObjectStore",
+    "SQLiteFactStore",
     "SQLiteStorageFormatError",
     "SQLiteStoreCompatibilityError",
     "SQLiteStoredSchemaMismatchError",

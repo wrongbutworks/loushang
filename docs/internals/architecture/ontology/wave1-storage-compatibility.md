@@ -2,10 +2,11 @@
 
 ## Status
 
-Accepted compatibility contract for the SQLite reference adapter. Wave 2A
-retains the Wave 1 detection, schema-snapshot, backup, and public-import rules
-while replacing the development-only physical format v1 with v2. The current
-format is defined together with semantic Facts by
+Accepted physical compatibility contract for the SQLite v2 FactStore adapter.
+Wave 2A retained the Wave 1 detection, schema-snapshot, and backup rules while
+replacing the development-only physical format v1 with v2. ARD-001 later
+removed the public mutable object-store surface without rewriting the v2 file
+layout. The current format is defined together with semantic Facts by
 [Wave 2A Facts And Provenance](wave2a-facts-provenance.md).
 
 ## Two Independent Versions
@@ -35,8 +36,9 @@ Opening a path follows this order:
    table set before loading any ontology state;
 4. load and compile the stored schema snapshot;
 5. optionally compare it with `expected_schema`;
-6. restore object authority, operational journal, semantic facts, committed
-   batch identities, projection state, and both operational/fact watermarks.
+6. restore semantic facts and committed batch identities; historical Wave 1
+   object/journal/projection state is validated internally because it remains
+   part of the unchanged v2 layout.
 
 An unrelated database, an unversioned ontology database, a future or malformed
 format version, missing tables or metadata, an invalid stored schema, and
@@ -52,16 +54,16 @@ store.
 
 `expected_schema` verifies an existing stored snapshot. It does not bind a
 schema to a newly initialized empty database; callers bind through
-`Ontology.from_schema(...)` or `SQLiteObjectStore.bind_schema(...)`.
+`SQLiteFactStore.bind_schema(...)`.
 
 ## Durability And Backup Contract
 
-One accepted mutation persists the authoritative object history, operational
-mutation journal, rebuildable projections, source/projected watermarks, and one
-shared projection build timestamp in one SQLite transaction. A direct reopen
-therefore returns the same `ProjectionState` as the committed in-memory store.
+One accepted FactBatch persists fact rows, its idempotent batch identity, and
+the fact watermark in one SQLite transaction. Reopen therefore restores the
+same Fact sequence and replay behavior. Projection refresh is not a second
+semantic commit and its persistent coordination belongs to a later phase.
 
-`SQLiteObjectStore.backup_to(path)` uses SQLite's online backup mechanism, so
+`SQLiteFactStore.backup_to(path)` uses SQLite's online backup mechanism, so
 the destination represents one consistent database snapshot. It refuses the
 source path and refuses to overwrite an existing destination unless
 `overwrite=True` is explicit. The backup is a complete v2 store and is
@@ -75,11 +77,10 @@ be used after it is closed; context-manager use is preferred.
 Application code uses the stable package-level imports:
 
 ```python
-from loushang.ontology import ProjectionState, StoreMutation
 from loushang.ontology.storage import (
     SQLITE_STORAGE_FORMAT,
     SQLITE_STORAGE_FORMAT_VERSION,
-    SQLiteObjectStore,
+    SQLiteFactStore,
     SQLiteStorageFormatError,
     SQLiteStoreCompatibilityError,
     SQLiteStoredSchemaMismatchError,
@@ -88,8 +89,8 @@ from loushang.ontology.storage import (
 
 The SQLite adapter remains under `loushang.ontology.storage`; it is not promoted
 to the top-level ontology package because storage selection is an application
-composition concern. `ProjectionState` and `StoreMutation` are top-level values
-because public Store ports return them.
+composition concern. `SQLiteObjectStore`, `ProjectionState`, and
+`StoreMutation` are not public semantic write contracts.
 
 ## Explicit Non-Goals
 

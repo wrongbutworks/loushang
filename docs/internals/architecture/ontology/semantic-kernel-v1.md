@@ -1,5 +1,9 @@
 # Ontology Semantic Kernel v1
 
+> Historical implementation evidence. [ARD-001](ARD-001-factstore-semantic-authority.md)
+> removes the compatibility facade and makes FactStore the sole semantic
+> authority. Mutable-object guidance below is not current architecture.
+
 ## Status
 
 Accepted historical boundary for the first versioned semantic-kernel slice.

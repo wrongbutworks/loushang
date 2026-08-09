@@ -1,4 +1,9 @@
-"""对象存储——内存中的对象图存储，支持索引和时序查询."""
+"""Internal mutable builder for deterministic object projections.
+
+Semantic callers write ``FactBatch`` values to a ``FactStore``. This module is
+not a public authority API; the fact materializer seals every completed graph
+before exposing it through the read-only projection port.
+"""
 
 from __future__ import annotations
 
@@ -37,7 +42,7 @@ class _PendingMutation:
 
 
 class ObjectStore:
-    """内存对象存储，管理所有本体实例.
+    """Internal memory builder for object/link projection snapshots.
 
     功能：
     - 按 UUID 和类型索引对象
@@ -45,8 +50,9 @@ class ObjectStore:
     - 支持按属性值查询
     - 支持时序快照查询
 
-    This is the deterministic Memory reference implementation. Durable Wave 1
-    execution uses the sibling SQLite adapter through the same Store port.
+    Direct mutation exists only so materializers and storage internals can
+    construct a validated snapshot. ``_seal_projection`` permanently removes
+    that capability before a graph crosses the public boundary.
     """
 
     def __init__(self) -> None:
@@ -59,7 +65,7 @@ class ObjectStore:
         # 注册的对象类型和关系类型
         self._object_types: dict[str, ObjectType] = {}
         self._link_types: dict[str, LinkType] = {}
-        # The immutable semantic contract bound by the compatibility facade.
+        # The immutable semantic contract bound by the materializer/backend.
         self._schema: CompiledOntologySchema | None = None
         # Operational recovery journal and synchronous materialized projection.
         self._watermark = 0
@@ -69,6 +75,7 @@ class ObjectStore:
         self._projection_built_at = time.time()
         # (declaring object type, property name) -> value -> object id.
         self._unique_index: dict[tuple[str, str], dict[Any, UUID]] = {}
+        self._sealed = False
 
     # ------------------------------------------------------------------
     # 类型注册
@@ -111,6 +118,7 @@ class ObjectStore:
     ) -> None:
         """Atomically materialize and bind one immutable schema snapshot."""
 
+        self._require_writable()
         if self._schema is schema:
             return
         if self._schema is not None:
@@ -134,6 +142,7 @@ class ObjectStore:
 
     def register_object_type(self, obj_type: ObjectType) -> None:
         """注册对象类型."""
+        self._require_writable()
         if self._schema is not None:
             raise RuntimeError("ObjectStore schema is frozen; object types cannot be registered")
         self._object_types[obj_type.name] = obj_type
@@ -141,6 +150,7 @@ class ObjectStore:
 
     def register_link_type(self, link_type: LinkType) -> None:
         """注册关系类型，并更新相关对象类型的关系集合."""
+        self._require_writable()
         if self._schema is not None:
             raise RuntimeError("ObjectStore schema is frozen; link types cannot be registered")
         self._link_types[link_type.name] = link_type
@@ -169,7 +179,8 @@ class ObjectStore:
         properties: dict[str, Any] | None = None,
         obj_id: UUID | None = None,
     ) -> OntologyObject:
-        """创建对象实例."""
+        """Create an object while building an internal projection."""
+        self._require_writable()
         type_def = self._object_types.get(object_type)
         if type_def is None:
             raise ValueError(f"Object type '{object_type}' not registered")
@@ -235,6 +246,7 @@ class ObjectStore:
     ) -> None:
         """Validate and update one property on an object owned by this store."""
 
+        self._require_writable()
         self._require_owned_object(obj)
         _require_optional_text("author", author)
         _require_optional_text("source", source)
@@ -301,6 +313,7 @@ class ObjectStore:
 
     def delete(self, obj_id: UUID) -> bool:
         """Delete an unreferenced object and its materialized indexes."""
+        self._require_writable()
         obj = self._objects.get(obj_id)
         if obj is None:
             return False
@@ -358,6 +371,7 @@ class ObjectStore:
     ) -> None:
         """Establish a relation between two objects owned by this store."""
 
+        self._require_writable()
         self._require_owned_object(source)
         self._require_owned_object(target)
         self._link_owned(
@@ -377,6 +391,7 @@ class ObjectStore:
         properties: dict[str, Any] | None = None,
     ) -> None:
         """建立关系，并维护双向索引."""
+        self._require_writable()
         source = self._objects.get(source_id)
         target = self._objects.get(target_id)
         if source is None or target is None:
@@ -460,6 +475,7 @@ class ObjectStore:
     ) -> None:
         """Remove a relation between two objects owned by this store."""
 
+        self._require_writable()
         self._require_owned_object(source)
         self._require_owned_object(target)
         self._unlink_owned(source, link_type, target, timestamp=timestamp)
@@ -472,6 +488,7 @@ class ObjectStore:
         timestamp: float | None = None,
     ) -> None:
         """删除关系."""
+        self._require_writable()
         source = self._objects.get(source_id)
         target = self._objects.get(target_id)
         if source is None or target is None:
@@ -525,6 +542,17 @@ class ObjectStore:
     def _require_owned_object(self, obj: OntologyObject) -> None:
         if self._objects.get(obj.id) is not obj:
             raise ValueError(f"Ontology object {obj.id} is not managed by this store")
+
+    def _seal_projection(self) -> None:
+        """Permanently remove mutation capability from a completed projection."""
+
+        self._sealed = True
+
+    def _require_writable(self) -> None:
+        if self._sealed:
+            raise RuntimeError(
+                "Fact projections are read-only; append a FactBatch and rebuild"
+            )
 
     # ------------------------------------------------------------------
     # 查询

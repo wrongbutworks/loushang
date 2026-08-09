@@ -26,7 +26,7 @@ from loushang.ontology.query.contracts import (
 
 
 def execute_query(store: OntologyReadStore, request: QueryRequest) -> QueryResult:
-    """Evaluate a request against the shared Wave 1 read semantics."""
+    """Evaluate a request against one sealed object projection."""
 
     current_version = str(store.schema.version) if store.schema is not None else None
     if request.schema_version is not None and request.schema_version != current_version:

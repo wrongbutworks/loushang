@@ -36,9 +36,10 @@ HarnessWork 是 Harness 的可选持久履约扩展。它负责把一个已接�
 
 当前迁移分支已建立 `loushang.harnesswork`，并迁入 types、ports、runtime、event log、
 run/plan projection、中立 log inspection CLI，以及 Session/Agent integration owners。
-Coding、Channel、Ontology 已通过各自 adapter 接入 canonical HarnessWork API；生产代码不再
+Coding、Channel 已通过各自 adapter 接入 canonical HarnessWork API；生产代码不再
 依赖 `loushang.work`。旧包仅保留 symbol-identical forwarding facade，作为有测试约束的
-兼容入口。
+兼容入口。Ontology 的早期 Action adapter 已由 ontology ARD-001 删除；在正式 ActionPlan、
+authorization 和 commit contract 成立前不预建替代 bridge。
 
 Harness owner map 继续禁止 Harness import Work/HarnessWork，并把 Method-to-Work preparation、
 Product Work execution、存储位置/保留策略和最终投影留给 Product。当前 Method 又复用了
@@ -64,7 +65,7 @@ loushang.harness       # 基础执行底座，不依赖 HarnessWork
 loushang.harnesswork   # 可选 durable Work runtime，依赖 Harness
 loushang.harnesstui    # 可选终端适配，依赖 Harness
 loushang.method        # 可选方法定义，可复用 Harness resources；不依赖 HarnessWork
-loushang.ontology      # 可选业务语义，通过 adapter 接入 HarnessWork
+loushang.ontology      # 可选业务语义；未来由 Product Action adapter 接入 HarnessWork
 ```
 
 关键约束：
@@ -72,8 +73,8 @@ loushang.ontology      # 可选业务语义，通过 adapter 接入 HarnessWork
 - `loushang.harness` 不 import `loushang.harnesswork`；
 - `loushang.harnesswork` 只使用 Harness 的产品无关公共契约；
 - Harness/HarnessWork 公共协议都不包含 Method、Ontology、Coding 等领域类型；
-- Ontology 和产品通过可选 integration adapter 注册 Work handler；Method 只提供可选结构
-  projection，最终 Method-to-Work binding 与 handler 仍由 Product 拥有；
+- 未来 Ontology Action 和产品通过 Product-owned integration adapter 注册 Work handler；
+  Method 只提供可选结构 projection，最终 binding 与 handler 仍由 Product 拥有；
 - `WorkHandle` 归 `loushang.harnesswork`，不是 Ontology/Method 核心类型；
 - 不用目录移动掩盖语义变更，现有 Work 不变量必须原样迁移并加强测试。
 
@@ -105,7 +106,6 @@ Product / App composition root
   ├── loushang.harnesstui        (optional -> harness)
   ├── loushang.method            (optional, standalone definitions)
   └── loushang.ontology          (optional, standalone semantics)
-        └── integrations.harnesswork
 ```
 
 允许的目标依赖：
@@ -117,7 +117,7 @@ harnesstui  -> harness public presentation/runtime contracts
 Product method-work adapter
   -> method + harnesswork + Product binding
 
-ontology.integrations.harnesswork
+Product ontology-work adapter (future)
   -> ontology + harnesswork
 
 Product composition
@@ -341,8 +341,8 @@ kind                     adapter owner
 ---------------------------------------------------------
 coding.turn              Coding Product adapter
 product.method_run       Product Method-to-Work adapter
-ontology.action          ontology.integrations.harnesswork
-ontology.outcome.observe ontology.integrations.harnesswork
+ontology.action          Product ontology-work adapter (future)
+ontology.outcome.observe Product ontology-work adapter (future)
 projection.rebuild       owning subsystem integration
 ```
 
@@ -377,20 +377,9 @@ Product work preparer/executor 拥有。Method helper 不能自行注册一个�
 
 Ontology core 保持独立：
 
-当前实现只提供 ontology-owned、单进程原子 Action adapter。handler 只有在本地业务修改已经
-提交后才能正常返回；`OntologyActionCommitted` 只表示 handler 正常返回，不承诺数据库事务、
-外部 effect、补偿或跨进程恢复。`actor_id` 当前只是审计上下文，不代表授权已经完成。
-
-当前原子路径为：
-
-```text
-OntologyActionWorkRequest
-  -> HarnessWork Runtime
-  -> OntologyActionHandler
-  -> OntologyActionCommitted / WorkRunFailed
-```
-
-以下是出现真实多步骤或外部副作用 Action 后才考虑的目标边界，并非当前能力：
+当前没有 Ontology/HarnessWork adapter。早期以 payload 命名 Action、却没有 ActionType、
+MutationPlan、authorization、expected revision 和 Fact commit 的 bridge 已被删除。以下是
+出现真实多步骤或外部副作用 Action 后才考虑的目标边界，并非当前能力：
 
 ```text
 ActionRequest
@@ -398,7 +387,7 @@ ActionRequest
   -> ActionPlan
 ```
 
-启用 `ontology.integrations.harnesswork` 后：
+正式 Product adapter 建立后：
 
 ```text
 ActionPlan
@@ -418,8 +407,8 @@ ActionPlan
 - HarnessWork 只看到 opaque payload、capability/approval requirements 和 typed result codec；
 - 外部 effect 成功而 ontology commit 失败时，handler 必须在 failed terminal 之前持久化
   evidence 和 `reconciliation_required` result/fact；后续 repair 创建关联的新 Work；
-- 简单 ontology-owned 原子 Action 可以使用 ontology inline executor，不强制安装
-  HarnessWork；需要审批、外部 effect、多步骤、恢复或补偿的 Action 必须要求 HarnessWork。
+- 简单 ontology-owned 原子 Action 是否允许 inline executor，必须由未来 Action ARD 决定；
+  需要审批、外部 effect、多步骤、恢复或补偿的 Action 应通过 Product/HarnessWork 履约。
 
 ## Harness, HarnessWork And Harnesstui
 
@@ -547,7 +536,7 @@ session adapter 和 CLI；Coding 与 Channel 存在直接 imports，tests 也把
   第二种真实、非 Work transport 需求后，才重新评估 codec seam；
 - Coding Product 已把 Method prepared turns 绑定到 HarnessWork；Method core 保持独立，不新增
   通用 `method.run` handler 或 HarnessWork adapter；
-- 引入 Ontology integration fixture；
+- 等 Ontology ActionPlan/Fact commit contract 成立后再引入 integration fixture；
 - 保留序列化兼容和读取旧 Work JSONL 的 round-trip 测试。
 
 ### Phase 3a: Add Observable WorkHandle

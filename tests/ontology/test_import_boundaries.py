@@ -1,10 +1,32 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 from pathlib import Path
+
+import loushang.ontology as ontology
+import loushang.ontology.storage as ontology_storage
 
 ONTOLOGY_ROOT = Path("src/loushang/ontology")
 LEGACY_FOUNDATION_PREFIXES = ("loushang.observability", "loushang.protocol")
+REMOVED_COMPATIBILITY_MODULES = (
+    "loushang.ontology.core.ontology",
+    "loushang.ontology.fusion",
+    "loushang.ontology.integrations",
+    "loushang.ontology.rules",
+)
+REMOVED_PUBLIC_NAMES = (
+    "DataFusion",
+    "FieldMapping",
+    "ObjectStore",
+    "Ontology",
+    "OntologyStore",
+    "OperationalMutationStore",
+    "ProjectionStore",
+    "Rule",
+    "RuleEngine",
+    "SourceMapping",
+)
 
 
 def test_ontology_does_not_import_legacy_foundation_facades() -> None:
@@ -12,6 +34,32 @@ def test_ontology_does_not_import_legacy_foundation_facades() -> None:
     for path in sorted(ONTOLOGY_ROOT.rglob("*.py")):
         for imported in _absolute_imports(path):
             if imported.startswith(LEGACY_FOUNDATION_PREFIXES):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_greenfield_compatibility_modules_are_absent() -> None:
+    assert {
+        module
+        for module in REMOVED_COMPATIBILITY_MODULES
+        if importlib.util.find_spec(module) is not None
+    } == set()
+
+
+def test_public_surface_has_no_direct_mutation_or_compatibility_facades() -> None:
+    assert {
+        name for name in REMOVED_PUBLIC_NAMES if hasattr(ontology, name)
+    } == set()
+    assert not hasattr(ontology_storage, "SQLiteObjectStore")
+    assert hasattr(ontology_storage, "SQLiteFactStore")
+
+
+def test_production_ontology_does_not_import_removed_compatibility_modules() -> None:
+    offenders: list[str] = []
+    for path in sorted(ONTOLOGY_ROOT.rglob("*.py")):
+        for imported in _absolute_imports(path):
+            if imported.startswith(REMOVED_COMPATIBILITY_MODULES):
                 offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []

@@ -11,6 +11,9 @@ Wave 2A does not retain a SQLite v1 reader or migration path. Version 1 was a
 development-only Wave 1 format with no external compatibility commitment. A v1
 database is rejected explicitly and must be recreated.
 
+[ARD-001](ARD-001-factstore-semantic-authority.md) later made this FactStore the
+sole semantic authority and removed the public Wave 1 object-mutation path.
+
 ## Runtime Spine
 
 ```text
@@ -35,11 +38,11 @@ Source / future Adapter
  QueryRequest -> QueryResult
 ```
 
-`StoreMutation` remains the operational commit/recovery journal. It is not a
-Fact and does not acquire source, evidence, confidence, or bitemporal meaning.
-The existing direct object-mutation API remains a compatibility path; callers
-must not represent those mutations as source-backed facts unless they actually
-commit a `FactRecord`.
+The SQLite v2 layout still contains the historical operational mutation journal,
+but it is an internal physical-format artifact rather than a public semantic
+API. It is not a Fact and does not acquire source, evidence, confidence, or
+bitemporal meaning. Applications append `FactRecord` values; object mutation is
+not an alternative authority path.
 
 ## Fact Envelope
 
@@ -143,11 +146,12 @@ Version 2 adds append-only semantic fact records, committed batch identities,
 and a fact watermark to the existing schema, object authority, operational
 journal, and serving projection tables.
 
-`SQLiteObjectStore` also implements the FactStore port. A fact batch commit is
-validated before one SQLite transaction persists the fact rows, batch replay
-identity, and fact watermark. In-memory state changes only after that
-transaction succeeds. Reopen and online backup restore the same fact sequence,
-batch replay behavior, and projection inputs.
+The public `SQLiteFactStore` implements the FactStore port without exposing the
+internal Wave 1 object mutation backend. A fact batch commit is validated before
+one SQLite transaction persists the fact rows, batch replay identity, and fact
+watermark. In-memory state changes only after that transaction succeeds. Reopen
+and online backup restore the same fact sequence, batch replay behavior, and
+projection inputs.
 
 The loader accepts exactly v2. It rejects v1, future versions, incomplete v2
 tables, malformed facts, and inconsistent fact watermarks. There is no silent

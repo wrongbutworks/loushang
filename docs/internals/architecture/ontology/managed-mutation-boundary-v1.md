@@ -1,5 +1,8 @@
 # Ontology Managed Mutation Boundary V1
 
+> Historical implementation evidence. [ARD-001](ARD-001-factstore-semantic-authority.md)
+> removes this public mutation boundary; future commands append Fact batches.
+
 ## Status
 
 Accepted historical boundary for the initial in-memory managed-write slice. It

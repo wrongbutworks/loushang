@@ -1,18 +1,5 @@
-from loushang.ontology.core.constraints import IntegrityViolation
-from loushang.ontology.core.projection import ProjectionState, StoreMutation
-from loushang.ontology.core.store_port import (
-    OntologyReadStore,
-    OntologyStore,
-    OperationalMutationStore,
-    ProjectionStore,
-)
+"""Internal object-projection model; semantic writes belong to FactStore."""
 
-__all__ = [
-    "OntologyReadStore",
-    "IntegrityViolation",
-    "OntologyStore",
-    "OperationalMutationStore",
-    "ProjectionState",
-    "ProjectionStore",
-    "StoreMutation",
-]
+from loushang.ontology.core.store_port import OntologyReadStore
+
+__all__ = ["OntologyReadStore"]

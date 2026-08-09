@@ -1,4 +1,4 @@
-"""SQLite v2 reference adapter for object and semantic-fact store contracts."""
+"""SQLite v2 semantic FactStore adapter and internal projection persistence."""
 
 from __future__ import annotations
 
@@ -114,8 +114,8 @@ class _ObjectRuntimeSnapshot:
     outgoing: dict[str, list[LinkVersion]]
 
 
-class SQLiteObjectStore(ObjectStore):
-    """Durable object and FactStore with one transaction per accepted commit.
+class _SQLiteObjectStore(ObjectStore):
+    """Internal combined backend retained until the adapter split in Phase 2.
 
     The in-memory authority remains the reference execution model. SQLite
     persists that authority, the operational mutation journal, and rebuildable
@@ -171,7 +171,7 @@ class SQLiteObjectStore(ObjectStore):
         self._connection.close()
         self._closed = True
 
-    def __enter__(self) -> SQLiteObjectStore:
+    def __enter__(self) -> _SQLiteObjectStore:
         return self
 
     def __exit__(self, *_args: object) -> None:
@@ -267,7 +267,7 @@ class SQLiteObjectStore(ObjectStore):
 
         self._require_open()
         if self.schema is None:
-            raise RuntimeError("SQLiteObjectStore requires a bound schema before fact commit")
+            raise RuntimeError("SQLite fact commits require a bound schema")
         plan = self._fact_store._plan_commit(batch)
         if plan.commit.replayed:
             return plan.commit
@@ -661,7 +661,7 @@ class SQLiteObjectStore(ObjectStore):
 
     def _require_open(self) -> None:
         if self._closed:
-            raise RuntimeError("SQLiteObjectStore is closed")
+            raise RuntimeError("SQLite ontology backend is closed")
 
     def _capture_runtime_snapshot(self) -> dict[UUID, _ObjectRuntimeSnapshot]:
         return {
@@ -799,6 +799,79 @@ class SQLiteObjectStore(ObjectStore):
         )
 
 
+class SQLiteFactStore:
+    """Public SQLite v2 adapter exposing only the semantic FactStore authority.
+
+    The v2 file still contains the Wave 1 object/projection tables so its format
+    remains unchanged. Those tables and their direct mutation implementation
+    are deliberately hidden until Phase 2 replaces them with a projection-only
+    adapter.
+    """
+
+    def __init__(
+        self,
+        database: str | Path,
+        *,
+        expected_schema: CompiledOntologySchema | None = None,
+    ) -> None:
+        self._backend = _SQLiteObjectStore(
+            database,
+            expected_schema=expected_schema,
+        )
+
+    @property
+    def database(self) -> Path:
+        return self._backend.database
+
+    @property
+    def schema(self) -> CompiledOntologySchema | None:
+        return self._backend.schema
+
+    @property
+    def fact_watermark(self) -> int:
+        return self._backend.fact_watermark
+
+    def bind_schema(self, schema: CompiledOntologySchema) -> None:
+        self._backend.bind_schema(schema)
+
+    def get_fact(self, fact_id: UUID) -> StoredFact:
+        return self._backend.get_fact(fact_id)
+
+    def read_facts(self, *, after_sequence: int = 0) -> tuple[StoredFact, ...]:
+        return self._backend.read_facts(after_sequence=after_sequence)
+
+    def facts_as_of(
+        self,
+        *,
+        valid_at: float,
+        recorded_at: float,
+    ) -> tuple[StoredFact, ...]:
+        return self._backend.facts_as_of(
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+        )
+
+    def commit_fact_batch(self, batch: FactBatch) -> FactCommit:
+        return self._backend.commit_fact_batch(batch)
+
+    def backup_to(
+        self,
+        destination: str | Path,
+        *,
+        overwrite: bool = False,
+    ) -> None:
+        self._backend.backup_to(destination, overwrite=overwrite)
+
+    def close(self) -> None:
+        self._backend.close()
+
+    def __enter__(self) -> SQLiteFactStore:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
+
+
 def _encode_object(obj: OntologyObject) -> str:
     document: dict[str, JSONValue] = {
         "properties": {
@@ -880,7 +953,7 @@ def _decode_object(object_id: UUID, object_type: str, state_json: str) -> Ontolo
 __all__ = [
     "SQLITE_STORAGE_FORMAT",
     "SQLITE_STORAGE_FORMAT_VERSION",
-    "SQLiteObjectStore",
+    "SQLiteFactStore",
     "SQLiteStorageFormatError",
     "SQLiteStoreCompatibilityError",
     "SQLiteStoredSchemaMismatchError",

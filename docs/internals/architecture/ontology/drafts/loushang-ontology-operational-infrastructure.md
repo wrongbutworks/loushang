@@ -39,32 +39,28 @@ Foundry 的逐功能复刻，也不把 OWL 编辑器、图数据库、数据集�
 
 ## 当前实现基线
 
-当前 `src/loushang/ontology/` 是一个可运行但很小的 P0 原型：14 个 Python 文件，
-约 1,320 行源码，现有 30 个 ontology 测试。它已经具备：
+当前 `src/loushang/ontology/` 已完成 versioned schema kernel、Wave 2A
+Fact/Provenance spine，以及 [ARD-001](../ARD-001-factstore-semantic-authority.md)
+规定的单一权威收口。它已经具备：
 
-- `ObjectType`、`Property`、`LinkType`、`OntologyObject`；
-- 内存 `ObjectStore`、属性索引、双向 link 索引和简单时序历史；
-- 链式 `QueryBuilder`；
-- 基于 Python callable 的 `RuleEngine`；
-- `SourceMapping` / `FieldMapping` / `DataFusion` 的批量摄入骨架。
+- package/namespace/version、类型、接口、约束、编译与 schema evolution；
+- asserted/derived/inferred Fact、双时间、provenance、correction lineage；
+- append-only Memory/SQLite v2 FactStore 和 idempotent FactBatch；
+- 确定性 Fact materializer、sealed object/link projection 和 typed query；
+- SQLite v2 严格格式检测、重启和在线备份。
 
-这个原型证明了对象、关系、查询、规则、融合可以形成最小闭环，但还不应被视为稳定
-的 ontology platform。主要缺口是：
+动态 `Ontology` facade、Callable RuleEngine、直接 DataFusion、公开 ObjectStore mutation
+以及尚无正式 Action 语义的 HarnessWork bridge 已删除。当前主要缺口是：
 
-- 类型使用进程内名称，没有 package、namespace、IRI、稳定 ID 和 schema version；
-- schema registry、对象运行时和存储被同一个 facade 隐式绑定；
-- 只有内存存储，没有存储契约、并发控制、幂等、schema migration 或 backend
-  conformance tests；
-- link cardinality、唯一性、接口、约束和 schema 引用完整性没有形成统一验证器；
-- 时序历史不是完整的双时态事实模型，缺少来源、证据、方法、置信度和修正关系；
-- rule 和 transform 直接保存 Python callable，不适合作为可序列化、可审计、可跨进程
-  执行的规范；
+- 还没有 runtime/materialization coordinator、projection failure/freshness lifecycle；
+- FactBatch 尚未绑定明确的 published schema identity；
+- 还没有 CRUD command 到 deterministic FactBatch 的编译层；
+- safe derivation 和 source mapping 尚未以 Fact-producing contract 重建；
 - 没有 ActionType、MutationPlan、审批需求、外部能力需求和原子提交协议；
 - 没有 DecisionType、DecisionRecord、Scenario、OutcomeDefinition 或 LogicBinding，尚不能
   保存“为什么选择这个动作”以及预期结果和实际结果的差异；
 - 没有 RDF/OWL/JSON-LD import/export、SHACL validation 或 round-trip diagnostics；
-- `DataFusion` 的 identity cache 只在进程内有效，尚未处理 alternate keys、冲突、
-  增量同步和 lineage。
+- 尚未处理 alternate keys、entity resolution、merge policy、增量同步和 source lineage。
 
 因此近期方向应是把现有 P0 原型收敛为稳定内核，而不是直接在它上面叠加完整平台。
 
@@ -1060,7 +1056,7 @@ SQLite 物理格式、精确 schema snapshot 校验、备份和公共导入面�
 - primary/property/link projection、freshness/watermark 和 deterministic rebuild；
 - backend-neutral ObjectSet、filter、traversal、projection；
 - typed QueryRequest/QueryResult，覆盖 schema resolution、policy projection 和 diagnostics；
-- 保留现有 `Ontology` facade 作为兼容入口，内部逐步委托新组件。
+- Wave 1 当时保留的 `Ontology` facade 已由后续 ARD-001 删除。
 
 验收标准：同一 contract suite 在 Memory/SQLite 通过；schema 可以序列化、加载、diff；
 非法 link/cardinality/unique mutation 无法提交；相同 authority 可以重建出等价 projection，
@@ -1077,6 +1073,17 @@ SQLite 物理格式、精确 schema snapshot 校验、备份和公共导入面�
 - source、evidence、confidence、methodology、supersedes/corrects；
 - append-only FactStore、idempotent FactBatch、Memory/SQLite conformance；
 - 在显式 valid/recorded time 上确定性重建 Object/Property/Link projection。
+
+### Foundation Phase 1：单一 Fact Authority
+
+实施状态（2026-08-09）：已完成。正式决策见
+[ARD-001: FactStore Is The Sole Semantic Authority](../ARD-001-factstore-semantic-authority.md)。
+
+- FactStore 是唯一语义权威；
+- Object/Property/Link 是 sealed、可删除重建的 projection；
+- 删除动态 facade、Callable rules、直接 fusion 和临时 Action bridge；
+- 公开 SQLite 适配器只暴露 FactStore；
+- SQLite v2 文件格式保持不变，不增加 v1 migration 或兼容 shim。
 
 ### Wave 2B：Standards 与安全派生
 

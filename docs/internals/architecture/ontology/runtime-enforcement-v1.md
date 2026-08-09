@@ -1,5 +1,8 @@
 # Ontology Runtime Enforcement Matrix V1
 
+> Historical implementation evidence. [ARD-001](ARD-001-factstore-semantic-authority.md)
+> removes the public direct-object mutation paths described below.
+
 ## Status
 
 Accepted description of what the Semantic Kernel V1 compiler and in-memory

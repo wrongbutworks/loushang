@@ -97,23 +97,31 @@ def test_fact_projection_materializes_schema_valid_objects_properties_and_links(
 
     projection = project_facts(facts, _schema(), valid_at=20.0, recorded_at=20.0)
 
-    asset = projection.store.get(ASSET_ID)
-    owner = projection.store.get(OWNER_ID)
+    asset = projection.view.get(ASSET_ID)
+    owner = projection.view.get(OWNER_ID)
     assert asset is not None
     assert owner is not None
     assert asset.get("code") == "A-1"
     assert asset.get("score") == 7
     assert asset.get("observed_at") == datetime(2026, 8, 9, tzinfo=UTC)
-    assert projection.store.find_neighbors(ASSET_ID, "owned_by") == [owner]
+    assert projection.view.find_neighbors(ASSET_ID, "owned_by") == [owner]
     assert projection.source_fact_watermark == 6
     assert projection.schema_version == "1.0.0"
     assert projection.valid_at == 20.0
     assert projection.recorded_at == 20.0
     assert projection.fact_ids == tuple(item.fact_id for item in _complete_facts())
-    assert projection.store.validate_integrity() == ()
-    assert projection.store.read_mutations() == ()
-    assert projection.store.current_watermark == 0
     assert asset.history("code")[0].timestamp == 0.0
+    assert not hasattr(projection.view, "create")
+    assert not hasattr(projection.view, "set_property")
+    assert not hasattr(projection.view, "link_objects")
+
+    with pytest.raises(RuntimeError, match="read-only"):
+        asset.set("score", 8)
+    with pytest.raises(RuntimeError, match="read-only"):
+        asset.link("owned_by", owner)
+    with pytest.raises(RuntimeError, match="read-only"):
+        asset.unlink("owned_by", owner)
+    assert asset.get("score") == 7
 
 
 def test_projection_is_deterministic_for_equivalent_fact_content() -> None:
@@ -126,11 +134,9 @@ def test_projection_is_deterministic_for_equivalent_fact_content() -> None:
     projected_first = project_facts(first, _schema(), valid_at=20, recorded_at=20)
     projected_second = project_facts(second, _schema(), valid_at=20, recorded_at=20)
 
-    assert [obj.to_dict() for obj in projected_first.store.all_objects()] == [
-        obj.to_dict() for obj in projected_second.store.all_objects()
+    assert [obj.to_dict() for obj in projected_first.view.all_objects()] == [
+        obj.to_dict() for obj in projected_second.view.all_objects()
     ]
-    assert projected_first.store.validate_integrity() == ()
-    assert projected_second.store.validate_integrity() == ()
 
 
 def test_projection_rejects_cross_source_value_conflict_instead_of_picking_winner() -> None:

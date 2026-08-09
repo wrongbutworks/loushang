@@ -1,5 +1,10 @@
 # Ontology Wave 1 Completion Boundary
 
+> Historical implementation evidence. [ARD-001](ARD-001-factstore-semantic-authority.md)
+> supersedes this document wherever it describes a public mutable object
+> authority, `Ontology` facade, `SQLiteObjectStore`, or operational mutation
+> port. These names are no longer public contracts.
+
 ## Status
 
 Accepted implementation boundary for completing the Semantic Kernel wave.
