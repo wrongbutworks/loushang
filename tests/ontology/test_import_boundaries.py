@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import importlib.util
 from pathlib import Path
 
 import loushang.ontology as ontology
@@ -14,6 +13,12 @@ REMOVED_COMPATIBILITY_MODULES = (
     "loushang.ontology.fusion",
     "loushang.ontology.integrations",
     "loushang.ontology.rules",
+)
+REMOVED_COMPATIBILITY_SOURCES = (
+    ONTOLOGY_ROOT / "core" / "ontology.py",
+    ONTOLOGY_ROOT / "fusion",
+    ONTOLOGY_ROOT / "integrations",
+    ONTOLOGY_ROOT / "rules",
 )
 REMOVED_PUBLIC_NAMES = (
     "DataFusion",
@@ -39,12 +44,15 @@ def test_ontology_does_not_import_legacy_foundation_facades() -> None:
     assert offenders == []
 
 
-def test_greenfield_compatibility_modules_are_absent() -> None:
-    assert {
-        module
-        for module in REMOVED_COMPATIBILITY_MODULES
-        if importlib.util.find_spec(module) is not None
-    } == set()
+def test_greenfield_compatibility_sources_are_absent() -> None:
+    offenders: list[str] = []
+    for path in REMOVED_COMPATIBILITY_SOURCES:
+        if path.is_file():
+            offenders.append(path.as_posix())
+        elif path.is_dir():
+            offenders.extend(item.as_posix() for item in path.rglob("*.py"))
+
+    assert offenders == []
 
 
 def test_public_surface_has_no_direct_mutation_or_compatibility_facades() -> None:
