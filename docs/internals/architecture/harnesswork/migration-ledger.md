@@ -14,7 +14,7 @@ Status: **active migration ledger**.
 
 ```text
 loushang.harness      -/-> loushang.harnesswork
-loushang.harnesswork   -> loushang.harness public contracts + loushang.protocol
+loushang.harnesswork   -> loushang.harness public contracts + loushang.foundation.json
 loushang.harnesswork  -/-> loushang.work / Product / Method / Ontology / Channel / UI
 loushang.work facade   -> loushang.harnesswork
 Product adapters       -> loushang.harnesswork + Product dependencies

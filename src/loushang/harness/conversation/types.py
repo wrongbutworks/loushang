@@ -5,7 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Generic, TypeVar, cast
 
-from loushang.protocol import JSONValue, require_json_mapping, require_json_value
+from loushang.foundation.json import JSONValue, require_json_mapping, require_json_value
 
 T = TypeVar("T")
 R = TypeVar("R")

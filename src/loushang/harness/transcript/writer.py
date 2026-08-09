@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import uuid4
 
+from loushang.foundation.json import JSONValue
 from loushang.harness.conversation.types import (
     ConversationRecord,
 )
@@ -13,7 +14,6 @@ from loushang.harness.transcript.types import (
     AgentTranscriptPayload,
     AgentTranscriptRecord,
 )
-from loushang.protocol import JSONValue
 
 Clock = Callable[[], datetime]
 IdFactory = Callable[[], str]

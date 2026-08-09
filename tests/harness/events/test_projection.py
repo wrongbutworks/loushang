@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from loushang.foundation.json import JsonValueError
 from loushang.harness.events import (
     RuntimeEvent,
     RuntimeEventView,
@@ -14,7 +15,6 @@ from loushang.harness.events import (
     snake_case_json_keys,
 )
 from loushang.harness.session import serialize_session_event
-from loushang.protocol import JsonValueError
 
 
 def _event() -> RuntimeEvent[object]:

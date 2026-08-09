@@ -42,7 +42,7 @@ from loushang.ai.types import (
     ToolResultMessage,
     Usage,
 )
-from loushang.protocol import JSONValue, require_json_value
+from loushang.foundation.json import JSONValue, require_json_value
 
 TDetails = TypeVar("TDetails")
 

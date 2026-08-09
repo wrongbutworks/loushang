@@ -6,7 +6,10 @@ from pathlib import Path
 import pytest
 
 import loushang.tui.render_loop as render_loop_module
-from loushang.observability import configure_debug_logging, reset_observability
+from loushang.foundation.observability._router import (
+    configure_debug_logging,
+    reset_observability,
+)
 from loushang.tui import (
     CURSOR_MARKER,
     CursorDeclaration,

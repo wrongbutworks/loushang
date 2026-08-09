@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar, cast
 
+from loushang.foundation.json import JsonValueError, require_json_mapping
 from loushang.harness.journal.codec import (
     JournalCodecError,
     JournalHeaderCodec,
@@ -23,7 +24,6 @@ from loushang.harness.journal.types import (
     JournalLoadPolicy,
     JsonlSnapshot,
 )
-from loushang.protocol import JsonValueError, require_json_mapping
 
 H = TypeVar("H")
 R = TypeVar("R")

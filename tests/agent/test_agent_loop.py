@@ -19,7 +19,11 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.observability import get_problem_store, log_context, reset_observability
+from loushang.foundation.observability import log_context
+from loushang.foundation.observability._router import (
+    get_problem_store,
+    reset_observability,
+)
 
 
 def _model() -> Model:

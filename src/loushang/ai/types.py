@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, NotRequired, TypedDict
 
-from loushang.protocol import JSONValue
+from loushang.foundation.json import JSONValue
 
 
 class UsageCost(TypedDict):

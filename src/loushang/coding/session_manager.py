@@ -8,6 +8,7 @@ from loushang.coding.product_plan import (
     CODING_PRODUCT_ID,
     CODING_TRANSCRIPT_RUNTIME,
 )
+from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.runtime import (
     SIDE_QUESTION_PROVIDER_SLOT,
@@ -21,7 +22,6 @@ from loushang.harness.transcript import (
     AgentTranscriptSessionFactory,
     ProductTranscriptSession,
 )
-from loushang.protocol import JSONValue
 
 _LIFECYCLE = AgentTranscriptLifecycle(
     bind_runtime=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle

@@ -16,6 +16,7 @@ from typing import cast
 from loushang.agent.types import AgentMessage
 from loushang.ai import ApiKeyAuth, CallOptions, Context, Model, complete
 from loushang.ai.types import AssistantMessage, TextPart, UserMessage
+from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.context import (
     SummaryProfile,
     SummaryResourceOperations,
@@ -32,7 +33,6 @@ from loushang.harness.transcript.profile import (
     record_to_context_item,
 )
 from loushang.harness.transcript.types import AgentTranscriptRecord
-from loushang.protocol import JSONValue, require_json_value
 
 TOOL_RESULT_MAX_CHARS = 2_000
 DEFAULT_BRANCH_SUMMARY_PREAMBLE = """The user explored a different conversation branch before returning here.

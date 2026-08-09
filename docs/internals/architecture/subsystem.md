@@ -23,9 +23,7 @@
 当前已落地的支撑/实验性包包括：
 
 - `loushang.foundation`
-- `loushang.observability`（诊断运行时的迁移期 compatibility namespace）
 - `loushang.ontology`
-- `loushang.protocol`（严格 JSON 的迁移期 compatibility namespace）
 
 `loushang.runtime` 不再作为子系统保留。若某个 worktree 中仍存在
 `src/loushang/runtime`，它只是待删除的旧 command/effect 临时路径；迁移目标是
@@ -55,11 +53,10 @@ command substrate 的目标归属是 `loushang.harness`，见
 - `loushang.foundation.observability`，负责日志上下文、问题记录、trace/debug
   事件、sink 路由、运行时配置与运行时身份。
 
-`loushang.protocol` 和 `loushang.observability` 暂时保留根包及已有公开子模块的
-转发，但不拥有第二份实现或第二套全局状态；现有生产调用方将在后续独立阶段按
-子系统迁移。Foundation 不负责 Product 策略、Agent/Harness 编排、Work 权威
-事件、Channel schema，或者为诊断投影之外的新 wire schema 提供任意 Python
-对象到 JSON 的容错转换。
+旧顶层包 `loushang.protocol` 和 `loushang.observability` 已退出；所有调用方直接
+使用上述 canonical owners。Foundation 不负责 Product 策略、Agent/Harness 编排、
+Work 权威事件、Channel schema，或者为诊断投影之外的新 wire schema 提供任意
+Python 对象到 JSON 的容错转换。
 
 ### loushang-ai
 

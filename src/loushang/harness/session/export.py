@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from loushang.foundation.json import require_json_mapping
 from loushang.harness.presentation import RenderableToolDefinition
 from loushang.harness.session.composition import SessionComposition
 from loushang.harness.tools.core import ToolDefinition
@@ -19,7 +20,6 @@ from loushang.harness.transcript import (
     export_agent_transcript_to_html,
     export_agent_transcript_to_jsonl,
 )
-from loushang.protocol import require_json_mapping
 
 
 class ExportAgentPort(Protocol):

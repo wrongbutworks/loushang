@@ -3,23 +3,21 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from loushang.observability import (
-    DebugEventRecord,
+from loushang.foundation.observability import get_log
+from loushang.foundation.observability._router import (
     InMemoryProblemStore,
-    ProblemRecord,
     capture_observability,
     configure_debug_logging,
     configure_observability,
-    current_context,
-    get_log,
     get_problem_store,
     is_debug_event_enabled,
-    log_context,
     reset_observability,
     restore_observability,
 )
-from loushang.observability.debug_log import DebugLogSink
-from loushang.observability.trace import TraceJSONLSink
+from loushang.foundation.observability.context import current_context, log_context
+from loushang.foundation.observability.debug_sink import DebugLogSink
+from loushang.foundation.observability.records import DebugEventRecord, ProblemRecord
+from loushang.foundation.observability.trace_sink import TraceJSONLSink
 
 
 class _FailingObservabilitySink:
@@ -299,8 +297,6 @@ def test_debug_sink_escapes_newlines_in_log_message(tmp_path) -> None:
 
 
 def test_debug_sink_escapes_newlines_in_problem_message(tmp_path) -> None:
-    from loushang.observability import ProblemRecord
-
     debug_path = tmp_path / "debug.log"
     sink = DebugLogSink(debug_path)
 

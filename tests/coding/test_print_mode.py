@@ -2548,10 +2548,10 @@ def test_print_mode_json_serializes_tool_results_and_preserves_utf8() -> None:
 def test_print_mode_json_event_sink_rejects_non_finite_values_without_output() -> None:
     from io import StringIO
 
+    from loushang.foundation.json import JsonValueError
     from loushang.harnesstui.conversation.agent_binding import (
         AgentPlainHost as PrintMode,
     )
-    from loushang.protocol import JsonValueError
 
     stdout = StringIO()
     mode = PrintMode(

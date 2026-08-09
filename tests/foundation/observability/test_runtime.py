@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from loushang.observability import (
-    DebugLogSink,
+from loushang.foundation.observability import get_log
+from loushang.foundation.observability._router import (
     configure_observability,
-    get_log,
-    observability_runtime_context,
     reset_observability,
 )
+from loushang.foundation.observability.debug_sink import DebugLogSink
+from loushang.foundation.observability.runtime import observability_runtime_context
 
 
 def test_observability_runtime_context_restores_existing_debug_sink(tmp_path) -> None:

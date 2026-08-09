@@ -75,9 +75,7 @@ Product-neutral playback substrate 验证。详细设计见
 - `loushang.harnesswork`
 - `loushang.work`
 - `loushang.foundation`
-- `loushang.observability`（诊断运行时的迁移期 compatibility namespace）
 - `loushang.ontology`
-- `loushang.protocol`（严格 JSON 的迁移期 compatibility namespace）
 
 `loushang.channel` 提供承载 `WorkOperation` / `WorkEvent` 以及已投影
 `RuntimeEventView` 的边界协议，及 `rpc_jsonl` 的 JSONL framing、request
@@ -103,10 +101,9 @@ loushang/
       tui/
       work/
       foundation/
+        json.py
         observability/
-      observability/
       ontology/
-      protocol/
   tests/
 ```
 

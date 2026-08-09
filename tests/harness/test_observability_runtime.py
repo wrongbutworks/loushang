@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from loushang.foundation.observability import get_log
+from loushang.foundation.observability._router import reset_observability
 from loushang.harness.diagnostics.observability_runtime import (
     session_observability_context,
 )
-from loushang.observability import get_log, reset_observability
 
 
 def test_session_observability_context_accepts_product_output_directories(tmp_path) -> None:

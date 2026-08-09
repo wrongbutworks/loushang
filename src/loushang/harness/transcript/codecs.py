@@ -19,6 +19,7 @@ from loushang.ai.types import (
     ToolResultMessage,
     UserMessage,
 )
+from loushang.foundation.json import JSONValue, require_json_mapping, require_json_value
 from loushang.harness.conversation.jsonl_codec import (
     ConversationPayloadCodecRegistry,
     FunctionalConversationPayloadCodec,
@@ -48,7 +49,6 @@ from loushang.harness.transcript.types import (
     RecordAnnotationPatch,
     ThinkingSelectionSnapshot,
 )
-from loushang.protocol import JSONValue, require_json_mapping, require_json_value
 
 PayloadT = TypeVar("PayloadT")
 STANDARD_PAYLOAD_VERSION = 1

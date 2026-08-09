@@ -140,7 +140,7 @@ def test_jsonl_event_log_rejects_implicit_object_projection(tmp_path) -> None:
 
     import pytest
 
-    from loushang.protocol import JsonValueError
+    from loushang.foundation.json import JsonValueError
     from loushang.work import JsonlEventLogBackend
 
     @dataclass(frozen=True)
@@ -190,7 +190,7 @@ def test_event_log_backends_share_strict_snapshot_semantics(tmp_path) -> None:
 
     import pytest
 
-    from loushang.protocol import JsonValueError
+    from loushang.foundation.json import JsonValueError
     from loushang.work import InMemoryEventLogBackend, JsonlEventLogBackend
 
     backends = (

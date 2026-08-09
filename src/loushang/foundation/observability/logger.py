@@ -12,7 +12,7 @@ from ._router import (
 )
 from ._time import monotonic_ms, utc_now_iso
 from .context import current_context
-from .projection import ensure_json_safe_mapping
+from .projection import project_diagnostic_mapping
 from .records import DebugEventRecord, ProblemRecord, ProblemSeverity
 
 
@@ -64,7 +64,7 @@ class ObservabilityLog:
             source=source,
             message=message if message is not None else (exception_message or ""),
             recoverable=recoverable,
-            details=ensure_json_safe_mapping(merged_details),
+            details=project_diagnostic_mapping(merged_details),
             exception_type=type(exc).__name__ if exc is not None else None,
             exception_message=exception_message,
             time=utc_now_iso(),
@@ -110,7 +110,7 @@ class ObservabilityLog:
         record = DebugEventRecord(
             scope=scope,
             name=name,
-            data=ensure_json_safe_mapping(data, name="data"),
+            data=project_diagnostic_mapping(data, name="data"),
             time=utc_now_iso(),
             monotonic_ms=monotonic_ms(),
             module=self.module,
@@ -128,7 +128,7 @@ class ObservabilityLog:
             module=self.module,
             component=self.component,
             message=message,
-            details=ensure_json_safe_mapping(details),
+            details=project_diagnostic_mapping(details),
         )
 
 

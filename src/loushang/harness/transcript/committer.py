@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Literal
 
+from loushang.foundation.json import dump_json_value
 from loushang.harness.conversation import CommitReceipt
 from loushang.harness.transcript.codecs import (
     STANDARD_PAYLOAD_VERSION,
@@ -12,7 +13,6 @@ from loushang.harness.transcript.codecs import (
 from loushang.harness.transcript.kinds import APPLICATION_MESSAGE_KIND
 from loushang.harness.transcript.types import ApplicationMessage
 from loushang.harness.transcript.unit_of_work import AgentTranscriptUnitOfWork
-from loushang.protocol import dump_json_value
 
 
 class ApplicationMessageIdentityConflictError(ValueError):

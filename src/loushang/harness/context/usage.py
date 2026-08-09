@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any
 
-from loushang.protocol import JSONValue, require_json_mapping
+from loushang.foundation.json import JSONValue, require_json_mapping
 
 
 @dataclass(frozen=True)

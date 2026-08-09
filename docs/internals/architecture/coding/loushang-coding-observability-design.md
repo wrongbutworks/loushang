@@ -587,8 +587,8 @@ CLI 优先级高于 env。
 
 ## Migration Plan
 
-1. 在 `loushang.foundation.observability` 建立 canonical 包，并保留
-   `loushang.observability` 兼容转发。
+1. 使用 canonical `loushang.foundation.observability` 包；旧
+   `loushang.observability` 入口已经退出。
    - `get_log(...)`
    - `log_context(...)`
    - `ObservabilityLog`

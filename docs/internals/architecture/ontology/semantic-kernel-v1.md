@@ -48,8 +48,9 @@ ontology facade             -> compiler + existing Memory ObjectStore
 ontology HarnessWork adapter -> public ontology contracts + HarnessWork
 ```
 
-Ontology production code must not import the legacy `loushang.protocol` or
-`loushang.observability` compatibility packages.
+Ontology production code must use canonical Foundation contracts and must not
+reintroduce the retired `loushang.protocol` or `loushang.observability`
+namespaces.
 
 ## Compatibility Boundary
 

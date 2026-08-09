@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from loushang.ai.types import Message, UserMessage
+from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import (
     CommitReceipt,
     ConversationDiagnostic,
@@ -53,7 +54,6 @@ from loushang.harness.transcript.writer import (
     Clock,
     IdFactory,
 )
-from loushang.protocol import JSONValue
 
 
 @dataclass(frozen=True)

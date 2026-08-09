@@ -355,7 +355,7 @@ async def test_session_manager_rejects_non_json_custom_metadata(tmp_path) -> Non
     import pytest
 
     from loushang.coding.session_manager import SessionManager
-    from loushang.protocol import JsonValueError
+    from loushang.foundation.json import JsonValueError
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -1158,9 +1158,9 @@ async def test_session_metadata_accepts_message_timestamps_in_milliseconds(
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
     from loushang.coding.session_manager import SessionManager
-    from loushang.observability import (
+    from loushang.foundation.observability import log_context
+    from loushang.foundation.observability._router import (
         get_problem_store,
-        log_context,
         reset_observability,
     )
 

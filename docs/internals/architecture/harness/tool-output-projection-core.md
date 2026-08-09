@@ -13,7 +13,6 @@ direction: the core contract belongs below Harness rather than being placed in
 
 ```text
 loushang.foundation.json       # canonical strict JSON value algebra
-  -> loushang.protocol         # migration compatibility facade
   -> loushang.ai               # durable AI message schema and codec
   -> loushang.agent            # raw tool result plus boundary projectors
   -> loushang.harness          # strict journals and shared presentation runtime
@@ -30,21 +29,22 @@ the runtime. It never implicitly converts `Path`, tuple, set, dataclass, enum,
 bytes, arbitrary `__dict__`, or an unknown object through `repr()`. Diagnostic
 error paths escape control characters and bound attacker-controlled key text.
 
-`loushang.protocol` is the migration compatibility facade for this contract.
-Its root and `json_value` submodule forward the canonical Foundation objects;
-they do not define a second type, exception, validator, or encoder.
+Today, all production consumers use canonical `loushang.foundation.json`; the
+retired `loushang.protocol` package no longer provides a second entry point.
 
 The contract lives below AI because AI, Agent, Harness, Work, Channel, and
 future products all need the same wire-value invariant. AI must not import
 Agent or Harness, and Agent must not import Harness.
 
 `loushang.foundation.observability` owns the canonical diagnostics runtime and
-uses `loushang.foundation.json.JSONValue`; `loushang.observability` is now only
-a forwarding compatibility namespace. Diagnostic projection remains an
+uses `loushang.foundation.json.JSONValue`. Diagnostic projection remains an
 explicit canonical policy for log and Problem details; it is not a second JSON
 algebra. `ai.structured` validates schemas through strict `foundation.json`,
 and transcript, event, journal, Channel, and product wire schemas must do the
 same.
+
+Foundation -> AI -> Agent -> Harness -> Product dependency direction is read
+from lower owner to higher consumer.
 
 ## Agent Ownership
 
@@ -136,7 +136,7 @@ and every new append remain strict JSON. The syntax-only
 `parse_legacy_jsonl_line()` helper is explicit and opt-in; it returns legacy
 constants without assigning migration semantics, while Coding owns the value
 conversion and writes the migrated temporary line with the strict Foundation
-JSON dumper through the Protocol compatibility facade.
+JSON dumper through the canonical Foundation contract.
 
 Harness journal codecs validate every encoded mapping before opening a durable
 write, reject non-standard constants and invalid strict values while reading,

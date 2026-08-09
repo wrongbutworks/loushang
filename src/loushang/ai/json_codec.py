@@ -18,7 +18,7 @@ from loushang.ai.types import (
     UsageCost,
     UserMessage,
 )
-from loushang.protocol import JSONValue, require_json_value
+from loushang.foundation.json import JSONValue, require_json_value
 
 
 def _get_key(payload: dict[str, Any], camel_key: str, snake_key: str) -> Any:

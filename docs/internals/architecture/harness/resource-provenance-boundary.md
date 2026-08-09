@@ -46,7 +46,7 @@ facades do not preserve an alternate import path.
 The former `loushang.coding.source_info` adapter is removed. Descriptor
 projection remains in `harness.resources.source`; executable, package,
 environment, and Git identity live in
-`loushang.foundation.observability.runtime_identity`.
+`loushang.foundation.observability.identity`.
 Coding supplies only package/module aliases and a display title through
 `coding.diagnostics.profile`.
 

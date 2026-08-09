@@ -22,6 +22,7 @@ from loushang.ai.types import (
     ToolResultMessage,
     UserMessage,
 )
+from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.events import (
     BranchSummaryCompleted,
     BranchSummaryStarted,
@@ -40,7 +41,6 @@ from loushang.harness.transcript.kinds import (
 )
 from loushang.harness.transcript.session import AgentTranscriptSession
 from loushang.harness.transcript.types import ApplicationMessage
-from loushang.protocol import JSONValue, require_json_value
 
 _THINKING_LEVEL_ORDER: tuple[ThinkingLevel, ...] = (
     "off",

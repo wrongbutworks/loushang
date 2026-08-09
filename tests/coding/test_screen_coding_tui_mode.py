@@ -19,6 +19,10 @@ from loushang.ai import (
 )
 from loushang.ai.model import ModelSelection
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
+from loushang.foundation.observability._router import (
+    configure_debug_logging,
+    reset_observability,
+)
 from loushang.harness.conversation import ConversationRecord
 from loushang.harness.permissions import permission_profile_snapshot
 from loushang.harness.transcript import (
@@ -33,7 +37,6 @@ from loushang.harnesstui.conversation.control import ConversationTextAction
 from loushang.harnesstui.testing.performance import (
     characterize_long_transcript_rendering,
 )
-from loushang.observability import configure_debug_logging, reset_observability
 from loushang.tui import RenderLoop, TerminalSize
 from loushang.tui.transcript import (
     AssistantMessageRecord,

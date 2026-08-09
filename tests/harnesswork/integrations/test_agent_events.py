@@ -425,10 +425,10 @@ def test_work_event_bridge_rejects_non_json_payloads() -> None:
 
     import pytest
 
+    from loushang.foundation.json import JsonValueError
     from loushang.harnesswork.integrations.agent_events import (
         project_agent_event_to_work_events,
     )
-    from loushang.protocol import JsonValueError
 
     cases = (
         (

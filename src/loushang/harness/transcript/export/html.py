@@ -26,6 +26,7 @@ from loushang.ai.types import (
     ToolResultMessage,
     UserMessage,
 )
+from loushang.foundation.json import JSONValue, require_json_mapping
 from loushang.harness.conversation import (
     CommandExecutionRecord,
     ConversationHeader,
@@ -56,7 +57,6 @@ from loushang.harness.transcript.types import (
     ContextCompactionCheckpoint,
     RecordAnnotationPatch,
 )
-from loushang.protocol import JSONValue, require_json_mapping
 
 from .ansi import render_ansi_pre
 from .markdown import render_markdown

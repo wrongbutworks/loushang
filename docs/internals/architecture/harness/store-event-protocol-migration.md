@@ -189,8 +189,8 @@ Harness neither imports nor wraps `loushang.work` or `loushang.channel` types.
 
 ## Store Protocol
 
-The protocol uses `typing.Protocol`; this decision does not move Store APIs to
-the `loushang.protocol` package.
+The protocol uses `typing.Protocol`; it is an interface declaration, not part
+of the retired broad `loushang.protocol` namespace.
 
 The persistence boundary is asynchronous because a conforming backend may use
 database or network I/O. Loaded snapshots and in-memory projections remain

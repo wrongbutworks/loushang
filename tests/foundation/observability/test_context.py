@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextvars import copy_context
 
-from loushang.observability import current_context, log_context
+from loushang.foundation.observability.context import current_context, log_context
 
 
 def test_log_context_binds_nested_values_and_restores_previous_context() -> None:

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from loushang.observability import (
-    InMemoryProblemStore,
-    ProblemRecord,
+from loushang.foundation.observability._router import InMemoryProblemStore
+from loushang.foundation.observability.problem_text import (
     format_problem_summary,
     is_problem_log_line,
     recent_problem_store_lines,
 )
+from loushang.foundation.observability.records import ProblemRecord
 
 
 def test_format_problem_summary_uses_stable_problem_text() -> None:

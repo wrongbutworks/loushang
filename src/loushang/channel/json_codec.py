@@ -5,9 +5,9 @@ from datetime import datetime
 from typing import Literal, cast
 
 from loushang.channel.types import ChannelEndpoint, ChannelEnvelope
+from loushang.foundation.json import JSONValue, require_json_mapping
 from loushang.harness.events.projection import RuntimeEventView
 from loushang.harnesswork.types import WorkEvent, WorkOperation
-from loushang.protocol import JSONValue, require_json_mapping
 
 
 def channel_envelope_to_json(envelope: ChannelEnvelope) -> dict[str, JSONValue]:

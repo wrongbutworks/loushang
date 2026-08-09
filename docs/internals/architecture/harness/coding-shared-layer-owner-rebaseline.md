@@ -78,7 +78,7 @@ ports.
 
 | Source region | LOC | Current shared owner or adopted mechanism | Classification | Next action |
 | --- | ---: | --- | --- | --- |
-| removed `coding.source_info` | 0 | `harness.resources.source` and profiled `observability.runtime_identity` | `shared adopted` | Runtime identity Product labels live in `coding.diagnostics.profile`; no source-info facade remains |
+| removed `coding.source_info` | 0 | `harness.resources.source` and profiled `foundation.observability.identity` | `shared adopted` | Runtime identity Product labels live in `coding.diagnostics.profile`; no source-info facade remains |
 | `coding.interaction.*` | 68 | HarnessTUI settings/schema primitives | `product adapter` | Retain Coding settings profile declarations |
 | `coding.model_selection`, `coding.model_selection_tui` | 105 | `ai.model`, `harness.session.model_selection`, and `harnesstui.selection` | `product adapter` | Retain preferred-model policy, persistence, and warning wording |
 | `coding.diagnostics.*`; removed `diag_export` and `observability` | 472 -> 138 | Harness diagnostics/export and observability runtime | `shared adopted` | Retain Coding debug-status presentation and its source/identity profile only |

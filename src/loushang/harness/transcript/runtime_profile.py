@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import cast
 
+from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import (
     CURRENT_CONVERSATION_FORMAT_VERSION,
     ConversationHeader,
@@ -47,7 +48,6 @@ from loushang.harness.transcript.lifecycle import (
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import AgentTranscriptRecord
-from loushang.protocol import JSONValue
 
 _STORE_SLOT = "conversation.store"
 _TRANSCRIPT_SLOT = "agent.transcript_profile"

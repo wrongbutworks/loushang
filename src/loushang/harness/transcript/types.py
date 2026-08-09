@@ -8,12 +8,12 @@ from typing import Literal, TypeAlias, cast
 
 from loushang.agent.types import AgentMessage, CustomAgentMessage
 from loushang.ai.types import ImagePart, Message, TextPart
+from loushang.foundation.json import JSONValue, require_json_mapping, require_json_value
 from loushang.harness.conversation.types import (
     CommandExecutionRecord,
     ConversationRecord,
     OpaquePayload,
 )
-from loushang.protocol import JSONValue, require_json_mapping, require_json_value
 
 ContentBlock: TypeAlias = TextPart | ImagePart
 ApplicationDeliveryMode: TypeAlias = Literal[

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.protocol import (
+from loushang.foundation.json import (
     JsonValueError,
     dump_json_value,
     require_json_mapping,

@@ -110,9 +110,9 @@ own a distinct, versioned command schema.
 
 ## Dependencies and Exclusions
 
-The Harness Host helpers may depend on `loushang.protocol` and the Python
-standard library. They must not import AI, Agent runtime, Channel, Coding,
-Method, Work, TUI, a Product Package, or a Product-specific Extension
+The Harness Host helpers may depend on `loushang.foundation.json` and the
+Python standard library. They must not import AI, Agent runtime, Channel,
+Coding, Method, Work, TUI, a Product Package, or a Product-specific Extension
 implementation.
 
 This boundary does not add a common RPC response envelope, command registry,

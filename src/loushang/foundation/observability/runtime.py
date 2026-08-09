@@ -7,10 +7,12 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from ._router import (
+    DebugLogSinkProtocol,
     InMemoryProblemStore,
+    TraceSinkProtocol,
     capture_observability,
     configure_debug_logging,
     configure_observability,
@@ -18,8 +20,16 @@ from ._router import (
     restore_observability,
 )
 from .context import log_context
-from .debug_log import DebugLogSink
-from .trace import TraceJSONLSink
+from .debug_sink import DebugLogSink
+from .trace_sink import TraceJSONLSink
+
+
+class _ConfigureKwargs(TypedDict, total=False):
+    debug_sink: DebugLogSinkProtocol | None
+    trace_sink: TraceSinkProtocol | None
+    problem_sink: InMemoryProblemStore | None
+    debug_scopes: frozenset[str]
+    trace_scopes: frozenset[str]
 
 
 @contextmanager
@@ -32,11 +42,11 @@ def observability_runtime_context(
     debug_scopes: frozenset[str] = frozenset(),
     trace_path: str | Path | None = None,
     trace_scopes: frozenset[str] = frozenset(),
-    problem_sink: object | None = None,
+    problem_sink: InMemoryProblemStore | None = None,
 ) -> Iterator[None]:
     """Temporarily bind sinks and context, then restore the previous state."""
 
-    configure_kwargs: dict[str, object] = {}
+    configure_kwargs: _ConfigureKwargs = {}
     if debug_path is not None:
         resolved_debug_path = Path(debug_path)
         configure_kwargs["debug_sink"] = DebugLogSink(

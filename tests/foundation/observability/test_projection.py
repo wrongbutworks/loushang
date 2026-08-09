@@ -6,15 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from loushang.observability import (
-    get_log,
+from loushang.foundation.observability import get_log, log_context
+from loushang.foundation.observability._router import (
     get_problem_store,
-    log_context,
     reset_observability,
 )
-from loushang.observability.problem import (
-    ensure_json_safe_mapping,
-    ensure_json_safe_value,
+from loushang.foundation.observability.projection import (
+    project_diagnostic_mapping,
+    project_diagnostic_value,
 )
 
 
@@ -83,7 +82,7 @@ def test_diagnostic_projection_converts_tuples_and_mapping_implementations() -> 
         }
     )
 
-    projected = ensure_json_safe_mapping(source, name="details")
+    projected = project_diagnostic_mapping(source, name="details")
 
     assert projected == {
         "items": [1, {"ok": True}],
@@ -102,9 +101,9 @@ def test_diagnostic_projection_preserves_current_scalar_subclass_policy() -> Non
     class Label(StrEnum):
         ONE = "one"
 
-    assert ensure_json_safe_value(Count.ONE) is Count.ONE
-    assert ensure_json_safe_value(Label.ONE) is Label.ONE
-    assert ensure_json_safe_value("\ud800") == "\ud800"
+    assert project_diagnostic_value(Count.ONE) is Count.ONE
+    assert project_diagnostic_value(Label.ONE) is Label.ONE
+    assert project_diagnostic_value("\ud800") == "\ud800"
 
 
 @pytest.mark.parametrize(
@@ -120,7 +119,7 @@ def test_diagnostic_projection_rejects_unknown_and_non_finite_values(
     message: str,
 ) -> None:
     with pytest.raises(TypeError, match=message):
-        ensure_json_safe_value(value)
+        project_diagnostic_value(value)
 
 
 def test_diagnostic_projection_rejects_non_string_mapping_keys() -> None:
@@ -128,4 +127,4 @@ def test_diagnostic_projection_rejects_non_string_mapping_keys() -> None:
         TypeError,
         match="details must be JSON-safe: keys must be strings",
     ):
-        ensure_json_safe_mapping({1: "value"})  # type: ignore[arg-type]
+        project_diagnostic_mapping({1: "value"})  # type: ignore[arg-type]

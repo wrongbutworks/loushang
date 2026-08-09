@@ -6106,7 +6106,8 @@ def test_run_cli_keeps_list_commands_out_of_default_tui(tmp_path) -> None:
 
 def test_run_cli_configures_observability_for_tui_debug_trace(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.observability import get_log, reset_observability
+    from loushang.foundation.observability import get_log
+    from loushang.foundation.observability._router import reset_observability
 
     reset_observability()
     runtime = FakeRuntime(FakeSession("session-1"))
@@ -8728,8 +8729,9 @@ def test_run_cli_reports_list_diagnostics_invalid_limit(tmp_path) -> None:
 
 def test_run_cli_bridges_startup_problem_to_diagnostics(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.foundation.observability import get_log
+    from loushang.foundation.observability._router import reset_observability
     from loushang.harness.diagnostics import DiagnosticsService
-    from loushang.observability import get_log, reset_observability
 
     class StartupProblemRuntime(FakeRuntime):
         async def new_session(self, *, cwd: str) -> FakeSession:

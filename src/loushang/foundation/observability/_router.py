@@ -65,43 +65,49 @@ class _ObservabilityConfig:
 
 _lock = RLock()
 _config = _ObservabilityConfig()
-_UNSET = object()
+
+
+class _Unset:
+    __slots__ = ()
+
+
+_UNSET = _Unset()
 
 
 def configure_observability(
     *,
-    debug_sink: DebugLogSinkProtocol | None | object = _UNSET,
-    trace_sink: TraceSinkProtocol | None | object = _UNSET,
-    problem_sink: InMemoryProblemStore | None | object = _UNSET,
+    debug_sink: DebugLogSinkProtocol | None | _Unset = _UNSET,
+    trace_sink: TraceSinkProtocol | None | _Unset = _UNSET,
+    problem_sink: InMemoryProblemStore | None | _Unset = _UNSET,
     debug_scopes: set[str]
     | frozenset[str]
     | list[str]
     | tuple[str, ...]
     | None
-    | object = _UNSET,
+    | _Unset = _UNSET,
     trace_scopes: set[str]
     | frozenset[str]
     | list[str]
     | tuple[str, ...]
     | None
-    | object = _UNSET,
+    | _Unset = _UNSET,
 ) -> None:
     with _lock:
-        if problem_sink is None:
-            _config.problem_store = InMemoryProblemStore()
-        elif problem_sink is not _UNSET:
-            _config.problem_store = problem_sink
-        if debug_sink is not _UNSET:
+        if not isinstance(problem_sink, _Unset):
+            _config.problem_store = (
+                InMemoryProblemStore() if problem_sink is None else problem_sink
+            )
+        if not isinstance(debug_sink, _Unset):
             _config.debug_sink = debug_sink
-            if debug_sink is None and debug_scopes is _UNSET:
+            if debug_sink is None and isinstance(debug_scopes, _Unset):
                 _config.debug_scopes = frozenset()
-        if trace_sink is not _UNSET:
+        if not isinstance(trace_sink, _Unset):
             _config.trace_sink = trace_sink
-            if trace_sink is None and trace_scopes is _UNSET:
+            if trace_sink is None and isinstance(trace_scopes, _Unset):
                 _config.trace_scopes = frozenset()
-        if debug_scopes is not _UNSET:
+        if not isinstance(debug_scopes, _Unset):
             _config.debug_scopes = _normalize_scopes(debug_scopes)
-        if trace_scopes is not _UNSET:
+        if not isinstance(trace_scopes, _Unset):
             _config.trace_scopes = _normalize_scopes(trace_scopes)
 
 

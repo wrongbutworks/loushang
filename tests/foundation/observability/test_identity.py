@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from loushang.observability.runtime_identity import collect_runtime_identity
+from loushang.foundation.observability.identity import collect_runtime_identity
 
 
 def test_collect_runtime_identity_is_not_coding_specific(tmp_path) -> None:

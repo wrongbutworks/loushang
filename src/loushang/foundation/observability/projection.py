@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from ..json import JSONValue
 
 
-def ensure_json_safe_mapping(
+def project_diagnostic_mapping(
     value: Mapping[str, object] | None,
     *,
     name: str = "details",
@@ -18,11 +18,11 @@ def ensure_json_safe_mapping(
     for key, item in value.items():
         if not isinstance(key, str):
             raise TypeError(f"{name} must be JSON-safe: keys must be strings")
-        result[key] = ensure_json_safe_value(item, name=f"{name}.{key}")
+        result[key] = project_diagnostic_value(item, name=f"{name}.{key}")
     return result
 
 
-def ensure_json_safe_value(value: object, *, name: str = "value") -> JSONValue:
+def project_diagnostic_value(value: object, *, name: str = "value") -> JSONValue:
     if value is None or isinstance(value, str | bool | int):
         return value
 
@@ -32,12 +32,12 @@ def ensure_json_safe_value(value: object, *, name: str = "value") -> JSONValue:
         return value
 
     if isinstance(value, list | tuple):
-        return [ensure_json_safe_value(item, name=f"{name}[]") for item in value]
+        return [project_diagnostic_value(item, name=f"{name}[]") for item in value]
 
     if isinstance(value, Mapping):
-        return ensure_json_safe_mapping(value, name=name)
+        return project_diagnostic_mapping(value, name=name)
 
     raise TypeError(f"{name} must be JSON-safe: got {type(value).__name__}")
 
 
-__all__ = ["ensure_json_safe_mapping", "ensure_json_safe_value"]
+__all__ = ["project_diagnostic_mapping", "project_diagnostic_value"]

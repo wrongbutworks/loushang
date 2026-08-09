@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from loushang.foundation.observability.records import ProblemRecord
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.diagnostics.observability_bridge import (
     DiagnosticsProblemStore,
     diagnostic_source_for_problem,
 )
-from loushang.observability import ProblemRecord
 
 
 def _problem(

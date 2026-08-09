@@ -4,14 +4,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar, cast
 
+from loushang.foundation.json import JSONValue, JsonValueError, require_json_mapping
+from loushang.foundation.json import require_json_value as snapshot_json_value
 from loushang.harness.conversation.types import (
     ConversationHeader,
     ConversationRecord,
     OpaquePayload,
 )
 from loushang.harness.journal import JournalCodecError
-from loushang.protocol import JSONValue, JsonValueError, require_json_mapping
-from loushang.protocol import require_json_value as snapshot_json_value
 
 PayloadT = TypeVar("PayloadT")
 

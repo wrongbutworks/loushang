@@ -497,7 +497,7 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
         "loushang.harnesstui",
         "loushang.tui",
         "loushang.harness",
-        "loushang.protocol",
+        "loushang.foundation.json",
     )
     offenders = [
         f"{path.as_posix()} imports {imported}"
@@ -5194,7 +5194,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
         "Tool Output Projection Core Boundary",
         "implementation complete for integration into `lane/harness`",
         "`loushang.foundation.json` owns `JSONValue`",
-        "`loushang.protocol` is the migration compatibility facade",
+        "all production consumers use canonical `loushang.foundation.json`",
         "`ToolOutputProjector[TDetails]`",
         "Transcript, event, and hook projections are snapshotted independently",
         "`tool_output_projection_failed`",
@@ -5205,7 +5205,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
         "`loushang.foundation.observability` owns the canonical diagnostics runtime",
         "`ai.structured` validates schemas through strict `foundation.json`",
         "Product adapters still own tool-specific detail vocabulary",
-        "Foundation -> Protocol compatibility -> AI -> Agent -> Harness -> Product dependency direction",
+        "Foundation -> AI -> Agent -> Harness -> Product dependency direction",
     }
     assert (
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
@@ -5223,7 +5223,6 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
 
     from loushang.agent import AgentToolResult, ToolOutputProjector
     from loushang.foundation.json import JSONValue, require_json_value
-    from loushang.protocol import JSONValue as CompatibilityJSONValue
 
     assert (
         AgentToolResult.__annotations__["projector"] == "ToolOutputProjector[TDetails]"
@@ -5231,7 +5230,6 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
     assert ToolOutputProjector is not None
     assert require_json_value({"ok": True}) == {"ok": True}
     assert JSONValue is not None
-    assert CompatibilityJSONValue is JSONValue
 
 
 def test_legacy_observability_problem_imports_are_retired() -> None:

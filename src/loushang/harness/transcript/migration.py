@@ -10,6 +10,7 @@ from typing import Literal, cast
 
 from loushang.ai.json_codec import deserialize_content_part, deserialize_message
 from loushang.ai.types import ImagePart, TextPart
+from loushang.foundation.json import JSONValue, JsonValueError, require_json_mapping
 from loushang.harness.conversation import (
     CURRENT_CONVERSATION_FORMAT_VERSION,
     CommandExecutionRecord,
@@ -52,7 +53,6 @@ from loushang.harness.transcript.types import (
     RecordAnnotationPatch,
     ThinkingSelectionSnapshot,
 )
-from loushang.protocol import JSONValue, JsonValueError, require_json_mapping
 
 CURRENT_SESSION_VERSION = 3
 LEGACY_SESSION_OPAQUE_KIND = "loushang.session.opaque"

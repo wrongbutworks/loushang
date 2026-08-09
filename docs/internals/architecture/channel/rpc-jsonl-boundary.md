@@ -40,8 +40,8 @@ own the conversion from their input into a `WorkOperation`, operation dispatch,
 event projection, host policy, and rendering. Coding keeps its legacy RPC
 command table, Coding event schema, and extension UI widget vocabulary.
 
-The adapter may depend on `loushang.work` and `loushang.protocol` only. It must
-not import AI, Agent, Harness, Coding, Method, or TUI runtime packages.
+The adapter may depend on `loushang.work` and `loushang.foundation.json` only.
+It must not import AI, Agent, Harness, Coding, Method, or TUI runtime packages.
 
 ## Evolution
 
