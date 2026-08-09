@@ -287,6 +287,101 @@ write-back failure semantics 和 Decision-Centric contracts。调研日期为 20
 产生的可重建投影，不是新的业务真相。原始来源也不能越过 mapping/provenance 直接成为
 published ontology fact。
 
+### 多业务系统的局部 Source View 与状态 Authority
+
+> 目标架构提案，待后续 ARD 决策。本节不修改当前已接受的 FactStore authority contract，
+> 但记录了继续建设 Source Adapter、Action 和 multi-source materialization 前必须解决的
+> 边界问题。
+
+ERP、HR、CRM、OA 等业务系统不应被统称为 Ontology projection。对每个业务系统自身而言，
+它的数据库仍是其职责范围内的 system of record；从企业级 Ontology 视角看，每个系统只
+提供企业现实的一部分观察。经过特定应用版本的 Adapter 和 Mapping 后，该观察形成
+`MappedSourceSnapshot`，即一个局部 `Source View`。`ServingProjection` 这个名称只保留给
+Ontology 合成后面向查询的统一对象视图：
+
+```text
+ERP / HR / CRM / OA
+        |
+        | batch / CDC / stream / API / polling
+        v
+Application-version Adapters + Mappings
+        |
+        v
+Mapped Source Views
+        |
+        | identity + authority + conflict resolution
+        v
+Serving Projection
+        |
+        v
+Product / service / human / Agent
+```
+
+因此，一个对象不必由某个业务系统完整提供。状态 Authority 应至少能够按对象存在、属性
+和 Link 声明，而不是只按 ObjectType 粗粒度声明：
+
+```text
+Project existence       <- OA / project system
+Project.budget          <- ERP                    (source-backed)
+Project.customer        <- CRM                    (source-backed)
+Project.manager         <- HR                     (source-backed)
+Project.approvals       <- OA                     (source-backed)
+Project.risk_level      <- RiskFunction/v3        (derived)
+Project.director_note   <- Ontology               (ontology-owned)
+```
+
+`source-backed`、`ontology-owned` 和 `derived` 是 Authority 分类；`asserted`、`derived` 和
+`inferred` 描述断言如何产生。两组概念不能混用。第一版应坚持一个可写状态只有一个声明的
+Authority；多个来源提供同一属性时，必须配置主来源或显式报告冲突，不能按接入顺序静默
+覆盖。Derived 状态不可直接修改，source-backed 状态只能经对应 write-back contract 修改，
+ontology-owned 状态才由 Ontology 自己持久化。
+
+局部 Source View 的合成还依赖 canonical identity。Adapter 必须把各系统的 source record
+identity 映射到稳定对象 ID，并保留 alternate keys；无法可靠确认两个记录为同一对象时，
+宁可保持分离并进入 identity-resolution 流程，也不能仅凭姓名或显示值自动合并。
+
+多来源 projection 不能继续只使用单一 `fact_watermark` 表达新鲜度。建议的重建坐标应是
+显式 revision vector：
+
+```text
+MaterializationCut
+  schema_version
+  mapping_versions
+  source_revisions:
+    ERP: transaction-108
+    HR: transaction-76
+    CRM: cursor-991
+    OA: unknown
+  semantic_fact_watermark
+  managed_edit_watermark
+  valid_at / recorded_at
+```
+
+不同系统通常不存在共同数据库事务；`MaterializationCut` 表达的是一次可重现的输入版本
+组合，而不是虚构的全局原子时刻。Query freshness 也应区分 `current`、`stale`、`unknown`
+和 `degraded`，并只聚合本次查询实际依赖的 source/property/link coverage。Projection 追平
+FactStore 只说明内部物化完成，不能证明 ERP、HR、CRM 或 OA 已被完整观察。
+
+写入同样按 Authority 路由：修改预算进入 ERP Adapter，调整人员进入 HR Adapter，审批
+进入 OA Adapter，Ontology 自有备注进入 semantic Fact/Edit store，派生风险由已发布逻辑
+重新计算。跨多个 Authority 的 Action 是显式的多系统流程或 saga，不能宣称数据库级原子
+事务；Ontology 只产出分区后的 `MutationPlan`、revision/precondition 和 capability
+requirements，外部 effect 由 Product Adapter 与 Harness/HarnessWork 执行。
+
+这个边界意味着需要重新审视“所有外部语义状态都逐属性写入 FactStore”的范围。外部
+Source View 可以通过 source binding、source revision、source record、mapping version 和
+field reference 提供 lineage，不必为每个普通源字段复制完整 Fact envelope。FactStore 仍
+适合承载 ontology-owned 状态、重要 asserted claims、derived/inferred facts、Decision 与
+Outcome 等需要双时态、证据和修正链的语义记录；Projection 始终是可删除重建的派生状态。
+
+该提案依据 2026-08-09 对 Palantir 官方
+[Data Connection](https://www.palantir.com/docs/foundry/data-connection/overview)、
+[How user edits are applied](https://www.palantir.com/docs/foundry/object-edits/how-edits-applied)
+和 [Materializations](https://www.palantir.com/docs/foundry/object-edits/materializations) 的复核，
+并与本地只读参考 `operational-ontology` 对 source-backed、ontology-owned、derived authority
+以及 re-index overlay 的实现进行对照。它是面向 Loushang 的架构推导，不声称复刻 Palantir
+未公开的内部实现。
+
 Policy Gate 也是逻辑边界，不表示 ontology 包拥有身份系统。Ontology 定义 policy、marking
 和可见性语义并对 query/mutation 产出 policy decision；宿主提供经过认证的 actor context，
 Harness/Product 强制执行 approval、capability 和外部 effect 权限。两侧必须共享同一稳定
