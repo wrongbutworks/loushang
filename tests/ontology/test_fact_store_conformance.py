@@ -36,7 +36,7 @@ def _schema():
             package_id="test.facts",
             namespace="urn:test:facts",
             version="1.0.0",
-            object_types=[ObjectTypeDefinition("Asset")],
+            object_types=[ObjectTypeDefinition("Asset", semantic_id="asset")],
         )
     )
 

@@ -5,24 +5,30 @@
 Accepted contract for offline comparison of two compiled Semantic Kernel
 schemas. It describes compatibility; it does not mutate runtime state or data.
 
-> [ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
-> replaces the target name-as-identity rule with explicit stable semantic IDs.
-> The current comparator remains name-keyed until that implementation slice is
-> complete; this document describes that transitional implementation.
+This contract implements the stable semantic identity decision in
+[ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md).
+It covers object types, their properties, and link types. Interface types remain
+name-keyed until a separate demonstrated need extends their identity contract;
+their structural properties therefore do not accept `semantic_id` in schema v2.
 
 ## Identity and Lineage
 
 - `package_id` identifies one schema lineage. Schemas with different package
   IDs cannot be compared.
 - `namespace` belongs to that lineage; changing it is a breaking change.
-- object-type, property, and link-type `name` values are stable API keys.
-- rename inference is deliberately absent. A renamed key appears as removal plus
-  addition.
+- every object type, object property, and link type declares an explicit
+  package-local `semantic_id`;
+- those IDs share one package-wide namespace and must be unique; the globally
+  resolvable identity is schema `namespace` plus `semantic_id`;
+- `name` remains versioned API metadata. Keeping the ID while changing the name
+  produces an explicit breaking rename change;
+- changing the ID means replacing semantic identity and therefore appears as
+  removal plus addition. The comparator never guesses renames from shape;
 - schema versions are reported in the diff but the comparator does not enforce
   SemVer or require versions to increase.
 
-This avoids heuristic rename detection and avoids introducing UUID identities
-before a concrete need exists.
+Semantic IDs use the same compact identifier grammar as other schema keys; they
+are not generated UUIDs and are never derived silently from a mutable name.
 
 ## Public Contract
 
@@ -36,8 +42,10 @@ diff = compare_schemas(old, new)
 
 The pure comparison returns an immutable `SchemaDiff` containing immutable,
 path-addressed `SchemaChange` records. Its JSON format identifier is
-`loushang.ontology.schema-diff/v1`. Change ordering is stable by path and code;
+`loushang.ontology.schema-diff/v2`. Compiled schema JSON uses
+`loushang.ontology.schema/v2`. Change ordering is stable by path and code;
 object, property, and link declaration order does not affect the result.
+Object/property/link paths are keyed by `semantic_id`, not display or API name.
 
 ## Impact Classes
 
@@ -45,7 +53,7 @@ object, property, and link declaration order does not affect the result.
 | --- | --- | --- |
 | `NON_BREAKING` | existing consumers and instances remain valid | add object type, optional property, or optional link; relax required or abstract |
 | `BEHAVIORAL` | compatibility remains but presentation or runtime behavior may differ | default, index, description, icon, display name, inverse name, or temporal declaration |
-| `BREAKING` | existing consumers, instances, or graph contracts may become invalid | removal; type change; required/unique tightening; abstract tightening; interface contract, parent, endpoint, cardinality, namespace change |
+| `BREAKING` | existing consumers, instances, or graph contracts may become invalid | rename or removal; type change; required/unique tightening; abstract tightening; interface contract, parent, endpoint, cardinality, namespace change |
 
 Adding a required property or required link is breaking. Adding a new object
 type is non-breaking even when the new type itself contains required fields,
@@ -64,7 +72,9 @@ The comparator:
 
 - consumes only two `CompiledOntologySchema` values;
 - performs no I/O and reads no Store or global registry;
-- compares collections by stable names rather than declaration position;
+- matches object types, object properties, and link types by stable semantic ID
+  rather than name or declaration position;
+- continues to compare interface contracts by name;
 - compares JSON defaults canonically;
 - emits detached strict-JSON `before` and `after` values;
 - produces the same canonical JSON for the same two schema snapshots.

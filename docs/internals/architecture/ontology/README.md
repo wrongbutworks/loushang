@@ -6,15 +6,16 @@ The ontology subsystem has completed the schema kernel, the Wave 2A
 Fact/Provenance spine, the single-authority reset in
 [ARD-001](ARD-001-factstore-semantic-authority.md), and the Phase 2 port,
 projection, and adapter split in
-[ARD-002](ARD-002-ports-immutable-projection-and-sqlite-v2.md). The first
-correctness slice of
+[ARD-002](ARD-002-ports-immutable-projection-and-sqlite-v2.md). The
+materialization-correctness and stable semantic identity slices of
 [ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
-is also implemented.
+are also implemented.
 
 It currently provides:
 
 - versioned schema drafts, compilation, immutable snapshots, diagnostics, and
-  schema diff;
+  schema diff, with package-local stable semantic IDs for object types,
+  object properties, and link types;
 - an append-only bitemporal FactStore with provenance and lineage;
 - pure, deterministic Fact commit planning and atomic bitemporal
   `FactSelection`;
@@ -51,11 +52,12 @@ mapped source inputs, and separating a projection's build cut from observed
 freshness. It is tracked in
 [#439](https://github.com/zhnt/loushang/issues/439).
 
-Only the materialization-correctness slice is implemented: atomic Fact
-selection, immutable build coordinates, explicit Fact freshness, and
-snapshot-consistent SQLite reads. Stable semantic IDs, `StateAuthority`, mapped
-source input, `MaterializationCut`, and multi-source `ValueOrigin` remain next
-steps. The runtime shape below therefore remains Fact-only.
+Two ARD-003 foundation slices are implemented: materialization correctness
+(atomic Fact selection, immutable build coordinates, explicit Fact freshness,
+and snapshot-consistent SQLite reads) and stable semantic identity (schema v2
+plus identity-based schema-diff v2). `StateAuthority`, mapped source input,
+`MaterializationCut`, and multi-source `ValueOrigin` remain next steps. The
+runtime shape below therefore remains Fact-only.
 
 ## Runtime Shape
 
@@ -119,7 +121,8 @@ product subsystem.
 
 ## Source Ownership
 
-- `schema/`: drafts, compiler, immutable schemas, diagnostics, and diff;
+- `schema/`: drafts, stable semantic identity, compiler, immutable schemas,
+  diagnostics, and diff;
 - `facts/model.py`: immutable Fact envelope, typed assertions, provenance, and
   FactBatch;
 - `facts/ports.py`: Fact read/write ports, stable commit values, and atomic

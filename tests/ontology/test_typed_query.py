@@ -44,17 +44,41 @@ def _projected_assets():
             object_types=[
                 ObjectTypeDefinition(
                     "Asset",
+                    semantic_id="asset",
                     properties=[
-                        PropertyDefinition("code", ValueType.STRING, indexed=True),
-                        PropertyDefinition("score", ValueType.INTEGER),
+                        PropertyDefinition(
+                            "code",
+                            ValueType.STRING,
+                            semantic_id="asset.code",
+                            indexed=True,
+                        ),
+                        PropertyDefinition(
+                            "score",
+                            ValueType.INTEGER,
+                            semantic_id="asset.score",
+                        ),
                     ],
                 ),
                 ObjectTypeDefinition(
                     "Owner",
-                    properties=[PropertyDefinition("name", ValueType.STRING)],
+                    semantic_id="owner",
+                    properties=[
+                        PropertyDefinition(
+                            "name",
+                            ValueType.STRING,
+                            semantic_id="owner.name",
+                        )
+                    ],
                 ),
             ],
-            link_types=[LinkTypeDefinition("owned_by", "Asset", "Owner")],
+            link_types=[
+                LinkTypeDefinition(
+                    "owned_by",
+                    "Asset",
+                    "Owner",
+                    semantic_id="asset.owned_by",
+                )
+            ],
         )
     )
     records = [

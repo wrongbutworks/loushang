@@ -43,25 +43,40 @@ def _schema():
             object_types=[
                 ObjectTypeDefinition(
                     "Asset",
+                    semantic_id="asset",
                     properties=[
                         PropertyDefinition(
                             "code",
                             ValueType.STRING,
+                            semantic_id="asset.code",
                             required=True,
                             unique=True,
                         ),
-                        PropertyDefinition("score", ValueType.INTEGER),
-                        PropertyDefinition("observed_at", ValueType.DATETIME),
-                        PropertyDefinition("payload", ValueType.JSON),
+                        PropertyDefinition(
+                            "score",
+                            ValueType.INTEGER,
+                            semantic_id="asset.score",
+                        ),
+                        PropertyDefinition(
+                            "observed_at",
+                            ValueType.DATETIME,
+                            semantic_id="asset.observed_at",
+                        ),
+                        PropertyDefinition(
+                            "payload",
+                            ValueType.JSON,
+                            semantic_id="asset.payload",
+                        ),
                     ],
                 ),
-                ObjectTypeDefinition("Owner"),
+                ObjectTypeDefinition("Owner", semantic_id="owner"),
             ],
             link_types=[
                 LinkTypeDefinition(
                     "owned_by",
                     "Asset",
                     "Owner",
+                    semantic_id="asset.owned_by",
                     cardinality=LinkCardinality.MANY_TO_ONE,
                 )
             ],
@@ -197,11 +212,18 @@ def test_projection_reports_shape_property_and_endpoint_failures_together() -> N
 @pytest.mark.parametrize(
     ("definition", "value"),
     [
-        (PropertyDefinition("value", ValueType.STRING), 1),
-        (PropertyDefinition("value", ValueType.INTEGER), True),
-        (PropertyDefinition("value", ValueType.NUMBER), "1"),
-        (PropertyDefinition("value", ValueType.BOOLEAN), 1),
-        (PropertyDefinition("value", ValueType.DATETIME), "not-a-date"),
+        (PropertyDefinition("value", ValueType.STRING, semantic_id="value"), 1),
+        (PropertyDefinition("value", ValueType.INTEGER, semantic_id="value"), True),
+        (PropertyDefinition("value", ValueType.NUMBER, semantic_id="value"), "1"),
+        (PropertyDefinition("value", ValueType.BOOLEAN, semantic_id="value"), 1),
+        (
+            PropertyDefinition(
+                "value",
+                ValueType.DATETIME,
+                semantic_id="value",
+            ),
+            "not-a-date",
+        ),
     ],
 )
 def test_projection_validates_schema_value_types(
@@ -213,7 +235,13 @@ def test_projection_validates_schema_value_types(
             package_id="test.values",
             namespace="urn:test:values",
             version="1.0.0",
-            object_types=[ObjectTypeDefinition("Value", properties=[definition])],
+            object_types=[
+                ObjectTypeDefinition(
+                    "Value",
+                    semantic_id="value-object",
+                    properties=[definition],
+                )
+            ],
         )
     )
     records = [
@@ -238,17 +266,23 @@ def test_projection_enforces_required_unique_abstract_and_inherited_properties()
             object_types=[
                 ObjectTypeDefinition(
                     "Base",
+                    semantic_id="base",
                     properties=[
                         PropertyDefinition(
                             "code",
                             ValueType.STRING,
+                            semantic_id="base.code",
                             required=True,
                             unique=True,
                         )
                     ],
                     abstract=True,
                 ),
-                ObjectTypeDefinition("Asset", parent_types=["Base"]),
+                ObjectTypeDefinition(
+                    "Asset",
+                    semantic_id="asset",
+                    parent_types=["Base"],
+                ),
             ],
         )
     )
@@ -291,10 +325,18 @@ def test_projection_enforces_link_cardinality(
             namespace="urn:test:cardinality",
             version="1.0.0",
             object_types=[
-                ObjectTypeDefinition("Source"),
-                ObjectTypeDefinition("Target"),
+                ObjectTypeDefinition("Source", semantic_id="source"),
+                ObjectTypeDefinition("Target", semantic_id="target"),
             ],
-            link_types=[LinkTypeDefinition("relates", "Source", "Target", cardinality)],
+            link_types=[
+                LinkTypeDefinition(
+                    "relates",
+                    "Source",
+                    "Target",
+                    cardinality,
+                    semantic_id="source.relates",
+                )
+            ],
         )
     )
     records = [
@@ -324,11 +366,17 @@ def test_projection_enforces_required_links() -> None:
             namespace="urn:test:required-link",
             version="1.0.0",
             object_types=[
-                ObjectTypeDefinition("Source"),
-                ObjectTypeDefinition("Target"),
+                ObjectTypeDefinition("Source", semantic_id="source"),
+                ObjectTypeDefinition("Target", semantic_id="target"),
             ],
             link_types=[
-                LinkTypeDefinition("target", "Source", "Target", required=True)
+                LinkTypeDefinition(
+                    "target",
+                    "Source",
+                    "Target",
+                    semantic_id="source.target",
+                    required=True,
+                )
             ],
         )
     )

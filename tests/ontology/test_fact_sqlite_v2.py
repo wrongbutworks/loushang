@@ -42,8 +42,13 @@ def _schema():
             object_types=[
                 ObjectTypeDefinition(
                     "Asset",
+                    semantic_id="asset",
                     properties=[
-                        PropertyDefinition("signal", ValueType.JSON),
+                        PropertyDefinition(
+                            "signal",
+                            ValueType.JSON,
+                            semantic_id="asset.signal",
+                        ),
                     ],
                 )
             ],

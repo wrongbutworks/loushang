@@ -17,7 +17,7 @@ from loushang.ontology.schema.compiler import (
 )
 from loushang.ontology.schema.definitions import SchemaVersion
 
-SCHEMA_DIFF_FORMAT = "loushang.ontology.schema-diff/v1"
+SCHEMA_DIFF_FORMAT = "loushang.ontology.schema-diff/v2"
 
 
 class ChangeImpact(str, Enum):
@@ -166,33 +166,43 @@ def _compare_object_types(
     new: CompiledOntologySchema,
     changes: list[SchemaChange],
 ) -> None:
-    old_types = {object_type.name: object_type for object_type in old.object_types}
-    new_types = {object_type.name: object_type for object_type in new.object_types}
+    old_types = {
+        object_type.semantic_id: object_type for object_type in old.object_types
+    }
+    new_types = {
+        object_type.semantic_id: object_type for object_type in new.object_types
+    }
 
-    for name in sorted(old_types.keys() - new_types.keys()):
-        path = _object_path(name)
+    for semantic_id in sorted(old_types.keys() - new_types.keys()):
+        object_type = old_types[semantic_id]
+        path = _object_path(semantic_id)
         _add_change(
             changes,
             code="object_type_removed",
             path=path,
             impact=ChangeImpact.BREAKING,
-            message=f"object type '{name}' was removed",
-            before=_object_snapshot(old_types[name]),
+            message=f"object type '{object_type.name}' was removed",
+            before=_object_snapshot(object_type),
             after=None,
         )
-    for name in sorted(new_types.keys() - old_types.keys()):
-        path = _object_path(name)
+    for semantic_id in sorted(new_types.keys() - old_types.keys()):
+        object_type = new_types[semantic_id]
+        path = _object_path(semantic_id)
         _add_change(
             changes,
             code="object_type_added",
             path=path,
             impact=ChangeImpact.NON_BREAKING,
-            message=f"object type '{name}' was added",
+            message=f"object type '{object_type.name}' was added",
             before=None,
-            after=_object_snapshot(new_types[name]),
+            after=_object_snapshot(object_type),
         )
-    for name in sorted(old_types.keys() & new_types.keys()):
-        _compare_object_type(old_types[name], new_types[name], changes)
+    for semantic_id in sorted(old_types.keys() & new_types.keys()):
+        _compare_object_type(
+            old_types[semantic_id],
+            new_types[semantic_id],
+            changes,
+        )
 
 
 def _compare_object_type(
@@ -200,7 +210,17 @@ def _compare_object_type(
     new: CompiledObjectTypeDefinition,
     changes: list[SchemaChange],
 ) -> None:
-    path = _object_path(old.name)
+    path = _object_path(old.semantic_id)
+    if old.name != new.name:
+        _field_change(
+            changes,
+            code="object_type_name_changed",
+            path=f"{path}.name",
+            impact=ChangeImpact.BREAKING,
+            message=f"object type '{old.name}' was renamed to '{new.name}'",
+            before=old.name,
+            after=new.name,
+        )
     if old.parent_types != new.parent_types:
         _field_change(
             changes,
@@ -278,49 +298,63 @@ def _compare_properties(
     new_object: CompiledObjectTypeDefinition,
     changes: list[SchemaChange],
 ) -> None:
-    old_properties = {prop.name: prop for prop in old_object.properties}
-    new_properties = {prop.name: prop for prop in new_object.properties}
+    old_properties = {_property_id(prop): prop for prop in old_object.properties}
+    new_properties = {_property_id(prop): prop for prop in new_object.properties}
 
-    for name in sorted(old_properties.keys() - new_properties.keys()):
-        path = _property_path(old_object.name, name)
+    for semantic_id in sorted(old_properties.keys() - new_properties.keys()):
+        prop = old_properties[semantic_id]
+        path = _property_path(old_object.semantic_id, semantic_id)
         _add_change(
             changes,
             code="property_removed",
             path=path,
             impact=ChangeImpact.BREAKING,
-            message=f"property '{old_object.name}.{name}' was removed",
-            before=_property_snapshot(old_properties[name]),
+            message=f"property '{old_object.name}.{prop.name}' was removed",
+            before=_property_snapshot(prop),
             after=None,
         )
-    for name in sorted(new_properties.keys() - old_properties.keys()):
-        prop = new_properties[name]
-        path = _property_path(new_object.name, name)
+    for semantic_id in sorted(new_properties.keys() - old_properties.keys()):
+        prop = new_properties[semantic_id]
+        path = _property_path(new_object.semantic_id, semantic_id)
         required = prop.required
         _add_change(
             changes,
             code="required_property_added" if required else "property_added",
             path=path,
             impact=ChangeImpact.BREAKING if required else ChangeImpact.NON_BREAKING,
-            message=f"property '{new_object.name}.{name}' was added",
+            message=f"property '{new_object.name}.{prop.name}' was added",
             before=None,
             after=_property_snapshot(prop),
         )
-    for name in sorted(old_properties.keys() & new_properties.keys()):
+    for semantic_id in sorted(old_properties.keys() & new_properties.keys()):
         _compare_property(
-            old_object.name,
-            old_properties[name],
-            new_properties[name],
+            old_object,
+            old_properties[semantic_id],
+            new_properties[semantic_id],
             changes,
         )
 
 
 def _compare_property(
-    object_name: str,
+    object_type: CompiledObjectTypeDefinition,
     old: CompiledPropertyDefinition,
     new: CompiledPropertyDefinition,
     changes: list[SchemaChange],
 ) -> None:
-    path = _property_path(object_name, old.name)
+    object_name = object_type.name
+    path = _property_path(object_type.semantic_id, _property_id(old))
+    if old.name != new.name:
+        _field_change(
+            changes,
+            code="property_name_changed",
+            path=f"{path}.name",
+            impact=ChangeImpact.BREAKING,
+            message=(
+                f"property '{object_name}.{old.name}' was renamed to '{new.name}'"
+            ),
+            before=old.name,
+            after=new.name,
+        )
     if old.value_type is not new.value_type:
         _field_change(
             changes,
@@ -389,35 +423,40 @@ def _compare_link_types(
     new: CompiledOntologySchema,
     changes: list[SchemaChange],
 ) -> None:
-    old_links = {link.name: link for link in old.link_types}
-    new_links = {link.name: link for link in new.link_types}
+    old_links = {link.semantic_id: link for link in old.link_types}
+    new_links = {link.semantic_id: link for link in new.link_types}
 
-    for name in sorted(old_links.keys() - new_links.keys()):
-        path = _link_path(name)
+    for semantic_id in sorted(old_links.keys() - new_links.keys()):
+        link = old_links[semantic_id]
+        path = _link_path(semantic_id)
         _add_change(
             changes,
             code="link_type_removed",
             path=path,
             impact=ChangeImpact.BREAKING,
-            message=f"link type '{name}' was removed",
-            before=_link_snapshot(old_links[name]),
+            message=f"link type '{link.name}' was removed",
+            before=_link_snapshot(link),
             after=None,
         )
-    for name in sorted(new_links.keys() - old_links.keys()):
-        link = new_links[name]
-        path = _link_path(name)
+    for semantic_id in sorted(new_links.keys() - old_links.keys()):
+        link = new_links[semantic_id]
+        path = _link_path(semantic_id)
         required = link.required
         _add_change(
             changes,
             code="required_link_type_added" if required else "link_type_added",
             path=path,
             impact=ChangeImpact.BREAKING if required else ChangeImpact.NON_BREAKING,
-            message=f"link type '{name}' was added",
+            message=f"link type '{link.name}' was added",
             before=None,
             after=_link_snapshot(link),
         )
-    for name in sorted(old_links.keys() & new_links.keys()):
-        _compare_link_type(old_links[name], new_links[name], changes)
+    for semantic_id in sorted(old_links.keys() & new_links.keys()):
+        _compare_link_type(
+            old_links[semantic_id],
+            new_links[semantic_id],
+            changes,
+        )
 
 
 def _compare_interface_types(
@@ -483,7 +522,17 @@ def _compare_link_type(
     new: CompiledLinkTypeDefinition,
     changes: list[SchemaChange],
 ) -> None:
-    path = _link_path(old.name)
+    path = _link_path(old.semantic_id)
+    if old.name != new.name:
+        _field_change(
+            changes,
+            code="link_type_name_changed",
+            path=f"{path}.name",
+            impact=ChangeImpact.BREAKING,
+            message=f"link type '{old.name}' was renamed to '{new.name}'",
+            before=old.name,
+            after=new.name,
+        )
     for field_name, code, before, after in (
         ("source_type", "link_source_type_changed", old.source_type, new.source_type),
         ("target_type", "link_target_type_changed", old.target_type, new.target_type),
@@ -611,10 +660,11 @@ def _canonical_json(value: object) -> str:
 
 def _object_snapshot(object_type: CompiledObjectTypeDefinition) -> dict[str, JSONValue]:
     return {
+        "semantic_id": object_type.semantic_id,
         "name": object_type.name,
         "properties": [
             _property_snapshot(prop)
-            for prop in sorted(object_type.properties, key=lambda prop: prop.name)
+            for prop in sorted(object_type.properties, key=_property_id)
         ],
         "parent_types": list(object_type.parent_types),
         "interfaces": list(object_type.interfaces),
@@ -627,6 +677,7 @@ def _object_snapshot(object_type: CompiledObjectTypeDefinition) -> dict[str, JSO
 
 def _property_snapshot(prop: CompiledPropertyDefinition) -> dict[str, JSONValue]:
     return {
+        "semantic_id": _property_id(prop),
         "name": prop.name,
         "value_type": prop.value_type.value,
         "required": prop.required,
@@ -639,6 +690,7 @@ def _property_snapshot(prop: CompiledPropertyDefinition) -> dict[str, JSONValue]
 
 def _link_snapshot(link: CompiledLinkTypeDefinition) -> dict[str, JSONValue]:
     return {
+        "semantic_id": link.semantic_id,
         "name": link.name,
         "source_type": link.source_type,
         "target_type": link.target_type,
@@ -673,23 +725,28 @@ def _interface_property_snapshot(
     }
 
 
-def _object_path(name: str) -> str:
-    return f"$.object_types[{stdlib_json.dumps(name, ensure_ascii=True)}]"
+def _property_id(prop: CompiledPropertyDefinition) -> str:
+    assert prop.semantic_id is not None
+    return prop.semantic_id
+
+
+def _object_path(semantic_id: str) -> str:
+    return f"$.object_types[{stdlib_json.dumps(semantic_id, ensure_ascii=True)}]"
 
 
 def _interface_path(name: str) -> str:
     return f"$.interface_types[{stdlib_json.dumps(name, ensure_ascii=True)}]"
 
 
-def _property_path(object_name: str, property_name: str) -> str:
+def _property_path(object_semantic_id: str, property_semantic_id: str) -> str:
     return (
-        f"{_object_path(object_name)}"
-        f".properties[{stdlib_json.dumps(property_name, ensure_ascii=True)}]"
+        f"{_object_path(object_semantic_id)}"
+        f".properties[{stdlib_json.dumps(property_semantic_id, ensure_ascii=True)}]"
     )
 
 
-def _link_path(name: str) -> str:
-    return f"$.link_types[{stdlib_json.dumps(name, ensure_ascii=True)}]"
+def _link_path(semantic_id: str) -> str:
+    return f"$.link_types[{stdlib_json.dumps(semantic_id, ensure_ascii=True)}]"
 
 
 __all__ = [

@@ -24,15 +24,29 @@ from loushang.ontology.storage import (
 
 
 def _schema(*, version: str = "1.0.0", extra_property: bool = False):
-    properties = [PropertyDefinition("code", ValueType.STRING)]
+    properties = [
+        PropertyDefinition("code", ValueType.STRING, semantic_id="asset.code")
+    ]
     if extra_property:
-        properties.append(PropertyDefinition("description", ValueType.STRING))
+        properties.append(
+            PropertyDefinition(
+                "description",
+                ValueType.STRING,
+                semantic_id="asset.description",
+            )
+        )
     return OntologyCompiler().compile(
         OntologyPackageDraft(
             package_id="test.sqlite-compatibility",
             namespace="urn:test:sqlite-compatibility",
             version=version,
-            object_types=[ObjectTypeDefinition("Asset", properties=properties)],
+            object_types=[
+                ObjectTypeDefinition(
+                    "Asset",
+                    semantic_id="asset",
+                    properties=properties,
+                )
+            ],
         )
     )
 

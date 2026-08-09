@@ -10,8 +10,8 @@ ARD 或 live architecture 文档冲突，应以后者为准。
 
 多业务系统 StateAuthority、Source View 和 multi-source materialization 的收口方案见
 [ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。其
-materialization-correctness slice 已实现；stable ID、mapped source input 和多来源合成
-仍未实现。
+materialization-correctness 与 stable semantic ID slice 已实现；mapped source input
+和多来源合成仍未实现。
 
 调研快照日期为 2026-08-06。参考仓库只用于本体子系统研发和架构研究，保持只读；
 本文的规模数据来自静态文件统计，不等同于测试通过率或生产成熟度。
@@ -1197,9 +1197,10 @@ compiler/diff、双时态 Fact/Provenance、Memory/SQLite ports、immutable
 `ProjectionSnapshot`、whole-snapshot replacement 和 reference query engine。旧的可变
 ObjectStore、动态 facade、Callable rules、直接 fusion 和临时 Action bridge 已删除。
 
-“Schema Foundation 已完成 stable ID”的旧表述不准确：当前 package/namespace/version 和
-名称型定义已经稳定序列化，但 ObjectType、Property、LinkType 还没有独立于名称的显式
-semantic ID。ARD-003 已接受该方向，但实现仍待后续 slice。
+Schema v2 已为 ObjectType、object Property 和 LinkType 实现独立于名称的显式
+`semantic_id`，并由 schema-diff v2 识别 rename 与 identity replacement。InterfaceType
+目前仍按名称识别；source binding 与 authority declaration 还没有实现，不能提前宣称
+stable ID 已贯穿多来源架构。
 
 ### 下一阶段：Declared Authority 与 Multi-Source Materialization
 
@@ -1208,7 +1209,8 @@ semantic ID。ARD-003 已接受该方向，但实现仍待后续 slice。
 继续实现：
 
 - 区分 `StateAuthority`、`AssertionKind` 和 `ValueOrigin`；
-- 增加 stable semantic ID、`SourceBinding`、`MappingVersion`、`SourceRevision`；
+- 已完成 stable semantic ID；后续增加 `SourceBinding`、`MappingVersion`、
+  `SourceRevision`；
 - 已完成原子 `FactSelection`、immutable projection state 与运行时 freshness 分离；
 - 以 `MaterializationCut` 记录后续多输入构建坐标；
 - 先用 Memory 验证一个 source-backed value、一个 ontology-owned Fact 和一个 schema
@@ -1319,8 +1321,8 @@ surface，不暴露任意 mutation。
 
 在后续 ARD 中需要进一步决定：
 
-- ARD-003 已选择 package-local stable ID + namespace resolution；精确 serialization
-  contract 仍待实现切片收口；
+- ARD-003 选择的 package-local stable ID + namespace resolution 已由 schema v2
+  serialization contract 收口；interface identity 是否扩展仍待具体需求；
 - schema package 的 SemVer compatibility 规则；
 - InterfaceType 是 structural conformance 还是 nominal declaration，或两者都支持；
 - action commit 与不可补偿外部 effect 的顺序和 failure protocol；

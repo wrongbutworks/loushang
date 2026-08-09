@@ -41,7 +41,14 @@ def _schema():
             object_types=[
                 ObjectTypeDefinition(
                     "Asset",
-                    properties=[PropertyDefinition("status", ValueType.STRING)],
+                    semantic_id="asset",
+                    properties=[
+                        PropertyDefinition(
+                            "status",
+                            ValueType.STRING,
+                            semantic_id="asset.status",
+                        )
+                    ],
                 )
             ],
         )

@@ -55,14 +55,31 @@ def _schema():
             object_types=[
                 ObjectTypeDefinition(
                     "Asset",
+                    semantic_id="asset",
                     properties=[
-                        PropertyDefinition("code", ValueType.STRING, required=True),
-                        PropertyDefinition("score", ValueType.INTEGER),
+                        PropertyDefinition(
+                            "code",
+                            ValueType.STRING,
+                            semantic_id="asset.code",
+                            required=True,
+                        ),
+                        PropertyDefinition(
+                            "score",
+                            ValueType.INTEGER,
+                            semantic_id="asset.score",
+                        ),
                     ],
                 ),
-                ObjectTypeDefinition("Owner"),
+                ObjectTypeDefinition("Owner", semantic_id="owner"),
             ],
-            link_types=[LinkTypeDefinition("owned_by", "Asset", "Owner")],
+            link_types=[
+                LinkTypeDefinition(
+                    "owned_by",
+                    "Asset",
+                    "Owner",
+                    semantic_id="asset.owned_by",
+                )
+            ],
         )
     )
 
