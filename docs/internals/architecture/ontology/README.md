@@ -31,6 +31,20 @@ clone. Runtime coordination, command compilation, source adapters, Actions,
 Decisions, generated SDKs, standards bridges, SQL pushdown, and environmental
 packages remain later work.
 
+## Proposed Architecture Review
+
+[Proposed ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
+examines how application-version source mappings and multiple systems of record
+should enter materialization. It proposes separating business-state ownership
+(`StateAuthority`) from FactStore's semantic-record authority, adding immutable
+mapped source inputs, and separating a projection's build cut from observed
+freshness. It is tracked in
+[#439](https://github.com/zhnt/loushang/issues/439).
+
+The proposal is not current implementation truth. Until it is accepted and
+implemented, the Fact-only runtime shape and SQLite v2 semantics below remain
+normative.
+
 ## Runtime Shape
 
 ```text
@@ -81,7 +95,7 @@ domain packages -X-> storage
 query           -X-> storage
 memory adapter  -X-> SQLite adapter
 SQLite adapter  -X-> memory adapter
-ontology        -X-> Harness / HarnessWork / Work / Method / Product
+ontology        -X-> Harness / HarnessWork / Method / Product
 ```
 
 Product or domain adapters may depend on public Ontology contracts when they
@@ -137,7 +151,8 @@ These paths and symbols intentionally do not exist:
 
 They must not return as compatibility aliases. Future CRUD, derivation,
 source, Agent, Action, and Decision surfaces compile successful commands to
-FactBatch.
+FactBatch under the current accepted design. Proposed ARD-003 re-examines that
+rule only for source-backed state; ontology-owned commands remain Fact-backed.
 
 ## Normative Reading Order
 
@@ -149,3 +164,7 @@ FactBatch.
 The larger design and reference analysis remains in
 [`drafts/loushang-ontology-operational-infrastructure.md`](drafts/loushang-ontology-operational-infrastructure.md).
 It is directional material, not current implementation truth.
+
+Proposals are intentionally excluded from the normative reading order. The
+active proposal is
+[ARD-003: Declared State Authority And Multi-Source Materialization](ARD-003-declared-state-authority-and-multi-source-materialization.md).

@@ -8,6 +8,10 @@ Draft.
 不是已接受架构，也不代表当前实现已经具备文中能力。若本文与代码、测试、已接受
 ARD 或 live architecture 文档冲突，应以后者为准。
 
+多业务系统 StateAuthority、Source View 和 multi-source materialization 的收口方案见
+[Proposed ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。
+该 ARD 尚未接受，不改变当前运行时或 SQLite 布局。
+
 调研快照日期为 2026-08-06。参考仓库只用于本体子系统研发和架构研究，保持只读；
 本文的规模数据来自静态文件统计，不等同于测试通过率或生产成熟度。
 
@@ -25,8 +29,8 @@ Foundry 的逐功能复刻，也不把 OWL 编辑器、图数据库、数据集�
   JSON-LD、SHACL 等互操作桥，而不是把专有存储格式暴露为唯一模型。
 - **方法原生**：`Method` 可以引用本体类型、动作、约束和期望工作产物，本体则不
   反向拥有方法执行生命周期。
-- **工作原生**：动作结果、证据、失败和审批可以投影为 `WorkEvent` / artifact，
-  形成可追踪的业务闭环。
+- **履约原生**：动作结果、证据、失败和审批可以投影为 HarnessWork 持有的
+  `WorkEventFact` / artifact，形成可追踪的业务闭环。
 - **Agent 原生**：Agent 只能发现和请求显式发布的语义动作；权限、审批、工具执行
   和外部副作用仍通过 Harness 等现有治理边界完成。
 - **决策原生**：把选择什么、基于什么、由谁批准、如何执行以及结果如何作为一等
@@ -35,7 +39,7 @@ Foundry 的逐功能复刻，也不把 OWL 编辑器、图数据库、数据集�
 一句话概括目标组合：
 
 > Palantir 式 Decision-Centric Operational Ontology + 开放语义标准 + Loushang
-> Method / Work / Harness 的受控决策、执行与证据反馈闭环。
+> Method / Harness / HarnessWork 的受控决策、执行与证据反馈闭环。
 
 ## 当前实现基线
 
@@ -58,8 +62,10 @@ Fact/Provenance spine、[ARD-001](../ARD-001-factstore-semantic-authority.md)
 
 - 还没有负责调度、重试和发布 diagnostics 的 runtime/materialization coordinator；
 - FactBatch 尚未绑定明确的 published schema identity；
-- 还没有 CRUD command 到 deterministic FactBatch 的编译层；
-- safe derivation 和 source mapping 尚未以 Fact-producing contract 重建；
+- 还没有将 ontology-owned command 编译为 deterministic FactBatch、将 source-backed
+  command 规划为显式 source-write contract 的编译层；
+- safe derivation 和 source mapping 尚未以区分 Fact 与 mapped source input 的 contract
+  重建；
 - 没有 ActionType、MutationPlan、审批需求、外部能力需求和原子提交协议；
 - 没有 DecisionType、DecisionRecord、Scenario、OutcomeDefinition 或 LogicBinding，尚不能
   保存“为什么选择这个动作”以及预期结果和实际结果的差异；
@@ -238,7 +244,7 @@ Decision-Centric 不降低现有治理要求。一次决策的有效权限至少
 - 读取相关 object、property、link、fact 和 evidence 的权限；
 - 发现、提议或选择该 `DecisionType` 的权限；
 - 执行选中 `ActionType` 的权限、审批和 capability requirement；
-- 查看 DecisionRecord、rationale、Outcome 和 Work evidence 的权限。
+- 查看 DecisionRecord、rationale、Outcome 和 HarnessWork evidence 的权限。
 
 Agent 可以生成候选 Scenario、调用发布的 LogicBinding 并发起 decision proposal，但不得
 自行扩大对象可见范围，不得绕过 action authorization，也不得把自然语言 rationale 当作
@@ -287,11 +293,11 @@ write-back failure semantics 和 Decision-Centric contracts。调研日期为 20
 产生的可重建投影，不是新的业务真相。原始来源也不能越过 mapping/provenance 直接成为
 published ontology fact。
 
-### 多业务系统的局部 Source View 与状态 Authority
+### 多业务系统的局部 Source View 与 StateAuthority
 
-> 目标架构提案，待后续 ARD 决策。本节不修改当前已接受的 FactStore authority contract，
-> 但记录了继续建设 Source Adapter、Action 和 multi-source materialization 前必须解决的
-> 边界问题。
+> 目标架构提案，正式收口见
+> [Proposed ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。
+> 在该 ARD 接受前，本节不修改当前 FactStore authority contract。
 
 ERP、HR、CRM、OA 等业务系统不应被统称为 Ontology projection。对每个业务系统自身而言，
 它的数据库仍是其职责范围内的 system of record；从企业级 Ontology 视角看，每个系统只
@@ -317,7 +323,7 @@ Serving Projection
 Product / service / human / Agent
 ```
 
-因此，一个对象不必由某个业务系统完整提供。状态 Authority 应至少能够按对象存在、属性
+因此，一个对象不必由某个业务系统完整提供。`StateAuthority` 应至少能够按对象存在、属性
 和 Link 声明，而不是只按 ObjectType 粗粒度声明：
 
 ```text
@@ -330,11 +336,21 @@ Project.risk_level      <- RiskFunction/v3        (derived)
 Project.director_note   <- Ontology               (ontology-owned)
 ```
 
-`source-backed`、`ontology-owned` 和 `derived` 是 Authority 分类；`asserted`、`derived` 和
-`inferred` 描述断言如何产生。两组概念不能混用。第一版应坚持一个可写状态只有一个声明的
-Authority；多个来源提供同一属性时，必须配置主来源或显式报告冲突，不能按接入顺序静默
-覆盖。Derived 状态不可直接修改，source-backed 状态只能经对应 write-back contract 修改，
-ontology-owned 状态才由 Ontology 自己持久化。
+这里存在三个正交维度，不能继续都简称为 authority 或 provenance：
+
+```text
+StateAuthority  source-backed | ontology-owned | derived
+AssertionKind   asserted | derived | inferred
+ValueOrigin     source | fact | schema-default
+```
+
+`StateAuthority` 描述谁拥有业务状态及哪类写合同可以改变它；FactStore authority 描述
+Ontology 内哪些 semantic records 由 FactStore 持久化；`AssertionKind` 描述断言如何产生；
+`ValueOrigin` 描述投影值来自哪份不可变输入。第一版应坚持一个可写状态只有一个主
+`StateAuthority`；多个来源提供同一属性时，必须配置主来源或显式报告冲突，不能按接入
+顺序静默覆盖。Derived 状态不可直接修改，ontology-owned 状态由 Ontology 自己持久化。
+Source-backed 状态不能被本地 Fact 冒充为已经由源系统确认；它究竟采用 external
+write-back 还是 managed edit overlay，留给后续 Action write-back ARD 决定。
 
 局部 Source View 的合成还依赖 canonical identity。Adapter 必须把各系统的 source record
 identity 映射到稳定对象 ID，并保留 alternate keys；无法可靠确认两个记录为同一对象时，
@@ -362,25 +378,35 @@ MaterializationCut
 和 `degraded`，并只聚合本次查询实际依赖的 source/property/link coverage。Projection 追平
 FactStore 只说明内部物化完成，不能证明 ERP、HR、CRM 或 OA 已被完整观察。
 
-写入同样按 Authority 路由：修改预算进入 ERP Adapter，调整人员进入 HR Adapter，审批
-进入 OA Adapter，Ontology 自有备注进入 semantic Fact/Edit store，派生风险由已发布逻辑
-重新计算。跨多个 Authority 的 Action 是显式的多系统流程或 saga，不能宣称数据库级原子
-事务；Ontology 只产出分区后的 `MutationPlan`、revision/precondition 和 capability
-requirements，外部 effect 由 Product Adapter 与 Harness/HarnessWork 执行。
+写入同样按 `StateAuthority` 规划：Ontology 自有备注进入 FactStore，派生风险由已发布
+逻辑重新计算；修改预算、人员或审批状态必须产生 source-backed write requirement，不能
+直接提交成本体已经确认的值。Product Adapter 可以将该 requirement 绑定为 ERP、HR、OA
+write-back，也可以在未来被明确批准的 managed-edit contract 中处理。跨多个
+`StateAuthority` 的 Action 不能宣称数据库级原子事务；Ontology 只产出可审查
+plan、revision/precondition 和
+capability requirements，外部 effect 由 Product Adapter 与 Harness/HarnessWork 执行。
 
 这个边界意味着需要重新审视“所有外部语义状态都逐属性写入 FactStore”的范围。外部
 Source View 可以通过 source binding、source revision、source record、mapping version 和
 field reference 提供 lineage，不必为每个普通源字段复制完整 Fact envelope。FactStore 仍
-适合承载 ontology-owned 状态、重要 asserted claims、derived/inferred facts、Decision 与
-Outcome 等需要双时态、证据和修正链的语义记录；Projection 始终是可删除重建的派生状态。
+适合承载 ontology-owned 状态、重要 asserted claims，以及已经发布且具有独立审计或修正
+生命周期的 derived/inferred claims。可即时重算且没有独立语义生命周期的 derived value
+只进入 Projection。某些 source-backed value 若有独立双时态或法规审计要求，仍可被选择性
+事实化；这里反对的是机械复制全部源字段，而不是绝对禁止 source-backed Fact。Decision 与
+Outcome 的持久化由后续 ARD 决定；Projection 始终是可删除重建的派生状态。
 
 该提案依据 2026-08-09 对 Palantir 官方
 [Data Connection](https://www.palantir.com/docs/foundry/data-connection/overview)、
+[Multi-datasource object types](https://www.palantir.com/docs/foundry/object-permissioning/multi-datasource-objects)、
 [How user edits are applied](https://www.palantir.com/docs/foundry/object-edits/how-edits-applied)
 和 [Materializations](https://www.palantir.com/docs/foundry/object-edits/materializations) 的复核，
-并与本地只读参考 `operational-ontology` 对 source-backed、ontology-owned、derived authority
-以及 re-index overlay 的实现进行对照。它是面向 Loushang 的架构推导，不声称复刻 Palantir
-未公开的内部实现。
+并与本地只读参考 `operational-ontology` commit
+`c79aa88c1f5d4fe2ac2b126a5852f1ba434aaa57` 的代码和测试进行对照。该参考实际落实了
+source-backed、ontology-owned、overlay、re-index 和 write-back-first；`derived` 只在其
+README 中作为概念分类，core runtime 没有 `derived` StateAuthority、source revision vector、
+identity-resolution 或 source coverage contract。后面这些内容是 Loushang 的架构推导，
+不是参考仓库或 Palantir 未公开内部实现的既有能力。Palantir 公开资料也不证明所有
+source-backed Action 都必须 external write-back；这是需要 Loushang 单独决策的写入策略。
 
 Policy Gate 也是逻辑边界，不表示 ontology 包拥有身份系统。Ontology 定义 policy、marking
 和可见性语义并对 query/mutation 产出 policy decision；宿主提供经过认证的 actor context，
@@ -425,31 +451,34 @@ pure 且依赖可追踪的 function 才能安全 memoize；derived property 的 
 `loushang.ontology` 应尽量保持 product-neutral 和 runtime-neutral：
 
 ```text
-method / work / Product packages  --->  ontology
-Product ontology adapter          --->  harness / work / ontology
+Product source adapter       ---> ontology source contracts
+Product ontology adapter     ---> ontology + harness + optional harnesswork
+Product method binding       ---> method + ontology
 
-ontology  -X->  harness
-ontology  -X->  work
-ontology  -X->  Product implementation
+ontology -X-> harness / harnesswork / method / Product implementation
 ```
 
-Ontology 返回纯数据 contract，外层 adapter 负责调用 Harness 和写入 Work。这样既符合
-当前 future dependency map，也避免 ontology 因某个产品的工具或 UI 语义而失去复用性。
+Ontology 返回纯数据 contract，具体数据库/API connector、write-back adapter、Method
+binding 和 HarnessWork integration 都由 Product 或 deployment composition root 持有。
+Source 同步不必强制经过 Harness；只有需要 durable scheduling、recovery 或 execution
+evidence 时，Product 才选择 HarnessWork。Ontology、Method、Harness 与 HarnessWork 的
+公共协议不互相嵌入对方的领域类型。
 
 ### 职责分配
 
 | 子系统 | 建议职责 |
 | --- | --- |
-| `ontology` | schema、facts、query、validation、decision/scenario contract、action planning、ontology mutation commit、semantic outcome、interop、fusion contract |
+| `ontology` | schema、StateAuthority、source-input contract、facts、materialization、query、validation、decision/scenario contract、action planning、semantic outcome、interop、fusion contract |
 | `harness` | capability binding、工具调用、sandbox、授权、approval、外部 effect 执行 |
-| `work` | durable run、执行过程、evidence、artifact、event、replay；以稳定引用关联 Decision/Outcome |
+| `harnesswork` | durable run、执行过程、evidence、artifact、event、replay；以稳定引用关联 Decision/Outcome，不持有 Ontology 类型 |
 | `method` | 方法资产、步骤、输入/输出 shape、acceptance criteria；可作为 versioned LogicBinding 被引用 |
-| Product | 业务语义装配、决策交互、用户入口、ontology ↔ harness/work adapter |
+| Product | 业务语义装配、决策交互、用户入口、source/write-back adapter，以及 ontology ↔ harness/harnesswork/method integration |
 | Channel / SDK | 将 Query/Function/Decision/Action contract 投影为 REST/RPC/GraphQL/MCP/SDK |
 
-Ontology 持有 `DecisionType`、`DecisionRecord` 和 semantic `Outcome`；Work 持有执行过程和
-证据。二者通过 opaque stable reference 关联，由外层 adapter 写入，ontology 不能因此
-反向依赖 `work`。产品负责候选方案比较、人工选择和解释界面，不把 UI 状态写进 core。
+Ontology 持有 `DecisionType`、`DecisionRecord` 和 semantic `Outcome`；HarnessWork 持有
+执行过程和证据。二者通过 opaque stable reference 关联，由 Product adapter 组合，
+Ontology 不能因此反向依赖 HarnessWork。产品负责候选方案比较、人工选择和解释界面，
+不把 UI 状态写进 core。
 
 ### 查询读取流程
 
@@ -491,7 +520,7 @@ Typed QueryResult(schema_version, data, cursor, freshness, diagnostics)
 - consumer 不得在本地重新拼接底层表来补齐 ontology 查询，否则 typed contract、权限和
   provenance 会失效。
 
-### 决策选定后的动作执行子流程
+### 决策选定后的动作规划与履约子流程
 
 ```text
 User / Product / Agent
@@ -504,33 +533,35 @@ Ontology ActionPlanner
   - resolve published schema
   - validate types and submission criteria
   - evaluate pure preconditions
-  - produce MutationPlan + CapabilityRequirements + PolicyRequirements
+  - classify changes by StateAuthority
+  - produce MutationPlan + SourceWriteRequirements
+    + CapabilityRequirements + PolicyRequirements
         |
-        v
-Product Adapter / Harness
-  - authorize and approve
-  - bind and execute external capabilities
-  - collect evidence and effect results
-        |
-        v
-Ontology Runtime
-  - recheck revision/preconditions
-  - atomically commit ontology mutations
-  - emit committed fact changes
-        |
-        v
-Work Projection
-  - record outcome, evidence, audit references and artifacts
+        +----------------------+----------------------+
+        |                      |                      |
+        v                      v                      v
+ontology-owned           source-backed             derived
+recheck + Fact commit    Product-bound strategy    reject direct write
+                         (deferred Action ARD)
+        |                      |
+        +----------+-----------+
+                   v
+          Harness / HarnessWork when required
+          - authorize and approve
+          - execute bound external capabilities
+          - record evidence, terminal state and artifacts
 ```
 
 关键约束：
 
 - `ActionPlanner` 不执行外部副作用，只产出可审查的 plan。
-- ontology 内部对象与 link mutation 必须作为一个原子提交边界。
+- ontology-owned 对象与 link mutation 必须作为一个原子 Fact commit 边界。
 - `expected_revision` 和 `idempotency_key` 从第一版 action contract 就保留。
-- 外部 effect 与 ontology commit 无法天然组成分布式事务时，应显式建模 prepared、
-  approved、effect-executed、committed、failed/compensating 状态，不能假装完全原子。
-- Work 记录是执行证据和产品运行历史，不应被当作 ontology 的主存储。
+- source-backed write-back、managed edit overlay、acknowledgement 和 reconciliation 的取舍
+  留给后续 Action ARD；在它接受前不得把本地写入冒充为源系统已经确认。
+- 跨 `StateAuthority` Action 第一版可以直接拒绝；未来若支持多系统履约，必须显式建模失败和
+  补偿状态，不能假装完全原子。
+- HarnessWork 记录是执行证据和产品运行历史，不应被当作 ontology 的主存储。
 
 ActionType 的发布检查至少包括：业务意图级命名、最小 typed parameters、确定性
 preconditions、数据化 MutationPlan、state authority、expected revision、幂等策略、
@@ -650,8 +681,11 @@ recorded_at / superseded_at # 系统记录时间
 supersedes / corrects
 ```
 
-这使“原始数据说了什么”“规则推导了什么”“模型猜测了什么”可以共存而不互相覆盖；也为
-环保领域的测量、基线、方法学和 impact claim 提供必要基础。
+这使重要的 asserted Claim、已发布 derived/inferred Claim 和 ontology-owned state 可以
+共存而不互相覆盖，也为环保领域的测量、基线、方法学和 impact claim 提供必要基础。
+普通 source-backed 属性可以直接来自版本化 `MappedSourceInput`；只有需要独立双时态、
+证据、法规审计或修正生命周期的源值才选择性事实化。可即时重算且没有独立语义生命周期
+的 derived value 只进入 Projection。
 
 ### 5. ServingProjection
 
@@ -660,26 +694,37 @@ supersedes / corrects
 ```text
 ServingProjection
   projection_id / schema_version / projection_version
-  source_fact_watermark / built_at
+  materialization_cut
+    source_inputs[(binding_id, mapping_version, source_revision)]
+    fact_watermark / valid_at / recorded_at
+  built_at
   primary_key_index
   property_indexes
   link_adjacency_index
   search_index
   materialized_derived_values
-  freshness / rebuild_status / diagnostics
+  value_origins: FactOrigin | SourceOrigin | SchemaDefaultOrigin
+  rebuild_status / diagnostics
+
+ProjectionFreshness
+  status: current | stale | unknown | degraded
+  observed_source_heads / observed_fact_watermark / observed_at
 ```
 
 Memory/SQLite 可以把 projection 与存储实现放在同一进程，但 contract 必须允许以后拆到
 PostgreSQL、graph 或 search backend。projection 需要可 replay、rebuild、compare 和 repair；
 action commit 后通过 committed change event 做同步或异步 invalidation。缓存键必须包含
 schema、policy scope 和依赖版本，不能让不同 actor 或 marking 共享越权结果。
+`ServingProjection` 的 immutable build cut 与运行时观察到的 freshness 必须分离；新的源
+revision 或 Fact watermark 只能使旧 cut 被比较为 stale，不能反向修改其构建坐标。
 
 ### 6. OntologyRuntime
 
 ```text
 OntologyRuntime
   SchemaRegistry
-  FactStore / ObjectStore
+  SourceInputPorts / FactStore
+  AuthorityResolver / MaterializationEngine
   ProjectionStore / IndexPorts
   QueryEngine / ObjectSet / QueryCompiler
   Validator
@@ -690,8 +735,9 @@ OntologyRuntime
   ProjectionEngine
 ```
 
-内部可以保留 object projection 以提高查询效率，但 projection 必须能追溯到 facts，
-不能混淆 asserted、derived 和 inferred 数据。
+内部可以保留 object projection 以提高查询效率，但 projection 必须通过 `ValueOrigin`
+追溯到 mapped source input、Fact 或 schema default，不能混淆 `StateAuthority`、
+`AssertionKind` 与 `ValueOrigin`。
 
 ### 7. 建议的 Python 模块方向
 
@@ -700,6 +746,8 @@ OntologyRuntime
 ```text
 loushang.ontology
   schema/       # package, type, property, link, interface, constraint
+  authority/    # StateAuthority declarations and resolution contracts
+  sources/      # mapped input, binding, revision and coverage contracts
   facts/        # fact envelope, provenance, bitemporal semantics
   runtime/      # registry, store ports, validation, commit
   projections/  # object/link/search/materialized views, freshness, rebuild
@@ -779,7 +827,7 @@ loushang.ontology
   -> 比较成本、碳影响、可行性和风险等预期 Outcomes
   -> 提议并审批处置 DecisionRecord
   -> 将选定 ChangeSet 转成 Repair / Refurbish 等 actions
-  -> 执行外部工作并提交 ontology mutation
+  -> 履约并按 StateAuthority 提交或确认状态变化
   -> 更新 Digital Product Passport
   -> 按明确 methodology 计算 avoided emissions
   -> 生成附带 evidence 的 ImpactClaim 和 observed Outcome
@@ -787,7 +835,7 @@ loushang.ontology
 ```
 
 这个切片同时覆盖 ingestion、identity、schema、validation、decision、action、
-work/evidence、measurement 和 claim，比只展示知识图谱更能验证 operational ontology
+HarnessWork evidence、measurement 和 claim，比只展示知识图谱更能验证 operational ontology
 的价值。
 
 ## 行业参考一：RePlanIT
@@ -1070,7 +1118,8 @@ curated review、ontology quality audit agent、Neo4j/Chroma 可选降级和可�
 
 ### 技术参考五：operational-ontology
 
-快照：`gura105/operational-ontology` commit `c79aa88c`（2026-08-02），MIT，版本
+快照：`gura105/operational-ontology` commit
+`c79aa88c1f5d4fe2ac2b126a5852f1ba434aaa57`（2026-08-02），MIT，版本
 `0.2.0`。TypeScript core 约 1,048 行；静态识别 55 个 core tests 和 10 个 MCP tests，
 该提交的 GitHub Actions 通过。本地调研只读代码和 CI 结果，没有安装依赖。
 
@@ -1081,7 +1130,8 @@ curated review、ontology quality audit agent、Neo4j/Chroma 可选降级和可�
 - object/link/action definitions 是可枚举的普通 typed values；
 - SQLite 保存 indexed base、ontology-owned overlay、link instances 和 audit log；
 - `execute()` 是公开 API 的唯一 mutation path，precondition 和 effects 先生成 edit plan；
-- state authority 明确区分 source-backed、ontology-owned 和 derived；
+- model 和 runtime 实际检查 source-backed 与 ontology-owned authority；README 另把
+  derived 描述为不可写的概念分类，但 core 没有 `derived` StateAuthority declaration；
 - write-back adapter 在本地 commit 前执行，并公开声明无法消除的 divergence window；
 - `load()` 重建 source-backed base，同时保留 ontology-owned state，拒绝静默 orphan edit；
 - MCP surface 从 model 生成 query/action tools，不暴露 raw SQL 或 generic update。
@@ -1109,6 +1159,8 @@ curated review、ontology quality audit agent、Neo4j/Chroma 可选降级和可�
   pending invocation、idempotency key、outbox 或自动 reconciliation。
 - 没有 package/import/migration、双时态 facts、provenance、标准互操作、delete、link
   properties 或 composite keys。
+- 没有 source revision vector、source coverage 或 identity-resolution contract；这些是
+  Loushang 基于 multi-source materialization 问题提出的设计，不是该参考的既有机制。
 
 定位：**Action gate、state authority、write-back、re-index overlay、audit 和 MCP 的首要
 小型工程参考；不是 Decision-Centric、权限系统或完整生产 runtime 的架构来源。**
@@ -1137,93 +1189,70 @@ curated review、ontology quality audit agent、Neo4j/Chroma 可选降级和可�
 
 ## 分阶段演进路线
 
-### Schema Foundation：Semantic Kernel
+### 已完成底座：Schema、Facts、Ports 与 Immutable Projection
 
-目标：把当前原型变成可版本化、可替换 backend 的稳定语义内核。
+实施状态（2026-08-09）：当前实现由
+[ARD-001](../ARD-001-factstore-semantic-authority.md) 和
+[ARD-002](../ARD-002-ports-immutable-projection-and-sqlite-v2.md) 收口，包括 schema
+compiler/diff、双时态 Fact/Provenance、Memory/SQLite ports、immutable
+`ProjectionSnapshot`、whole-snapshot replacement 和 reference query engine。旧的可变
+ObjectStore、动态 facade、Callable rules、直接 fusion 和临时 Action bridge 已删除。
 
-实施状态（2026-08-09）：已完成并由后续 ARD-001/ARD-002 收口。旧的可变
-ObjectStore 实现和对应历史文档已删除；当前边界以 live architecture README 和
-两份 ARD 为准。
+“Schema Foundation 已完成 stable ID”的旧表述不准确：当前 package/namespace/version 和
+名称型定义已经稳定序列化，但 ObjectType、Property、LinkType 还没有独立于名称的显式
+semantic ID。该缺口进入 Proposed ARD-003。
 
-- stable ID、namespace/IRI、OntologyPackage、schema version；
-- ObjectType、Property、LinkType、InterfaceType、ValueType、Constraint；
-- required、unique、type、cardinality、reference integrity 的统一 validator；
-- immutable schema snapshot、diff 和 compatibility diagnostics；
-- ObjectStore/ProjectionStore port，Memory + SQLite conformance suite；
-- primary/property/link projection、freshness/watermark 和 deterministic rebuild；
-- backend-neutral ObjectSet、filter、traversal、projection；
-- typed QueryRequest/QueryResult，覆盖 schema resolution、policy projection 和 diagnostics；
-- 早期保留的 `Ontology` facade 已由后续 ARD-001 删除。
+### 下一阶段：Declared Authority 与 Multi-Source Materialization
 
-验收标准：同一 contract suite 在 Memory/SQLite 通过；schema 可以序列化、加载、diff；
-非法 link/cardinality/unique mutation 无法提交；相同 authority 可以重建出等价 projection，
-查询结果携带 schema version 和 freshness。
+先评审并接受
+[Proposed ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)，
+再修改运行代码：
 
-### Wave 2A：Facts 与 Provenance
+- 区分 `StateAuthority`、`AssertionKind` 和 `ValueOrigin`；
+- 增加 stable semantic ID、`SourceBinding`、`MappingVersion`、`SourceRevision`；
+- 原子捕获 `FactSelection`，以 `MaterializationCut` 记录多输入构建坐标；
+- 分离 immutable projection state 与运行时 freshness；
+- 先用 Memory 验证一个 source-backed value、一个 ontology-owned Fact 和一个 schema
+  default 的最小合成切片；
+- 明确冲突可见、未知 coverage 和 identity 不确定时的拒绝语义。
 
-实施状态（2026-08-09）：已完成。正式边界见
-[Wave 2A Facts And Provenance](../wave2a-facts-provenance.md)。SQLite 只接受当前
-Phase 2 v2 layout，不保留旧开发 layout reader 或 migration。
+验收后再校准 SQLite；在 contract 稳定前不创建多来源物理表或 migration。
 
-- asserted/derived/inferred fact 分离；
-- valid time + recorded time 双时态；
-- source、evidence、confidence、methodology、supersedes/corrects；
-- append-only FactStore、idempotent FactBatch、Memory/SQLite conformance；
-- 在显式 valid/recorded time 上确定性重建 Object/Property/Link projection。
+### 后续阶段：Source Binding 与 Identity
 
-### Foundation Phase 1：单一 Fact Authority
+- application-version SourceMapping、FieldMapping 和 concrete Product adapters；
+- stable source record identity、alternate keys 和人工 identity resolution；
+- incremental cursor/change set、source coverage 和 mapping review/publish；
+- field-level lineage、source correction 和有限的显式 merge policy。
 
-实施状态（2026-08-09）：已完成。正式决策见
-[ARD-001: FactStore Is The Sole Semantic Authority](../ARD-001-factstore-semantic-authority.md)。
+验收标准：同一对象的多个来源可以按 stable ID 合成且不丢 lineage；不确定 identity 和
+未声明多来源冲突不会静默合并或覆盖。
 
-- FactStore 是唯一语义权威；
-- Object/Property/Link 是 immutable、可删除重建的 projection；
-- 删除动态 facade、Callable rules、直接 fusion 和临时 Action bridge；
-- 公开 SQLite 适配器分别实现 FactStore 与 ProjectionStore；
-- SQLite 只接受当前 Phase 2 v2 layout，不增加旧格式 migration 或兼容 shim。
+### 后续阶段：最小 Operational Action
 
-### Wave 2B：Standards 与安全派生
+Action 实现前先写独立 write-back/reconciliation ARD，决定 source-backed 的 external
+write-back 与 managed edit 策略、effect/commit 顺序、acknowledgement、幂等和失败恢复。
+第一版只验证一个 ontology-owned Action 和一个 source-backed Action；跨 `StateAuthority` Action
+可以直接拒绝，不先建设 saga。
+
+### 后续阶段：Decision-Centric Operations
+
+在 Action boundary 稳定后再增加 DecisionType、LogicBinding、Scenario、ChangeSet、
+DecisionRecord 和 OutcomeDefinition，以及 candidate comparison、context snapshot、approval、
+HarnessWork evidence 和 expected/observed outcome linkage。Agent/MCP 只暴露已发布 typed
+surface，不暴露任意 mutation。
+
+### 延后阶段：Standards 与行业验证
 
 - JSON-LD round trip；
 - RDF/OWL 受控子集 import/export + diagnostics；
 - SHACL generation 和 external validation；
-- safe expression AST，规则只产出 derived/inferred facts 或 validation result。
+- safe expression AST 和 validation/derived Claim contract；
+- AIAO/RePlanIT 环保 fixture 与后续独立领域包。
 
-验收标准：AIAO/RePlanIT 的选定子集能够导入 draft package；未知/不支持 axiom 可见；
-同一 environmental fixture 可在 operational validator 与 SHACL 检查间对齐。
+这些能力用于互操作和领域验收，不阻塞 StateAuthority、materialization 和 Action 底座。
 
-### Wave 3：Decision-Centric Operations
-
-- DecisionType、LogicBinding、Scenario、ChangeSet、DecisionRecord、OutcomeDefinition；
-- candidate generation/comparison、context snapshot、decision lineage；
-- FunctionDefinition purity/execution/cache/cost contract、derived property binding；
-- ActionType、JSON Schema parameters、submission criteria；
-- ActionRequest、ActionPreview、MutationPlan、CapabilityRequirement；
-- precondition/state transition；
-- expected revision、idempotency、atomic mutation commit；
-- Product/Harness authorization/approval/effect adapter；
-- WorkEvent/evidence projection、expected/observed outcome evaluation；
-- decision/object/action/evidence 权限交集与审计链；
-- Query/Function/Decision/Action 统一 typed surface；
-- Agent/MCP surface 只暴露 published query/function/decision/action，不暴露任意 mutation。
-
-验收标准：ICT disposal decision 可以基于同一事实快照比较 repair/refurbish/recycle
-scenarios，保存选择与理由，再 preview、deny、approve、execute、commit、retry，并将
-observed outcome 关联回决定；重复 idempotency key 不会重复写入。
-
-### Wave 4：Fusion 与 Identity
-
-- SourceDefinition、SourceMapping、FieldMapping；
-- stable source record identity、alternate keys、entity resolution；
-- merge policy、冲突可见性、人工 resolution；
-- incremental cursor/change set；
-- field/fact-level lineage 和 source correction；
-- ingestion draft/quality/review/publish。
-
-验收标准：同一设备的制造商、回收商和检测来源可以合并但不丢来源；冲突值可以并存并
-按 policy 投影，source correction 可追溯。
-
-### Wave 5：Platform Scale
+### 最后阶段：Platform Scale
 
 确认真实负载后再评估：
 
@@ -1236,7 +1265,7 @@ observed outcome 关联回决定；重复 idempotency key 不会重复写入。
 
 ## 实施纪律
 
-- 新增跨层 contract 前，先写 ontology ↔ harness/work 的边界测试，不让 ontology 反向
+- 新增跨层 contract 前，先写 ontology ↔ harness/harnesswork/method 的边界测试，不让 ontology 反向
   import 这些包。
 - 每种 store 实现共享 conformance suite，避免 backend 语义漂移。
 - 每种 standard adapter 都需要 parser round trip、external validator/reasoner fixture 和
@@ -1266,9 +1295,9 @@ observed outcome 关联回决定；重复 idempotency key 不会重复写入。
 | Read path | object/property/row/fact policy、bounded traversal、aggregation 防泄漏、freshness diagnostics |
 | Function | typed I/O、purity、dependency/version、cost bound、cache semantics、单元测试 |
 | Decision | context snapshot、至少两个 Scenario、选择/拒绝理由、approval、expected Outcome、lineage |
-| Action | typed params、deterministic preconditions、MutationPlan、authority、idempotency、audit、failure protocol |
+| Action | typed params、deterministic preconditions、MutationPlan、StateAuthority、idempotency、audit、failure protocol |
 | Projection | watermark、deterministic rebuild、actor/policy-safe cache key、compare/repair diagnostics |
-| Scenario | ingestion → query/function → decision → action → work/evidence → observed outcome 全链路 |
+| Scenario | ingestion → query/function → decision → action → HarnessWork evidence → observed outcome 全链路 |
 
 验收测试应验证同一个 contract 对人、产品服务和 Agent 一致生效；不能只测试 SDK 返回值，
 还要检查 audit、fact lineage、projection freshness、外部 effect evidence 和拒绝路径。
@@ -1291,7 +1320,8 @@ observed outcome 关联回决定；重复 idempotency key 不会重复写入。
 
 在后续 ARD 中需要进一步决定：
 
-- canonical ID 使用 URI value object，还是 package-local ID + namespace resolution；
+- Proposed ARD-003 选择 package-local stable ID + namespace resolution；是否接受及精确
+  serialization contract 仍待评审；
 - schema package 的 SemVer compatibility 规则；
 - InterfaceType 是 structural conformance 还是 nominal declaration，或两者都支持；
 - action commit 与不可补偿外部 effect 的顺序和 failure protocol；
