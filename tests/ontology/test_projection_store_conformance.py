@@ -31,6 +31,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    StateAuthority,
     ValueType,
 )
 from loushang.ontology.storage import (
@@ -56,21 +57,28 @@ def _schema():
                 ObjectTypeDefinition(
                     "Asset",
                     semantic_id="asset",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     properties=[
                         PropertyDefinition(
                             "code",
                             ValueType.STRING,
                             semantic_id="asset.code",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                             required=True,
                         ),
                         PropertyDefinition(
                             "score",
                             ValueType.INTEGER,
                             semantic_id="asset.score",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                         ),
                     ],
                 ),
-                ObjectTypeDefinition("Owner", semantic_id="owner"),
+                ObjectTypeDefinition(
+                    "Owner",
+                    semantic_id="owner",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
+                ),
             ],
             link_types=[
                 LinkTypeDefinition(
@@ -78,6 +86,7 @@ def _schema():
                     "Asset",
                     "Owner",
                     semantic_id="asset.owned_by",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                 )
             ],
         )

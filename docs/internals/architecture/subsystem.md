@@ -88,8 +88,10 @@ Fact/Provenance、双时间选择和 typed query 外，还提供独立的 Fact/P
 `storage_layout=phase2` 的 v2；不提供 v1 或旧 v2 reader/migrator。
 ARD-003 的首个 correctness slice 还提供原子 `FactSelection`、纯 freshness evaluator
 和 SQLite 单读事务快照；schema v2 进一步为 ObjectType、object Property 和 LinkType
-提供 package-local stable semantic ID。当前 Fact-only runtime 仍只从 FactStore
-物化；目标架构允许后续 mapped source input 按声明的 `StateAuthority` 参与物化。
+提供 package-local stable semantic ID，schema v3 又要求这些 operational definition
+显式声明 `source-backed`、`ontology-owned` 或 `derived` StateAuthority。当前 Fact-only
+runtime 仍只从 FactStore 物化；目标架构允许后续 mapped source input 按声明的
+`StateAuthority` 参与物化。
 `ontology.core`、直接对象 mutation 与兼容 facade 已退出源码和公共面。
 它尚不包含 OWL/SHACL、Action/Decision runtime、SDK 生成、分布式 serving 或行业领域包。详见
 [Loushang Ontology Architecture](./ontology/README.md)。

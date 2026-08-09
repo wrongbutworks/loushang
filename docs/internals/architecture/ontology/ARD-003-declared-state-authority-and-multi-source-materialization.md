@@ -7,9 +7,9 @@ Tracking: [#439](https://github.com/zhnt/loushang/issues/439).
 This decision partially supersedes ARD-001 and narrowly amends the
 materialization and freshness parts of ARD-002. Its implemented foundation
 slices change runtime and schema contracts but keep the Phase 2 SQLite v2 table
-layout. Stable semantic IDs are implemented in the schema v2 contract;
-authority declarations, source inputs, and multi-source materialization remain
-unimplemented.
+layout. Stable semantic IDs and StateAuthority declarations are implemented in
+the schema v3 contract. Concrete authority bindings, source inputs, and
+multi-source materialization remain unimplemented.
 
 ## Context
 
@@ -389,13 +389,23 @@ Completed in the stable semantic ID slice:
 
 - object types, object properties, and link types require an explicit
   package-local `semantic_id`;
-- compiled schema v2 enforces package-wide uniqueness and round-trips those IDs;
-- schema-diff v2 matches definitions by ID, reports an explicit breaking rename
+- compiled schema v3 enforces package-wide uniqueness and round-trips those IDs;
+- schema-diff v3 matches definitions by ID, reports an explicit breaking rename
   when only the name changes, and treats an ID change as removal plus addition;
-- current runtime lookups by API name remain available; source mappings and
-  authority declarations do not exist yet and therefore cannot consume IDs.
+- current runtime lookups by API name remain available.
 
-Remaining gates for the authority and multi-source slices:
+Completed in the declared StateAuthority slice:
+
+- object existence, object properties, and link families require exactly one
+  `source-backed`, `ontology-owned`, or `derived` declaration;
+- authority declarations round-trip in compiled schema v3 and authority changes
+  are breaking in schema-diff v3;
+- interface contracts remain structural and do not accept operational
+  authority;
+- declarations do not identify a concrete source/logic binding, route writes,
+  execute derivations, or change current Fact-only materialization.
+
+Remaining gates for the binding and multi-source slices:
 
 - one Memory-only slice combines one source-backed value, one ontology-owned
   Fact, and one schema default into a deterministic projection;
@@ -406,8 +416,8 @@ Remaining gates for the authority and multi-source slices:
 - in the one-source slice, a supplied newer source revision makes an older cut
   stale without mutating that cut, while a missing source-head observation
   produces `unknown`;
-- future mappings and authority declarations use the implemented stable
-  semantic IDs rather than API names;
+- future source/logic bindings refer to authority declarations through the
+  implemented stable semantic IDs rather than API names;
 - Ontology gains no import dependency on Harness, HarnessWork, Method, Product,
   or a concrete source adapter.
 

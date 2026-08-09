@@ -62,6 +62,7 @@ from loushang.ontology.schema import (
     SchemaDiff,
     SchemaLineageError,
     SchemaVersion,
+    StateAuthority,
     ValueType,
     compare_schemas,
 )
@@ -121,6 +122,7 @@ __all__ = [
     "SchemaDiff",
     "SchemaLineageError",
     "SchemaVersion",
+    "StateAuthority",
     "StoredFact",
     "ValueType",
     "compare_schemas",

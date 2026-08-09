@@ -10,6 +10,7 @@ from loushang.ontology.schema import (
     OntologyPackageDraft,
     PropertyDefinition,
     SchemaCompilationError,
+    StateAuthority,
     ValueType,
     compare_schemas,
 )
@@ -34,11 +35,13 @@ def test_interface_contract_round_trips_and_accepts_inherited_properties() -> No
                 ObjectTypeDefinition(
                     "Base",
                     semantic_id="base",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     properties=[
                         PropertyDefinition(
                             "code",
                             ValueType.STRING,
                             semantic_id="base.code",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                             required=True,
                         )
                     ],
@@ -47,6 +50,7 @@ def test_interface_contract_round_trips_and_accepts_inherited_properties() -> No
                 ObjectTypeDefinition(
                     "Asset",
                     semantic_id="asset",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     parent_types=["Base"],
                     interfaces=["Identified"],
                 ),
@@ -66,7 +70,13 @@ def test_new_interface_fields_preserve_existing_positional_draft_construction() 
         "test.positional",
         "urn:test:positional",
         "1.0.0",
-        [ObjectTypeDefinition("Asset", semantic_id="asset")],
+        [
+            ObjectTypeDefinition(
+                "Asset",
+                semantic_id="asset",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+            )
+        ],
         [],
     )
 
@@ -115,7 +125,7 @@ def test_interface_schema_diff_classifies_contract_and_description_changes() -> 
     }
 
 
-def test_interface_property_does_not_silently_accept_object_property_identity() -> None:
+def test_interface_property_rejects_operational_identity_and_authority() -> None:
     interface = InterfaceTypeDefinition(
         "Identified",
         properties=[
@@ -123,6 +133,7 @@ def test_interface_property_does_not_silently_accept_object_property_identity() 
                 "code",
                 ValueType.STRING,
                 semantic_id="identified.code",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
             )
         ],
     )
@@ -138,7 +149,8 @@ def test_interface_property_does_not_silently_accept_object_property_identity() 
         )
 
     assert [item.code for item in exc_info.value.diagnostics] == [
-        "interface_property_semantic_id_unsupported"
+        "interface_property_semantic_id_unsupported",
+        "interface_property_state_authority_unsupported",
     ]
 
 
@@ -149,6 +161,7 @@ def test_interface_property_does_not_silently_accept_object_property_identity() 
             ObjectTypeDefinition(
                 "Asset",
                 semantic_id="asset",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
                 interfaces=["Missing"],
             ),
             "unknown_interface",
@@ -157,6 +170,7 @@ def test_interface_property_does_not_silently_accept_object_property_identity() 
             ObjectTypeDefinition(
                 "Asset",
                 semantic_id="asset",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
                 interfaces=["Identified"],
             ),
             "interface_property_missing",
@@ -165,12 +179,14 @@ def test_interface_property_does_not_silently_accept_object_property_identity() 
             ObjectTypeDefinition(
                 "Asset",
                 semantic_id="asset",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
                 interfaces=["Identified"],
                 properties=[
                     PropertyDefinition(
                         "code",
                         ValueType.INTEGER,
                         semantic_id="asset.code",
+                        state_authority=StateAuthority.ONTOLOGY_OWNED,
                         required=True,
                     )
                 ],
@@ -181,12 +197,14 @@ def test_interface_property_does_not_silently_accept_object_property_identity() 
             ObjectTypeDefinition(
                 "Asset",
                 semantic_id="asset",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
                 interfaces=["Identified"],
                 properties=[
                     PropertyDefinition(
                         "code",
                         ValueType.STRING,
                         semantic_id="asset.code",
+                        state_authority=StateAuthority.ONTOLOGY_OWNED,
                     )
                 ],
             ),

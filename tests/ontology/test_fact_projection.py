@@ -25,6 +25,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    StateAuthority,
     ValueType,
 )
 from loushang.ontology.storage import MemoryFactStore
@@ -44,11 +45,13 @@ def _schema():
                 ObjectTypeDefinition(
                     "Asset",
                     semantic_id="asset",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     properties=[
                         PropertyDefinition(
                             "code",
                             ValueType.STRING,
                             semantic_id="asset.code",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                             required=True,
                             unique=True,
                         ),
@@ -56,20 +59,27 @@ def _schema():
                             "score",
                             ValueType.INTEGER,
                             semantic_id="asset.score",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                         ),
                         PropertyDefinition(
                             "observed_at",
                             ValueType.DATETIME,
                             semantic_id="asset.observed_at",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                         ),
                         PropertyDefinition(
                             "payload",
                             ValueType.JSON,
                             semantic_id="asset.payload",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                         ),
                     ],
                 ),
-                ObjectTypeDefinition("Owner", semantic_id="owner"),
+                ObjectTypeDefinition(
+                    "Owner",
+                    semantic_id="owner",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
+                ),
             ],
             link_types=[
                 LinkTypeDefinition(
@@ -77,6 +87,7 @@ def _schema():
                     "Asset",
                     "Owner",
                     semantic_id="asset.owned_by",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     cardinality=LinkCardinality.MANY_TO_ONE,
                 )
             ],
@@ -212,15 +223,48 @@ def test_projection_reports_shape_property_and_endpoint_failures_together() -> N
 @pytest.mark.parametrize(
     ("definition", "value"),
     [
-        (PropertyDefinition("value", ValueType.STRING, semantic_id="value"), 1),
-        (PropertyDefinition("value", ValueType.INTEGER, semantic_id="value"), True),
-        (PropertyDefinition("value", ValueType.NUMBER, semantic_id="value"), "1"),
-        (PropertyDefinition("value", ValueType.BOOLEAN, semantic_id="value"), 1),
+        (
+            PropertyDefinition(
+                "value",
+                ValueType.STRING,
+                semantic_id="value",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+            ),
+            1,
+        ),
+        (
+            PropertyDefinition(
+                "value",
+                ValueType.INTEGER,
+                semantic_id="value",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+            ),
+            True,
+        ),
+        (
+            PropertyDefinition(
+                "value",
+                ValueType.NUMBER,
+                semantic_id="value",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+            ),
+            "1",
+        ),
+        (
+            PropertyDefinition(
+                "value",
+                ValueType.BOOLEAN,
+                semantic_id="value",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+            ),
+            1,
+        ),
         (
             PropertyDefinition(
                 "value",
                 ValueType.DATETIME,
                 semantic_id="value",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
             ),
             "not-a-date",
         ),
@@ -239,6 +283,7 @@ def test_projection_validates_schema_value_types(
                 ObjectTypeDefinition(
                     "Value",
                     semantic_id="value-object",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     properties=[definition],
                 )
             ],
@@ -267,11 +312,13 @@ def test_projection_enforces_required_unique_abstract_and_inherited_properties()
                 ObjectTypeDefinition(
                     "Base",
                     semantic_id="base",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     properties=[
                         PropertyDefinition(
                             "code",
                             ValueType.STRING,
                             semantic_id="base.code",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                             required=True,
                             unique=True,
                         )
@@ -281,6 +328,7 @@ def test_projection_enforces_required_unique_abstract_and_inherited_properties()
                 ObjectTypeDefinition(
                     "Asset",
                     semantic_id="asset",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     parent_types=["Base"],
                 ),
             ],
@@ -325,8 +373,16 @@ def test_projection_enforces_link_cardinality(
             namespace="urn:test:cardinality",
             version="1.0.0",
             object_types=[
-                ObjectTypeDefinition("Source", semantic_id="source"),
-                ObjectTypeDefinition("Target", semantic_id="target"),
+                ObjectTypeDefinition(
+                    "Source",
+                    semantic_id="source",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
+                ),
+                ObjectTypeDefinition(
+                    "Target",
+                    semantic_id="target",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
+                ),
             ],
             link_types=[
                 LinkTypeDefinition(
@@ -335,6 +391,7 @@ def test_projection_enforces_link_cardinality(
                     "Target",
                     cardinality,
                     semantic_id="source.relates",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                 )
             ],
         )
@@ -366,8 +423,16 @@ def test_projection_enforces_required_links() -> None:
             namespace="urn:test:required-link",
             version="1.0.0",
             object_types=[
-                ObjectTypeDefinition("Source", semantic_id="source"),
-                ObjectTypeDefinition("Target", semantic_id="target"),
+                ObjectTypeDefinition(
+                    "Source",
+                    semantic_id="source",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
+                ),
+                ObjectTypeDefinition(
+                    "Target",
+                    semantic_id="target",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
+                ),
             ],
             link_types=[
                 LinkTypeDefinition(
@@ -375,6 +440,7 @@ def test_projection_enforces_required_links() -> None:
                     "Source",
                     "Target",
                     semantic_id="source.target",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     required=True,
                 )
             ],

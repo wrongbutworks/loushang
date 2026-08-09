@@ -19,6 +19,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    StateAuthority,
     ValueType,
 )
 from loushang.ontology.storage import (
@@ -43,11 +44,13 @@ def _schema():
                 ObjectTypeDefinition(
                     "Asset",
                     semantic_id="asset",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     properties=[
                         PropertyDefinition(
                             "signal",
                             ValueType.JSON,
                             semantic_id="asset.signal",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                         ),
                     ],
                 )

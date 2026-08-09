@@ -26,6 +26,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    StateAuthority,
     ValueType,
 )
 from loushang.ontology.storage import MemoryFactStore
@@ -45,28 +46,33 @@ def _projected_assets():
                 ObjectTypeDefinition(
                     "Asset",
                     semantic_id="asset",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     properties=[
                         PropertyDefinition(
                             "code",
                             ValueType.STRING,
                             semantic_id="asset.code",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                             indexed=True,
                         ),
                         PropertyDefinition(
                             "score",
                             ValueType.INTEGER,
                             semantic_id="asset.score",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                         ),
                     ],
                 ),
                 ObjectTypeDefinition(
                     "Owner",
                     semantic_id="owner",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     properties=[
                         PropertyDefinition(
                             "name",
                             ValueType.STRING,
                             semantic_id="owner.name",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                         )
                     ],
                 ),
@@ -77,6 +83,7 @@ def _projected_assets():
                     "Asset",
                     "Owner",
                     semantic_id="asset.owned_by",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                 )
             ],
         )

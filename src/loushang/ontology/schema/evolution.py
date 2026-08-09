@@ -17,7 +17,7 @@ from loushang.ontology.schema.compiler import (
 )
 from loushang.ontology.schema.definitions import SchemaVersion
 
-SCHEMA_DIFF_FORMAT = "loushang.ontology.schema-diff/v2"
+SCHEMA_DIFF_FORMAT = "loushang.ontology.schema-diff/v3"
 
 
 class ChangeImpact(str, Enum):
@@ -221,6 +221,16 @@ def _compare_object_type(
             before=old.name,
             after=new.name,
         )
+    if old.state_authority is not new.state_authority:
+        _field_change(
+            changes,
+            code="object_existence_authority_changed",
+            path=f"{path}.state_authority",
+            impact=ChangeImpact.BREAKING,
+            message=f"object type '{old.name}' existence authority changed",
+            before=old.state_authority.value,
+            after=new.state_authority.value,
+        )
     if old.parent_types != new.parent_types:
         _field_change(
             changes,
@@ -354,6 +364,18 @@ def _compare_property(
             ),
             before=old.name,
             after=new.name,
+        )
+    assert old.state_authority is not None
+    assert new.state_authority is not None
+    if old.state_authority is not new.state_authority:
+        _field_change(
+            changes,
+            code="property_state_authority_changed",
+            path=f"{path}.state_authority",
+            impact=ChangeImpact.BREAKING,
+            message=f"property '{object_name}.{old.name}' authority changed",
+            before=old.state_authority.value,
+            after=new.state_authority.value,
         )
     if old.value_type is not new.value_type:
         _field_change(
@@ -533,6 +555,16 @@ def _compare_link_type(
             before=old.name,
             after=new.name,
         )
+    if old.state_authority is not new.state_authority:
+        _field_change(
+            changes,
+            code="link_state_authority_changed",
+            path=f"{path}.state_authority",
+            impact=ChangeImpact.BREAKING,
+            message=f"link type '{old.name}' authority changed",
+            before=old.state_authority.value,
+            after=new.state_authority.value,
+        )
     for field_name, code, before, after in (
         ("source_type", "link_source_type_changed", old.source_type, new.source_type),
         ("target_type", "link_target_type_changed", old.target_type, new.target_type),
@@ -662,6 +694,7 @@ def _object_snapshot(object_type: CompiledObjectTypeDefinition) -> dict[str, JSO
     return {
         "semantic_id": object_type.semantic_id,
         "name": object_type.name,
+        "state_authority": object_type.state_authority.value,
         "properties": [
             _property_snapshot(prop)
             for prop in sorted(object_type.properties, key=_property_id)
@@ -679,6 +712,7 @@ def _property_snapshot(prop: CompiledPropertyDefinition) -> dict[str, JSONValue]
     return {
         "semantic_id": _property_id(prop),
         "name": prop.name,
+        "state_authority": _property_authority_value(prop),
         "value_type": prop.value_type.value,
         "required": prop.required,
         "unique": prop.unique,
@@ -692,6 +726,7 @@ def _link_snapshot(link: CompiledLinkTypeDefinition) -> dict[str, JSONValue]:
     return {
         "semantic_id": link.semantic_id,
         "name": link.name,
+        "state_authority": link.state_authority.value,
         "source_type": link.source_type,
         "target_type": link.target_type,
         "cardinality": link.cardinality.value,
@@ -728,6 +763,11 @@ def _interface_property_snapshot(
 def _property_id(prop: CompiledPropertyDefinition) -> str:
     assert prop.semantic_id is not None
     return prop.semantic_id
+
+
+def _property_authority_value(prop: CompiledPropertyDefinition) -> str:
+    assert prop.state_authority is not None
+    return prop.state_authority.value
 
 
 def _object_path(semantic_id: str) -> str:

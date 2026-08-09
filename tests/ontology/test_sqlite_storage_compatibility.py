@@ -10,6 +10,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    StateAuthority,
     ValueType,
 )
 from loushang.ontology.storage import (
@@ -25,7 +26,12 @@ from loushang.ontology.storage import (
 
 def _schema(*, version: str = "1.0.0", extra_property: bool = False):
     properties = [
-        PropertyDefinition("code", ValueType.STRING, semantic_id="asset.code")
+        PropertyDefinition(
+            "code",
+            ValueType.STRING,
+            semantic_id="asset.code",
+            state_authority=StateAuthority.ONTOLOGY_OWNED,
+        )
     ]
     if extra_property:
         properties.append(
@@ -33,6 +39,7 @@ def _schema(*, version: str = "1.0.0", extra_property: bool = False):
                 "description",
                 ValueType.STRING,
                 semantic_id="asset.description",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
             )
         )
     return OntologyCompiler().compile(
@@ -44,6 +51,7 @@ def _schema(*, version: str = "1.0.0", extra_property: bool = False):
                 ObjectTypeDefinition(
                     "Asset",
                     semantic_id="asset",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     properties=properties,
                 )
             ],

@@ -14,6 +14,7 @@ from loushang.ontology.schema import (
     PropertyDefinition,
     SchemaCompilationError,
     SchemaVersion,
+    StateAuthority,
     ValueType,
 )
 
@@ -27,17 +28,23 @@ def _project_draft(*, default: object = None) -> OntologyPackageDraft:
             ObjectTypeDefinition(
                 name="Project",
                 semantic_id="project",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
                 properties=[
                     PropertyDefinition(
                         name="name",
                         value_type=ValueType.STRING,
                         semantic_id="project.name",
+                        state_authority=StateAuthority.SOURCE_BACKED,
                         required=True,
                         default=default,
                     )
                 ],
             ),
-            ObjectTypeDefinition(name="Task", semantic_id="task"),
+            ObjectTypeDefinition(
+                name="Task",
+                semantic_id="task",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+            ),
         ],
         link_types=[
             LinkTypeDefinition(
@@ -45,6 +52,7 @@ def _project_draft(*, default: object = None) -> OntologyPackageDraft:
                 source_type="Project",
                 target_type="Task",
                 semantic_id="project.contains_task",
+                state_authority=StateAuthority.SOURCE_BACKED,
                 cardinality="one_to_many",
             )
         ],
@@ -62,7 +70,13 @@ def test_compiler_emits_deterministic_strict_json_and_round_trips() -> None:
     assert compiled.object_type("Project").property_by_id("project.name") is not None  # type: ignore[union-attr]
     assert compiled.link_type("contains") is not None
     assert compiled.link_type_by_id("project.contains_task") is not None
-    assert compiled.format == "loushang.ontology.schema/v2"
+    assert compiled.object_type_by_id("project").state_authority is (  # type: ignore[union-attr]
+        StateAuthority.ONTOLOGY_OWNED
+    )
+    assert compiled.object_type_by_id("project").property_by_id(  # type: ignore[union-attr]
+        "project.name"
+    ).state_authority is StateAuthority.SOURCE_BACKED  # type: ignore[union-attr]
+    assert compiled.format == "loushang.ontology.schema/v3"
 
 
 def test_compiled_schema_does_not_share_mutable_default_values() -> None:
@@ -90,16 +104,27 @@ def test_compiler_reports_all_structural_errors_with_stable_codes() -> None:
             ObjectTypeDefinition(
                 name="Bad Type",
                 semantic_id="bad-type",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
                 properties=[
-                    PropertyDefinition("payload", "blob", semantic_id="payload"),
+                    PropertyDefinition(
+                        "payload",
+                        "blob",
+                        semantic_id="payload",
+                        state_authority=StateAuthority.ONTOLOGY_OWNED,
+                    ),
                     PropertyDefinition(
                         "payload",
                         ValueType.JSON,
                         semantic_id="payload-copy",
+                        state_authority=StateAuthority.ONTOLOGY_OWNED,
                     ),
                 ],
             ),
-            ObjectTypeDefinition(name="Bad Type", semantic_id="bad-type-copy"),
+            ObjectTypeDefinition(
+                name="Bad Type",
+                semantic_id="bad-type-copy",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+            ),
         ],
         link_types=[
             LinkTypeDefinition(
@@ -107,6 +132,7 @@ def test_compiler_reports_all_structural_errors_with_stable_codes() -> None:
                 source_type="Missing",
                 target_type="Bad Type",
                 semantic_id="broken",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
                 cardinality="sometimes",
             )
         ],
@@ -132,8 +158,18 @@ def test_compiler_rejects_parent_type_cycles() -> None:
         namespace="urn:test:parent-cycle",
         version="1.0.0",
         object_types=[
-            ObjectTypeDefinition(name="A", semantic_id="a", parent_types=["B"]),
-            ObjectTypeDefinition(name="B", semantic_id="b", parent_types=["A"]),
+            ObjectTypeDefinition(
+                name="A",
+                semantic_id="a",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+                parent_types=["B"],
+            ),
+            ObjectTypeDefinition(
+                name="B",
+                semantic_id="b",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+                parent_types=["A"],
+            ),
         ],
     )
 
@@ -154,15 +190,20 @@ def test_compiler_requires_unique_package_local_semantic_ids() -> None:
             ObjectTypeDefinition(
                 "Asset",
                 semantic_id="shared",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
                 properties=[
                     PropertyDefinition(
                         "code",
                         ValueType.STRING,
                         semantic_id="shared",
+                        state_authority=StateAuthority.ONTOLOGY_OWNED,
                     )
                 ],
             ),
-            ObjectTypeDefinition("MissingId"),
+            ObjectTypeDefinition(
+                "MissingId",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+            ),
         ],
     )
 
@@ -174,10 +215,42 @@ def test_compiler_requires_unique_package_local_semantic_ids() -> None:
     ]
 
 
-def test_schema_v1_documents_are_not_loaded_as_v2() -> None:
+def test_schema_v2_documents_are_not_loaded_as_v3() -> None:
     compiler = OntologyCompiler()
     payload = json.loads(compiler.compile(_project_draft()).to_json())
-    payload["format"] = "loushang.ontology.schema/v1"
+    payload["format"] = "loushang.ontology.schema/v2"
 
-    with pytest.raises(SchemaCompilationError, match="schema/v2"):
+    with pytest.raises(SchemaCompilationError, match="schema/v3"):
         compiler.load_json(json.dumps(payload))
+
+
+def test_compiler_requires_explicit_state_authority() -> None:
+    draft = OntologyPackageDraft(
+        package_id="test.authority",
+        namespace="urn:test:authority",
+        version="1.0.0",
+        object_types=[
+            ObjectTypeDefinition(
+                "Asset",
+                semantic_id="asset",
+                properties=[
+                    PropertyDefinition(
+                        "status",
+                        ValueType.STRING,
+                        semantic_id="asset.status",
+                        state_authority="external",
+                    )
+                ],
+            )
+        ],
+    )
+
+    assert [
+        (item.code, item.path) for item in OntologyCompiler().validate(draft)
+    ] == [
+        ("invalid_state_authority", "$.object_types[0].state_authority"),
+        (
+            "invalid_state_authority",
+            "$.object_types[0].properties[0].state_authority",
+        ),
+    ]

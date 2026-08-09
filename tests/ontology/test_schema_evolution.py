@@ -16,6 +16,7 @@ from loushang.ontology.schema import (
     OntologyPackageDraft,
     PropertyDefinition,
     SchemaLineageError,
+    StateAuthority,
     ValueType,
     compare_schemas,
 )
@@ -33,15 +34,30 @@ def _compiled(
         replace(
             object_type,
             semantic_id=object_type.semantic_id or object_type.name,
+            state_authority=(
+                object_type.state_authority or StateAuthority.ONTOLOGY_OWNED
+            ),
             properties=tuple(
-                replace(prop, semantic_id=prop.semantic_id or prop.name)
+                replace(
+                    prop,
+                    semantic_id=prop.semantic_id or prop.name,
+                    state_authority=(
+                        prop.state_authority or StateAuthority.ONTOLOGY_OWNED
+                    ),
+                )
                 for prop in object_type.properties
             ),
         )
         for object_type in (object_types or [])
     ]
     link_types = [
-        replace(link, semantic_id=link.semantic_id or link.name)
+        replace(
+            link,
+            semantic_id=link.semantic_id or link.name,
+            state_authority=(
+                link.state_authority or StateAuthority.ONTOLOGY_OWNED
+            ),
+        )
         for link in (link_types or [])
     ]
     compiler = OntologyCompiler()
@@ -223,6 +239,66 @@ def test_link_type_rename_is_matched_by_stable_id() -> None:
     assert [(item.code, item.impact) for item in changes] == [
         ("link_type_name_changed", ChangeImpact.BREAKING)
     ]
+
+
+def test_state_authority_changes_are_explicit_and_breaking() -> None:
+    old = _compiled(
+        object_types=[
+            ObjectTypeDefinition(
+                "Project",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+                properties=[
+                    PropertyDefinition(
+                        "status",
+                        ValueType.STRING,
+                        state_authority=StateAuthority.SOURCE_BACKED,
+                    )
+                ],
+            ),
+            ObjectTypeDefinition("Task"),
+        ],
+        link_types=[
+            LinkTypeDefinition(
+                "contains",
+                "Project",
+                "Task",
+                state_authority=StateAuthority.SOURCE_BACKED,
+            )
+        ],
+    )
+    new = _compiled(
+        version="2.0.0",
+        object_types=[
+            ObjectTypeDefinition(
+                "Project",
+                state_authority=StateAuthority.SOURCE_BACKED,
+                properties=[
+                    PropertyDefinition(
+                        "status",
+                        ValueType.STRING,
+                        state_authority=StateAuthority.DERIVED,
+                    )
+                ],
+            ),
+            ObjectTypeDefinition("Task"),
+        ],
+        link_types=[
+            LinkTypeDefinition(
+                "contains",
+                "Project",
+                "Task",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+            )
+        ],
+    )
+
+    changes = compare_schemas(old, new).changes
+
+    assert {(item.code, item.impact) for item in changes} == {
+        ("object_existence_authority_changed", ChangeImpact.BREAKING),
+        ("property_state_authority_changed", ChangeImpact.BREAKING),
+        ("link_state_authority_changed", ChangeImpact.BREAKING),
+    }
 
 
 def test_different_packages_cannot_be_compared() -> None:
@@ -553,5 +629,5 @@ def test_diff_json_is_strict_stable_and_detached() -> None:
     exposed["default"] = None
 
     assert diff.to_json() == payload
-    assert json.loads(payload)["format"] == "loushang.ontology.schema-diff/v2"
+    assert json.loads(payload)["format"] == "loushang.ontology.schema-diff/v3"
     assert json.loads(payload)["package_id"] == "test.evolution"

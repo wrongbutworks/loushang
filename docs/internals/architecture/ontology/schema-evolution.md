@@ -9,7 +9,8 @@ This contract implements the stable semantic identity decision in
 [ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md).
 It covers object types, their properties, and link types. Interface types remain
 name-keyed until a separate demonstrated need extends their identity contract;
-their structural properties therefore do not accept `semantic_id` in schema v2.
+their structural properties therefore accept neither `semantic_id` nor
+`state_authority` in schema v3.
 
 ## Identity and Lineage
 
@@ -30,6 +31,21 @@ their structural properties therefore do not accept `semantic_id` in schema v2.
 Semantic IDs use the same compact identifier grammar as other schema keys; they
 are not generated UUIDs and are never derived silently from a mutable name.
 
+## State Authority
+
+Every object type, object property, and link type also declares exactly one
+`state_authority`:
+
+- `source-backed`: an external system owns the state;
+- `ontology-owned`: Ontology owns accepted changes to the state;
+- `derived`: published logic owns computation of the state.
+
+For an object type the declaration applies to object existence; for a property
+it applies to that value; for a link type it applies to the link instance
+family. Reassigning authority is breaking because it changes the accepted write
+contract. Schema v3 does not identify a concrete source or logic binding and
+does not route writes or execute derivations.
+
 ## Public Contract
 
 ```python
@@ -42,8 +58,8 @@ diff = compare_schemas(old, new)
 
 The pure comparison returns an immutable `SchemaDiff` containing immutable,
 path-addressed `SchemaChange` records. Its JSON format identifier is
-`loushang.ontology.schema-diff/v2`. Compiled schema JSON uses
-`loushang.ontology.schema/v2`. Change ordering is stable by path and code;
+`loushang.ontology.schema-diff/v3`. Compiled schema JSON uses
+`loushang.ontology.schema/v3`. Change ordering is stable by path and code;
 object, property, and link declaration order does not affect the result.
 Object/property/link paths are keyed by `semantic_id`, not display or API name.
 
@@ -53,7 +69,7 @@ Object/property/link paths are keyed by `semantic_id`, not display or API name.
 | --- | --- | --- |
 | `NON_BREAKING` | existing consumers and instances remain valid | add object type, optional property, or optional link; relax required or abstract |
 | `BEHAVIORAL` | compatibility remains but presentation or runtime behavior may differ | default, index, description, icon, display name, inverse name, or temporal declaration |
-| `BREAKING` | existing consumers, instances, or graph contracts may become invalid | rename or removal; type change; required/unique tightening; abstract tightening; interface contract, parent, endpoint, cardinality, namespace change |
+| `BREAKING` | existing consumers, instances, write ownership, or graph contracts may become invalid | authority reassignment; rename or removal; type change; required/unique tightening; abstract tightening; interface contract, parent, endpoint, cardinality, namespace change |
 
 Adding a required property or required link is breaking. Adding a new object
 type is non-breaking even when the new type itself contains required fields,
@@ -88,4 +104,5 @@ This contract does not add:
 - Schema Registry, filesystem persistence, or remote publishing;
 - hot reload of a running ontology;
 - SemVer validation or release approval policy;
+- source/logic bindings, write routing, connector execution, or derivation;
 - Action, Decision, OWL, or domain ontology behavior.

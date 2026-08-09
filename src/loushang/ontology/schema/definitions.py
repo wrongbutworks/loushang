@@ -26,6 +26,14 @@ class LinkCardinality(str, Enum):
     MANY_TO_MANY = "many_to_many"
 
 
+class StateAuthority(str, Enum):
+    """Declared owner class; not a binding or execution authorization."""
+
+    SOURCE_BACKED = "source-backed"
+    ONTOLOGY_OWNED = "ontology-owned"
+    DERIVED = "derived"
+
+
 @dataclass(frozen=True, slots=True)
 class SchemaVersion:
     """Opaque schema version validated by :class:`OntologyCompiler`."""
@@ -43,14 +51,18 @@ class PropertyDefinition:
     ``value_type`` and ``default`` deliberately accept ``object`` at the draft
     boundary. The compiler turns valid values into strict immutable schema
     content and reports invalid values as diagnostics instead of leaking
-    incidental constructor exceptions. ``semantic_id`` is compiler-required
-    when the property belongs to an object type, but not when the same draft
-    shape describes a structural interface member.
+    incidental constructor exceptions. ``semantic_id`` and ``state_authority``
+    are compiler-required when the property belongs to an object type, but not
+    when the same draft shape describes a structural interface member.
     """
 
     name: str
     value_type: ValueType | object
     semantic_id: str | None = field(default=None, kw_only=True)
+    state_authority: StateAuthority | object | None = field(
+        default=None,
+        kw_only=True,
+    )
     required: bool = False
     unique: bool = False
     indexed: bool = False
@@ -83,6 +95,10 @@ class ObjectTypeDefinition:
 
     name: str
     semantic_id: str | None = field(default=None, kw_only=True)
+    state_authority: StateAuthority | object | None = field(
+        default=None,
+        kw_only=True,
+    )
     properties: tuple[PropertyDefinition, ...] | list[PropertyDefinition] = field(
         default_factory=tuple
     )
@@ -107,6 +123,10 @@ class LinkTypeDefinition:
     source_type: str
     target_type: str
     semantic_id: str | None = field(default=None, kw_only=True)
+    state_authority: StateAuthority | object | None = field(
+        default=None,
+        kw_only=True,
+    )
     cardinality: LinkCardinality | object = LinkCardinality.ONE_TO_MANY
     required: bool = False
     inverse_name: str | None = None
@@ -147,5 +167,6 @@ __all__ = [
     "OntologyPackageDraft",
     "PropertyDefinition",
     "SchemaVersion",
+    "StateAuthority",
     "ValueType",
 ]

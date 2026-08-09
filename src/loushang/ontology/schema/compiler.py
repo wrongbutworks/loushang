@@ -22,6 +22,7 @@ from loushang.ontology.schema.definitions import (
     OntologyPackageDraft,
     PropertyDefinition,
     SchemaVersion,
+    StateAuthority,
     ValueType,
 )
 from loushang.ontology.schema.diagnostics import (
@@ -29,7 +30,7 @@ from loushang.ontology.schema.diagnostics import (
     SchemaDiagnostic,
 )
 
-SCHEMA_FORMAT = "loushang.ontology.schema/v2"
+SCHEMA_FORMAT = "loushang.ontology.schema/v3"
 
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 _VERSION = re.compile(r"^[0-9]+(?:\.[0-9]+){0,2}(?:[-+][A-Za-z0-9.-]+)?$")
@@ -39,13 +40,14 @@ _VERSION = re.compile(r"^[0-9]+(?:\.[0-9]+){0,2}(?:[-+][A-Za-z0-9.-]+)?$")
 class CompiledPropertyDefinition:
     """Validated property definition with an isolated JSON default value.
 
-    ``semantic_id`` is required for object properties. It remains ``None`` only
-    for structural interface members, whose identity is outside ARD-003's
-    stable-ID slice.
+    ``semantic_id`` and ``state_authority`` are required for object properties.
+    They remain ``None`` only for structural interface members, whose identity
+    and operational ownership are outside the implemented ARD-003 slices.
     """
 
     name: str
     semantic_id: str | None
+    state_authority: StateAuthority | None
     value_type: ValueType
     required: bool
     unique: bool
@@ -65,6 +67,7 @@ class CompiledObjectTypeDefinition:
 
     name: str
     semantic_id: str
+    state_authority: StateAuthority
     properties: tuple[CompiledPropertyDefinition, ...]
     parent_types: tuple[str, ...]
     interfaces: tuple[str, ...]
@@ -89,6 +92,7 @@ class CompiledLinkTypeDefinition:
 
     name: str
     semantic_id: str
+    state_authority: StateAuthority
     source_type: str
     target_type: str
     cardinality: LinkCardinality
@@ -169,6 +173,7 @@ class CompiledOntologySchema:
                 {
                     "semantic_id": object_type.semantic_id,
                     "name": object_type.name,
+                    "state_authority": object_type.state_authority.value,
                     "properties": [
                         _property_document(prop, include_semantic_id=True)
                         for prop in object_type.properties
@@ -186,6 +191,7 @@ class CompiledOntologySchema:
                 {
                     "semantic_id": link_type.semantic_id,
                     "name": link_type.name,
+                    "state_authority": link_type.state_authority.value,
                     "source_type": link_type.source_type,
                     "target_type": link_type.target_type,
                     "cardinality": link_type.cardinality.value,
@@ -306,6 +312,11 @@ class OntologyCompiler:
                 semantic_ids=semantic_ids,
                 diagnostics=diagnostics,
             )
+            object_state_authority = _compile_state_authority(
+                object_type.state_authority,
+                path=f"{object_path}.state_authority",
+                diagnostics=diagnostics,
+            )
             if object_type.name in object_names:
                 diagnostics.append(
                     SchemaDiagnostic(
@@ -320,6 +331,7 @@ class OntologyCompiler:
                 CompiledObjectTypeDefinition(
                     name=object_type.name,
                     semantic_id=object_semantic_id,
+                    state_authority=object_state_authority,
                     properties=_compile_property_definitions(
                         object_type.properties,
                         path=object_path,
@@ -365,6 +377,11 @@ class OntologyCompiler:
                 semantic_ids=semantic_ids,
                 diagnostics=diagnostics,
             )
+            link_state_authority = _compile_state_authority(
+                link_type.state_authority,
+                path=f"{link_path}.state_authority",
+                diagnostics=diagnostics,
+            )
             if link_type.name in link_names:
                 diagnostics.append(
                     SchemaDiagnostic(
@@ -402,6 +419,7 @@ class OntologyCompiler:
                     CompiledLinkTypeDefinition(
                         name=link_type.name,
                         semantic_id=link_semantic_id,
+                        state_authority=link_state_authority,
                         source_type=link_type.source_type,
                         target_type=link_type.target_type,
                         cardinality=cardinality,
@@ -538,6 +556,37 @@ def _normalize_value_type(value: object) -> ValueType | None:
     return None
 
 
+def _normalize_state_authority(value: object) -> StateAuthority | None:
+    if isinstance(value, StateAuthority):
+        return value
+    if isinstance(value, str):
+        try:
+            return StateAuthority(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _compile_state_authority(
+    value: object,
+    *,
+    path: str,
+    diagnostics: list[SchemaDiagnostic],
+) -> StateAuthority:
+    authority = _normalize_state_authority(value)
+    if authority is None:
+        diagnostics.append(
+            SchemaDiagnostic(
+                "invalid_state_authority",
+                path,
+                "state_authority must be 'source-backed', 'ontology-owned', or 'derived'",
+            )
+        )
+        # The compiled value is discarded whenever diagnostics exist.
+        return StateAuthority.ONTOLOGY_OWNED
+    return authority
+
+
 def _compile_property_definitions(
     properties: tuple[PropertyDefinition, ...] | list[PropertyDefinition],
     *,
@@ -551,13 +600,22 @@ def _compile_property_definitions(
         property_path = f"{path}.properties[{property_index}]"
         _validate_identifier(prop.name, f"{property_path}.name", diagnostics)
         semantic_id = None
+        state_authority = None
         if semantic_ids is None:
             if prop.semantic_id is not None:
                 diagnostics.append(
                     SchemaDiagnostic(
                         "interface_property_semantic_id_unsupported",
                         f"{property_path}.semantic_id",
-                        "interface property identity is not part of schema v2",
+                        "interface property identity is not part of schema v3",
+                    )
+                )
+            if prop.state_authority is not None:
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "interface_property_state_authority_unsupported",
+                        f"{property_path}.state_authority",
+                        "interface property authority is not part of schema v3",
                     )
                 )
         else:
@@ -565,6 +623,11 @@ def _compile_property_definitions(
                 prop.semantic_id,
                 path=f"{property_path}.semantic_id",
                 semantic_ids=semantic_ids,
+                diagnostics=diagnostics,
+            )
+            state_authority = _compile_state_authority(
+                prop.state_authority,
+                path=f"{property_path}.state_authority",
                 diagnostics=diagnostics,
             )
         if prop.name in names:
@@ -598,6 +661,7 @@ def _compile_property_definitions(
                 CompiledPropertyDefinition(
                     name=prop.name,
                     semantic_id=semantic_id,
+                    state_authority=state_authority,
                     value_type=value_type,
                     required=prop.required,
                     unique=prop.unique,
@@ -744,6 +808,7 @@ def _object_from_value(value: JSONValue) -> ObjectTypeDefinition:
     return ObjectTypeDefinition(
         name=_require_string(document, "name"),
         semantic_id=_require_string(document, "semantic_id"),
+        state_authority=_require_string(document, "state_authority"),
         properties=properties,
         parent_types=cast(list[str], parents),
         interfaces=cast(list[str], interfaces),
@@ -779,6 +844,11 @@ def _property_from_value(
             if require_semantic_id
             else None
         ),
+        state_authority=(
+            _require_string(document, "state_authority")
+            if require_semantic_id
+            else None
+        ),
         required=_require_bool(document, "required"),
         unique=_require_bool(document, "unique"),
         indexed=_require_bool(document, "indexed"),
@@ -794,6 +864,7 @@ def _link_from_value(value: JSONValue) -> LinkTypeDefinition:
         source_type=_require_string(document, "source_type"),
         target_type=_require_string(document, "target_type"),
         semantic_id=_require_string(document, "semantic_id"),
+        state_authority=_require_string(document, "state_authority"),
         cardinality=_require_string(document, "cardinality"),
         required=_require_bool(document, "required"),
         inverse_name=_require_optional_string(document, "inverse_name"),
@@ -832,7 +903,9 @@ def _property_document(
     }
     if include_semantic_id:
         assert prop.semantic_id is not None
+        assert prop.state_authority is not None
         document["semantic_id"] = prop.semantic_id
+        document["state_authority"] = prop.state_authority.value
     return document
 
 

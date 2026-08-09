@@ -17,6 +17,7 @@ from loushang.ontology.schema.definitions import (
     OntologyPackageDraft,
     PropertyDefinition,
     SchemaVersion,
+    StateAuthority,
     ValueType,
 )
 from loushang.ontology.schema.diagnostics import (
@@ -54,6 +55,7 @@ __all__ = [
     "SchemaDiff",
     "SchemaLineageError",
     "SchemaVersion",
+    "StateAuthority",
     "ValueType",
     "compare_schemas",
 ]

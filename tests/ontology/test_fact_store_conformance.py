@@ -21,6 +21,7 @@ from loushang.ontology.schema import (
     ObjectTypeDefinition,
     OntologyCompiler,
     OntologyPackageDraft,
+    StateAuthority,
 )
 from loushang.ontology.storage import MemoryFactStore, SQLiteFactStore
 
@@ -36,7 +37,13 @@ def _schema():
             package_id="test.facts",
             namespace="urn:test:facts",
             version="1.0.0",
-            object_types=[ObjectTypeDefinition("Asset", semantic_id="asset")],
+            object_types=[
+                ObjectTypeDefinition(
+                    "Asset",
+                    semantic_id="asset",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
+                )
+            ],
         )
     )
 

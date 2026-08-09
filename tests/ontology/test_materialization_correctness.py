@@ -22,6 +22,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    StateAuthority,
     ValueType,
 )
 from loushang.ontology.storage import SQLiteFactStore, SQLiteProjectionStore
@@ -42,11 +43,13 @@ def _schema():
                 ObjectTypeDefinition(
                     "Asset",
                     semantic_id="asset",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
                     properties=[
                         PropertyDefinition(
                             "status",
                             ValueType.STRING,
                             semantic_id="asset.status",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
                         )
                     ],
                 )
