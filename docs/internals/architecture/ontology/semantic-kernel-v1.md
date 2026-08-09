@@ -2,9 +2,11 @@
 
 ## Status
 
-Accepted implementation boundary for the first versioned semantic-kernel
-slice. This document narrows the larger operational-ontology draft; it does not
-accept the later storage, Action, Decision, standards, or domain waves.
+Accepted historical boundary for the first versioned semantic-kernel slice.
+It is extended by the implemented
+[Wave 1 Completion Boundary](wave1-completion-boundary.md), which adds the
+previously deferred Store/SQLite/projection/query/interface contracts. The
+non-goals below describe this initial slice, not the current subsystem state.
 
 ## Objective
 

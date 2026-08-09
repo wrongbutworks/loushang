@@ -56,6 +56,25 @@ class PropertyDefinition:
 
 
 @dataclass(frozen=True, slots=True)
+class InterfaceTypeDefinition:
+    """Named structural property contract implemented by object types.
+
+    Interface conformance consumes property name, value type, and requiredness.
+    Other reusable ``PropertyDefinition`` metadata does not impose storage or
+    uniqueness behavior on implementing object types.
+    """
+
+    name: str
+    properties: tuple[PropertyDefinition, ...] | list[PropertyDefinition] = field(
+        default_factory=tuple
+    )
+    description: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "properties", tuple(self.properties))
+
+
+@dataclass(frozen=True, slots=True)
 class ObjectTypeDefinition:
     """Serializable object-type declaration."""
 
@@ -68,10 +87,12 @@ class ObjectTypeDefinition:
     icon: str | None = None
     description: str = ""
     display_name_property: str | None = None
+    interfaces: tuple[str, ...] | list[str] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "properties", tuple(self.properties))
         object.__setattr__(self, "parent_types", tuple(self.parent_types))
+        object.__setattr__(self, "interfaces", tuple(self.interfaces))
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,15 +122,20 @@ class OntologyPackageDraft:
     link_types: tuple[LinkTypeDefinition, ...] | list[LinkTypeDefinition] = field(
         default_factory=tuple
     )
+    interface_types: tuple[InterfaceTypeDefinition, ...] | list[
+        InterfaceTypeDefinition
+    ] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if isinstance(self.version, str):
             object.__setattr__(self, "version", SchemaVersion(self.version))
+        object.__setattr__(self, "interface_types", tuple(self.interface_types))
         object.__setattr__(self, "object_types", tuple(self.object_types))
         object.__setattr__(self, "link_types", tuple(self.link_types))
 
 
 __all__ = [
+    "InterfaceTypeDefinition",
     "LinkCardinality",
     "LinkTypeDefinition",
     "ObjectTypeDefinition",

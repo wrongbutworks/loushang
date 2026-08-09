@@ -74,6 +74,7 @@ def materialize_compiled_schema(
                 for prop in object_type.properties
             ],
             parent_types=list(object_type.parent_types),
+            interfaces=list(object_type.interfaces),
             abstract=object_type.abstract,
             icon=object_type.icon,
             description=object_type.description,

@@ -39,17 +39,18 @@ object, property, and link declaration order does not affect the result.
 | Impact | Meaning | Representative changes |
 | --- | --- | --- |
 | `NON_BREAKING` | existing consumers and instances remain valid | add object type, optional property, or optional link; relax required or abstract |
-| `BEHAVIORAL` | compatibility remains but presentation or runtime behavior may differ | default, unique/index, description, icon, display name, inverse name, or temporal declaration |
-| `BREAKING` | existing consumers, instances, or graph contracts may become invalid | removal; type change; required tightening; abstract tightening; parent, endpoint, cardinality, namespace change |
+| `BEHAVIORAL` | compatibility remains but presentation or runtime behavior may differ | default, index, description, icon, display name, inverse name, or temporal declaration |
+| `BREAKING` | existing consumers, instances, or graph contracts may become invalid | removal; type change; required/unique tightening; abstract tightening; interface contract, parent, endpoint, cardinality, namespace change |
 
 Adding a required property or required link is breaking. Adding a new object
 type is non-breaking even when the new type itself contains required fields,
 because it does not invalidate existing object types.
 
-Although `unique` and required links are not fully enforced by the V1 in-memory
-runtime, their declarations remain part of the portable contract. A unique
-change is behavioral; required-link tightening is breaking for generated and
-future conforming consumers.
+`unique` is enforced by both Wave 1 stores, so tightening it is breaking and
+relaxing it is non-breaking. Required-link tightening is breaking even though
+completeness is checked explicitly rather than as a hidden single-object create
+gate. Adding an interface implementation is non-breaking; removing one or
+changing an interface property contract is breaking.
 
 ## Determinism
 

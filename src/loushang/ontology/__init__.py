@@ -25,17 +25,26 @@ OWL 推理器或生产级图存储。
     print(alice.get("name"))  # "Alice"
 """
 
+from loushang.ontology.core.constraints import IntegrityViolation
 from loushang.ontology.core.link_type import Cardinality, LinkType
 from loushang.ontology.core.object import OntologyObject
 from loushang.ontology.core.object_type import ObjectType
 from loushang.ontology.core.ontology import Ontology
 from loushang.ontology.core.property import DerivedProperty, Property, TemporalProperty
 from loushang.ontology.core.store import ObjectStore
+from loushang.ontology.core.store_port import (
+    OntologyReadStore,
+    OntologyStore,
+    OperationalMutationStore,
+    ProjectionStore,
+)
 from loushang.ontology.fusion.mapper import DataFusion, FieldMapping, SourceMapping
 from loushang.ontology.query.builder import QueryBuilder
+from loushang.ontology.query.contracts import QueryRequest, QueryResult
 from loushang.ontology.rules.engine import Rule, RuleEngine
 from loushang.ontology.schema import (
     CompiledOntologySchema,
+    InterfaceTypeDefinition,
     LinkCardinality,
     LinkTypeDefinition,
     ObjectTypeDefinition,
@@ -50,6 +59,7 @@ from loushang.ontology.schema import (
 
 __all__ = [
     "Ontology",
+    "IntegrityViolation",
     "ObjectType",
     "Property",
     "TemporalProperty",
@@ -58,13 +68,20 @@ __all__ = [
     "Cardinality",
     "OntologyObject",
     "ObjectStore",
+    "OntologyReadStore",
+    "OntologyStore",
+    "OperationalMutationStore",
+    "ProjectionStore",
     "QueryBuilder",
+    "QueryRequest",
+    "QueryResult",
     "RuleEngine",
     "Rule",
     "DataFusion",
     "FieldMapping",
     "SourceMapping",
     "CompiledOntologySchema",
+    "InterfaceTypeDefinition",
     "LinkCardinality",
     "LinkTypeDefinition",
     "ObjectTypeDefinition",

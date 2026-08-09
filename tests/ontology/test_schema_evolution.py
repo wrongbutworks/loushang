@@ -287,7 +287,6 @@ def test_non_breaking_and_behavioral_changes_are_classified() -> None:
                         ValueType.STRING,
                         required=False,
                         default="untitled",
-                        unique=True,
                         indexed=True,
                         description="Display name",
                     ),
@@ -323,7 +322,6 @@ def test_non_breaking_and_behavioral_changes_are_classified() -> None:
     assert impacts["object_type_abstract_relaxed"] is ChangeImpact.NON_BREAKING
     assert impacts["link_type_added"] is ChangeImpact.NON_BREAKING
     assert impacts["property_default_changed"] is ChangeImpact.BEHAVIORAL
-    assert impacts["property_unique_changed"] is ChangeImpact.BEHAVIORAL
     assert impacts["property_indexed_changed"] is ChangeImpact.BEHAVIORAL
     assert impacts["property_description_changed"] is ChangeImpact.BEHAVIORAL
     assert impacts["object_type_icon_changed"] is ChangeImpact.BEHAVIORAL
@@ -334,6 +332,38 @@ def test_non_breaking_and_behavioral_changes_are_classified() -> None:
     assert impacts["link_description_changed"] is ChangeImpact.BEHAVIORAL
     assert impacts["link_required_relaxed"] is ChangeImpact.NON_BREAKING
     assert compare_schemas(old, new).highest_impact is ChangeImpact.BEHAVIORAL
+
+
+def test_unique_tightening_is_breaking_and_relaxing_is_non_breaking() -> None:
+    without_unique = _compiled(
+        object_types=[
+            ObjectTypeDefinition(
+                "Project",
+                properties=[PropertyDefinition("name", ValueType.STRING)],
+            )
+        ]
+    )
+    with_unique = _compiled(
+        version="2.0.0",
+        object_types=[
+            ObjectTypeDefinition(
+                "Project",
+                properties=[
+                    PropertyDefinition("name", ValueType.STRING, unique=True)
+                ],
+            )
+        ],
+    )
+
+    tightened = compare_schemas(without_unique, with_unique).changes
+    relaxed = compare_schemas(with_unique, without_unique).changes
+
+    assert [(item.code, item.impact) for item in tightened] == [
+        ("property_unique_changed", ChangeImpact.BREAKING)
+    ]
+    assert [(item.code, item.impact) for item in relaxed] == [
+        ("property_unique_changed", ChangeImpact.NON_BREAKING)
+    ]
 
 
 def test_remaining_breaking_changes_have_stable_codes_and_paths() -> None:

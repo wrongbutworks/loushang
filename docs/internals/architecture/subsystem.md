@@ -58,6 +58,36 @@ command substrate 的目标归属是 `loushang.harness`，见
 Work 权威事件、Channel schema，或者为诊断投影之外的新 wire schema 提供任意
 Python 对象到 JSON 的容错转换。
 
+### loushang-ontology
+
+可选的 operational ontology infrastructure。它把 Product / Domain adapter
+提供的版本化 schema、对象/关系 mutation 和 typed query 转成受约束的语义对象图，
+并返回稳定对象 ID、查询结果、投影 freshness 与完整性 diagnostics。
+
+```text
+Product / Domain Adapter
+          |
+          v
+     +----------+-------> Memory / SQLite Store
+     | Ontology |<------- authority + materialized projection
+     +----------+
+          |
+          +-------------> optional HarnessWork integration adapter
+
+Ontology -> Foundation JSON
+```
+
+Ontology core 不依赖 Harness、Agent、AI、Channel 或 Product。只有
+`ontology.integrations.harnesswork` 可以依赖 HarnessWork，把已经属于本体的
+Action bridge 到可选履约层；HarnessWork 不反向拥有 ontology 类型。
+
+当前已完成 Wave 1：versioned schema、InterfaceType、required/type/unique/
+cardinality/reference constraints、Memory/SQLite Store conformance、mutation
+watermark、同步可重建 projection 和 typed QueryRequest/QueryResult。它尚不包含
+Facts/Provenance、OWL/SHACL、Action/Decision runtime、SDK 生成、分布式 serving
+或行业领域包。详见
+[Loushang Ontology Architecture](./ontology/README.md)。
+
 ### loushang-ai
 
 模型接入、统一调用与流式语义层。

@@ -9,6 +9,7 @@ from typing import cast
 
 from loushang.foundation.json import JSONValue, dump_json_value
 from loushang.ontology.schema.compiler import (
+    CompiledInterfaceTypeDefinition,
     CompiledLinkTypeDefinition,
     CompiledObjectTypeDefinition,
     CompiledOntologySchema,
@@ -148,6 +149,7 @@ def compare_schemas(
             after=new.namespace,
         )
 
+    _compare_interface_types(old, new, changes)
     _compare_object_types(old, new, changes)
     _compare_link_types(old, new, changes)
     ordered = tuple(sorted(changes, key=lambda change: (change.path, change.code)))
@@ -208,6 +210,26 @@ def _compare_object_type(
             message=f"object type '{old.name}' parent types changed",
             before=list(old.parent_types),
             after=list(new.parent_types),
+        )
+    for name in sorted(set(old.interfaces) - set(new.interfaces)):
+        _add_change(
+            changes,
+            code="object_interface_removed",
+            path=f"{path}.interfaces",
+            impact=ChangeImpact.BREAKING,
+            message=f"object type '{old.name}' stopped implementing interface '{name}'",
+            before=name,
+            after=None,
+        )
+    for name in sorted(set(new.interfaces) - set(old.interfaces)):
+        _add_change(
+            changes,
+            code="object_interface_added",
+            path=f"{path}.interfaces",
+            impact=ChangeImpact.NON_BREAKING,
+            message=f"object type '{old.name}' implements interface '{name}'",
+            before=None,
+            after=name,
         )
     if old.abstract != new.abstract:
         tightened = not old.abstract and new.abstract
@@ -332,14 +354,18 @@ def _compare_property(
         before=old.default,
         after=new.default,
     )
-    _behavioral_field(
-        changes,
-        code="property_unique_changed",
-        path=f"{path}.unique",
-        message=f"property '{object_name}.{old.name}' unique declaration changed",
-        before=old.unique,
-        after=new.unique,
-    )
+    if old.unique != new.unique:
+        _field_change(
+            changes,
+            code="property_unique_changed",
+            path=f"{path}.unique",
+            impact=(
+                ChangeImpact.BREAKING if new.unique else ChangeImpact.NON_BREAKING
+            ),
+            message=f"property '{object_name}.{old.name}' unique declaration changed",
+            before=old.unique,
+            after=new.unique,
+        )
     _behavioral_field(
         changes,
         code="property_indexed_changed",
@@ -392,6 +418,64 @@ def _compare_link_types(
         )
     for name in sorted(old_links.keys() & new_links.keys()):
         _compare_link_type(old_links[name], new_links[name], changes)
+
+
+def _compare_interface_types(
+    old: CompiledOntologySchema,
+    new: CompiledOntologySchema,
+    changes: list[SchemaChange],
+) -> None:
+    old_interfaces = {item.name: item for item in old.interface_types}
+    new_interfaces = {item.name: item for item in new.interface_types}
+    for name in sorted(old_interfaces.keys() - new_interfaces.keys()):
+        _add_change(
+            changes,
+            code="interface_type_removed",
+            path=_interface_path(name),
+            impact=ChangeImpact.BREAKING,
+            message=f"interface type '{name}' was removed",
+            before=_interface_snapshot(old_interfaces[name]),
+            after=None,
+        )
+    for name in sorted(new_interfaces.keys() - old_interfaces.keys()):
+        _add_change(
+            changes,
+            code="interface_type_added",
+            path=_interface_path(name),
+            impact=ChangeImpact.NON_BREAKING,
+            message=f"interface type '{name}' was added",
+            before=None,
+            after=_interface_snapshot(new_interfaces[name]),
+        )
+    for name in sorted(old_interfaces.keys() & new_interfaces.keys()):
+        old_interface = old_interfaces[name]
+        new_interface = new_interfaces[name]
+        before_properties = [
+            _interface_property_snapshot(prop)
+            for prop in sorted(old_interface.properties, key=lambda prop: prop.name)
+        ]
+        after_properties = [
+            _interface_property_snapshot(prop)
+            for prop in sorted(new_interface.properties, key=lambda prop: prop.name)
+        ]
+        if _canonical_json(before_properties) != _canonical_json(after_properties):
+            _add_change(
+                changes,
+                code="interface_contract_changed",
+                path=_interface_path(name),
+                impact=ChangeImpact.BREAKING,
+                message=f"interface type '{name}' contract changed",
+                before=before_properties,
+                after=after_properties,
+            )
+        _behavioral_field(
+            changes,
+            code="interface_description_changed",
+            path=f"{_interface_path(name)}.description",
+            message=f"interface type '{name}' description changed",
+            before=old_interface.description,
+            after=new_interface.description,
+        )
 
 
 def _compare_link_type(
@@ -533,6 +617,7 @@ def _object_snapshot(object_type: CompiledObjectTypeDefinition) -> dict[str, JSO
             for prop in sorted(object_type.properties, key=lambda prop: prop.name)
         ],
         "parent_types": list(object_type.parent_types),
+        "interfaces": list(object_type.interfaces),
         "abstract": object_type.abstract,
         "icon": object_type.icon,
         "description": object_type.description,
@@ -565,8 +650,35 @@ def _link_snapshot(link: CompiledLinkTypeDefinition) -> dict[str, JSONValue]:
     }
 
 
+def _interface_snapshot(
+    interface: CompiledInterfaceTypeDefinition,
+) -> dict[str, JSONValue]:
+    return {
+        "name": interface.name,
+        "properties": [
+            _interface_property_snapshot(prop)
+            for prop in sorted(interface.properties, key=lambda prop: prop.name)
+        ],
+        "description": interface.description,
+    }
+
+
+def _interface_property_snapshot(
+    prop: CompiledPropertyDefinition,
+) -> dict[str, JSONValue]:
+    return {
+        "name": prop.name,
+        "value_type": prop.value_type.value,
+        "required": prop.required,
+    }
+
+
 def _object_path(name: str) -> str:
     return f"$.object_types[{stdlib_json.dumps(name, ensure_ascii=True)}]"
+
+
+def _interface_path(name: str) -> str:
+    return f"$.interface_types[{stdlib_json.dumps(name, ensure_ascii=True)}]"
 
 
 def _property_path(object_name: str, property_name: str) -> str:

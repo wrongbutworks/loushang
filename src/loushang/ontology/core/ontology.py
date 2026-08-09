@@ -6,14 +6,19 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from loushang.ontology.core.constraints import IntegrityViolation
 from loushang.ontology.core.link_type import Cardinality, LinkType
 from loushang.ontology.core.object import OntologyObject
 from loushang.ontology.core.object_type import ObjectType
 from loushang.ontology.core.property import Property
 from loushang.ontology.core.store import ObjectStore
+from loushang.ontology.core.store_port import OntologyStore
 from loushang.ontology.query.builder import QueryBuilder
+from loushang.ontology.query.contracts import QueryRequest, QueryResult
+from loushang.ontology.query.engine import execute_query
 from loushang.ontology.schema import (
     CompiledOntologySchema,
+    InterfaceTypeDefinition,
     LinkCardinality,
     LinkTypeDefinition,
     ObjectTypeDefinition,
@@ -76,12 +81,14 @@ class Ontology:
         package_id: str = "loushang.dynamic",
         namespace: str = "urn:loushang:ontology:dynamic",
         schema_version: SchemaVersion | str = "1.0.0",
+        store: OntologyStore | None = None,
     ) -> None:
-        self._store = ObjectStore()
+        self._store: OntologyStore = store if store is not None else ObjectStore()
         self._package_id = package_id
         self._namespace = namespace
         self._schema_version = schema_version
         self._defined_object_types: list[ObjectType] = []
+        self._defined_interface_types: list[InterfaceTypeDefinition] = []
         self._defined_link_types: list[LinkType] = []
         self._compiled_schema: CompiledOntologySchema | None = None
 
@@ -98,6 +105,7 @@ class Ontology:
         icon: str | None = None,
         description: str = "",
         display_name_property: str | None = None,
+        interfaces: list[str] | None = None,
     ) -> ObjectType:
         """注册对象类型."""
         self._require_mutable_schema()
@@ -105,6 +113,7 @@ class Ontology:
             name=name,
             properties=properties or [],
             parent_types=parent_types or [],
+            interfaces=interfaces or [],
             abstract=abstract,
             icon=icon,
             description=description,
@@ -112,6 +121,24 @@ class Ontology:
         )
         self._defined_object_types.append(obj_type)
         return obj_type
+
+    def define_interface_type(
+        self,
+        name: str,
+        properties: list[Property] | None = None,
+        *,
+        description: str = "",
+    ) -> InterfaceTypeDefinition:
+        """Declare a named structural property contract."""
+
+        self._require_mutable_schema()
+        interface = InterfaceTypeDefinition(
+            name=name,
+            properties=[_property_definition(prop) for prop in properties or []],
+            description=description,
+        )
+        self._defined_interface_types.append(interface)
+        return interface
 
     def define_link_type(
         self,
@@ -161,6 +188,7 @@ class Ontology:
                 package_id=self._package_id,
                 namespace=self._namespace,
                 version=self._schema_version,
+                interface_types=self._defined_interface_types,
                 object_types=[
                     _object_type_definition(object_type)
                     for object_type in self._defined_object_types
@@ -193,23 +221,34 @@ class Ontology:
         return compiled
 
     @classmethod
-    def from_schema(cls, schema: CompiledOntologySchema) -> Ontology:
+    def from_schema(
+        cls,
+        schema: CompiledOntologySchema,
+        *,
+        store: OntologyStore | None = None,
+    ) -> Ontology:
         """Create a frozen runtime backed by an existing compiled schema."""
 
         ontology = cls(
             package_id=schema.package_id,
             namespace=schema.namespace,
             schema_version=schema.version,
+            store=store,
         )
         ontology._store.bind_schema(schema)
         ontology._compiled_schema = schema
         return ontology
 
     @classmethod
-    def from_schema_json(cls, payload: str) -> Ontology:
+    def from_schema_json(
+        cls,
+        payload: str,
+        *,
+        store: OntologyStore | None = None,
+    ) -> Ontology:
         """Load canonical schema JSON and create a frozen runtime."""
 
-        return cls.from_schema(OntologyCompiler().load_json(payload))
+        return cls.from_schema(OntologyCompiler().load_json(payload), store=store)
 
     def _require_mutable_schema(self) -> None:
         if self._compiled_schema is not None:
@@ -304,6 +343,19 @@ class Ontology:
         """开始构建查询."""
         return QueryBuilder(self._store)
 
+    def execute_query(self, request: QueryRequest) -> QueryResult:
+        """Execute an immutable query request against the bound store."""
+
+        if self._compiled_schema is None and self._defined_object_types:
+            self.freeze_schema()
+        return execute_query(self._store, request)
+
+    @property
+    def store(self) -> OntologyStore:
+        """The explicitly bound Wave 1 storage port."""
+
+        return self._store
+
     def find_by_property(
         self,
         property_name: str,
@@ -323,12 +375,18 @@ class Ontology:
     def count(self) -> int:
         return self._store.count()
 
+    def validate_integrity(self) -> tuple[IntegrityViolation, ...]:
+        """Return deterministic current-snapshot constraint violations."""
+
+        return self._store.validate_integrity()
+
 
 def _object_type_definition(object_type: ObjectType) -> ObjectTypeDefinition:
     return ObjectTypeDefinition(
         name=object_type.name,
         properties=[_property_definition(prop) for prop in object_type.properties],
         parent_types=object_type.parent_types,
+        interfaces=object_type.interfaces,
         abstract=object_type.abstract,
         icon=object_type.icon,
         description=object_type.description,

@@ -124,6 +124,8 @@ loushang/
 [ARD-002: Harness Product Adapter Substrate](./agent/ARD-002-harness-product-adapter-substrate.md)。
 `loushang-work` 的业务工作与方法履约边界请参见
 [Loushang Work Architecture](./work/README.md)。
+`loushang-ontology` 的版本化语义内核、Store/Projection 与 typed query 边界请参见
+[Loushang Ontology Architecture](./ontology/README.md)。
 
 ## Architecture Stack
 

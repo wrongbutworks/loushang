@@ -19,6 +19,7 @@ class ObjectType:
         name: 类型名称，如 "Enterprise", "DischargePort", "MonitoringData"
         properties: 属性定义列表
         parent_types: 父类型（支持多重继承）
+        interfaces: 显式实现的结构化接口
         abstract: 是否为抽象类型（不能直接创建实例）
         icon: 可视化图标标识
         description: 人类可读描述
@@ -36,6 +37,7 @@ class ObjectType:
     # 运行时注册的关系名（由 Ontology 在 define_link_type 时填充）
     outgoing_link_types: set[str] | frozenset[str] = field(default_factory=set, repr=False)
     incoming_link_types: set[str] | frozenset[str] = field(default_factory=set, repr=False)
+    interfaces: list[str] | tuple[str, ...] = field(default_factory=list)
     _schema_frozen: bool = field(default=False, init=False, repr=False)
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -60,6 +62,7 @@ class ObjectType:
             return
         object.__setattr__(self, "properties", tuple(self.properties))
         object.__setattr__(self, "parent_types", tuple(self.parent_types))
+        object.__setattr__(self, "interfaces", tuple(self.interfaces))
         object.__setattr__(self, "outgoing_link_types", frozenset(self.outgoing_link_types))
         object.__setattr__(self, "incoming_link_types", frozenset(self.incoming_link_types))
         object.__setattr__(self, "_schema_frozen", True)

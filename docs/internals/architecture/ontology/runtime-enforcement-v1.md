@@ -27,9 +27,13 @@ The detailed ownership and failure contract is defined in
 | `parent_types` | rejects unknown parents and cycles | resolves inherited defaults, validation, and indexes | enforced |
 | link endpoints | rejects unknown object types | validates source and target object types | enforced |
 | link cardinality | validates symbolic cardinality | checks active source and target links before linking | enforced on link |
-| property `indexed` | serialized | maintained on create/update/delete for hashable values, including inherited properties | partial operational support |
-| property `unique` | serialized | not enforced across mutation paths | metadata only |
-| link `required` | serialized | not enforced without a transaction boundary | metadata only |
+| property `indexed` | serialized | maintained on create/update/delete and deterministic rebuild, including inherited properties | enforced serving projection |
+| property `unique` | serialized | enforced on create/update by stable declaring-property identity | enforced |
+| interface contract | validates names and structural conformance through inheritance | materialized as object-type metadata; adds no methods or storage | enforced at compile |
+| link `required` | serialized | reported by explicit whole-snapshot integrity validation; single-object creation remains legal | explicit validation |
+| link reference integrity | validates endpoint declarations | rejects deletion with active links and reports missing references during integrity validation | enforced |
+| link properties | not schema-typed in Wave 1 | copied and validated against strict Foundation JSON | enforced |
+| mutation watermark | not applicable | every accepted mutation advances authority and synchronous projection once | enforced |
 | Python property validator | not serialized | dynamic-facade local overlay on create/update | local compatibility only |
 | `DerivedProperty.formula` | not represented in portable V1 schema | not executed | deferred |
 | `TemporalProperty.retention_days` | not represented in portable V1 schema | no retention policy | deferred |
@@ -53,8 +57,8 @@ it routes to the owning store; only standalone objects remain unvalidated.
 
 ## Deliberate Deferrals
 
-V1 does not partially implement uniqueness, required links, formula execution,
-or retention. The managed mutation boundary is necessary but not sufficient for
-those semantics: uniqueness still needs an accepted conflict contract, while
-required links need a transaction boundary. They remain explicitly
-non-enforced.
+Required links are not used as a hidden single-object creation gate; callers
+run explicit snapshot validation until a later multi-object MutationPlan owns
+transaction-level completeness. Formula/expression execution and temporal
+retention remain deferred. General constraints are not interpreted through
+arbitrary Python or `eval`.

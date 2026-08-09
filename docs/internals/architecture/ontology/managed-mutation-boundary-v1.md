@@ -2,9 +2,12 @@
 
 ## Status
 
-Accepted boundary for writes to in-memory, Store-managed ontology objects. It
-closes validation and index bypasses without introducing Actions, transactions,
-authorization, audit, or a storage backend abstraction.
+Accepted historical boundary for the initial in-memory managed-write slice. It
+is extended by the implemented
+[Wave 1 Completion Boundary](wave1-completion-boundary.md), which adds unique
+enforcement, delete-reference integrity, the operational commit sequence,
+SQLite transactions, and replaceable Store/Projection ports. Action,
+authorization, approval, and semantic audit remain deferred.
 
 ## Ownership Model
 
@@ -61,9 +64,11 @@ either outgoing or incoming state is appended. Unlink writes append matching
 temporal tombstones to both directions. Consequently, an expected validation,
 ownership, or cardinality failure creates no half relation.
 
-These are in-memory preflight guarantees, not a general transaction claim.
-Unexpected process failure, concurrent storage transactions, multi-object
-property commits, external effects, and durable rollback are outside V1.
+These are preflight guarantees shared by Memory and SQLite. SQLite additionally
+commits authority, journal, serving projections, and watermarks in one database
+transaction and restores managed object identity after a failed database
+commit. Multi-object MutationPlan, concurrent multi-writer coordination, and
+external effects remain outside Wave 1.
 
 ## Consumer Boundary
 
@@ -85,8 +90,8 @@ ontology contracts.
 
 ## Deliberate Deferrals
 
-- `unique` property enforcement;
-- required-link enforcement;
+- hidden required-link enforcement during single-object creation (explicit
+  integrity validation is implemented);
 - ActionType, MutationPlan, approval, audit, and authorization;
 - multi-mutation transactions or durable rollback;
 - project-management or environmental domain models.

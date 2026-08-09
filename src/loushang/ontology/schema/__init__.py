@@ -2,6 +2,7 @@
 
 from loushang.ontology.schema.compiler import (
     SCHEMA_FORMAT,
+    CompiledInterfaceTypeDefinition,
     CompiledLinkTypeDefinition,
     CompiledObjectTypeDefinition,
     CompiledOntologySchema,
@@ -9,6 +10,7 @@ from loushang.ontology.schema.compiler import (
     OntologyCompiler,
 )
 from loushang.ontology.schema.definitions import (
+    InterfaceTypeDefinition,
     LinkCardinality,
     LinkTypeDefinition,
     ObjectTypeDefinition,
@@ -33,11 +35,13 @@ from loushang.ontology.schema.evolution import (
 __all__ = [
     "SCHEMA_FORMAT",
     "SCHEMA_DIFF_FORMAT",
+    "CompiledInterfaceTypeDefinition",
     "CompiledLinkTypeDefinition",
     "CompiledObjectTypeDefinition",
     "CompiledOntologySchema",
     "CompiledPropertyDefinition",
     "ChangeImpact",
+    "InterfaceTypeDefinition",
     "LinkCardinality",
     "LinkTypeDefinition",
     "ObjectTypeDefinition",

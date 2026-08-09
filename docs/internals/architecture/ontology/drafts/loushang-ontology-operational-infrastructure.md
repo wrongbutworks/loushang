@@ -1046,6 +1046,10 @@ curated review、ontology quality audit agent、Neo4j/Chroma 可选降级和可�
 
 目标：把当前原型变成可版本化、可替换 backend 的稳定语义内核。
 
+实施状态（2026-08-09）：已完成。正式边界与验收证据见
+[Wave 1 Completion Boundary](../wave1-completion-boundary.md)；后续开发不得把
+Wave 2 的 semantic Fact/Provenance 或 Wave 3 的 Action/Decision 偷渡进本阶段。
+
 - stable ID、namespace/IRI、OntologyPackage、schema version；
 - ObjectType、Property、LinkType、InterfaceType、ValueType、Constraint；
 - required、unique、type、cardinality、reference integrity 的统一 validator；

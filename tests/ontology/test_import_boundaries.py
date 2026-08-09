@@ -17,6 +17,41 @@ def test_ontology_does_not_import_legacy_foundation_facades() -> None:
     assert offenders == []
 
 
+def test_wave1_schema_query_and_storage_dependency_direction() -> None:
+    boundaries = (
+        (
+            Path("src/loushang/ontology/schema"),
+            (
+                "loushang.ontology.core",
+                "loushang.ontology.query",
+                "loushang.ontology.storage",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/query"),
+            ("loushang.ontology.storage",),
+        ),
+        (
+            Path("src/loushang/ontology/storage"),
+            (
+                "loushang.ontology.query",
+                "loushang.ontology.rules",
+                "loushang.ontology.fusion",
+                "loushang.ontology.integrations",
+                "loushang.harnesswork",
+            ),
+        ),
+    )
+    offenders: list[str] = []
+    for root, forbidden_prefixes in boundaries:
+        for path in sorted(root.rglob("*.py")):
+            for imported in _absolute_imports(path):
+                if imported.startswith(forbidden_prefixes):
+                    offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def _absolute_imports(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imports: set[str] = set()
