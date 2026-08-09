@@ -30,6 +30,7 @@ from loushang.ontology.core.link_type import Cardinality, LinkType
 from loushang.ontology.core.object import OntologyObject
 from loushang.ontology.core.object_type import ObjectType
 from loushang.ontology.core.ontology import Ontology
+from loushang.ontology.core.projection import ProjectionState, StoreMutation
 from loushang.ontology.core.property import DerivedProperty, Property, TemporalProperty
 from loushang.ontology.core.store import ObjectStore
 from loushang.ontology.core.store_port import (
@@ -68,6 +69,8 @@ __all__ = [
     "Cardinality",
     "OntologyObject",
     "ObjectStore",
+    "ProjectionState",
+    "StoreMutation",
     "OntologyReadStore",
     "OntologyStore",
     "OperationalMutationStore",

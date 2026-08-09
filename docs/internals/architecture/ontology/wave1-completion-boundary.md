@@ -10,6 +10,9 @@ Facts/Provenance, Action/Decision, standards, or domain waves.
 Implementation status: complete. The contract is covered by the shared
 Memory/SQLite conformance suite, restart and rollback tests, interface compiler
 tests, typed-query tests, architecture import gates, Ruff, and mypy.
+The physical SQLite format and public adapter lifecycle are frozen separately by
+the [Wave 1 SQLite Storage Compatibility](wave1-storage-compatibility.md)
+contract.
 
 ## Runtime Spine
 
@@ -90,6 +93,8 @@ planning are Platform Scale work.
 - one conformance suite passes for Memory and SQLite;
 - SQLite close/reopen preserves schema, IDs, property/link history, current
   values, indexes, mutation watermarks, and query results;
+- SQLite detects incompatible or malformed storage before loading state, never
+  silently upgrades it, and produces a consistently reopenable online backup;
 - rejected mutations leave state and watermarks unchanged;
 - unique, link-cardinality, ownership, and delete-reference constraints are
   enforced before commit;

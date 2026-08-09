@@ -8,6 +8,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import cast
 from uuid import UUID
 
@@ -22,7 +23,83 @@ from loushang.ontology.core.object import LinkVersion, OntologyObject, PropertyV
 from loushang.ontology.core.projection import ProjectionState, StoreMutation
 from loushang.ontology.core.schema_runtime import PropertyValidators
 from loushang.ontology.core.store import ObjectStore, _PendingMutation
-from loushang.ontology.schema import CompiledOntologySchema, OntologyCompiler
+from loushang.ontology.schema import (
+    CompiledOntologySchema,
+    OntologyCompiler,
+    SchemaCompilationError,
+)
+
+SQLITE_STORAGE_FORMAT = "loushang.ontology.sqlite"
+SQLITE_STORAGE_FORMAT_VERSION = 1
+
+_REQUIRED_TABLES = frozenset(
+    {
+        "ontology_schema",
+        "ontology_metadata",
+        "authority_objects",
+        "mutation_journal",
+        "projection_objects",
+        "projection_properties",
+        "projection_unique_values",
+        "projection_links",
+    }
+)
+_REQUIRED_METADATA_KEYS = frozenset(
+    {
+        "storage_format",
+        "storage_format_version",
+        "source_watermark",
+        "projected_watermark",
+        "projection_version",
+        "projection_built_at",
+    }
+)
+
+
+class SQLiteStoreCompatibilityError(RuntimeError):
+    """Base class for failures detected before a SQLite store can be used."""
+
+
+class SQLiteStorageFormatError(SQLiteStoreCompatibilityError):
+    """Raised when an existing database is not this supported storage format."""
+
+    def __init__(
+        self,
+        database: Path,
+        reason: str,
+        *,
+        found_format: str | None = None,
+        found_version: str | None = None,
+    ) -> None:
+        self.database = database
+        self.reason = reason
+        self.expected_format = SQLITE_STORAGE_FORMAT
+        self.expected_version = SQLITE_STORAGE_FORMAT_VERSION
+        self.found_format = found_format
+        self.found_version = found_version
+        super().__init__(
+            f"SQLite ontology storage at '{database}' is incompatible: {reason}"
+        )
+
+
+class SQLiteStoredSchemaMismatchError(SQLiteStoreCompatibilityError):
+    """Raised when a database schema differs from the caller's expected snapshot."""
+
+    def __init__(
+        self,
+        database: Path,
+        *,
+        stored_schema: CompiledOntologySchema,
+        expected_schema: CompiledOntologySchema,
+    ) -> None:
+        self.database = database
+        self.stored_schema = stored_schema
+        self.expected_schema = expected_schema
+        super().__init__(
+            f"SQLite ontology schema at '{database}' does not match the expected "
+            f"snapshot for package '{expected_schema.package_id}' version "
+            f"'{expected_schema.version}'"
+        )
 
 
 @dataclass(slots=True)
@@ -41,16 +118,51 @@ class SQLiteObjectStore(ObjectStore):
     deferred; this adapter establishes semantics and restart durability first.
     """
 
-    def __init__(self, database: str | Path) -> None:
+    def __init__(
+        self,
+        database: str | Path,
+        *,
+        expected_schema: CompiledOntologySchema | None = None,
+    ) -> None:
         super().__init__()
         self._database = Path(database)
         self._connection = sqlite3.connect(self._database)
-        self._connection.execute("PRAGMA foreign_keys = ON")
-        self._initialize_database()
-        self._load_database()
+        self._closed = False
+        try:
+            self._connection.execute("PRAGMA foreign_keys = ON")
+            tables = self._database_tables()
+            if tables:
+                self._validate_existing_database(tables)
+            else:
+                self._initialize_database()
+            self._load_database(expected_schema=expected_schema)
+        except SQLiteStoreCompatibilityError:
+            self._connection.close()
+            self._closed = True
+            raise
+        except (
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+            sqlite3.DatabaseError,
+        ) as exc:
+            self._connection.close()
+            self._closed = True
+            raise SQLiteStorageFormatError(
+                self._database,
+                "stored ontology runtime data is invalid",
+            ) from exc
+
+    @property
+    def database(self) -> Path:
+        return self._database
 
     def close(self) -> None:
+        if self._closed:
+            return
         self._connection.close()
+        self._closed = True
 
     def __enter__(self) -> SQLiteObjectStore:
         return self
@@ -58,16 +170,62 @@ class SQLiteObjectStore(ObjectStore):
     def __exit__(self, *_args: object) -> None:
         self.close()
 
+    def backup_to(
+        self,
+        destination: str | Path,
+        *,
+        overwrite: bool = False,
+    ) -> None:
+        """Create a transactionally consistent SQLite backup."""
+
+        self._require_open()
+        target_path = Path(destination)
+        if self._database.resolve() == target_path.resolve():
+            raise ValueError(
+                "SQLite backup destination must differ from the source database"
+            )
+        if target_path.exists() and not overwrite:
+            raise FileExistsError(
+                f"SQLite backup destination already exists: {target_path}"
+            )
+        if target_path.exists():
+            with NamedTemporaryFile(
+                dir=target_path.parent,
+                prefix=f".{target_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary:
+                staging_path = Path(temporary.name)
+            try:
+                self._write_backup(staging_path)
+                staging_path.replace(target_path)
+            finally:
+                staging_path.unlink(missing_ok=True)
+            return
+        self._write_backup(target_path)
+
+    def _write_backup(self, target_path: Path) -> None:
+        target = sqlite3.connect(target_path)
+        try:
+            self._connection.backup(target)
+        finally:
+            target.close()
+
     def bind_schema(
         self,
         schema: CompiledOntologySchema,
         *,
         property_validators: PropertyValidators | None = None,
     ) -> None:
+        self._require_open()
         if self.schema is not None:
             if self.schema == schema:
                 return
-            raise RuntimeError("SQLiteObjectStore already has a different compiled schema")
+            raise SQLiteStoredSchemaMismatchError(
+                self._database,
+                stored_schema=self.schema,
+                expected_schema=schema,
+            )
         super().bind_schema(schema, property_validators=property_validators)
         with self._connection:
             self._connection.execute(
@@ -77,6 +235,7 @@ class SQLiteObjectStore(ObjectStore):
             self._persist_metadata()
 
     def rebuild_projections(self) -> ProjectionState:
+        self._require_open()
         previous = (
             self._projection_version,
             self._projected_watermark,
@@ -104,7 +263,9 @@ class SQLiteObjectStore(ObjectStore):
         pending: _PendingMutation,
         apply: Callable[[], None],
     ) -> None:
+        self._require_open()
         sequence = self._watermark + 1
+        committed_at = time.time()
         before = self._capture_runtime_snapshot()
         apply()
         try:
@@ -126,6 +287,7 @@ class SQLiteObjectStore(ObjectStore):
                 self._persist_metadata(
                     source_watermark=sequence,
                     projected_watermark=sequence,
+                    projection_built_at=committed_at,
                 )
         except Exception:
             # SQLite rolled its transaction back. Restore the same managed
@@ -133,6 +295,7 @@ class SQLiteObjectStore(ObjectStore):
             self._restore_runtime_snapshot(before)
             raise
         self._append_committed_mutation(pending, sequence=sequence)
+        self._projection_built_at = committed_at
 
     def _initialize_database(self) -> None:
         with self._connection:
@@ -198,14 +361,112 @@ class SQLiteObjectStore(ObjectStore):
                     ON projection_links(target_id, link_type);
                 """
             )
+            self._persist_metadata()
 
-    def _load_database(self) -> None:
+    def _database_tables(self) -> set[str]:
+        try:
+            return {
+                name
+                for (name,) in self._connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+                if not name.startswith("sqlite_")
+            }
+        except sqlite3.DatabaseError as exc:
+            raise SQLiteStorageFormatError(
+                self._database,
+                "database header or catalog is invalid",
+            ) from exc
+
+    def _validate_existing_database(self, tables: set[str]) -> None:
+        if "ontology_metadata" not in tables:
+            raise SQLiteStorageFormatError(
+                self._database,
+                "storage format metadata table is missing",
+            )
+        try:
+            metadata = dict(
+                self._connection.execute("SELECT key, value FROM ontology_metadata")
+            )
+        except sqlite3.DatabaseError as exc:
+            raise SQLiteStorageFormatError(
+                self._database,
+                "storage format metadata cannot be read",
+            ) from exc
+
+        found_format = cast(str | None, metadata.get("storage_format"))
+        found_version = cast(str | None, metadata.get("storage_format_version"))
+        missing_metadata = _REQUIRED_METADATA_KEYS - metadata.keys()
+        if missing_metadata:
+            raise SQLiteStorageFormatError(
+                self._database,
+                "storage format metadata is incomplete: "
+                f"{', '.join(sorted(missing_metadata))}",
+                found_format=found_format,
+                found_version=found_version,
+            )
+        assert found_format is not None
+        assert found_version is not None
+        if found_format != SQLITE_STORAGE_FORMAT:
+            raise SQLiteStorageFormatError(
+                self._database,
+                f"unsupported storage format '{found_format}'",
+                found_format=found_format,
+                found_version=found_version,
+            )
+        try:
+            version = int(found_version)
+        except ValueError as exc:
+            raise SQLiteStorageFormatError(
+                self._database,
+                f"storage format version '{found_version}' is not an integer",
+                found_format=found_format,
+                found_version=found_version,
+            ) from exc
+        if version != SQLITE_STORAGE_FORMAT_VERSION:
+            raise SQLiteStorageFormatError(
+                self._database,
+                f"unsupported storage format version '{found_version}'",
+                found_format=found_format,
+                found_version=found_version,
+            )
+        missing = _REQUIRED_TABLES - tables
+        if missing:
+            raise SQLiteStorageFormatError(
+                self._database,
+                f"required storage tables are missing: {', '.join(sorted(missing))}",
+                found_format=found_format,
+                found_version=found_version,
+            )
+
+    def _load_database(
+        self,
+        *,
+        expected_schema: CompiledOntologySchema | None,
+    ) -> None:
         schema_row = self._connection.execute(
             "SELECT payload FROM ontology_schema WHERE singleton = 1"
         ).fetchone()
         if schema_row is None:
+            if self._database_contains_runtime_state():
+                raise SQLiteStorageFormatError(
+                    self._database,
+                    "runtime state exists without a stored ontology schema",
+                )
             return
-        schema = OntologyCompiler().load_json(cast(str, schema_row[0]))
+        try:
+            schema = OntologyCompiler().load_json(cast(str, schema_row[0]))
+        except SchemaCompilationError as exc:
+            raise SQLiteStorageFormatError(
+                self._database,
+                "stored ontology schema is invalid",
+            ) from exc
+        if expected_schema is not None and schema != expected_schema:
+            raise SQLiteStoredSchemaMismatchError(
+                self._database,
+                stored_schema=schema,
+                expected_schema=expected_schema,
+            )
         if self.schema is None:
             ObjectStore.bind_schema(self, schema)
 
@@ -233,6 +494,23 @@ class SQLiteObjectStore(ObjectStore):
         self._projected_watermark = int(metadata.get("projected_watermark", "0"))
         self._projection_version = int(metadata.get("projection_version", "1"))
         self._projection_built_at = float(metadata.get("projection_built_at", str(time.time())))
+
+    def _database_contains_runtime_state(self) -> bool:
+        for query in (
+            "SELECT 1 FROM authority_objects LIMIT 1",
+            "SELECT 1 FROM mutation_journal LIMIT 1",
+            "SELECT 1 FROM projection_objects LIMIT 1",
+            "SELECT 1 FROM projection_properties LIMIT 1",
+            "SELECT 1 FROM projection_unique_values LIMIT 1",
+            "SELECT 1 FROM projection_links LIMIT 1",
+        ):
+            if self._connection.execute(query).fetchone():
+                return True
+        return False
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("SQLiteObjectStore is closed")
 
     def _capture_runtime_snapshot(self) -> dict[UUID, _ObjectRuntimeSnapshot]:
         return {
@@ -340,8 +618,11 @@ class SQLiteObjectStore(ObjectStore):
         *,
         source_watermark: int | None = None,
         projected_watermark: int | None = None,
+        projection_built_at: float | None = None,
     ) -> None:
         values = {
+            "storage_format": SQLITE_STORAGE_FORMAT,
+            "storage_format_version": str(SQLITE_STORAGE_FORMAT_VERSION),
             "source_watermark": str(
                 self._watermark if source_watermark is None else source_watermark
             ),
@@ -351,7 +632,11 @@ class SQLiteObjectStore(ObjectStore):
                 else projected_watermark
             ),
             "projection_version": str(self._projection_version),
-            "projection_built_at": str(time.time()),
+            "projection_built_at": str(
+                self._projection_built_at
+                if projection_built_at is None
+                else projection_built_at
+            ),
         }
         self._connection.executemany(
             "INSERT OR REPLACE INTO ontology_metadata(key, value) VALUES (?, ?)",
@@ -437,4 +722,11 @@ def _decode_object(object_id: UUID, object_type: str, state_json: str) -> Ontolo
     )
 
 
-__all__ = ["SQLiteObjectStore"]
+__all__ = [
+    "SQLITE_STORAGE_FORMAT",
+    "SQLITE_STORAGE_FORMAT_VERSION",
+    "SQLiteObjectStore",
+    "SQLiteStorageFormatError",
+    "SQLiteStoreCompatibilityError",
+    "SQLiteStoredSchemaMismatchError",
+]

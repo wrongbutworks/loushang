@@ -1049,6 +1049,8 @@ curated review、ontology quality audit agent、Neo4j/Chroma 可选降级和可�
 实施状态（2026-08-09）：已完成。正式边界与验收证据见
 [Wave 1 Completion Boundary](../wave1-completion-boundary.md)；后续开发不得把
 Wave 2 的 semantic Fact/Provenance 或 Wave 3 的 Action/Decision 偷渡进本阶段。
+SQLite 物理格式、精确 schema snapshot 校验、备份和公共导入面的收口见
+[Wave 1 SQLite Storage Compatibility](../wave1-storage-compatibility.md)。
 
 - stable ID、namespace/IRI、OntologyPackage、schema version；
 - ObjectType、Property、LinkType、InterfaceType、ValueType、Constraint；
