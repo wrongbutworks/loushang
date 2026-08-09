@@ -17,9 +17,11 @@ from loushang.ontology.facts import (
     PropertyAssertion,
 )
 from loushang.ontology.projection import (
+    ProjectionFreshnessStatus,
     ProjectionReadStore,
     ProjectionStore,
     ProjectionUnavailableError,
+    evaluate_projection_freshness,
     materialize_projection,
 )
 from loushang.ontology.query import QueryBuilder
@@ -147,7 +149,10 @@ def test_projection_adapters_share_the_atomic_replacement_read_contract(
     if isinstance(facts, SQLiteFactStore):
         facts.bind_schema(schema)
     facts.commit_fact_batch(_initial_batch())
-    snapshot = materialize_projection(facts, schema, valid_at=10, recorded_at=10)
+    snapshot = materialize_projection(
+        facts.select_facts(valid_at=10, recorded_at=10),
+        schema,
+    )
 
     with pytest.raises(ProjectionUnavailableError):
         projections.all_objects()
@@ -155,7 +160,7 @@ def test_projection_adapters_share_the_atomic_replacement_read_contract(
 
     assert isinstance(projections, ProjectionReadStore)
     assert isinstance(projections, ProjectionStore)
-    assert state.fresh is True
+    assert state.fact_watermark == 5
     assert projections.read_snapshot().projection_state == state
     assert projections.get(ASSET_ID).get("score") == 1  # type: ignore[union-attr]
     assert projections.find_neighbors(ASSET_ID, "owned_by") == (
@@ -177,14 +182,15 @@ def test_projection_rebuild_replaces_the_whole_snapshot_monotonically(
     if isinstance(facts, SQLiteFactStore):
         facts.bind_schema(schema)
     facts.commit_fact_batch(_initial_batch())
-    first = materialize_projection(facts, schema, valid_at=10, recorded_at=10)
+    first = materialize_projection(
+        facts.select_facts(valid_at=10, recorded_at=10),
+        schema,
+    )
     projections.replace(first)
 
     rebuilt = materialize_projection(
-        facts,
+        facts.select_facts(valid_at=10, recorded_at=10),
         schema,
-        valid_at=10,
-        recorded_at=10,
         projection_version=2,
     )
     projections.replace(rebuilt)
@@ -195,31 +201,56 @@ def test_projection_rebuild_replaces_the_whole_snapshot_monotonically(
         projections.replace(rebuilt)
 
 
-def test_sqlite_projection_restart_and_fact_commit_expose_staleness(
-    tmp_path: Path,
+def test_projection_state_is_immutable_and_freshness_is_an_explicit_observation(
+    stores: tuple[FactStore, ProjectionStore],
 ) -> None:
-    database = tmp_path / "ontology.sqlite3"
+    facts, projection = stores
     schema = _schema()
-    facts = SQLiteFactStore(database)
-    facts.bind_schema(schema)
+    if isinstance(facts, SQLiteFactStore):
+        facts.bind_schema(schema)
     facts.commit_fact_batch(_initial_batch())
-    projection = SQLiteProjectionStore(database)
-    projection.replace(
-        materialize_projection(facts, schema, valid_at=10, recorded_at=10)
+    installed = projection.replace(
+        materialize_projection(
+            facts.select_facts(valid_at=10, recorded_at=10),
+            schema,
+        )
     )
-    projection.close()
-
-    reopened = SQLiteProjectionStore(database, expected_schema=schema)
-    assert reopened.get(ASSET_ID).get("score") == 1  # type: ignore[union-attr]
-    assert reopened.projection_state.fresh is True
 
     facts.commit_fact_batch(_score_update())
-    assert reopened.projection_state.fresh is False
-    assert reopened.projection_state.source_fact_watermark == 6
-    assert reopened.projection_state.projected_fact_watermark == 5
-    assert reopened.get(ASSET_ID).get("score") == 1  # type: ignore[union-attr]
-    reopened.close()
-    facts.close()
+    freshness = evaluate_projection_freshness(
+        projection.projection_state,
+        observed_fact_watermark=facts.fact_watermark,
+        observed_at=30,
+    )
+
+    assert projection.projection_state == installed
+    assert projection.projection_state.fact_watermark == 5
+    assert freshness.status is ProjectionFreshnessStatus.STALE
+    assert projection.get(ASSET_ID).get("score") == 1  # type: ignore[union-attr]
+
+
+def test_projection_installation_has_no_adapter_local_freshness_policy(
+    stores: tuple[FactStore, ProjectionStore],
+) -> None:
+    facts, projection = stores
+    schema = _schema()
+    if isinstance(facts, SQLiteFactStore):
+        facts.bind_schema(schema)
+    facts.commit_fact_batch(_initial_batch())
+    detached = materialize_projection(
+        facts.select_facts(valid_at=10, recorded_at=10),
+        schema,
+    )
+    facts.commit_fact_batch(_score_update())
+
+    installed = projection.replace(detached)
+
+    assert installed == detached.state
+    assert evaluate_projection_freshness(
+        installed,
+        observed_fact_watermark=facts.fact_watermark,
+        observed_at=30,
+    ).status is ProjectionFreshnessStatus.STALE
 
 
 def test_fact_commit_survives_projection_replacement_failure(tmp_path: Path) -> None:
@@ -230,15 +261,16 @@ def test_fact_commit_survives_projection_replacement_failure(tmp_path: Path) -> 
     facts.commit_fact_batch(_initial_batch())
     projection = SQLiteProjectionStore(database)
     projection.replace(
-        materialize_projection(facts, schema, valid_at=10, recorded_at=10)
+        materialize_projection(
+            facts.select_facts(valid_at=10, recorded_at=10),
+            schema,
+        )
     )
 
     facts.commit_fact_batch(_score_update())
     replacement = materialize_projection(
-        facts,
+        facts.select_facts(valid_at=30, recorded_at=30),
         schema,
-        valid_at=30,
-        recorded_at=30,
         projection_version=2,
     )
     with sqlite3.connect(database) as connection:
@@ -259,7 +291,12 @@ def test_fact_commit_survives_projection_replacement_failure(tmp_path: Path) -> 
     assert facts.get_fact(UUID("10000000-0000-0000-0000-000000000006"))
     assert projection.get(ASSET_ID).get("score") == 1  # type: ignore[union-attr]
     assert projection.projection_state.projection_version == 1
-    assert projection.projection_state.fresh is False
+    assert projection.projection_state.fact_watermark == 5
+    assert evaluate_projection_freshness(
+        projection.projection_state,
+        observed_fact_watermark=facts.fact_watermark,
+        observed_at=30,
+    ).status is ProjectionFreshnessStatus.STALE
 
     with sqlite3.connect(database) as connection:
         connection.execute("DROP TRIGGER reject_projection")
@@ -277,7 +314,10 @@ def test_sqlite_rejects_corrupt_projection_rows_on_reopen(tmp_path: Path) -> Non
     facts.commit_fact_batch(_initial_batch())
     projection = SQLiteProjectionStore(database)
     projection.replace(
-        materialize_projection(facts, schema, valid_at=10, recorded_at=10)
+        materialize_projection(
+            facts.select_facts(valid_at=10, recorded_at=10),
+            schema,
+        )
     )
     projection.close()
     facts.close()

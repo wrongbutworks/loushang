@@ -17,10 +17,6 @@ class ProjectionUnavailableError(RuntimeError):
     """Raised when a projection adapter has no installed snapshot."""
 
 
-class ProjectionStaleError(RuntimeError):
-    """Raised when replacement would install a snapshot behind its FactStore."""
-
-
 @runtime_checkable
 class ProjectionReadStore(Protocol):
     """Read capability consumed by backend-neutral query evaluation."""
@@ -56,7 +52,6 @@ class ProjectionStore(ProjectionReadStore, Protocol):
 
 __all__ = [
     "ProjectionReadStore",
-    "ProjectionStaleError",
     "ProjectionStore",
     "ProjectionUnavailableError",
 ]

@@ -7,6 +7,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import cast
 from uuid import UUID
 
@@ -178,12 +179,11 @@ class ProjectedObject:
 
 @dataclass(frozen=True, slots=True)
 class ProjectionState:
-    """Freshness and reproducibility coordinates for one snapshot."""
+    """Immutable reproducibility coordinates for one projection snapshot."""
 
     schema_version: str
     projection_version: int
-    source_fact_watermark: int
-    projected_fact_watermark: int
+    fact_watermark: int
     valid_at: float
     recorded_at: float
     built_at: float
@@ -193,20 +193,78 @@ class ProjectionState:
             raise ValueError("schema_version must be non-empty")
         if type(self.projection_version) is not int or self.projection_version < 1:
             raise ValueError("projection_version must be a positive integer")
-        for name in ("source_fact_watermark", "projected_fact_watermark"):
-            value = getattr(self, name)
-            if type(value) is not int or value < 0:
-                raise ValueError(f"{name} must be a non-negative integer")
-        if self.projected_fact_watermark > self.source_fact_watermark:
-            raise ValueError(
-                "projected_fact_watermark cannot exceed source_fact_watermark"
-            )
+        if type(self.fact_watermark) is not int or self.fact_watermark < 0:
+            raise ValueError("fact_watermark must be a non-negative integer")
         for name in ("valid_at", "recorded_at", "built_at"):
             object.__setattr__(self, name, _finite(name, getattr(self, name)))
 
-    @property
-    def fresh(self) -> bool:
-        return self.source_fact_watermark == self.projected_fact_watermark
+
+class ProjectionFreshnessStatus(str, Enum):
+    """Comparison result between a projection cut and an observed Fact head."""
+
+    CURRENT = "current"
+    STALE = "stale"
+    UNKNOWN = "unknown"
+    DEGRADED = "degraded"
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionFreshness:
+    """Detached runtime observation; never part of immutable snapshot state."""
+
+    status: ProjectionFreshnessStatus
+    projection_fact_watermark: int
+    observed_fact_watermark: int | None
+    observed_at: float
+    diagnostics: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, ProjectionFreshnessStatus):
+            raise TypeError("status must be a ProjectionFreshnessStatus")
+        for name in ("projection_fact_watermark", "observed_fact_watermark"):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or value < 0):
+                raise ValueError(f"{name} must be a non-negative integer or None")
+        object.__setattr__(self, "observed_at", _finite("observed_at", self.observed_at))
+        if not isinstance(self.diagnostics, tuple) or any(
+            not isinstance(item, str) or not item for item in self.diagnostics
+        ):
+            raise TypeError("diagnostics must be a tuple of non-empty strings")
+
+
+def evaluate_projection_freshness(
+    state: ProjectionState,
+    *,
+    observed_fact_watermark: int | None,
+    observed_at: float,
+) -> ProjectionFreshness:
+    """Compare immutable build coordinates with one explicit Fact observation."""
+
+    if not isinstance(state, ProjectionState):
+        raise TypeError("state must be a ProjectionState")
+    if observed_fact_watermark is None:
+        status = ProjectionFreshnessStatus.UNKNOWN
+        diagnostics = ("current Fact watermark was not observed",)
+    elif type(observed_fact_watermark) is not int or observed_fact_watermark < 0:
+        raise ValueError("observed_fact_watermark must be non-negative or None")
+    elif observed_fact_watermark < state.fact_watermark:
+        status = ProjectionFreshnessStatus.DEGRADED
+        diagnostics = (
+            "observed Fact watermark is behind the projection build watermark",
+        )
+    elif observed_fact_watermark == state.fact_watermark:
+        status = ProjectionFreshnessStatus.CURRENT
+        diagnostics = ()
+    else:
+        status = ProjectionFreshnessStatus.STALE
+        diagnostics = ()
+    return ProjectionFreshness(
+        status=status,
+        projection_fact_watermark=state.fact_watermark,
+        observed_fact_watermark=observed_fact_watermark,
+        observed_at=observed_at,
+        diagnostics=diagnostics,
+    )
 
 
 @dataclass(frozen=True, slots=True, init=False)

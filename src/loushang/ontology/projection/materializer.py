@@ -14,7 +14,7 @@ from loushang.ontology.facts.model import (
     ObjectAssertion,
     PropertyAssertion,
 )
-from loushang.ontology.facts.ports import FactReadStore, StoredFact
+from loushang.ontology.facts.ports import FactSelection, StoredFact
 from loushang.ontology.projection.model import (
     ProjectedLink,
     ProjectedObject,
@@ -53,21 +53,21 @@ class ProjectionMaterializationError(ValueError):
 
 
 def materialize_projection(
-    facts: FactReadStore,
+    selection: FactSelection,
     schema: CompiledOntologySchema,
     *,
-    valid_at: float,
-    recorded_at: float,
     projection_version: int = 1,
     built_at: float | None = None,
 ) -> ProjectionSnapshot:
-    """Build an immutable schema-validated graph from explicit time coordinates."""
+    """Build an immutable graph from one detached atomic Fact selection."""
 
+    if not isinstance(selection, FactSelection):
+        raise TypeError("materialize_projection requires a FactSelection")
     if type(projection_version) is not int or projection_version < 1:
         raise ValueError("projection_version must be a positive integer")
-    selected = facts.facts_as_of(valid_at=valid_at, recorded_at=recorded_at)
-    valid_at = float(valid_at)
-    recorded_at = float(recorded_at)
+    selected = selection.facts
+    valid_at = selection.valid_at
+    recorded_at = selection.recorded_at
     built_at = recorded_at if built_at is None else _finite("built_at", built_at)
     diagnostics: list[ProjectionDiagnostic] = []
     object_type_facts: dict[UUID, set[str]] = {}
@@ -141,8 +141,7 @@ def materialize_projection(
     state = ProjectionState(
         schema_version=str(schema.version),
         projection_version=projection_version,
-        source_fact_watermark=facts.fact_watermark,
-        projected_fact_watermark=facts.fact_watermark,
+        fact_watermark=selection.fact_watermark,
         valid_at=valid_at,
         recorded_at=recorded_at,
         built_at=built_at,

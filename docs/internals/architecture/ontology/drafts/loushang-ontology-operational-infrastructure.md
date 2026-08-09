@@ -9,8 +9,9 @@ Draft.
 ARD 或 live architecture 文档冲突，应以后者为准。
 
 多业务系统 StateAuthority、Source View 和 multi-source materialization 的收口方案见
-[Proposed ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。
-该 ARD 尚未接受，不改变当前运行时或 SQLite 布局。
+[ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。其
+materialization-correctness slice 已实现；stable ID、mapped source input 和多来源合成
+仍未实现。
 
 调研快照日期为 2026-08-06。参考仓库只用于本体子系统研发和架构研究，保持只读；
 本文的规模数据来自静态文件统计，不等同于测试通过率或生产成熟度。
@@ -296,8 +297,8 @@ published ontology fact。
 ### 多业务系统的局部 Source View 与 StateAuthority
 
 > 目标架构提案，正式收口见
-> [Proposed ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。
-> 在该 ARD 接受前，本节不修改当前 FactStore authority contract。
+> [ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。
+> 当前 Fact-only runtime 已实现其 correctness slice；本节其余多来源内容仍是后续方向。
 
 ERP、HR、CRM、OA 等业务系统不应被统称为 Ontology projection。对每个业务系统自身而言，
 它的数据库仍是其职责范围内的 system of record；从企业级 Ontology 视角看，每个系统只
@@ -1198,18 +1199,18 @@ ObjectStore、动态 facade、Callable rules、直接 fusion 和临时 Action br
 
 “Schema Foundation 已完成 stable ID”的旧表述不准确：当前 package/namespace/version 和
 名称型定义已经稳定序列化，但 ObjectType、Property、LinkType 还没有独立于名称的显式
-semantic ID。该缺口进入 Proposed ARD-003。
+semantic ID。ARD-003 已接受该方向，但实现仍待后续 slice。
 
 ### 下一阶段：Declared Authority 与 Multi-Source Materialization
 
-先评审并接受
-[Proposed ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)，
-再修改运行代码：
+按照已接受的
+[ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)
+继续实现：
 
 - 区分 `StateAuthority`、`AssertionKind` 和 `ValueOrigin`；
 - 增加 stable semantic ID、`SourceBinding`、`MappingVersion`、`SourceRevision`；
-- 原子捕获 `FactSelection`，以 `MaterializationCut` 记录多输入构建坐标；
-- 分离 immutable projection state 与运行时 freshness；
+- 已完成原子 `FactSelection`、immutable projection state 与运行时 freshness 分离；
+- 以 `MaterializationCut` 记录后续多输入构建坐标；
 - 先用 Memory 验证一个 source-backed value、一个 ontology-owned Fact 和一个 schema
   default 的最小合成切片；
 - 明确冲突可见、未知 coverage 和 identity 不确定时的拒绝语义。
@@ -1318,8 +1319,8 @@ surface，不暴露任意 mutation。
 
 在后续 ARD 中需要进一步决定：
 
-- Proposed ARD-003 选择 package-local stable ID + namespace resolution；是否接受及精确
-  serialization contract 仍待评审；
+- ARD-003 已选择 package-local stable ID + namespace resolution；精确 serialization
+  contract 仍待实现切片收口；
 - schema package 的 SemVer compatibility 规则；
 - InterfaceType 是 structural conformance 还是 nominal declaration，或两者都支持；
 - action commit 与不可补偿外部 effect 的顺序和 failure protocol；

@@ -169,7 +169,10 @@ def test_restart_backup_and_replay_restore_fact_authority(tmp_path: Path) -> Non
     assert replay.first_sequence == original.first_sequence
     assert replay.last_sequence == original.last_sequence
     assert replay.replayed is True
-    snapshot = materialize_projection(restored, schema, valid_at=20, recorded_at=20)
+    snapshot = materialize_projection(
+        restored.select_facts(valid_at=20, recorded_at=20),
+        schema,
+    )
     assert snapshot.get(SUBJECT_ID) is not None
     restored.close()
 

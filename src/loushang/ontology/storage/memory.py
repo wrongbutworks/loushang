@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from threading import RLock
 from uuid import UUID
 
 from loushang.ontology.facts.commit import (
@@ -11,7 +12,7 @@ from loushang.ontology.facts.commit import (
     select_facts_as_of,
 )
 from loushang.ontology.facts.model import FactBatch
-from loushang.ontology.facts.ports import FactCommit, StoredFact
+from loushang.ontology.facts.ports import FactCommit, FactSelection, StoredFact
 from loushang.ontology.projection import (
     ProjectedObject,
     ProjectionSnapshot,
@@ -25,51 +26,63 @@ class MemoryFactStore:
     """Deterministic in-memory reference adapter for the FactStore port."""
 
     def __init__(self) -> None:
+        self._lock = RLock()
         self._facts: list[StoredFact] = []
         self._by_id: dict[UUID, StoredFact] = {}
         self._batches: dict[str, CommittedFactBatch] = {}
 
     @property
     def fact_watermark(self) -> int:
-        return len(self._facts)
+        with self._lock:
+            return len(self._facts)
 
     def get_fact(self, fact_id: UUID) -> StoredFact:
-        try:
-            return self._by_id[fact_id]
-        except KeyError as exc:
-            raise KeyError(f"Unknown ontology fact {fact_id}") from exc
+        with self._lock:
+            try:
+                return self._by_id[fact_id]
+            except KeyError as exc:
+                raise KeyError(f"Unknown ontology fact {fact_id}") from exc
 
     def read_facts(self, *, after_sequence: int = 0) -> tuple[StoredFact, ...]:
         after_sequence = require_sequence("after_sequence", after_sequence)
-        return tuple(item for item in self._facts if item.sequence > after_sequence)
+        with self._lock:
+            return tuple(item for item in self._facts if item.sequence > after_sequence)
 
-    def facts_as_of(
+    def select_facts(
         self,
         *,
         valid_at: float,
         recorded_at: float,
-    ) -> tuple[StoredFact, ...]:
-        return select_facts_as_of(
-            self._facts,
-            valid_at=valid_at,
-            recorded_at=recorded_at,
-        )
+    ) -> FactSelection:
+        with self._lock:
+            selected = select_facts_as_of(
+                self._facts,
+                valid_at=valid_at,
+                recorded_at=recorded_at,
+            )
+            return FactSelection(
+                facts=selected,
+                fact_watermark=len(self._facts),
+                valid_at=valid_at,
+                recorded_at=recorded_at,
+            )
 
     def commit_fact_batch(self, batch: FactBatch) -> FactCommit:
-        plan = prepare_fact_commit(
-            batch,
-            current_facts=self._facts,
-            committed_batches=self._batches,
-        )
-        if plan.commit.replayed:
+        with self._lock:
+            plan = prepare_fact_commit(
+                batch,
+                current_facts=self._facts,
+                committed_batches=self._batches,
+            )
+            if plan.commit.replayed:
+                return plan.commit
+            self._facts.extend(plan.entries)
+            self._by_id.update((entry.fact.fact_id, entry) for entry in plan.entries)
+            self._batches[batch.batch_id] = CommittedFactBatch(
+                digest=plan.digest,
+                commit=plan.commit,
+            )
             return plan.commit
-        self._facts.extend(plan.entries)
-        self._by_id.update((entry.fact.fact_id, entry) for entry in plan.entries)
-        self._batches[batch.batch_id] = CommittedFactBatch(
-            digest=plan.digest,
-            commit=plan.commit,
-        )
-        return plan.commit
 
 
 class MemoryProjectionStore:

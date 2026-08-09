@@ -4,6 +4,11 @@ Status: Accepted, 2026-08-09.
 
 Tracking: [#438](https://github.com/zhnt/loushang/issues/438).
 
+The materialization and freshness portions are partially superseded by
+[ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md).
+The port separation, adapter independence, immutable replacement, and Phase 2
+SQLite v2 table set remain accepted.
+
 ## Context
 
 [ARD-001](ARD-001-factstore-semantic-authority.md) made the append-only
@@ -49,15 +54,16 @@ The dependency rules are normative:
 1. Domain packages do not import storage adapters.
 2. Query does not import a concrete adapter.
 3. Memory and SQLite adapters do not import or delegate to each other.
-4. Ontology does not import Harness, HarnessWork, Work, Method, Product, or a
+4. Ontology does not import Harness, HarnessWork, Method, Product, or a
    domain package.
 5. `ontology.core` does not exist. It is not a compatibility namespace.
 
 ## Fact Commit Boundary
 
-`facts.ports` owns `FactReadStore`, `FactStore`, `StoredFact`, `FactCommit`, and
-the stable conflict error. `facts.commit` owns pure commit planning, journal
-validation, lineage validation, and bitemporal selection.
+`facts.ports` owns `FactReadStore`, `FactStore`, `StoredFact`, `FactCommit`,
+atomic `FactSelection`, and the stable conflict error. `facts.commit` owns pure
+commit planning, journal validation, lineage validation, and bitemporal
+selection.
 
 `prepare_fact_commit(...)` receives an explicit fact-journal snapshot and
 committed-batch identities. It returns `PreparedFactCommit` without changing
@@ -79,10 +85,11 @@ The snapshot contains only frozen values:
 - `ProjectedProperty`, which stores a canonical JSON value and returns detached
   JSON trees;
 - `ProjectedLink`, which stores detached link properties;
-- `ProjectionState`, including schema version, projection version, Fact
-  watermarks, valid time, recorded time, and build time.
+- `ProjectionState`, including schema version, projection version, the captured
+  Fact watermark, valid time, recorded time, and build time.
 
-`materialize_projection(...)` is pure relative to its FactStore read snapshot.
+`materialize_projection(...)` consumes a detached atomic `FactSelection` and
+does not read a live FactStore.
 It validates object type, inherited property declaration, value type, required
 and unique properties, link endpoint types, link cardinality, required links,
 and cross-source conflicts. It cannot write Facts or projection storage.
@@ -107,11 +114,13 @@ snapshot.
   unchanged.
 - Rejected projection replacement leaves the previously installed graph and
   projection version unchanged.
-- In the shared SQLite file, a later Fact commit advances
-  `source_fact_watermark` while leaving `projected_fact_watermark` unchanged.
-  The installed projection is therefore visibly stale until replacement.
-- SQLite accepts a replacement only when it covers the current Fact watermark
-  and has the next monotonic projection version.
+- A later Fact commit does not mutate an installed snapshot's build
+  coordinates. `evaluate_projection_freshness(...)` compares its captured Fact
+  watermark with an explicit runtime observation.
+- Memory and SQLite apply the same replacement contract: structural validity
+  and the next monotonic projection version. Installation freshness policy
+  belongs to the caller, not an adapter-local hidden check.
+- SQLite reconstructs one projection under one read transaction.
 - Projection rows are disposable. Rebuilding from schema, Facts, and explicit
   time coordinates is the recovery operation.
 
@@ -144,9 +153,13 @@ mutation_journal
 projection_unique_values
 ```
 
-`projection_metadata` records `source_fact_watermark`,
-`projected_fact_watermark`, `schema_version`, `valid_at`, `recorded_at`,
-`projection_version`, `built_at`, and the selected Fact identities.
+`projection_metadata` retains the Phase 2 physical columns
+`source_fact_watermark` and `projected_fact_watermark`. The adapter requires
+them to be equal and writes the immutable `ProjectionState.fact_watermark` to
+both; Fact commits never update them. A later multi-source layout may replace
+these historical column names. The table also records `schema_version`,
+`valid_at`, `recorded_at`, `projection_version`, `built_at`, and the selected
+Fact identities.
 
 ## Public Package Shape
 
@@ -186,8 +199,8 @@ Benefits:
 - projections are immutable by construction rather than by a runtime seal;
 - storage conformance can compare independent adapters;
 - Fact durability and projection refresh have separate failure domains;
-- future command compilers and Actions have one target: deterministic
-  FactBatch commit.
+- ontology-owned command compilers have one target: deterministic FactBatch
+  commit; source-backed commands follow the later authority-specific contract.
 
 Costs:
 

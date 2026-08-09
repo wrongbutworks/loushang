@@ -4,6 +4,13 @@ Status: Accepted, 2026-08-09.
 
 Tracking: [#437](https://github.com/zhnt/loushang/issues/437).
 
+Partially superseded by
+[ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md):
+FactStore remains authoritative for semantic records inside its declared scope,
+but mapped source-backed state need not become per-property Facts. The rules
+below remain current for the Fact-only implementation and for ontology-owned or
+selectively factized state.
+
 ## Context
 
 An earlier prototype introduced a mutable object authority and an operational
@@ -26,7 +33,7 @@ The append-only `FactStore` is the only semantic state authority.
 Published Schema
        |
        v
-FactBatch ---> FactStore ---> facts_as_of(valid_at, recorded_at)
+FactBatch ---> FactStore ---> select_facts(valid_at, recorded_at)
                                   |
                                   v
                              Materializer
@@ -38,7 +45,8 @@ FactBatch ---> FactStore ---> facts_as_of(valid_at, recorded_at)
                           typed QueryResult
 ```
 
-The following rules are normative:
+The following rules record the original decision. ARD-003 narrows rules 1, 2,
+and 5 for source-backed mapped input:
 
 1. New asserted, derived, inferred, Agent-produced, or future Action-produced
    semantic state enters through `FactBatch -> FactStore`.
@@ -125,5 +133,5 @@ This phase does not implement:
 - CRUD command compilation;
 - safe derivation, source adapters, standards, Action, or Decision contracts;
 
-Those capabilities must preserve this decision rather than add a second write
-authority.
+Those capabilities must preserve one declared authority for each state rather
+than reintroduce caller-selected write paths.

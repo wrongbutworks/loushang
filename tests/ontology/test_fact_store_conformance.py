@@ -143,14 +143,17 @@ def test_bitemporal_selection_preserves_history_across_correction(
     )
     fact_store.commit_fact_batch(FactBatch("history", [original, correction, future]))
 
-    known_at_20 = fact_store.facts_as_of(valid_at=25.0, recorded_at=20.0)
-    known_at_35 = fact_store.facts_as_of(valid_at=25.0, recorded_at=35.0)
-    valid_at_50 = fact_store.facts_as_of(valid_at=50.0, recorded_at=50.0)
+    known_at_20 = fact_store.select_facts(valid_at=25.0, recorded_at=20.0)
+    known_at_35 = fact_store.select_facts(valid_at=25.0, recorded_at=35.0)
+    valid_at_50 = fact_store.select_facts(valid_at=50.0, recorded_at=50.0)
 
-    assert [item.fact.fact_id for item in known_at_20] == [FACT_1]
-    assert [item.fact.fact_id for item in known_at_35] == [FACT_2]
-    assert [item.fact.fact_id for item in valid_at_50] == [FACT_3]
-    assert fact_store.facts_as_of(valid_at=49.999, recorded_at=50.0) == ()
+    assert [item.fact.fact_id for item in known_at_20.facts] == [FACT_1]
+    assert [item.fact.fact_id for item in known_at_35.facts] == [FACT_2]
+    assert [item.fact.fact_id for item in valid_at_50.facts] == [FACT_3]
+    assert known_at_20.fact_watermark == 3
+    assert known_at_20.valid_at == 25
+    assert known_at_20.recorded_at == 20
+    assert fact_store.select_facts(valid_at=49.999, recorded_at=50.0).facts == ()
 
 
 def test_retraction_is_an_append_only_validity_correction(
@@ -169,12 +172,18 @@ def test_retraction_is_an_append_only_validity_correction(
 
     assert [
         item.fact.fact_id
-        for item in fact_store.facts_as_of(valid_at=49.999, recorded_at=60.0)
+        for item in fact_store.select_facts(
+            valid_at=49.999,
+            recorded_at=60.0,
+        ).facts
     ] == [FACT_2]
-    assert fact_store.facts_as_of(valid_at=50.0, recorded_at=60.0) == ()
+    assert fact_store.select_facts(valid_at=50.0, recorded_at=60.0).facts == ()
     assert [
         item.fact.fact_id
-        for item in fact_store.facts_as_of(valid_at=50.0, recorded_at=20.0)
+        for item in fact_store.select_facts(
+            valid_at=50.0,
+            recorded_at=20.0,
+        ).facts
     ] == [FACT_1]
 
 
@@ -290,7 +299,7 @@ def test_fact_store_rejects_duplicate_identity_and_invalid_read_coordinates(
     with pytest.raises(ValueError, match="after_sequence"):
         fact_store.read_facts(after_sequence=-1)
     with pytest.raises(ValueError, match="recorded_at"):
-        fact_store.facts_as_of(valid_at=1, recorded_at=float("nan"))
+        fact_store.select_facts(valid_at=1, recorded_at=float("nan"))
 
     assert fact_store.fact_watermark == 1
 

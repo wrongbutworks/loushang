@@ -18,13 +18,12 @@ from loushang.ontology.facts.commit import (
     validate_fact_journal,
 )
 from loushang.ontology.facts.model import FactBatch, FactRecord, FactValidationError
-from loushang.ontology.facts.ports import FactCommit, StoredFact
+from loushang.ontology.facts.ports import FactCommit, FactSelection, StoredFact
 from loushang.ontology.projection import (
     ProjectedLink,
     ProjectedObject,
     ProjectedProperty,
     ProjectionSnapshot,
-    ProjectionStaleError,
     ProjectionState,
     ProjectionUnavailableError,
 )
@@ -497,6 +496,18 @@ class _SQLiteAdapter:
         return batches
 
     def _read_projection_snapshot(self) -> ProjectionSnapshot | None:
+        if self._connection.in_transaction:
+            return self._read_projection_snapshot_in_transaction()
+        self._connection.execute("BEGIN")
+        try:
+            snapshot = self._read_projection_snapshot_in_transaction()
+            self._connection.commit()
+            return snapshot
+        except Exception:
+            self._connection.rollback()
+            raise
+
+    def _read_projection_snapshot_in_transaction(self) -> ProjectionSnapshot | None:
         row = self._connection.execute(
             """
             SELECT schema_version, source_fact_watermark,
@@ -535,6 +546,10 @@ class _SQLiteAdapter:
             built_at,
             fact_ids_json,
         ) = row
+        if source_watermark != projected_watermark:
+            raise FactValidationError(
+                "stored projection build watermarks disagree"
+            )
         raw_fact_ids = json.loads(cast(str, fact_ids_json))
         if not isinstance(raw_fact_ids, list) or not all(
             isinstance(item, str) for item in raw_fact_ids
@@ -611,8 +626,7 @@ class _SQLiteAdapter:
         ]
         state = ProjectionState(
             schema_version=cast(str, schema_version),
-            source_fact_watermark=cast(int, source_watermark),
-            projected_fact_watermark=cast(int, projected_watermark),
+            fact_watermark=cast(int, projected_watermark),
             valid_at=cast(float, valid_at),
             recorded_at=cast(float, recorded_at),
             projection_version=cast(int, projection_version),
@@ -641,6 +655,9 @@ class SQLiteFactStore(_SQLiteAdapter):
     @property
     def fact_watermark(self) -> int:
         self._require_open()
+        return self._read_fact_watermark()
+
+    def _read_fact_watermark(self) -> int:
         row = self._connection.execute(
             "SELECT value FROM ontology_metadata WHERE key = 'fact_watermark'"
         ).fetchone()
@@ -669,18 +686,31 @@ class SQLiteFactStore(_SQLiteAdapter):
         after_sequence = require_sequence("after_sequence", after_sequence)
         return self._read_fact_entries(after_sequence=after_sequence)
 
-    def facts_as_of(
+    def select_facts(
         self,
         *,
         valid_at: float,
         recorded_at: float,
-    ) -> tuple[StoredFact, ...]:
+    ) -> FactSelection:
         self._require_open()
-        return select_facts_as_of(
-            self._read_fact_entries(),
-            valid_at=valid_at,
-            recorded_at=recorded_at,
-        )
+        self._connection.execute("BEGIN")
+        try:
+            selected = select_facts_as_of(
+                self._read_fact_entries(),
+                valid_at=valid_at,
+                recorded_at=recorded_at,
+            )
+            selection = FactSelection(
+                facts=selected,
+                fact_watermark=self._read_fact_watermark(),
+                valid_at=valid_at,
+                recorded_at=recorded_at,
+            )
+            self._connection.commit()
+            return selection
+        except Exception:
+            self._connection.rollback()
+            raise
 
     def commit_fact_batch(self, batch: FactBatch) -> FactCommit:
         """Plan and persist a fact batch in one immediate SQLite transaction."""
@@ -723,14 +753,6 @@ class SQLiteFactStore(_SQLiteAdapter):
                 self._connection.execute(
                     "UPDATE ontology_metadata SET value = ? WHERE key = 'fact_watermark'",
                     (str(plan.commit.last_sequence),),
-                )
-                self._connection.execute(
-                    """
-                    UPDATE projection_metadata
-                    SET source_fact_watermark = ?
-                    WHERE singleton = 1
-                    """,
-                    (plan.commit.last_sequence,),
                 )
             self._connection.commit()
             return plan.commit
@@ -779,18 +801,6 @@ class SQLiteProjectionStore(_SQLiteAdapter):
                     self._database,
                     stored_schema=self._schema,
                     expected_schema=snapshot.schema,
-                )
-            current_watermark_row = self._connection.execute(
-                "SELECT value FROM ontology_metadata WHERE key = 'fact_watermark'"
-            ).fetchone()
-            assert current_watermark_row is not None
-            current_watermark = int(cast(str, current_watermark_row[0]))
-            if (
-                snapshot.state.source_fact_watermark != current_watermark
-                or snapshot.state.projected_fact_watermark != current_watermark
-            ):
-                raise ProjectionStaleError(
-                    "projection snapshot does not cover the current fact watermark"
                 )
             current = self._read_projection_snapshot()
             expected_version = (
@@ -874,8 +884,8 @@ class SQLiteProjectionStore(_SQLiteAdapter):
                 """,
                 (
                     state.schema_version,
-                    state.source_fact_watermark,
-                    state.projected_fact_watermark,
+                    state.fact_watermark,
+                    state.fact_watermark,
                     state.valid_at,
                     state.recorded_at,
                     state.projection_version,

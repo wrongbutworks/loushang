@@ -108,10 +108,8 @@ def _materialize(records: list[FactRecord], *, schema=None):
     store = MemoryFactStore()
     store.commit_fact_batch(FactBatch("fixture", records))
     return materialize_projection(
-        store,
+        store.select_facts(valid_at=20, recorded_at=20),
         _schema() if schema is None else schema,
-        valid_at=20,
-        recorded_at=20,
     )
 
 
@@ -126,9 +124,7 @@ def test_materializer_builds_an_immutable_reproducible_snapshot() -> None:
     assert asset.get("score") == 7
     assert asset.get("observed_at") == datetime(2026, 8, 9, tzinfo=UTC)
     assert snapshot.find_neighbors(ASSET_ID, "owned_by") == (owner,)
-    assert snapshot.state.source_fact_watermark == 6
-    assert snapshot.state.projected_fact_watermark == 6
-    assert snapshot.state.fresh is True
+    assert snapshot.state.fact_watermark == 6
     assert snapshot.state.schema_version == "1.0.0"
     assert snapshot.state.valid_at == 20
     assert snapshot.state.recorded_at == 20

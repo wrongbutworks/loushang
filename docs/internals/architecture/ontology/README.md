@@ -6,44 +6,56 @@ The ontology subsystem has completed the schema kernel, the Wave 2A
 Fact/Provenance spine, the single-authority reset in
 [ARD-001](ARD-001-factstore-semantic-authority.md), and the Phase 2 port,
 projection, and adapter split in
-[ARD-002](ARD-002-ports-immutable-projection-and-sqlite-v2.md).
+[ARD-002](ARD-002-ports-immutable-projection-and-sqlite-v2.md). The first
+correctness slice of
+[ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
+is also implemented.
 
 It currently provides:
 
 - versioned schema drafts, compilation, immutable snapshots, diagnostics, and
   schema diff;
 - an append-only bitemporal FactStore with provenance and lineage;
-- pure, deterministic Fact commit planning and bitemporal selection;
-- immutable Fact-to-object/property/link materialization;
+- pure, deterministic Fact commit planning and atomic bitemporal
+  `FactSelection`;
+- immutable Fact-to-object/property/link materialization from a detached
+  selection;
+- immutable projection build coordinates plus explicit, pure
+  `ProjectionFreshness` evaluation;
 - a narrow ProjectionReadStore and atomic whole-snapshot ProjectionStore;
 - backend-neutral typed queries over projection reads;
 - independent Memory and SQLite FactStore/ProjectionStore adapters;
 - SQLite v2 format detection, corruption checks, schema identity, restart, and
   backup.
 
-FactStore is the sole semantic authority. Projection replacement installs
-disposable infrastructure state; it is not object CRUD. There is no dynamic
-`Ontology` facade, mutable ObjectStore, callable RuleEngine, direct DataFusion,
-or Ontology/HarnessWork Action bridge.
+In the current Fact-only runtime, FactStore is the only semantic-record input.
+ARD-003 narrows that statement for the target architecture: mapped source input
+may later materialize source-backed state without per-property Facts, while
+FactStore remains authoritative for records inside its declared scope.
+Projection replacement installs disposable infrastructure state; it is not
+object CRUD. There is no dynamic `Ontology` facade, mutable ObjectStore,
+callable RuleEngine, direct DataFusion, or Ontology/HarnessWork Action bridge.
 
 This is infrastructure, not a domain ontology and not a Palantir product
 clone. Runtime coordination, command compilation, source adapters, Actions,
 Decisions, generated SDKs, standards bridges, SQL pushdown, and environmental
 packages remain later work.
 
-## Proposed Architecture Review
+## Accepted Direction And Implementation Boundary
 
-[Proposed ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
-examines how application-version source mappings and multiple systems of record
-should enter materialization. It proposes separating business-state ownership
+[ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
+defines how application-version source mappings and multiple systems of record
+will enter materialization. It separates business-state ownership
 (`StateAuthority`) from FactStore's semantic-record authority, adding immutable
 mapped source inputs, and separating a projection's build cut from observed
 freshness. It is tracked in
 [#439](https://github.com/zhnt/loushang/issues/439).
 
-The proposal is not current implementation truth. Until it is accepted and
-implemented, the Fact-only runtime shape and SQLite v2 semantics below remain
-normative.
+Only the materialization-correctness slice is implemented: atomic Fact
+selection, immutable build coordinates, explicit Fact freshness, and
+snapshot-consistent SQLite reads. Stable semantic IDs, `StateAuthority`, mapped
+source input, `MaterializationCut`, and multi-source `ValueOrigin` remain next
+steps. The runtime shape below therefore remains Fact-only.
 
 ## Runtime Shape
 
@@ -52,14 +64,16 @@ Source / future Command Adapter
              |
              | FactBatch
              v
-      +---------------+       facts_as_of(valid_at, recorded_at)
-      |   FactStore   |---------------------------------------+
-      +---------------+                                       |
-             ^                                                  v
-             |                                      +---------------------+
-             |                                      | Pure Materializer   |
-CompiledOntologySchema ---------------------------->|                     |
-                                                    +---------------------+
+      +---------------+       select_facts(valid_at, recorded_at)
+      |   FactStore   |------------------------------------------+
+      +---------------+                                          |
+             ^                                                    v
+             |                                             FactSelection
+             |                                                    |
+CompiledOntologySchema ----------------------------+              v
+                                                   |   +---------------------+
+                                                   +-->| Pure Materializer   |
+                                                       +---------------------+
                                                                |
                                                                | immutable
                                                                v
@@ -74,8 +88,9 @@ CompiledOntologySchema ---------------------------->|                     |
 ```
 
 A failed materialization or projection replacement cannot undo an accepted
-Fact batch. In the shared SQLite file, later Facts make the installed snapshot
-visibly stale by advancing only `source_fact_watermark`.
+Fact batch. A later Fact commit never mutates the installed snapshot's build
+coordinates. Callers compare its `fact_watermark` with an explicitly observed
+FactStore watermark through `evaluate_projection_freshness(...)`.
 
 ## Dependency Direction
 
@@ -107,10 +122,12 @@ product subsystem.
 - `schema/`: drafts, compiler, immutable schemas, diagnostics, and diff;
 - `facts/model.py`: immutable Fact envelope, typed assertions, provenance, and
   FactBatch;
-- `facts/ports.py`: Fact read/write ports and stable commit values;
+- `facts/ports.py`: Fact read/write ports, stable commit values, and atomic
+  `FactSelection`;
 - `facts/commit.py`: pure commit planning, journal validation, lineage, and
   bitemporal selection;
-- `projection/model.py`: immutable object, property, link, state, and snapshot;
+- `projection/model.py`: immutable object, property, link, build state,
+  freshness observation, and snapshot;
 - `projection/ports.py`: projection reads and atomic replacement;
 - `projection/materializer.py`: schema validation and deterministic snapshot
   construction;
@@ -150,21 +167,18 @@ These paths and symbols intentionally do not exist:
 - `FactProjection` wrappers and runtime-sealed mutable views.
 
 They must not return as compatibility aliases. Future CRUD, derivation,
-source, Agent, Action, and Decision surfaces compile successful commands to
-FactBatch under the current accepted design. Proposed ARD-003 re-examines that
-rule only for source-backed state; ontology-owned commands remain Fact-backed.
+Agent, Action, and Decision surfaces use their declared authority. Ontology-owned
+commands remain Fact-backed; the later source-backed command contract is
+deferred to an Action/write-back ARD.
 
 ## Normative Reading Order
 
 1. [ARD-001: FactStore Is The Sole Semantic Authority](ARD-001-factstore-semantic-authority.md)
 2. [ARD-002: Ports, Immutable Projections, And The Phase 2 SQLite v2 Layout](ARD-002-ports-immutable-projection-and-sqlite-v2.md)
-3. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
-4. [Schema Evolution](schema-evolution.md)
+3. [ARD-003: Declared State Authority And Multi-Source Materialization](ARD-003-declared-state-authority-and-multi-source-materialization.md)
+4. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
+5. [Schema Evolution](schema-evolution.md)
 
 The larger design and reference analysis remains in
 [`drafts/loushang-ontology-operational-infrastructure.md`](drafts/loushang-ontology-operational-infrastructure.md).
 It is directional material, not current implementation truth.
-
-Proposals are intentionally excluded from the normative reading order. The
-active proposal is
-[ARD-003: Declared State Authority And Multi-Source Materialization](ARD-003-declared-state-authority-and-multi-source-materialization.md).

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 from uuid import UUID
@@ -32,6 +33,34 @@ class FactCommit:
     replayed: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class FactSelection:
+    """One immutable bitemporal Fact selection and its captured watermark."""
+
+    facts: tuple[StoredFact, ...]
+    fact_watermark: int
+    valid_at: float
+    recorded_at: float
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.facts, tuple) or any(
+            not isinstance(item, StoredFact) for item in self.facts
+        ):
+            raise TypeError("facts must be a tuple of StoredFact values")
+        if type(self.fact_watermark) is not int or self.fact_watermark < 0:
+            raise ValueError("fact_watermark must be a non-negative integer")
+        sequences = [item.sequence for item in self.facts]
+        if sequences != sorted(sequences) or len(sequences) != len(set(sequences)):
+            raise ValueError("selected facts must have unique ascending sequences")
+        if any(sequence > self.fact_watermark for sequence in sequences):
+            raise ValueError("selected facts cannot exceed the captured watermark")
+        for name in ("valid_at", "recorded_at"):
+            value = getattr(self, name)
+            if type(value) not in (int, float) or not math.isfinite(float(value)):
+                raise ValueError(f"{name} must be a finite number")
+            object.__setattr__(self, name, float(value))
+
+
 @runtime_checkable
 class FactReadStore(Protocol):
     """Bitemporal read side of the semantic fact authority."""
@@ -43,12 +72,12 @@ class FactReadStore(Protocol):
 
     def read_facts(self, *, after_sequence: int = 0) -> tuple[StoredFact, ...]: ...
 
-    def facts_as_of(
+    def select_facts(
         self,
         *,
         valid_at: float,
         recorded_at: float,
-    ) -> tuple[StoredFact, ...]: ...
+    ) -> FactSelection: ...
 
 
 @runtime_checkable
@@ -62,6 +91,7 @@ __all__ = [
     "FactBatchConflictError",
     "FactCommit",
     "FactReadStore",
+    "FactSelection",
     "FactStore",
     "StoredFact",
 ]

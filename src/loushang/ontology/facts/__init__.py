@@ -21,6 +21,7 @@ from loushang.ontology.facts.ports import (
     FactBatchConflictError,
     FactCommit,
     FactReadStore,
+    FactSelection,
     FactStore,
     StoredFact,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "FactBatchConflictError",
     "FactCommit",
     "FactReadStore",
+    "FactSelection",
     "FactRecord",
     "FactStore",
     "FactValidationError",

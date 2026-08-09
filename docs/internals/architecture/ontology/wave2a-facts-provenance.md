@@ -5,6 +5,9 @@
 > descriptions: current code uses `ProjectionSnapshot`,
 > `materialize_projection`, independent adapters, and the Phase 2 v2 layout.
 > See [ARD-002](ARD-002-ports-immutable-projection-and-sqlite-v2.md).
+> [ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
+> later replaced direct live-store materialization with atomic `FactSelection`
+> and separated immutable projection state from runtime freshness.
 
 ## Status
 

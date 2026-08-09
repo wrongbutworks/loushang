@@ -70,7 +70,10 @@ def _projected_assets():
     ]
     facts = MemoryFactStore()
     facts.commit_fact_batch(FactBatch("query-fixture", records))
-    return materialize_projection(facts, schema, valid_at=10, recorded_at=10)
+    return materialize_projection(
+        facts.select_facts(valid_at=10, recorded_at=10),
+        schema,
+    )
 
 
 def _fact(suffix: int, subject_id: UUID, assertion: object) -> FactRecord:
@@ -86,7 +89,7 @@ def _fact(suffix: int, subject_id: UUID, assertion: object) -> FactRecord:
     )
 
 
-def test_typed_query_reports_schema_and_projection_freshness() -> None:
+def test_typed_query_reports_schema_and_projection_build_coordinates() -> None:
     projection = _projected_assets()
 
     result = execute_query(
@@ -102,7 +105,7 @@ def test_typed_query_reports_schema_and_projection_freshness() -> None:
 
     assert result.object_ids == (SELECTED_ID,)
     assert result.schema_version == "2.0.0"
-    assert result.projection.fresh is True
+    assert result.projection.fact_watermark == 9
     assert result.diagnostics == ()
 
 
@@ -134,7 +137,7 @@ def test_query_builder_operates_only_on_a_projection_view() -> None:
     )
 
     assert result.object_ids == (SELECTED_ID,)
-    assert result.projection.fresh is True
+    assert result.projection.fact_watermark == 9
 
 
 def test_query_builder_covers_read_only_traversal_sort_and_window_operations() -> None:

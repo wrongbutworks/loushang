@@ -1,13 +1,13 @@
 # ARD-003: Declared State Authority And Multi-Source Materialization
 
-Status: Proposed, 2026-08-09.
+Status: Accepted, 2026-08-09.
 
 Tracking: [#439](https://github.com/zhnt/loushang/issues/439).
 
-This proposal does not change runtime behavior or the current SQLite layout.
-If accepted, it will partially supersede ARD-001 and narrowly amend the
-materialization and freshness parts of ARD-002. Until then, ARD-001 and
-ARD-002 remain the accepted description of the implementation.
+This decision partially supersedes ARD-001 and narrowly amends the
+materialization and freshness parts of ARD-002. Its first implementation slice
+changes runtime contracts but keeps the Phase 2 SQLite v2 table layout. Stable
+semantic IDs and multi-source materialization remain unimplemented.
 
 ## Context
 
@@ -32,8 +32,8 @@ Conversely, a source-backed property need not receive a full Fact envelope when
 an immutable, versioned mapped source input can reproduce it with sufficient
 lineage.
 
-The current Fact-only implementation also exposes three correctness gaps that
-must be resolved by the future contract rather than hidden by a coordinator:
+The Fact-only implementation reviewed before acceptance exposed three
+correctness gaps that the first implementation slice resolves:
 
 1. materialization selects `facts_as_of(...)` and reads the Fact watermark
    separately, so a concurrent commit can make an older selection claim a
@@ -52,7 +52,7 @@ that every source property is stored as a per-property Fact. Loushang must
 declare its own authority and write-back contracts rather than present an
 inference about Palantir internals as fact.
 
-## Decision Proposal
+## Decision
 
 ### 1. Separate three orthogonal dimensions
 
@@ -113,7 +113,7 @@ The three authority classes have these minimum meanings:
 
 The ordering, acknowledgement, overlay, and reconciliation semantics for
 source-backed Actions are deferred to a later Action write-back ARD. This
-proposal does not require every source-backed edit to call an external system,
+decision does not require every source-backed edit to call an external system,
 nor does it introduce a managed edit store.
 
 ### 3. Give semantic definitions stable identity
@@ -305,9 +305,7 @@ their public protocols.
 
 ## Relationship To Earlier Decisions
 
-While this ARD is Proposed, it supersedes nothing.
-
-If accepted, it will partially supersede ARD-001 as follows:
+This ARD partially supersedes ARD-001 as follows:
 
 - rule 1 is narrowed: Ontology-owned state and published semantic Claims enter
   FactStore; versioned mapped source input may materialize without per-property
@@ -328,17 +326,17 @@ The following ARD-001 decisions remain:
 
 ARD-002 remains authoritative for port separation, adapter independence,
 immutable whole-snapshot replacement, and the currently implemented SQLite v2
-layout. If this proposal is accepted, a later implementation decision will
-replace only its Fact-only materialization/freshness assumptions and physical
-layout as needed. No compatibility reader or migration is implied.
+layout. Later implementation decisions may replace only its remaining Fact-only
+materialization assumptions and physical layout as needed. No compatibility
+reader or migration is implied.
 
-If accepted, this ARD also supersedes the identity rule in
+This ARD also supersedes the target identity rule in
 [Schema Evolution](schema-evolution.md): object-type, property, and link-type
 names stop being stable identity keys and become versioned metadata; explicit
 stable semantic IDs drive comparison and rename recognition. The remaining
 offline comparison, impact classification, determinism, and non-goal rules stay
-in force. Until this proposal is accepted and implemented, the current
-name-keyed comparator remains authoritative.
+in force. The current name-keyed comparator remains a transitional
+implementation until the stable-ID slice is complete.
 
 ## Consequences
 
@@ -364,7 +362,7 @@ Costs:
 
 ## Non-Goals
 
-This proposal does not add:
+This decision does not add:
 
 - ERP, HR, CRM, OA, CDC, streaming, or file connectors;
 - a SourceSync service, scheduler, retry engine, or data lake;
@@ -375,13 +373,18 @@ This proposal does not add:
   SQLite format;
 - RDF, OWL, JSON-LD, SHACL, or an environmental/domain package.
 
-## Acceptance Gates For A Future Implementation
+## Implementation Status
+
+Completed in the first correctness slice:
 
 - Fact selection and watermark are captured atomically in Memory and SQLite;
 - SQLite projection reconstruction uses one read transaction;
 - Memory and SQLite expose identical snapshot and freshness semantics;
 - ProjectionStore installation has no SQLite-only hidden freshness or coverage
   check;
+
+Remaining gates for the stable-ID and multi-source slices:
+
 - one Memory-only slice combines one source-backed value, one ontology-owned
   Fact, and one schema default into a deterministic projection;
 - every projected value exposes a supported `ValueOrigin`;
@@ -421,5 +424,5 @@ an ontology-owned overlay, re-index preservation, write-back-first execution,
 and audit behavior. Its README discusses derived state conceptually; its core
 runtime does not implement a `derived` StateAuthority declaration, source
 revision vector, identity-resolution contract, or source coverage model. Those
-parts of this proposal are Loushang design inferences, not adopted reference
+parts of this decision are Loushang design inferences, not adopted reference
 behavior.
