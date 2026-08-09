@@ -10,7 +10,8 @@ projection, and adapter split in
 materialization-correctness, stable semantic identity, and declared
 StateAuthority slices of
 [ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
-are also implemented.
+are implemented. Its first Memory-only mapped-source materialization slice is
+also implemented.
 
 It currently provides:
 
@@ -21,20 +22,25 @@ It currently provides:
 - an append-only bitemporal FactStore with provenance and lineage;
 - pure, deterministic Fact commit planning and atomic bitemporal
   `FactSelection`;
-- immutable Fact-to-object/property/link materialization from a detached
-  selection;
-- immutable projection build coordinates plus explicit, pure
-  `ProjectionFreshness` evaluation;
+- immutable source bindings and mapped source snapshots for source-backed
+  object existence and properties;
+- deterministic source-plus-Fact object/property materialization, with schema
+  defaults and explicit `SourceOrigin`, `FactOrigin`, and
+  `SchemaDefaultOrigin` lineage;
+- immutable `MaterializationCut` build coordinates plus explicit, pure Fact and
+  source-head `ProjectionFreshness` evaluation;
 - a narrow ProjectionReadStore and atomic whole-snapshot ProjectionStore;
 - backend-neutral typed queries over projection reads;
 - independent Memory and SQLite FactStore/ProjectionStore adapters;
 - SQLite v2 format detection, corruption checks, schema identity, restart, and
   backup.
 
-In the current Fact-only runtime, FactStore is the only semantic-record input.
-ARD-003 narrows that statement for the target architecture: mapped source input
-may later materialize source-backed state without per-property Facts, while
-FactStore remains authoritative for records inside its declared scope.
+The Memory materialization path accepts both a detached `FactSelection` and
+immutable mapped source snapshots. Ordinary source-backed values therefore do
+not require per-property Facts, while FactStore remains authoritative for
+records inside its declared scope. The SQLite v2 projection layout remains the
+accepted Fact-only physical subset and explicitly rejects source cuts rather
+than dropping source lineage.
 Projection replacement installs disposable infrastructure state; it is not
 object CRUD. There is no dynamic `Ontology` facade, mutable ObjectStore,
 callable RuleEngine, direct DataFusion, or Ontology/HarnessWork Action bridge.
@@ -54,35 +60,31 @@ mapped source inputs, and separating a projection's build cut from observed
 freshness. It is tracked in
 [#439](https://github.com/zhnt/loushang/issues/439).
 
-Three ARD-003 foundation slices are implemented: materialization correctness
+Four ARD-003 foundation slices are implemented: materialization correctness
 (atomic Fact selection, immutable build coordinates, explicit Fact freshness,
 and snapshot-consistent SQLite reads), stable semantic identity, and declared
-state ownership (schema v3 plus identity/authority-aware schema-diff v3).
-Concrete source/logic bindings, mapped source input, `MaterializationCut`, and
-multi-source `ValueOrigin` remain next steps. The runtime shape below therefore
-remains Fact-only; declarations do not yet route writes or execute derivations.
+state ownership (schema v3 plus identity/authority-aware schema-diff v3), plus
+the first Memory-only source composition slice. The latter adds concrete source
+bindings, full mapped snapshots, `MaterializationCut`, property `ValueOrigin`,
+and source-head freshness. Source-backed links, change sets, logic bindings,
+derived computation origins, write routing, and a later SQLite physical layout
+remain deferred.
 
 ## Runtime Shape
 
 ```text
-Source / future Command Adapter
-             |
-             | FactBatch
-             v
-      +---------------+       select_facts(valid_at, recorded_at)
-      |   FactStore   |------------------------------------------+
-      +---------------+                                          |
-             ^                                                    v
-             |                                             FactSelection
-             |                                                    |
-CompiledOntologySchema ----------------------------+              v
-                                                   |   +---------------------+
-                                                   +-->| Pure Materializer   |
-                                                       +---------------------+
+Product source adapter --> SourceBinding + MappedSourceInput ---+
                                                                |
-                                                               | immutable
+Source / Command Adapter --> FactStore --> FactSelection -------+
+                                                               |
+CompiledOntologySchema -----------------------------------------+
                                                                v
-                                                    ProjectionSnapshot
+                                                    +-------------------+
+                                                    | Pure Materializer |
+                                                    +-------------------+
+                                                               |
+                                                               v
+                                       ProjectionSnapshot + MaterializationCut
                                                                |
                                                 atomic replace | read
                                                                v
@@ -93,9 +95,9 @@ CompiledOntologySchema ----------------------------+              v
 ```
 
 A failed materialization or projection replacement cannot undo an accepted
-Fact batch. A later Fact commit never mutates the installed snapshot's build
-coordinates. Callers compare its `fact_watermark` with an explicitly observed
-FactStore watermark through `evaluate_projection_freshness(...)`.
+Fact batch. A later Fact commit or source revision never mutates the installed
+snapshot's build coordinates. Callers compare its cut with explicitly observed
+Fact and source heads through `evaluate_projection_freshness(...)`.
 
 ## Dependency Direction
 
@@ -104,9 +106,11 @@ schema -------------------------------> Foundation JSON
 facts.model --------------------------> Foundation JSON
 facts.ports --------------------------> facts.model
 facts.commit -------------------------> facts.model + facts.ports
+source.model -------------------------> Foundation JSON
 projection.model ---------------------> schema + Foundation JSON
 projection.ports ---------------------> projection.model
-projection.materializer -------------> facts.ports + projection.model + schema
+projection.materializer -------------> facts.ports + source
+                                       + projection.model + schema
 query --------------------------------> projection ports/models
 storage.memory -----------------------> facts + projection ports/models
 storage.sqlite -----------------------> facts + projection ports/models + schema
@@ -132,8 +136,10 @@ product subsystem.
   `FactSelection`;
 - `facts/commit.py`: pure commit planning, journal validation, lineage, and
   bitemporal selection;
+- `source/`: immutable source authority bindings, mapped full snapshots, and
+  source revision coordinates; no concrete connector;
 - `projection/model.py`: immutable object, property, link, build state,
-  freshness observation, and snapshot;
+  value origins, materialization cut, freshness observation, and snapshot;
 - `projection/ports.py`: projection reads and atomic replacement;
 - `projection/materializer.py`: schema validation and deterministic snapshot
   construction;
@@ -158,7 +164,9 @@ projection_properties   projection_links
 ```
 
 `authority_objects`, `mutation_journal`, and `projection_unique_values` are
-not part of the current layout.
+not part of the current layout. SQLite v2 has no source revision-vector or
+`SourceOrigin` columns; `SQLiteProjectionStore` rejects such snapshots instead
+of persisting an incomplete representation.
 
 ## Removed Greenfield Surface
 

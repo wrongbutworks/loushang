@@ -20,12 +20,17 @@ from loushang.ontology.facts.commit import (
 from loushang.ontology.facts.model import FactBatch, FactRecord, FactValidationError
 from loushang.ontology.facts.ports import FactCommit, FactSelection, StoredFact
 from loushang.ontology.projection import (
+    FactOrigin,
+    MaterializationCut,
     ProjectedLink,
     ProjectedObject,
     ProjectedProperty,
     ProjectionSnapshot,
     ProjectionState,
     ProjectionUnavailableError,
+    SchemaDefaultOrigin,
+    SchemaIdentity,
+    SourceOrigin,
 )
 from loushang.ontology.schema import (
     CompiledOntologySchema,
@@ -547,15 +552,14 @@ class _SQLiteAdapter:
             fact_ids_json,
         ) = row
         if source_watermark != projected_watermark:
-            raise FactValidationError(
-                "stored projection build watermarks disagree"
-            )
+            raise FactValidationError("stored projection build watermarks disagree")
         raw_fact_ids = json.loads(cast(str, fact_ids_json))
         if not isinstance(raw_fact_ids, list) or not all(
             isinstance(item, str) for item in raw_fact_ids
         ):
             raise FactValidationError("stored projection fact ids are invalid")
         properties_by_object: dict[UUID, list[ProjectedProperty]] = {}
+        schema_identity = SchemaIdentity.from_schema(self._schema)
         for property_row in self._connection.execute(
             """
             SELECT object_id, property_name, value_type, value_json,
@@ -575,14 +579,20 @@ class _SQLiteAdapter:
                 source_ref,
             ) = property_row
             parsed_value = json.loads(cast(str, value_json))
+            projected_fact_id = None if fact_id is None else UUID(cast(str, fact_id))
             projected = ProjectedProperty(
                 name=cast(str, property_name),
                 value_type=ValueType(cast(str, value_type)),
                 value=parsed_value,
                 valid_from=cast(float, property_valid_from),
-                fact_id=None if fact_id is None else UUID(cast(str, fact_id)),
+                fact_id=projected_fact_id,
                 author_ref=cast(str | None, author_ref),
                 source_ref=cast(str, source_ref),
+                origin=(
+                    SchemaDefaultOrigin(schema_identity)
+                    if projected_fact_id is None
+                    else FactOrigin(projected_fact_id)
+                ),
             )
             properties_by_object.setdefault(UUID(cast(str, object_id)), []).append(
                 projected
@@ -625,13 +635,21 @@ class _SQLiteAdapter:
             )
         ]
         state = ProjectionState(
-            schema_version=cast(str, schema_version),
-            fact_watermark=cast(int, projected_watermark),
-            valid_at=cast(float, valid_at),
-            recorded_at=cast(float, recorded_at),
+            schema_identity=schema_identity,
             projection_version=cast(int, projection_version),
+            materialization_cut=MaterializationCut(
+                schema_identity=schema_identity,
+                source_inputs=(),
+                fact_watermark=cast(int, projected_watermark),
+                valid_at=cast(float, valid_at),
+                recorded_at=cast(float, recorded_at),
+            ),
             built_at=cast(float, built_at),
         )
+        if cast(str, schema_version) != state.schema_version:
+            raise FactValidationError(
+                "stored projection schema version disagrees with stored schema"
+            )
         return ProjectionSnapshot(
             schema=self._schema,
             state=state,
@@ -790,6 +808,14 @@ class SQLiteProjectionStore(_SQLiteAdapter):
     def replace(self, snapshot: ProjectionSnapshot) -> ProjectionState:
         if not isinstance(snapshot, ProjectionSnapshot):
             raise TypeError("replace requires a ProjectionSnapshot")
+        if snapshot.state.materialization_cut.source_inputs or any(
+            isinstance(prop.origin, SourceOrigin)
+            for obj in snapshot.objects
+            for prop in obj.properties
+        ):
+            raise ValueError(
+                "SQLite v2 cannot store mapped-source cuts or SourceOrigin values"
+            )
         self._require_open()
         self._connection.execute("BEGIN IMMEDIATE")
         if self._schema is None:

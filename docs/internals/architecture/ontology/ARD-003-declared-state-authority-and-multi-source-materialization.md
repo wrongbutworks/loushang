@@ -8,8 +8,11 @@ This decision partially supersedes ARD-001 and narrowly amends the
 materialization and freshness parts of ARD-002. Its implemented foundation
 slices change runtime and schema contracts but keep the Phase 2 SQLite v2 table
 layout. Stable semantic IDs and StateAuthority declarations are implemented in
-the schema v3 contract. Concrete authority bindings, source inputs, and
-multi-source materialization remain unimplemented.
+the schema v3 contract. Concrete source bindings, full mapped snapshots,
+multi-input cuts, property value origins, and source-head freshness are
+implemented for the first Memory-only slice. Source-backed links, change sets,
+logic bindings, transient derivation, and SQLite source persistence remain
+unimplemented.
 
 ## Context
 
@@ -402,24 +405,40 @@ Completed in the declared StateAuthority slice:
   are breaking in schema-diff v3;
 - interface contracts remain structural and do not accept operational
   authority;
-- declarations do not identify a concrete source/logic binding, route writes,
-  execute derivations, or change current Fact-only materialization.
+- declarations alone do not select a concrete source/logic binding or route
+  writes.
 
-Remaining gates for the binding and multi-source slices:
+Completed in the first Memory-only mapped-source slice:
 
 - one Memory-only slice combines one source-backed value, one ontology-owned
   Fact, and one schema default into a deterministic projection;
-- every projected value exposes a supported `ValueOrigin`;
+- every projected property exposes `FactOrigin`, `SourceOrigin`, or
+  `SchemaDefaultOrigin`;
 - the initial slice contains no transient derived value until a computation
   origin is defined;
 - an ambiguous multi-source value fails visibly rather than choosing silently;
 - in the one-source slice, a supplied newer source revision makes an older cut
   stale without mutating that cut, while a missing source-head observation
   produces `unknown`;
-- future source/logic bindings refer to authority declarations through the
-  implemented stable semantic IDs rather than API names;
+- source bindings refer to object-existence and property authority declarations
+  through stable semantic IDs rather than API names;
+- `ProjectionState` now owns a `MaterializationCut` with exact schema, source,
+  Fact, validity, and recording coordinates;
+- SQLite v2 explicitly rejects source cuts and `SourceOrigin` values rather
+  than silently discarding lineage;
 - Ontology gains no import dependency on Harness, HarnessWork, Method, Product,
   or a concrete source adapter.
+
+Remaining gates after this slice:
+
+- source-backed link mapping and lineage;
+- reproducible change-set payloads with retained base-revision chains;
+- concrete versioned logic bindings and a computation origin before transient
+  derived values enter a projection;
+- a new physical storage decision before SQLite persists source revision
+  vectors and source origins;
+- source-backed write routing, acknowledgement, and reconciliation remain in a
+  later Action/write-back ARD.
 
 ## Deferred Decisions
 

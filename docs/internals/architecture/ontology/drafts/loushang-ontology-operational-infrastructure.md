@@ -298,7 +298,9 @@ published ontology fact。
 
 > 目标架构提案，正式收口见
 > [ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。
-> 当前 Fact-only runtime 已实现其 correctness slice；本节其余多来源内容仍是后续方向。
+> 当前 runtime 已实现 correctness slice 和首个 Memory-only mapped-source
+> 合成切片；source-backed link、change set、derived computation 与持久化等
+> 其余多来源内容仍是后续方向。
 
 ERP、HR、CRM、OA 等业务系统不应被统称为 Ontology projection。对每个业务系统自身而言，
 它的数据库仍是其职责范围内的 system of record；从企业级 Ontology 视角看，每个系统只

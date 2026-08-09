@@ -12,8 +12,10 @@ from loushang.ontology.facts import (
     PropertyAssertion,
 )
 from loushang.ontology.projection import (
+    MaterializationCut,
     ProjectionFreshnessStatus,
     ProjectionState,
+    SchemaIdentity,
     evaluate_projection_freshness,
     materialize_projection,
 )
@@ -111,12 +113,21 @@ def _enable_wal(database: Path) -> None:
 
 
 def test_projection_freshness_is_a_pure_comparison_over_build_coordinates() -> None:
+    schema_identity = SchemaIdentity(
+        "test.materialization-correctness",
+        "urn:test:materialization-correctness",
+        "1.0.0",
+    )
     state = ProjectionState(
-        schema_version="1.0.0",
+        schema_identity=schema_identity,
         projection_version=1,
-        fact_watermark=2,
-        valid_at=10,
-        recorded_at=10,
+        materialization_cut=MaterializationCut(
+            schema_identity=schema_identity,
+            source_inputs=(),
+            fact_watermark=2,
+            valid_at=10,
+            recorded_at=10,
+        ),
         built_at=10,
     )
 

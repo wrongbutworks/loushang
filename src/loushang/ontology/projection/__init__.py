@@ -6,6 +6,8 @@ from loushang.ontology.projection.materializer import (
     materialize_projection,
 )
 from loushang.ontology.projection.model import (
+    FactOrigin,
+    MaterializationCut,
     ProjectedLink,
     ProjectedObject,
     ProjectedProperty,
@@ -13,6 +15,10 @@ from loushang.ontology.projection.model import (
     ProjectionFreshnessStatus,
     ProjectionSnapshot,
     ProjectionState,
+    SchemaDefaultOrigin,
+    SchemaIdentity,
+    SourceOrigin,
+    ValueOrigin,
     evaluate_projection_freshness,
 )
 from loushang.ontology.projection.ports import (
@@ -22,6 +28,8 @@ from loushang.ontology.projection.ports import (
 )
 
 __all__ = [
+    "FactOrigin",
+    "MaterializationCut",
     "ProjectedLink",
     "ProjectedObject",
     "ProjectedProperty",
@@ -34,6 +42,10 @@ __all__ = [
     "ProjectionState",
     "ProjectionStore",
     "ProjectionUnavailableError",
+    "SchemaDefaultOrigin",
+    "SchemaIdentity",
+    "SourceOrigin",
+    "ValueOrigin",
     "evaluate_projection_freshness",
     "materialize_projection",
 ]

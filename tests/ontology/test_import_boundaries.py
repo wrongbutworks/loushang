@@ -85,6 +85,10 @@ def test_public_surface_has_no_direct_mutation_or_compatibility_facades() -> Non
     assert hasattr(ontology_storage, "SQLiteFactStore")
     assert hasattr(ontology_storage, "SQLiteProjectionStore")
     assert hasattr(ontology, "ProjectionStore")
+    assert hasattr(ontology, "SourceBinding")
+    assert hasattr(ontology, "MappedSourceInput")
+    assert hasattr(ontology, "MaterializationCut")
+    assert hasattr(ontology, "ValueOrigin")
     assert not hasattr(ontology_facts, "MemoryFactStore")
 
 
@@ -106,6 +110,17 @@ def test_ontology_internal_dependency_direction() -> None:
                 "loushang.ontology.facts",
                 "loushang.ontology.projection",
                 "loushang.ontology.query",
+                "loushang.ontology.source",
+                "loushang.ontology.storage",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/source"),
+            (
+                "loushang.ontology.facts",
+                "loushang.ontology.projection",
+                "loushang.ontology.query",
+                "loushang.ontology.schema",
                 "loushang.ontology.storage",
             ),
         ),

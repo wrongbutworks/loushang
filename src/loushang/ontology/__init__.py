@@ -1,8 +1,8 @@
 """Public contracts for the Loushang operational ontology kernel.
 
-The semantic write authority is the append-only :class:`FactStore`. Object,
-property, and link graphs are immutable, replaceable snapshots and never a
-second business-mutation surface.
+FactStore owns accepted semantic records; mapped inputs reproduce state owned
+by external sources. Object, property, and link graphs are immutable,
+replaceable snapshots and never a second business-mutation surface.
 """
 
 from loushang.ontology.facts import (
@@ -24,6 +24,8 @@ from loushang.ontology.facts import (
     StoredFact,
 )
 from loushang.ontology.projection import (
+    FactOrigin,
+    MaterializationCut,
     ProjectedLink,
     ProjectedObject,
     ProjectedProperty,
@@ -36,6 +38,10 @@ from loushang.ontology.projection import (
     ProjectionState,
     ProjectionStore,
     ProjectionUnavailableError,
+    SchemaDefaultOrigin,
+    SchemaIdentity,
+    SourceOrigin,
+    ValueOrigin,
     evaluate_projection_freshness,
     materialize_projection,
 )
@@ -66,6 +72,14 @@ from loushang.ontology.schema import (
     ValueType,
     compare_schemas,
 )
+from loushang.ontology.source import (
+    MappedSourceInput,
+    MappedSourceObject,
+    MappedSourceProperty,
+    MappedSourceSnapshot,
+    SourceBinding,
+    SourceInputRevision,
+)
 from loushang.ontology.storage import MemoryFactStore, MemoryProjectionStore
 
 __all__ = [
@@ -89,12 +103,18 @@ __all__ = [
     "FactSelection",
     "FactStore",
     "FactValidationError",
+    "FactOrigin",
     "InterfaceTypeDefinition",
     "LinkAssertion",
     "LinkCardinality",
     "LinkTypeDefinition",
     "MemoryFactStore",
     "MemoryProjectionStore",
+    "MappedSourceInput",
+    "MappedSourceObject",
+    "MappedSourceProperty",
+    "MappedSourceSnapshot",
+    "MaterializationCut",
     "ObjectAssertion",
     "ObjectTypeDefinition",
     "OntologyCompiler",
@@ -121,9 +141,15 @@ __all__ = [
     "SchemaDiagnostic",
     "SchemaDiff",
     "SchemaLineageError",
+    "SchemaDefaultOrigin",
+    "SchemaIdentity",
     "SchemaVersion",
     "StateAuthority",
     "StoredFact",
+    "SourceBinding",
+    "SourceInputRevision",
+    "SourceOrigin",
+    "ValueOrigin",
     "ValueType",
     "compare_schemas",
     "evaluate_projection_freshness",

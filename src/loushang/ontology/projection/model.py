@@ -19,6 +19,113 @@ from loushang.ontology.schema import (
     LinkCardinality,
     ValueType,
 )
+from loushang.ontology.source import SourceInputRevision
+
+
+@dataclass(frozen=True, slots=True)
+class SchemaIdentity:
+    """Stable identity of the compiled schema selected for one build."""
+
+    package_id: str
+    namespace: str
+    version: str
+
+    def __post_init__(self) -> None:
+        for name in ("package_id", "namespace", "version"):
+            _non_empty_text(name, getattr(self, name))
+
+    @classmethod
+    def from_schema(cls, schema: CompiledOntologySchema) -> SchemaIdentity:
+        if not isinstance(schema, CompiledOntologySchema):
+            raise TypeError("schema must be a CompiledOntologySchema")
+        return cls(schema.package_id, schema.namespace, str(schema.version))
+
+
+@dataclass(frozen=True, slots=True)
+class MaterializationCut:
+    """Exact schema, source-revision vector, and Fact selection coordinates."""
+
+    schema_identity: SchemaIdentity
+    source_inputs: tuple[SourceInputRevision, ...]
+    fact_watermark: int
+    valid_at: float
+    recorded_at: float
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.schema_identity, SchemaIdentity):
+            raise TypeError("schema_identity must be a SchemaIdentity")
+        if any(
+            not isinstance(item, SourceInputRevision) for item in self.source_inputs
+        ):
+            raise TypeError("source_inputs must contain SourceInputRevision values")
+        values = tuple(
+            sorted(
+                self.source_inputs,
+                key=lambda item: (item.binding_id, item.mapping_version),
+            )
+        )
+        bindings = [item.binding_id for item in values]
+        if len(bindings) != len(set(bindings)):
+            raise ValueError("materialization cut contains duplicate source bindings")
+        object.__setattr__(self, "source_inputs", values)
+        if type(self.fact_watermark) is not int or self.fact_watermark < 0:
+            raise ValueError("fact_watermark must be a non-negative integer")
+        for name in ("valid_at", "recorded_at"):
+            object.__setattr__(self, name, _finite(name, getattr(self, name)))
+
+
+@dataclass(frozen=True, slots=True)
+class FactOrigin:
+    """A projected value selected from one immutable semantic Fact."""
+
+    fact_id: UUID
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.fact_id, UUID):
+            raise TypeError("fact_id must be a UUID")
+
+
+@dataclass(frozen=True, slots=True)
+class SourceOrigin:
+    """A projected value selected from one immutable mapped source field."""
+
+    binding_id: str
+    mapping_version: str
+    source_revision: str
+    source_record_ref: str
+    field_ref: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "binding_id",
+            "mapping_version",
+            "source_revision",
+            "source_record_ref",
+            "field_ref",
+        ):
+            _non_empty_text(name, getattr(self, name))
+
+    @property
+    def input_revision(self) -> SourceInputRevision:
+        return SourceInputRevision(
+            self.binding_id,
+            self.mapping_version,
+            self.source_revision,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SchemaDefaultOrigin:
+    """A projected value supplied by the selected compiled schema."""
+
+    schema_identity: SchemaIdentity
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.schema_identity, SchemaIdentity):
+            raise TypeError("schema_identity must be a SchemaIdentity")
+
+
+ValueOrigin = FactOrigin | SourceOrigin | SchemaDefaultOrigin
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -31,6 +138,7 @@ class ProjectedProperty:
     fact_id: UUID | None
     author_ref: str | None
     source_ref: str
+    origin: ValueOrigin
     _value_json: str = field(repr=False)
 
     def __init__(
@@ -41,6 +149,7 @@ class ProjectedProperty:
         value: object,
         valid_from: float,
         source_ref: str,
+        origin: ValueOrigin,
         fact_id: UUID | None = None,
         author_ref: str | None = None,
     ) -> None:
@@ -50,6 +159,12 @@ class ProjectedProperty:
         _validate_value_type(name, value_type, value)
         if fact_id is not None and not isinstance(fact_id, UUID):
             raise TypeError("fact_id must be a UUID or None")
+        if not isinstance(origin, (FactOrigin, SourceOrigin, SchemaDefaultOrigin)):
+            raise TypeError("origin must be a supported ValueOrigin")
+        if isinstance(origin, FactOrigin) and fact_id != origin.fact_id:
+            raise ValueError("FactOrigin must match projected property fact_id")
+        if not isinstance(origin, FactOrigin) and fact_id is not None:
+            raise ValueError("only FactOrigin may carry a projected property fact_id")
         if author_ref is not None:
             _non_empty_text("author_ref", author_ref)
         _non_empty_text("source_ref", source_ref)
@@ -59,6 +174,7 @@ class ProjectedProperty:
         object.__setattr__(self, "fact_id", fact_id)
         object.__setattr__(self, "author_ref", author_ref)
         object.__setattr__(self, "source_ref", source_ref)
+        object.__setattr__(self, "origin", origin)
         object.__setattr__(
             self,
             "_value_json",
@@ -181,22 +297,39 @@ class ProjectedObject:
 class ProjectionState:
     """Immutable reproducibility coordinates for one projection snapshot."""
 
-    schema_version: str
+    schema_identity: SchemaIdentity
     projection_version: int
-    fact_watermark: int
-    valid_at: float
-    recorded_at: float
+    materialization_cut: MaterializationCut
     built_at: float
 
     def __post_init__(self) -> None:
-        if not self.schema_version:
-            raise ValueError("schema_version must be non-empty")
+        if not isinstance(self.schema_identity, SchemaIdentity):
+            raise TypeError("schema_identity must be a SchemaIdentity")
+        if not isinstance(self.materialization_cut, MaterializationCut):
+            raise TypeError("materialization_cut must be a MaterializationCut")
+        if self.schema_identity != self.materialization_cut.schema_identity:
+            raise ValueError(
+                "projection state and materialization cut schema identities disagree"
+            )
         if type(self.projection_version) is not int or self.projection_version < 1:
             raise ValueError("projection_version must be a positive integer")
-        if type(self.fact_watermark) is not int or self.fact_watermark < 0:
-            raise ValueError("fact_watermark must be a non-negative integer")
-        for name in ("valid_at", "recorded_at", "built_at"):
-            object.__setattr__(self, name, _finite(name, getattr(self, name)))
+        object.__setattr__(self, "built_at", _finite("built_at", self.built_at))
+
+    @property
+    def schema_version(self) -> str:
+        return self.schema_identity.version
+
+    @property
+    def fact_watermark(self) -> int:
+        return self.materialization_cut.fact_watermark
+
+    @property
+    def valid_at(self) -> float:
+        return self.materialization_cut.valid_at
+
+    @property
+    def recorded_at(self) -> float:
+        return self.materialization_cut.recorded_at
 
 
 class ProjectionFreshnessStatus(str, Enum):
@@ -216,6 +349,8 @@ class ProjectionFreshness:
     projection_fact_watermark: int
     observed_fact_watermark: int | None
     observed_at: float
+    projection_source_inputs: tuple[SourceInputRevision, ...] = ()
+    observed_source_heads: tuple[SourceInputRevision, ...] = ()
     diagnostics: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -225,7 +360,14 @@ class ProjectionFreshness:
             value = getattr(self, name)
             if value is not None and (type(value) is not int or value < 0):
                 raise ValueError(f"{name} must be a non-negative integer or None")
-        object.__setattr__(self, "observed_at", _finite("observed_at", self.observed_at))
+        object.__setattr__(
+            self, "observed_at", _finite("observed_at", self.observed_at)
+        )
+        for name in ("projection_source_inputs", "observed_source_heads"):
+            values = tuple(getattr(self, name))
+            if any(not isinstance(item, SourceInputRevision) for item in values):
+                raise TypeError(f"{name} must contain SourceInputRevision values")
+            object.__setattr__(self, name, values)
         if not isinstance(self.diagnostics, tuple) or any(
             not isinstance(item, str) or not item for item in self.diagnostics
         ):
@@ -236,34 +378,79 @@ def evaluate_projection_freshness(
     state: ProjectionState,
     *,
     observed_fact_watermark: int | None,
+    observed_source_heads: Iterable[SourceInputRevision] | None = None,
     observed_at: float,
 ) -> ProjectionFreshness:
-    """Compare immutable build coordinates with one explicit Fact observation."""
+    """Compare an immutable build cut with explicit Fact and source observations."""
 
     if not isinstance(state, ProjectionState):
         raise TypeError("state must be a ProjectionState")
+    expected_sources = state.materialization_cut.source_inputs
+    observed_sources = (
+        () if observed_source_heads is None else tuple(observed_source_heads)
+    )
+    if any(not isinstance(item, SourceInputRevision) for item in observed_sources):
+        raise TypeError("observed_source_heads must contain SourceInputRevision values")
+    observed_sources = tuple(
+        sorted(
+            observed_sources,
+            key=lambda item: (item.binding_id, item.mapping_version),
+        )
+    )
+    observed_by_binding: dict[str, SourceInputRevision] = {}
+    for item in observed_sources:
+        if item.binding_id in observed_by_binding:
+            raise ValueError("observed_source_heads contains duplicate source bindings")
+        observed_by_binding[item.binding_id] = item
+
+    diagnostics: list[str] = []
+    fact_status = ProjectionFreshnessStatus.CURRENT
     if observed_fact_watermark is None:
-        status = ProjectionFreshnessStatus.UNKNOWN
-        diagnostics = ("current Fact watermark was not observed",)
+        fact_status = ProjectionFreshnessStatus.UNKNOWN
+        diagnostics.append("current Fact watermark was not observed")
     elif type(observed_fact_watermark) is not int or observed_fact_watermark < 0:
         raise ValueError("observed_fact_watermark must be non-negative or None")
     elif observed_fact_watermark < state.fact_watermark:
-        status = ProjectionFreshnessStatus.DEGRADED
-        diagnostics = (
+        fact_status = ProjectionFreshnessStatus.DEGRADED
+        diagnostics.append(
             "observed Fact watermark is behind the projection build watermark",
         )
-    elif observed_fact_watermark == state.fact_watermark:
-        status = ProjectionFreshnessStatus.CURRENT
-        diagnostics = ()
-    else:
+    elif observed_fact_watermark > state.fact_watermark:
+        fact_status = ProjectionFreshnessStatus.STALE
+
+    source_status = ProjectionFreshnessStatus.CURRENT
+    if expected_sources:
+        missing = [
+            item.binding_id
+            for item in expected_sources
+            if item.binding_id not in observed_by_binding
+        ]
+        if missing:
+            source_status = ProjectionFreshnessStatus.UNKNOWN
+            diagnostics.append(
+                "source heads were not observed for: " + ", ".join(sorted(missing))
+            )
+        elif any(
+            observed_by_binding[item.binding_id] != item for item in expected_sources
+        ):
+            source_status = ProjectionFreshnessStatus.STALE
+
+    if ProjectionFreshnessStatus.DEGRADED in {fact_status, source_status}:
+        status = ProjectionFreshnessStatus.DEGRADED
+    elif ProjectionFreshnessStatus.UNKNOWN in {fact_status, source_status}:
+        status = ProjectionFreshnessStatus.UNKNOWN
+    elif ProjectionFreshnessStatus.STALE in {fact_status, source_status}:
         status = ProjectionFreshnessStatus.STALE
-        diagnostics = ()
+    else:
+        status = ProjectionFreshnessStatus.CURRENT
     return ProjectionFreshness(
         status=status,
         projection_fact_watermark=state.fact_watermark,
         observed_fact_watermark=observed_fact_watermark,
         observed_at=observed_at,
-        diagnostics=diagnostics,
+        projection_source_inputs=expected_sources,
+        observed_source_heads=observed_sources,
+        diagnostics=tuple(diagnostics),
     )
 
 
@@ -311,9 +498,9 @@ class ProjectionSnapshot:
             for link in link_values
         ):
             raise ValueError("projection snapshot link endpoint is missing")
-        if state.schema_version != str(schema.version):
+        if state.schema_identity != SchemaIdentity.from_schema(schema):
             raise ValueError(
-                "projection state schema version does not match its schema"
+                "projection state schema identity does not match its schema"
             )
         checked_fact_ids = tuple(fact_ids)
         if any(not isinstance(item, UUID) for item in checked_fact_ids):
@@ -325,6 +512,23 @@ class ProjectionSnapshot:
             for prop in obj.properties
         ) or any(link.fact_id not in known_fact_ids for link in link_values):
             raise ValueError("projected values must reference selected fact_ids")
+        source_revisions = set(state.materialization_cut.source_inputs)
+        for obj in object_values:
+            for prop in obj.properties:
+                if isinstance(prop.origin, FactOrigin):
+                    if prop.origin.fact_id not in known_fact_ids:
+                        raise ValueError(
+                            "projected FactOrigin must reference a selected fact_id"
+                        )
+                elif isinstance(prop.origin, SourceOrigin):
+                    if prop.origin.input_revision not in source_revisions:
+                        raise ValueError(
+                            "projected SourceOrigin must reference the materialization cut"
+                        )
+                elif prop.origin.schema_identity != state.schema_identity:
+                    raise ValueError(
+                        "projected SchemaDefaultOrigin must match the projection schema"
+                    )
         _validate_schema_shape(schema, object_values, link_values)
         object.__setattr__(self, "schema", schema)
         object.__setattr__(self, "state", state)
@@ -532,9 +736,15 @@ def _schema_properties(
 
 
 __all__ = [
+    "FactOrigin",
+    "MaterializationCut",
     "ProjectedLink",
     "ProjectedObject",
     "ProjectedProperty",
     "ProjectionSnapshot",
     "ProjectionState",
+    "SchemaDefaultOrigin",
+    "SchemaIdentity",
+    "SourceOrigin",
+    "ValueOrigin",
 ]
