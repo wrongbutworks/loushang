@@ -1,10 +1,12 @@
-"""规则引擎——基于本体的自动推理.
+"""兼容规则引擎——基于当前对象投影执行受控 mutation.
 
 支持两种规则类型：
 1. 属性规则（Property Rules）：当条件满足时，自动设置/更新属性
 2. 链接规则（Link Rules）：当条件满足时，自动创建/删除关系
 
-规则在对象状态变化时触发，类似于数据库触发器 + 业务规则引擎。
+规则在对象状态变化时触发，类似于数据库触发器 + 业务规则引擎。此兼容引擎不会
+生成 Wave 2A ``FactRecord``，因此其结果不能冒充 derived/inferred semantic facts；
+安全表达式和规则产出事实属于后续 Wave 2B。
 """
 
 from __future__ import annotations

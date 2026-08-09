@@ -13,8 +13,8 @@ from loushang.foundation.json import JSONValue, dump_json_value
 class StoreMutation:
     """One committed operational store mutation.
 
-    This journal is an infrastructure recovery primitive.  It deliberately is
-    not the semantic Fact/Provenance model reserved for a later ontology wave.
+    This journal is an infrastructure recovery primitive. It deliberately is
+    not the semantic Fact/Provenance model owned by ``ontology.facts``.
     """
 
     sequence: int

@@ -1,4 +1,4 @@
-"""SQLite reference adapter for the Wave 1 ontology store contract."""
+"""SQLite v2 reference adapter for object and semantic-fact store contracts."""
 
 from __future__ import annotations
 
@@ -23,6 +23,8 @@ from loushang.ontology.core.object import LinkVersion, OntologyObject, PropertyV
 from loushang.ontology.core.projection import ProjectionState, StoreMutation
 from loushang.ontology.core.schema_runtime import PropertyValidators
 from loushang.ontology.core.store import ObjectStore, _PendingMutation
+from loushang.ontology.facts.model import FactBatch, FactRecord
+from loushang.ontology.facts.store import FactCommit, MemoryFactStore, StoredFact
 from loushang.ontology.schema import (
     CompiledOntologySchema,
     OntologyCompiler,
@@ -30,7 +32,7 @@ from loushang.ontology.schema import (
 )
 
 SQLITE_STORAGE_FORMAT = "loushang.ontology.sqlite"
-SQLITE_STORAGE_FORMAT_VERSION = 1
+SQLITE_STORAGE_FORMAT_VERSION = 2
 
 _REQUIRED_TABLES = frozenset(
     {
@@ -42,6 +44,8 @@ _REQUIRED_TABLES = frozenset(
         "projection_properties",
         "projection_unique_values",
         "projection_links",
+        "semantic_facts",
+        "fact_batches",
     }
 )
 _REQUIRED_METADATA_KEYS = frozenset(
@@ -52,6 +56,7 @@ _REQUIRED_METADATA_KEYS = frozenset(
         "projected_watermark",
         "projection_version",
         "projection_built_at",
+        "fact_watermark",
     }
 )
 
@@ -110,12 +115,13 @@ class _ObjectRuntimeSnapshot:
 
 
 class SQLiteObjectStore(ObjectStore):
-    """Durable store with one SQLite transaction per accepted mutation.
+    """Durable object and FactStore with one transaction per accepted commit.
 
     The in-memory authority remains the reference execution model. SQLite
     persists that authority, the operational mutation journal, and rebuildable
-    query projections in the same transaction. Query pushdown is intentionally
-    deferred; this adapter establishes semantics and restart durability first.
+    query projections in the same transaction. SQLite v2 also persists the
+    append-only semantic fact journal and idempotent batch identities. Query
+    pushdown is intentionally deferred.
     """
 
     def __init__(
@@ -125,6 +131,7 @@ class SQLiteObjectStore(ObjectStore):
         expected_schema: CompiledOntologySchema | None = None,
     ) -> None:
         super().__init__()
+        self._fact_store = MemoryFactStore()
         self._database = Path(database)
         self._connection = sqlite3.connect(self._database)
         self._closed = False
@@ -233,6 +240,65 @@ class SQLiteObjectStore(ObjectStore):
                 (schema.to_json(),),
             )
             self._persist_metadata()
+
+    @property
+    def fact_watermark(self) -> int:
+        return self._fact_store.fact_watermark
+
+    def get_fact(self, fact_id: UUID) -> StoredFact:
+        return self._fact_store.get_fact(fact_id)
+
+    def read_facts(self, *, after_sequence: int = 0) -> tuple[StoredFact, ...]:
+        return self._fact_store.read_facts(after_sequence=after_sequence)
+
+    def facts_as_of(
+        self,
+        *,
+        valid_at: float,
+        recorded_at: float,
+    ) -> tuple[StoredFact, ...]:
+        return self._fact_store.facts_as_of(
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+        )
+
+    def commit_fact_batch(self, batch: FactBatch) -> FactCommit:
+        """Append one semantic fact batch in a single SQLite transaction."""
+
+        self._require_open()
+        if self.schema is None:
+            raise RuntimeError("SQLiteObjectStore requires a bound schema before fact commit")
+        plan = self._fact_store._plan_commit(batch)
+        if plan.commit.replayed:
+            return plan.commit
+        with self._connection:
+            self._connection.executemany(
+                """
+                INSERT INTO semantic_facts(sequence, fact_id, payload)
+                VALUES (?, ?, ?)
+                """,
+                [
+                    (entry.sequence, str(entry.fact.fact_id), entry.fact.to_json())
+                    for entry in plan.entries
+                ],
+            )
+            self._connection.execute(
+                """
+                INSERT INTO fact_batches(
+                    batch_id, digest, first_sequence, last_sequence, fact_count
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    plan.batch.batch_id,
+                    plan.digest,
+                    plan.commit.first_sequence,
+                    plan.commit.last_sequence,
+                    plan.commit.fact_count,
+                ),
+            )
+            self._persist_metadata(fact_watermark=plan.commit.last_sequence)
+        self._fact_store._apply_commit(plan)
+        return plan.commit
 
     def rebuild_projections(self) -> ProjectionState:
         self._require_open()
@@ -359,6 +425,18 @@ class SQLiteObjectStore(ObjectStore):
                 );
                 CREATE INDEX IF NOT EXISTS projection_links_target
                     ON projection_links(target_id, link_type);
+                CREATE TABLE IF NOT EXISTS semantic_facts (
+                    sequence INTEGER PRIMARY KEY,
+                    fact_id TEXT NOT NULL UNIQUE,
+                    payload TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS fact_batches (
+                    batch_id TEXT PRIMARY KEY,
+                    digest TEXT NOT NULL,
+                    first_sequence INTEGER NOT NULL,
+                    last_sequence INTEGER NOT NULL,
+                    fact_count INTEGER NOT NULL
+                );
                 """
             )
             self._persist_metadata()
@@ -494,6 +572,77 @@ class SQLiteObjectStore(ObjectStore):
         self._projected_watermark = int(metadata.get("projected_watermark", "0"))
         self._projection_version = int(metadata.get("projection_version", "1"))
         self._projection_built_at = float(metadata.get("projection_built_at", str(time.time())))
+        self._load_fact_store(metadata)
+
+    def _load_fact_store(self, metadata: dict[str, str]) -> None:
+        loaded_entries: list[StoredFact] = []
+        for sequence, fact_id, payload in self._connection.execute(
+            "SELECT sequence, fact_id, payload FROM semantic_facts ORDER BY sequence"
+        ):
+            fact = FactRecord.from_json(payload)
+            if str(fact.fact_id) != fact_id:
+                raise SQLiteStorageFormatError(
+                    self._database,
+                    "stored semantic fact identity does not match its payload",
+                )
+            loaded_entries.append(StoredFact(sequence=sequence, fact=fact))
+        entries = tuple(loaded_entries)
+
+        stored_watermark = int(metadata["fact_watermark"])
+        if stored_watermark != len(entries):
+            raise SQLiteStorageFormatError(
+                self._database,
+                "stored fact watermark does not match the semantic fact journal",
+            )
+
+        batch_rows = tuple(
+            self._connection.execute(
+                """
+                SELECT batch_id, digest, first_sequence, last_sequence, fact_count
+                FROM fact_batches ORDER BY first_sequence
+                """
+            )
+        )
+        ranges = [
+            sequence
+            for _, _, first_sequence, last_sequence, _ in batch_rows
+            for sequence in range(first_sequence, last_sequence + 1)
+        ]
+        expected_ranges = list(range(1, stored_watermark + 1))
+        if ranges != expected_ranges:
+            raise SQLiteStorageFormatError(
+                self._database,
+                "stored fact batches do not cover the semantic fact journal",
+            )
+
+        batches: dict[str, tuple[str, FactCommit]] = {}
+        entries_by_sequence = {entry.sequence: entry for entry in entries}
+        for batch_id, digest, first_sequence, last_sequence, fact_count in batch_rows:
+            if not isinstance(digest, str) or len(digest) != 64:
+                raise SQLiteStorageFormatError(
+                    self._database,
+                    "stored fact batch digest is invalid",
+                )
+            restored_batch = FactBatch(
+                batch_id,
+                [
+                    entries_by_sequence[sequence].fact
+                    for sequence in range(first_sequence, last_sequence + 1)
+                ],
+            )
+            if restored_batch.content_digest != digest:
+                raise SQLiteStorageFormatError(
+                    self._database,
+                    "stored fact batch digest does not match its semantic facts",
+                )
+            commit = FactCommit(
+                batch_id=batch_id,
+                first_sequence=first_sequence,
+                last_sequence=last_sequence,
+                fact_count=fact_count,
+            )
+            batches[batch_id] = (digest, commit)
+        self._fact_store._restore_committed_state(entries, batches)
 
     def _database_contains_runtime_state(self) -> bool:
         for query in (
@@ -503,6 +652,8 @@ class SQLiteObjectStore(ObjectStore):
             "SELECT 1 FROM projection_properties LIMIT 1",
             "SELECT 1 FROM projection_unique_values LIMIT 1",
             "SELECT 1 FROM projection_links LIMIT 1",
+            "SELECT 1 FROM semantic_facts LIMIT 1",
+            "SELECT 1 FROM fact_batches LIMIT 1",
         ):
             if self._connection.execute(query).fetchone():
                 return True
@@ -619,6 +770,7 @@ class SQLiteObjectStore(ObjectStore):
         source_watermark: int | None = None,
         projected_watermark: int | None = None,
         projection_built_at: float | None = None,
+        fact_watermark: int | None = None,
     ) -> None:
         values = {
             "storage_format": SQLITE_STORAGE_FORMAT,
@@ -636,6 +788,9 @@ class SQLiteObjectStore(ObjectStore):
                 self._projection_built_at
                 if projection_built_at is None
                 else projection_built_at
+            ),
+            "fact_watermark": str(
+                self.fact_watermark if fact_watermark is None else fact_watermark
             ),
         }
         self._connection.executemany(

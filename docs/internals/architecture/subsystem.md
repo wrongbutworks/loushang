@@ -81,11 +81,11 @@ Ontology core 不依赖 Harness、Agent、AI、Channel 或 Product。只有
 `ontology.integrations.harnesswork` 可以依赖 HarnessWork，把已经属于本体的
 Action bridge 到可选履约层；HarnessWork 不反向拥有 ontology 类型。
 
-当前已完成 Wave 1：versioned schema、InterfaceType、required/type/unique/
-cardinality/reference constraints、Memory/SQLite Store conformance、mutation
-watermark、同步可重建 projection 和 typed QueryRequest/QueryResult。它尚不包含
-Facts/Provenance、OWL/SHACL、Action/Decision runtime、SDK 生成、分布式 serving
-或行业领域包。详见
+当前已完成 Wave 1 与 Wave 2A：除 versioned schema、约束、Memory/SQLite
+Object Store、同步 projection 和 typed query 外，还提供 immutable
+Fact/Provenance、双时间选择、Memory/SQLite FactStore conformance，以及确定性的
+Fact-to-Object projection。SQLite 当前格式直接为 v2，不提供 v1 reader 或迁移器。
+它尚不包含 OWL/SHACL、Action/Decision runtime、SDK 生成、分布式 serving 或行业领域包。详见
 [Loushang Ontology Architecture](./ontology/README.md)。
 
 ### loushang-ai

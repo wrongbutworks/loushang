@@ -10,9 +10,10 @@ Facts/Provenance, Action/Decision, standards, or domain waves.
 Implementation status: complete. The contract is covered by the shared
 Memory/SQLite conformance suite, restart and rollback tests, interface compiler
 tests, typed-query tests, architecture import gates, Ruff, and mypy.
-The physical SQLite format and public adapter lifecycle are frozen separately by
-the [Wave 1 SQLite Storage Compatibility](wave1-storage-compatibility.md)
-contract.
+The Wave 1 reopen/backup rules remain in
+[SQLite Storage Compatibility](wave1-storage-compatibility.md). Wave 2A later
+replaced the development-only physical v1 layout with v2 without changing the
+accepted Wave 1 object-mutation semantics.
 
 ## Runtime Spine
 

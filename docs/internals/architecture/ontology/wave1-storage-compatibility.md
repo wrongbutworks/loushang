@@ -1,11 +1,12 @@
-# Ontology Wave 1 SQLite Storage Compatibility
+# Ontology SQLite Storage Compatibility
 
 ## Status
 
-Accepted compatibility contract for the Wave 1 SQLite reference adapter. This
-contract freezes format detection, schema-snapshot verification, backup, and
-public import behavior. It does not introduce a migration framework or expand
-the Semantic Kernel into later ontology waves.
+Accepted compatibility contract for the SQLite reference adapter. Wave 2A
+retains the Wave 1 detection, schema-snapshot, backup, and public-import rules
+while replacing the development-only physical format v1 with v2. The current
+format is defined together with semantic Facts by
+[Wave 2A Facts And Provenance](wave2a-facts-provenance.md).
 
 ## Two Independent Versions
 
@@ -20,27 +21,29 @@ A matching semantic version does not make different schema content compatible.
 Likewise, changing the physical storage layout must not be represented by
 changing an ontology package version.
 
-The current physical identity is `loushang.ontology.sqlite`, version `1`.
+The current physical identity is `loushang.ontology.sqlite`, version `2`.
+Version 1 is unsupported and has no reader or migration path.
 
 ## Open And Detection Contract
 
 Opening a path follows this order:
 
 1. connect to SQLite and inspect its catalog;
-2. initialize the Wave 1 tables only when the database has no application
+2. initialize the current v2 tables only when the database has no application
    tables;
-3. otherwise require the format metadata, runtime metadata, and complete Wave 1
+3. otherwise require the format metadata, runtime metadata, and complete v2
    table set before loading any ontology state;
 4. load and compile the stored schema snapshot;
 5. optionally compare it with `expected_schema`;
-6. restore authority, mutation journal, projection state, and watermarks.
+6. restore object authority, operational journal, semantic facts, committed
+   batch identities, projection state, and both operational/fact watermarks.
 
 An unrelated database, an unversioned ontology database, a future or malformed
 format version, missing tables or metadata, an invalid stored schema, and
 runtime values that cannot be decoded fail explicitly with
 `SQLiteStorageFormatError`. Detection does not add tables to an existing
 non-ontology database and does not silently repair or upgrade an incompatible
-ontology database.
+ontology database. A database marked v1 is rejected without mutation.
 
 `SQLiteStoredSchemaMismatchError` is separate from physical-format failure. It
 reports both the stored and expected compiled snapshots. The same failure is
@@ -61,7 +64,7 @@ therefore returns the same `ProjectionState` as the committed in-memory store.
 `SQLiteObjectStore.backup_to(path)` uses SQLite's online backup mechanism, so
 the destination represents one consistent database snapshot. It refuses the
 source path and refuses to overwrite an existing destination unless
-`overwrite=True` is explicit. The backup is a complete Wave 1 store and is
+`overwrite=True` is explicit. The backup is a complete v2 store and is
 opened through the same format and schema checks as its source.
 
 `close()` is idempotent and releases the SQLite connection. The store must not
@@ -93,5 +96,5 @@ because public Store ports return them.
 - migration, in-place repair, downgrade, or multi-version readers;
 - multi-process or distributed writer coordination;
 - SQL query pushdown, optimizer behavior, or a backend registry;
-- semantic Fact/Provenance records, adapters, Actions, or domain packages;
+- source adapters, Actions, standards bridges, or domain packages;
 - backup scheduling, retention, encryption, or remote object storage.

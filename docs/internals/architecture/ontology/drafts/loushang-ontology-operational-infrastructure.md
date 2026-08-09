@@ -1056,21 +1056,30 @@ SQLite 物理格式、精确 schema snapshot 校验、备份和公共导入面�
 - ObjectType、Property、LinkType、InterfaceType、ValueType、Constraint；
 - required、unique、type、cardinality、reference integrity 的统一 validator；
 - immutable schema snapshot、diff 和 compatibility diagnostics；
-- FactStore/ObjectStore/ProjectionStore port，Memory + SQLite conformance suite；
+- ObjectStore/ProjectionStore port，Memory + SQLite conformance suite；
 - primary/property/link projection、freshness/watermark 和 deterministic rebuild；
 - backend-neutral ObjectSet、filter、traversal、projection；
 - typed QueryRequest/QueryResult，覆盖 schema resolution、policy projection 和 diagnostics；
 - 保留现有 `Ontology` facade 作为兼容入口，内部逐步委托新组件。
 
 验收标准：同一 contract suite 在 Memory/SQLite 通过；schema 可以序列化、加载、diff；
-非法 link/cardinality/unique mutation 无法提交；相同 facts 可以重建出等价 projection，
+非法 link/cardinality/unique mutation 无法提交；相同 authority 可以重建出等价 projection，
 查询结果携带 schema version 和 freshness。
 
-### Wave 2：Facts、Provenance 与 Standards
+### Wave 2A：Facts 与 Provenance
+
+实施状态（2026-08-09）：已完成。正式边界见
+[Wave 2A Facts And Provenance](../wave2a-facts-provenance.md)。SQLite 直接采用 v2，
+不保留开发阶段 v1 reader 或 migration。
 
 - asserted/derived/inferred fact 分离；
 - valid time + recorded time 双时态；
 - source、evidence、confidence、methodology、supersedes/corrects；
+- append-only FactStore、idempotent FactBatch、Memory/SQLite conformance；
+- 在显式 valid/recorded time 上确定性重建 Object/Property/Link projection。
+
+### Wave 2B：Standards 与安全派生
+
 - JSON-LD round trip；
 - RDF/OWL 受控子集 import/export + diagnostics；
 - SHACL generation 和 external validation；
@@ -1180,8 +1189,6 @@ observed outcome 关联回决定；重复 idempotency key 不会重复写入。
 
 - canonical ID 使用 URI value object，还是 package-local ID + namespace resolution；
 - schema package 的 SemVer compatibility 规则；
-- fact store 是 append-only source of truth，还是从 object mutation event 渐进演化；
-- SQLite 第一版如何实现双时态、unique constraint 和 optimistic concurrency；
 - InterfaceType 是 structural conformance 还是 nominal declaration，或两者都支持；
 - action commit 与不可补偿外部 effect 的顺序和 failure protocol；
 - DecisionRecord 存储是否复用 FactStore，以及 context snapshot 采用引用、内容寻址还是

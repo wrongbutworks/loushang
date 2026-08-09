@@ -17,7 +17,7 @@ def test_ontology_does_not_import_legacy_foundation_facades() -> None:
     assert offenders == []
 
 
-def test_wave1_schema_query_and_storage_dependency_direction() -> None:
+def test_ontology_internal_dependency_direction() -> None:
     boundaries = (
         (
             Path("src/loushang/ontology/schema"),
@@ -41,10 +41,43 @@ def test_wave1_schema_query_and_storage_dependency_direction() -> None:
                 "loushang.harnesswork",
             ),
         ),
+        (
+            Path("src/loushang/ontology/facts/model.py"),
+            (
+                "loushang.ontology.core",
+                "loushang.ontology.query",
+                "loushang.ontology.storage",
+                "loushang.ontology.rules",
+                "loushang.ontology.fusion",
+                "loushang.ontology.integrations",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/facts/store.py"),
+            (
+                "loushang.ontology.core",
+                "loushang.ontology.query",
+                "loushang.ontology.storage",
+                "loushang.ontology.rules",
+                "loushang.ontology.fusion",
+                "loushang.ontology.integrations",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/facts/projection.py"),
+            (
+                "loushang.ontology.query",
+                "loushang.ontology.storage",
+                "loushang.ontology.rules",
+                "loushang.ontology.fusion",
+                "loushang.ontology.integrations",
+            ),
+        ),
     )
     offenders: list[str] = []
     for root, forbidden_prefixes in boundaries:
-        for path in sorted(root.rglob("*.py")):
+        paths = (root,) if root.is_file() else tuple(sorted(root.rglob("*.py")))
+        for path in paths:
             for imported in _absolute_imports(path):
                 if imported.startswith(forbidden_prefixes):
                     offenders.append(f"{path.as_posix()} imports {imported}")

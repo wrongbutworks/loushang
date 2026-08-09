@@ -39,6 +39,18 @@ from loushang.ontology.core.store_port import (
     OperationalMutationStore,
     ProjectionStore,
 )
+from loushang.ontology.facts import (
+    AssertionKind,
+    FactBatch,
+    FactCommit,
+    FactProjection,
+    FactRecord,
+    LinkAssertion,
+    ObjectAssertion,
+    PropertyAssertion,
+    StoredFact,
+    project_facts,
+)
 from loushang.ontology.fusion.mapper import DataFusion, FieldMapping, SourceMapping
 from loushang.ontology.query.builder import QueryBuilder
 from loushang.ontology.query.contracts import QueryRequest, QueryResult
@@ -71,6 +83,16 @@ __all__ = [
     "ObjectStore",
     "ProjectionState",
     "StoreMutation",
+    "AssertionKind",
+    "FactBatch",
+    "FactCommit",
+    "FactProjection",
+    "FactRecord",
+    "LinkAssertion",
+    "ObjectAssertion",
+    "PropertyAssertion",
+    "StoredFact",
+    "project_facts",
     "OntologyReadStore",
     "OntologyStore",
     "OperationalMutationStore",
