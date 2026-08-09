@@ -361,15 +361,13 @@ identity 映射到稳定对象 ID，并保留 alternate keys；无法可靠确�
 
 ```text
 MaterializationCut
-  schema_version
-  mapping_versions
-  source_revisions:
-    ERP: transaction-108
-    HR: transaction-76
-    CRM: cursor-991
-    OA: unknown
-  semantic_fact_watermark
-  managed_edit_watermark
+  schema_identity
+  source_inputs:
+    ERP: (binding-erp, mapping-v4, transaction-108)
+    HR:  (binding-hr,  mapping-v2, transaction-76)
+    CRM: (binding-crm, mapping-v3, cursor-991)
+    OA:  (binding-oa,  mapping-v1, unknown)
+  fact_watermark
   valid_at / recorded_at
 ```
 
@@ -383,8 +381,8 @@ FactStore 只说明内部物化完成，不能证明 ERP、HR、CRM 或 OA 已�
 直接提交成本体已经确认的值。Product Adapter 可以将该 requirement 绑定为 ERP、HR、OA
 write-back，也可以在未来被明确批准的 managed-edit contract 中处理。跨多个
 `StateAuthority` 的 Action 不能宣称数据库级原子事务；Ontology 只产出可审查
-plan、revision/precondition 和
-capability requirements，外部 effect 由 Product Adapter 与 Harness/HarnessWork 执行。
+plan、revision/precondition 和 capability requirements，外部 effect 由 Product Adapter
+与 Harness/HarnessWork 执行。
 
 这个边界意味着需要重新审视“所有外部语义状态都逐属性写入 FactStore”的范围。外部
 Source View 可以通过 source binding、source revision、source record、mapping version 和
