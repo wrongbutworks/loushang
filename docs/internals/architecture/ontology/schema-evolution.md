@@ -1,8 +1,8 @@
-# Ontology Schema Evolution V1
+# Ontology Schema Evolution
 
 ## Status
 
-Accepted contract for offline comparison of two compiled Semantic Kernel V1
+Accepted contract for offline comparison of two compiled Semantic Kernel
 schemas. It describes compatibility; it does not mutate runtime state or data.
 
 ## Identity and Lineage
@@ -13,8 +13,8 @@ schemas. It describes compatibility; it does not mutate runtime state or data.
 - object-type, property, and link-type `name` values are stable API keys.
 - rename inference is deliberately absent. A renamed key appears as removal plus
   addition.
-- schema versions are reported in the diff but V1 does not enforce SemVer or
-  require versions to increase.
+- schema versions are reported in the diff but the comparator does not enforce
+  SemVer or require versions to increase.
 
 This avoids heuristic rename detection and avoids introducing UUID identities
 before a concrete need exists.
@@ -46,11 +46,12 @@ Adding a required property or required link is breaking. Adding a new object
 type is non-breaking even when the new type itself contains required fields,
 because it does not invalidate existing object types.
 
-`unique` is enforced by both Wave 1 stores, so tightening it is breaking and
-relaxing it is non-breaking. Required-link tightening is breaking even though
-completeness is checked explicitly rather than as a hidden single-object create
-gate. Adding an interface implementation is non-breaking; removing one or
-changing an interface property contract is breaking.
+`unique` is enforced during materialization and snapshot validation, so
+tightening it is breaking and relaxing it is non-breaking. Required-link
+tightening is breaking even though completeness is checked explicitly rather
+than as a hidden single-object create gate. Adding an interface implementation
+is non-breaking; removing one or changing an interface property contract is
+breaking.
 
 ## Determinism
 
@@ -65,7 +66,7 @@ The comparator:
 
 ## Non-Goals
 
-V1 does not add:
+This contract does not add:
 
 - automatic migration, backfill, or migration planning;
 - `Ontology.upgrade_schema` or mutation of a bound `ObjectStore`;

@@ -1036,21 +1036,19 @@ curated review、ontology quality audit agent、Neo4j/Chroma 可选降级和可�
 | LLM authoring | nano-ontoprompt | — | suggestion only，draft/validate/review/publish |
 | OWL/SHACL/JSON-LD | ontograph-core | AIAO/RePlanIT fixtures | 标准 bridge + external conformance tests |
 | 领域包语义覆盖 | HWBook “7+1”（本地图片调研，非规范） | 现有核心模型与工程验收 | 只增加 authoring/readiness 检查，不增加八套 runtime |
-| 大规模存储/索引 | OpenFoundry | SuperML serving layer | Wave 1 定义 projection port，P4/P5 再引入分布式实现 |
+| 大规模存储/索引 | OpenFoundry | SuperML serving layer | 当前定义 projection port，P4/P5 再引入分布式实现 |
 | 环保 impact semantics | AIAO | RePlanIT | 独立 `environment-impact` package |
 | ICT DPP / circularity | RePlanIT | AIAO | 独立 `environment-ict-dpp` package |
 
 ## 分阶段演进路线
 
-### Wave 1：Semantic Kernel
+### Schema Foundation：Semantic Kernel
 
 目标：把当前原型变成可版本化、可替换 backend 的稳定语义内核。
 
-实施状态（2026-08-09）：已完成。正式边界与验收证据见
-[Wave 1 Completion Boundary](../wave1-completion-boundary.md)；后续开发不得把
-Wave 2 的 semantic Fact/Provenance 或 Wave 3 的 Action/Decision 偷渡进本阶段。
-SQLite 物理格式、精确 schema snapshot 校验、备份和公共导入面的收口见
-[Wave 1 SQLite Storage Compatibility](../wave1-storage-compatibility.md)。
+实施状态（2026-08-09）：已完成并由后续 ARD-001/ARD-002 收口。旧的可变
+ObjectStore 实现和对应历史文档已删除；当前边界以 live architecture README 和
+两份 ARD 为准。
 
 - stable ID、namespace/IRI、OntologyPackage、schema version；
 - ObjectType、Property、LinkType、InterfaceType、ValueType、Constraint；
@@ -1060,7 +1058,7 @@ SQLite 物理格式、精确 schema snapshot 校验、备份和公共导入面�
 - primary/property/link projection、freshness/watermark 和 deterministic rebuild；
 - backend-neutral ObjectSet、filter、traversal、projection；
 - typed QueryRequest/QueryResult，覆盖 schema resolution、policy projection 和 diagnostics；
-- Wave 1 当时保留的 `Ontology` facade 已由后续 ARD-001 删除。
+- 早期保留的 `Ontology` facade 已由后续 ARD-001 删除。
 
 验收标准：同一 contract suite 在 Memory/SQLite 通过；schema 可以序列化、加载、diff；
 非法 link/cardinality/unique mutation 无法提交；相同 authority 可以重建出等价 projection，
@@ -1069,8 +1067,8 @@ SQLite 物理格式、精确 schema snapshot 校验、备份和公共导入面�
 ### Wave 2A：Facts 与 Provenance
 
 实施状态（2026-08-09）：已完成。正式边界见
-[Wave 2A Facts And Provenance](../wave2a-facts-provenance.md)。SQLite 直接采用 v2，
-不保留开发阶段 v1 reader 或 migration。
+[Wave 2A Facts And Provenance](../wave2a-facts-provenance.md)。SQLite 只接受当前
+Phase 2 v2 layout，不保留旧开发 layout reader 或 migration。
 
 - asserted/derived/inferred fact 分离；
 - valid time + recorded time 双时态；
@@ -1084,10 +1082,10 @@ SQLite 物理格式、精确 schema snapshot 校验、备份和公共导入面�
 [ARD-001: FactStore Is The Sole Semantic Authority](../ARD-001-factstore-semantic-authority.md)。
 
 - FactStore 是唯一语义权威；
-- Object/Property/Link 是 sealed、可删除重建的 projection；
+- Object/Property/Link 是 immutable、可删除重建的 projection；
 - 删除动态 facade、Callable rules、直接 fusion 和临时 Action bridge；
-- 公开 SQLite 适配器只暴露 FactStore；
-- SQLite v2 文件格式保持不变，不增加 v1 migration 或兼容 shim。
+- 公开 SQLite 适配器分别实现 FactStore 与 ProjectionStore；
+- SQLite 只接受当前 Phase 2 v2 layout，不增加旧格式 migration 或兼容 shim。
 
 ### Wave 2B：Standards 与安全派生
 
@@ -1196,7 +1194,7 @@ observed outcome 关联回决定；重复 idempotency key 不会重复写入。
 
 ## 开放问题
 
-在 Wave 1 的 ARD 中需要进一步决定：
+在后续 ARD 中需要进一步决定：
 
 - canonical ID 使用 URI value object，还是 package-local ID + namespace resolution；
 - schema package 的 SemVer compatibility 规则；

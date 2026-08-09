@@ -13,12 +13,12 @@ append-only semantic Fact/Provenance authority, deterministic bitemporal
 selection, and Fact-to-Object/Property/Link projection. It adopts SQLite
 physical format version 2 directly.
 
-Wave 2A does not retain a SQLite v1 reader or migration path. Version 1 was a
-development-only Wave 1 format with no external compatibility commitment. A v1
-database is rejected explicitly and must be recreated.
+SQLite persistence accepts only the current Phase 2 v2 layout. Incompatible
+development stores are rejected and must be recreated; there is no legacy
+reader or migration path.
 
 [ARD-001](ARD-001-factstore-semantic-authority.md) later made this FactStore the
-sole semantic authority and removed the public Wave 1 object-mutation path.
+sole semantic authority and removed the earlier public object-mutation path.
 
 ## Runtime Spine
 
@@ -147,36 +147,30 @@ backup.
 
 ## SQLite Physical Format V2
 
-The current physical identity is `loushang.ontology.sqlite`, version `2`.
-Version 2 adds append-only semantic fact records, committed batch identities,
-and a fact watermark to the existing schema, object authority, operational
-journal, and serving projection tables.
+The current physical identity is `loushang.ontology.sqlite`, version `2`, with
+`storage_layout=phase2`. `SQLiteFactStore` writes `semantic_facts` and
+`fact_batches` directly; it does not delegate to the Memory adapter or expose
+object mutation. One SQLite transaction persists fact rows, batch replay
+identity, the fact watermark, and projection staleness metadata. Reopen and
+online backup restore the same sequence and replay behavior.
 
-The public `SQLiteFactStore` implements the FactStore port without exposing the
-internal Wave 1 object mutation backend. A fact batch commit is validated before
-one SQLite transaction persists the fact rows, batch replay identity, and fact
-watermark. In-memory state changes only after that transaction succeeds. Reopen
-and online backup restore the same fact sequence, batch replay behavior, and
-projection inputs.
-
-The loader accepts exactly v2. It rejects v1, future versions, incomplete v2
-tables, malformed facts, and inconsistent fact watermarks. There is no silent
-DDL repair, implicit migration, or compatibility facade for v1.
+The loader rejects other versions/layouts, incomplete tables, malformed facts,
+and inconsistent watermarks. There is no silent DDL repair, implicit migration,
+or compatibility facade.
 
 ## Public Surface
 
-Wave 2A publishes the following concepts from `loushang.ontology.facts`:
+The Fact package publishes:
 
 - `AssertionKind`, `ObjectAssertion`, `PropertyAssertion`, `LinkAssertion`;
 - `FactRecord`, `FactBatch`, `StoredFact`, `FactCommit`;
-- `FactReadStore`, `FactStore`, and `MemoryFactStore`;
-- `FactProjection` and `project_facts`;
-- stable fact validation, batch-conflict, and projection failures.
+- `FactReadStore`, `FactStore`, and pure commit-planning contracts;
+- stable fact validation and batch-conflict failures.
 
-`AssertionKind`, the assertion payloads, `FactRecord`, `FactBatch`,
-`StoredFact`, `FactCommit`, `FactProjection`, and `project_facts` are also
-available from `loushang.ontology`. Concrete Memory and SQLite store selection
-stays in the facts/storage packages.
+Immutable projection models, ports, diagnostics, and
+`materialize_projection` live in `loushang.ontology.projection`. Memory and
+SQLite adapters live in `loushang.ontology.storage`; the top-level package
+re-exports stable domain values and Memory reference adapters.
 
 The SQLite implementation remains under `loushang.ontology.storage` because
 backend selection is an application composition concern.
@@ -191,16 +185,15 @@ backend selection is an application composition concern.
 - valid-time boundaries use `[from, to)` consistently;
 - invalid lineage and failed SQLite transactions leave facts and watermark
   unchanged;
-- fact projection is deterministic, schema-valid, and rebuildable for objects,
+- projection materialization is deterministic, schema-valid, and rebuildable for objects,
   properties, links, uniqueness, and cardinality;
-- SQLite v2 rejects a database marked v1 without altering it;
-- the operational journal and semantic Fact APIs remain visibly separate;
-- Foundation-only and optional HarnessWork integration import boundaries remain
-  intact.
+- SQLite v2 rejects incompatible versions and layouts without altering them;
+- Fact authority and ProjectionStore APIs remain visibly separate;
+- Foundation-only and product-execution import boundaries remain intact.
 
 ## Non-Goals
 
-- v1 migration, repair, or dual-format readers;
+- legacy migration, repair, or dual-format readers;
 - source/API/database adapters, cursors, mappings, or entity resolution;
 - JSON-LD, RDF, OWL, SHACL, or safe-expression standards work;
 - source-priority and merge-policy resolution;

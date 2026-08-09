@@ -6,8 +6,9 @@ Tracking: [#437](https://github.com/zhnt/loushang/issues/437).
 
 ## Context
 
-Wave 1 introduced a mutable object authority and an operational mutation
-journal. Wave 2A later introduced the semantic Fact/Provenance spine. Keeping
+An earlier prototype introduced a mutable object authority and an operational
+mutation journal. Wave 2A later introduced the semantic Fact/Provenance spine.
+Keeping
 both public write paths would force every caller to decide whether a business
 change belongs in an object mutation or a Fact and would allow state without
 source, evidence, bitemporal meaning, or correction lineage.
@@ -75,8 +76,7 @@ an immutable `ProjectionSnapshot`, and SQLite implements FactStore and
 ProjectionStore directly as independent adapters.
 
 ARD-002 also reset the undeployed SQLite v2 layout to its Phase 2 table set.
-Pre-Phase-2 v2 development files are rejected and recreated; v1 remains
-unsupported.
+Obsolete development files are rejected and recreated.
 
 ## Removed Alternatives
 
@@ -87,7 +87,7 @@ deprecated:
 - `Rule` / `RuleEngine` Python-callable mutation rules;
 - `FieldMapping` / `SourceMapping` / `DataFusion` direct object ingestion;
 - the premature `ontology.integrations.harnesswork` Action bridge;
-- top-level mutable ObjectStore and Wave 1 operational-journal ports;
+- top-level mutable ObjectStore and operational-journal ports;
 - the public `SQLiteObjectStore` name.
 
 No shim, alias, warning period, or legacy namespace is retained.

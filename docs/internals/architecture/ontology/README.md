@@ -110,8 +110,8 @@ The complete package deliberately has no `ontology/core/` directory.
 ## SQLite v2
 
 The only supported physical identity is `loushang.ontology.sqlite`, version 2,
-with `storage_layout=phase2`. Version 1 and pre-Phase-2 v2 development files
-have no compatibility or migration path and must be recreated.
+with `storage_layout=phase2`. Any other storage version or layout is rejected;
+there is no compatibility reader or migration path for development stores.
 
 ```text
 ontology_metadata       ontology_schema
@@ -144,17 +144,7 @@ FactBatch.
 1. [ARD-001: FactStore Is The Sole Semantic Authority](ARD-001-factstore-semantic-authority.md)
 2. [ARD-002: Ports, Immutable Projections, And The Phase 2 SQLite v2 Layout](ARD-002-ports-immutable-projection-and-sqlite-v2.md)
 3. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
-4. [Schema Evolution V1](schema-evolution-v1.md)
-
-The following are historical implementation evidence and are superseded where
-they describe a public mutable object authority or the pre-Phase-2 SQLite v2
-layout:
-
-- [SQLite Storage Compatibility](wave1-storage-compatibility.md)
-- [Wave 1 Completion Boundary](wave1-completion-boundary.md)
-- [Semantic Kernel V1](semantic-kernel-v1.md)
-- [Runtime Enforcement Matrix V1](runtime-enforcement-v1.md)
-- [Managed Mutation Boundary V1](managed-mutation-boundary-v1.md)
+4. [Schema Evolution](schema-evolution.md)
 
 The larger design and reference analysis remains in
 [`drafts/loushang-ontology-operational-infrastructure.md`](drafts/loushang-ontology-operational-infrastructure.md).

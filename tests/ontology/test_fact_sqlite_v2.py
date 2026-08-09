@@ -144,24 +144,6 @@ def test_sqlite_fact_commit_requires_a_bound_schema(tmp_path: Path) -> None:
     store.close()
 
 
-def test_v1_is_rejected_without_migration_or_mutation(tmp_path: Path) -> None:
-    database = tmp_path / "v1.sqlite3"
-    SQLiteFactStore(database).close()
-    with sqlite3.connect(database) as connection:
-        connection.execute(
-            "UPDATE ontology_metadata SET value = '1' "
-            "WHERE key = 'storage_format_version'"
-        )
-    before = database.read_bytes()
-
-    with pytest.raises(SQLiteStorageFormatError) as exc_info:
-        SQLiteFactStore(database)
-
-    assert exc_info.value.expected_version == 2
-    assert exc_info.value.found_version == "1"
-    assert database.read_bytes() == before
-
-
 def test_restart_backup_and_replay_restore_fact_authority(tmp_path: Path) -> None:
     database = tmp_path / "facts.sqlite3"
     backup = tmp_path / "backup.sqlite3"

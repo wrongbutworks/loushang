@@ -117,11 +117,11 @@ snapshot.
 
 ## SQLite v2 Physical Layout
 
-The physical identity remains `loushang.ontology.sqlite`, version `2`, because
-the user selected v2 as the only greenfield format. Phase 2 adds the required
-layout marker `storage_layout=phase2`. A v2 file without that marker, or with
-Wave 1 authority/journal tables, is rejected with an instruction to recreate
-the development store. There is no reader, migration, alias, or silent repair.
+The physical identity is `loushang.ontology.sqlite`, version `2`, with the
+required layout marker `storage_layout=phase2`. A file without that marker, or
+with the removed authority/journal tables, is rejected with an instruction to
+recreate the development store. There is no reader, migration, alias, or
+silent repair for obsolete development layouts.
 
 The complete Phase 2 table set is:
 
