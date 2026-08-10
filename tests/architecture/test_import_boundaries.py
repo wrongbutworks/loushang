@@ -172,22 +172,11 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             ),
         ),
         ImportBoundary(
-            name="ontology core",
+            name="ontology",
             root=Path("src/loushang/ontology"),
             forbidden_prefixes=(
                 "loushang.harness",
                 "loushang.harnesswork",
-                "loushang.work",
-            ),
-            allowed_paths=frozenset(
-                {"src/loushang/ontology/integrations/harnesswork.py"}
-            ),
-        ),
-        ImportBoundary(
-            name="ontology HarnessWork integration",
-            root=Path("src/loushang/ontology/integrations"),
-            forbidden_prefixes=(
-                "loushang.harness",
                 "loushang.work",
             ),
         ),

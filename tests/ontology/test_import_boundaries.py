@@ -3,8 +3,49 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import loushang.ontology as ontology
+import loushang.ontology.facts as ontology_facts
+import loushang.ontology.storage as ontology_storage
+
 ONTOLOGY_ROOT = Path("src/loushang/ontology")
 LEGACY_FOUNDATION_PREFIXES = ("loushang.observability", "loushang.protocol")
+FORBIDDEN_SYSTEM_PREFIXES = (
+    "loushang.agent",
+    "loushang.ai",
+    "loushang.channel",
+    "loushang.coding",
+    "loushang.harness",
+    "loushang.harnesswork",
+    "loushang.harnesstui",
+    "loushang.method",
+    "loushang.resource",
+    "loushang.runtime",
+    "loushang.tui",
+    "loushang.work",
+)
+REMOVED_COMPATIBILITY_MODULES = (
+    "loushang.ontology.core",
+    "loushang.ontology.fusion",
+    "loushang.ontology.integrations",
+    "loushang.ontology.rules",
+)
+REMOVED_COMPATIBILITY_SOURCES = (
+    ONTOLOGY_ROOT / "core",
+    ONTOLOGY_ROOT / "fusion",
+    ONTOLOGY_ROOT / "integrations",
+    ONTOLOGY_ROOT / "rules",
+)
+REMOVED_PUBLIC_NAMES = (
+    "DataFusion",
+    "FieldMapping",
+    "ObjectStore",
+    "Ontology",
+    "OntologyStore",
+    "OperationalMutationStore",
+    "Rule",
+    "RuleEngine",
+    "SourceMapping",
+)
 
 
 def test_ontology_does_not_import_legacy_foundation_facades() -> None:
@@ -15,6 +56,167 @@ def test_ontology_does_not_import_legacy_foundation_facades() -> None:
                 offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
+
+
+def test_ontology_does_not_depend_on_product_or_execution_subsystems() -> None:
+    offenders: list[str] = []
+    for path in sorted(ONTOLOGY_ROOT.rglob("*.py")):
+        for imported in _absolute_imports(path):
+            if imported.startswith(FORBIDDEN_SYSTEM_PREFIXES):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_greenfield_compatibility_sources_are_absent() -> None:
+    offenders: list[str] = []
+    for path in REMOVED_COMPATIBILITY_SOURCES:
+        if path.is_file():
+            offenders.append(path.as_posix())
+        elif path.is_dir():
+            offenders.extend(item.as_posix() for item in path.rglob("*.py"))
+
+    assert offenders == []
+
+
+def test_public_surface_has_no_direct_mutation_or_compatibility_facades() -> None:
+    assert {name for name in REMOVED_PUBLIC_NAMES if hasattr(ontology, name)} == set()
+    assert not hasattr(ontology_storage, "SQLiteObjectStore")
+    assert hasattr(ontology_storage, "SQLiteFactStore")
+    assert hasattr(ontology_storage, "SQLiteProjectionStore")
+    assert hasattr(ontology, "ProjectionStore")
+    assert hasattr(ontology, "SourceBinding")
+    assert hasattr(ontology, "DeploymentProfile")
+    assert hasattr(ontology, "SchemaArtifactLock")
+    assert hasattr(ontology, "SourceAdapterArtifactLock")
+    assert hasattr(ontology, "MappedSourceInput")
+    assert hasattr(ontology, "MappedSourceLink")
+    assert hasattr(ontology, "MaterializationCut")
+    assert hasattr(ontology, "OperationalOrigin")
+    assert hasattr(ontology, "ValueOrigin")
+    assert not hasattr(ontology_facts, "MemoryFactStore")
+
+
+def test_production_ontology_does_not_import_removed_compatibility_modules() -> None:
+    offenders: list[str] = []
+    for path in sorted(ONTOLOGY_ROOT.rglob("*.py")):
+        for imported in _absolute_imports(path):
+            if imported.startswith(REMOVED_COMPATIBILITY_MODULES):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_ontology_internal_dependency_direction() -> None:
+    boundaries = (
+        (
+            Path("src/loushang/ontology/schema"),
+            (
+                "loushang.ontology.deployment",
+                "loushang.ontology.facts",
+                "loushang.ontology.projection",
+                "loushang.ontology.query",
+                "loushang.ontology.source",
+                "loushang.ontology.storage",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/source"),
+            (
+                "loushang.ontology.deployment",
+                "loushang.ontology.facts",
+                "loushang.ontology.projection",
+                "loushang.ontology.query",
+                "loushang.ontology.storage",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/query"),
+            (
+                "loushang.ontology.deployment",
+                "loushang.ontology.facts",
+                "loushang.ontology.storage",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/storage"),
+            (
+                "loushang.ontology.deployment",
+                "loushang.ontology.query",
+                "loushang.ontology.rules",
+                "loushang.ontology.fusion",
+                "loushang.ontology.integrations",
+                "loushang.harnesswork",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/facts"),
+            (
+                "loushang.ontology.deployment",
+                "loushang.ontology.projection",
+                "loushang.ontology.query",
+                "loushang.ontology.storage",
+                "loushang.ontology.rules",
+                "loushang.ontology.fusion",
+                "loushang.ontology.integrations",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/projection"),
+            (
+                "loushang.ontology.deployment",
+                "loushang.ontology.query",
+                "loushang.ontology.storage",
+                "loushang.harnesswork",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/deployment"),
+            (
+                "loushang.ontology.facts",
+                "loushang.ontology.projection",
+                "loushang.ontology.query",
+                "loushang.ontology.storage",
+            ),
+        ),
+    )
+    offenders: list[str] = []
+    for root, forbidden_prefixes in boundaries:
+        paths = (root,) if root.is_file() else tuple(sorted(root.rglob("*.py")))
+        for path in paths:
+            for imported in _absolute_imports(path):
+                if imported.startswith(forbidden_prefixes):
+                    offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_fact_and_source_contracts_depend_only_on_the_schema_identity_leaf() -> None:
+    offenders: list[str] = []
+    for root in (ONTOLOGY_ROOT / "facts", ONTOLOGY_ROOT / "source"):
+        for path in sorted(root.rglob("*.py")):
+            for imported in _absolute_imports(path):
+                if imported.startswith("loushang.ontology.schema") and imported != (
+                    "loushang.ontology.schema.identity"
+                ):
+                    offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+    identity_imports = _absolute_imports(ONTOLOGY_ROOT / "schema" / "identity.py")
+    assert {
+        imported
+        for imported in identity_imports
+        if imported.startswith("loushang.ontology")
+    } == set()
+
+
+def test_storage_adapters_do_not_depend_on_each_other() -> None:
+    memory_imports = _absolute_imports(ONTOLOGY_ROOT / "storage" / "memory.py")
+    sqlite_imports = _absolute_imports(ONTOLOGY_ROOT / "storage" / "sqlite.py")
+
+    assert "loushang.ontology.storage.sqlite" not in memory_imports
+    assert "loushang.ontology.storage.memory" not in sqlite_imports
 
 
 def _absolute_imports(path: Path) -> set[str]:

@@ -15,12 +15,14 @@ from loushang.foundation.json import (
     require_json_value,
 )
 from loushang.ontology.schema.definitions import (
+    InterfaceTypeDefinition,
     LinkCardinality,
     LinkTypeDefinition,
     ObjectTypeDefinition,
     OntologyPackageDraft,
     PropertyDefinition,
     SchemaVersion,
+    StateAuthority,
     ValueType,
 )
 from loushang.ontology.schema.diagnostics import (
@@ -28,7 +30,7 @@ from loushang.ontology.schema.diagnostics import (
     SchemaDiagnostic,
 )
 
-SCHEMA_FORMAT = "loushang.ontology.schema/v1"
+SCHEMA_FORMAT = "loushang.ontology.schema/v3"
 
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 _VERSION = re.compile(r"^[0-9]+(?:\.[0-9]+){0,2}(?:[-+][A-Za-z0-9.-]+)?$")
@@ -36,9 +38,16 @@ _VERSION = re.compile(r"^[0-9]+(?:\.[0-9]+){0,2}(?:[-+][A-Za-z0-9.-]+)?$")
 
 @dataclass(frozen=True, slots=True)
 class CompiledPropertyDefinition:
-    """Validated property definition with an isolated JSON default value."""
+    """Validated property definition with an isolated JSON default value.
+
+    ``semantic_id`` and ``state_authority`` are required for object properties.
+    They remain ``None`` only for structural interface members, whose identity
+    and operational ownership are outside the implemented ARD-003 slices.
+    """
 
     name: str
+    semantic_id: str | None
+    state_authority: StateAuthority | None
     value_type: ValueType
     required: bool
     unique: bool
@@ -57,8 +66,11 @@ class CompiledObjectTypeDefinition:
     """Validated, immutable object-type definition."""
 
     name: str
+    semantic_id: str
+    state_authority: StateAuthority
     properties: tuple[CompiledPropertyDefinition, ...]
     parent_types: tuple[str, ...]
+    interfaces: tuple[str, ...]
     abstract: bool
     icon: str | None
     description: str
@@ -67,12 +79,20 @@ class CompiledObjectTypeDefinition:
     def property(self, name: str) -> CompiledPropertyDefinition | None:
         return next((item for item in self.properties if item.name == name), None)
 
+    def property_by_id(self, semantic_id: str) -> CompiledPropertyDefinition | None:
+        return next(
+            (item for item in self.properties if item.semantic_id == semantic_id),
+            None,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class CompiledLinkTypeDefinition:
     """Validated, immutable link-type definition."""
 
     name: str
+    semantic_id: str
+    state_authority: StateAuthority
     source_type: str
     target_type: str
     cardinality: LinkCardinality
@@ -80,6 +100,18 @@ class CompiledLinkTypeDefinition:
     inverse_name: str | None
     temporal: bool
     description: str
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledInterfaceTypeDefinition:
+    """Validated immutable structural property contract."""
+
+    name: str
+    properties: tuple[CompiledPropertyDefinition, ...]
+    description: str
+
+    def property(self, name: str) -> CompiledPropertyDefinition | None:
+        return next((item for item in self.properties if item.name == name), None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,13 +123,32 @@ class CompiledOntologySchema:
     version: SchemaVersion
     object_types: tuple[CompiledObjectTypeDefinition, ...]
     link_types: tuple[CompiledLinkTypeDefinition, ...]
+    interface_types: tuple[CompiledInterfaceTypeDefinition, ...] = ()
     format: str = SCHEMA_FORMAT
 
     def object_type(self, name: str) -> CompiledObjectTypeDefinition | None:
         return next((item for item in self.object_types if item.name == name), None)
 
+    def object_type_by_id(
+        self,
+        semantic_id: str,
+    ) -> CompiledObjectTypeDefinition | None:
+        return next(
+            (item for item in self.object_types if item.semantic_id == semantic_id),
+            None,
+        )
+
+    def interface_type(self, name: str) -> CompiledInterfaceTypeDefinition | None:
+        return next((item for item in self.interface_types if item.name == name), None)
+
     def link_type(self, name: str) -> CompiledLinkTypeDefinition | None:
         return next((item for item in self.link_types if item.name == name), None)
+
+    def link_type_by_id(self, semantic_id: str) -> CompiledLinkTypeDefinition | None:
+        return next(
+            (item for item in self.link_types if item.semantic_id == semantic_id),
+            None,
+        )
 
     def to_dict(self) -> dict[str, JSONValue]:
         """Project the snapshot to its stable strict-JSON representation."""
@@ -107,22 +158,28 @@ class CompiledOntologySchema:
             "package_id": self.package_id,
             "namespace": self.namespace,
             "version": self.version.value,
+            "interface_types": [
+                {
+                    "name": interface.name,
+                    "properties": [
+                        _property_document(prop, include_semantic_id=False)
+                        for prop in interface.properties
+                    ],
+                    "description": interface.description,
+                }
+                for interface in self.interface_types
+            ],
             "object_types": [
                 {
+                    "semantic_id": object_type.semantic_id,
                     "name": object_type.name,
+                    "state_authority": object_type.state_authority.value,
                     "properties": [
-                        {
-                            "name": prop.name,
-                            "value_type": prop.value_type.value,
-                            "required": prop.required,
-                            "unique": prop.unique,
-                            "indexed": prop.indexed,
-                            "default": prop.default,
-                            "description": prop.description,
-                        }
+                        _property_document(prop, include_semantic_id=True)
                         for prop in object_type.properties
                     ],
                     "parent_types": list(object_type.parent_types),
+                    "interfaces": list(object_type.interfaces),
                     "abstract": object_type.abstract,
                     "icon": object_type.icon,
                     "description": object_type.description,
@@ -132,7 +189,9 @@ class CompiledOntologySchema:
             ],
             "link_types": [
                 {
+                    "semantic_id": link_type.semantic_id,
                     "name": link_type.name,
+                    "state_authority": link_type.state_authority.value,
                     "source_type": link_type.source_type,
                     "target_type": link_type.target_type,
                     "cardinality": link_type.cardinality.value,
@@ -197,6 +256,7 @@ class OntologyCompiler:
         draft: OntologyPackageDraft,
     ) -> tuple[CompiledOntologySchema | None, tuple[SchemaDiagnostic, ...]]:
         diagnostics: list[SchemaDiagnostic] = []
+        semantic_ids: dict[str, str] = {}
 
         _validate_identifier(draft.package_id, "$.package_id", diagnostics)
         if not isinstance(draft.namespace, str) or not draft.namespace.strip():
@@ -214,11 +274,49 @@ class OntologyCompiler:
                 )
             )
 
+        compiled_interfaces: list[CompiledInterfaceTypeDefinition] = []
+        interface_names: set[str] = set()
+        for interface_index, interface in enumerate(draft.interface_types):
+            interface_path = f"$.interface_types[{interface_index}]"
+            _validate_identifier(interface.name, f"{interface_path}.name", diagnostics)
+            if interface.name in interface_names:
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "duplicate_interface_type",
+                        f"{interface_path}.name",
+                        f"interface type '{interface.name}' is declared more than once",
+                    )
+                )
+            interface_names.add(interface.name)
+            compiled_interfaces.append(
+                CompiledInterfaceTypeDefinition(
+                    name=interface.name,
+                    properties=_compile_property_definitions(
+                        interface.properties,
+                        path=interface_path,
+                        diagnostics=diagnostics,
+                        semantic_ids=None,
+                    ),
+                    description=interface.description,
+                )
+            )
+
         compiled_objects: list[CompiledObjectTypeDefinition] = []
         object_names: set[str] = set()
         for object_index, object_type in enumerate(draft.object_types):
             object_path = f"$.object_types[{object_index}]"
             _validate_identifier(object_type.name, f"{object_path}.name", diagnostics)
+            object_semantic_id = _register_semantic_id(
+                object_type.semantic_id,
+                path=f"{object_path}.semantic_id",
+                semantic_ids=semantic_ids,
+                diagnostics=diagnostics,
+            )
+            object_state_authority = _compile_state_authority(
+                object_type.state_authority,
+                path=f"{object_path}.state_authority",
+                diagnostics=diagnostics,
+            )
             if object_type.name in object_names:
                 diagnostics.append(
                     SchemaDiagnostic(
@@ -229,58 +327,19 @@ class OntologyCompiler:
                 )
             object_names.add(object_type.name)
 
-            compiled_properties: list[CompiledPropertyDefinition] = []
-            property_names: set[str] = set()
-            for property_index, prop in enumerate(object_type.properties):
-                property_path = f"{object_path}.properties[{property_index}]"
-                _validate_identifier(prop.name, f"{property_path}.name", diagnostics)
-                if prop.name in property_names:
-                    diagnostics.append(
-                        SchemaDiagnostic(
-                            "duplicate_property",
-                            f"{property_path}.name",
-                            f"property '{prop.name}' is declared more than once",
-                        )
-                    )
-                property_names.add(prop.name)
-
-                value_type = _normalize_value_type(prop.value_type)
-                if value_type is None:
-                    diagnostics.append(
-                        SchemaDiagnostic(
-                            "unsupported_value_type",
-                            f"{property_path}.value_type",
-                            f"unsupported value type '{_value_label(prop.value_type)}'",
-                        )
-                    )
-
-                default_json: str | None = None
-                try:
-                    default_value = require_json_value(prop.default, name=f"{property_path}.default")
-                    default_json = dump_json_value(default_value, sort_keys=True)
-                except JsonValueError as exc:
-                    diagnostics.append(
-                        SchemaDiagnostic("invalid_default", f"{property_path}.default", str(exc))
-                    )
-
-                if value_type is not None and default_json is not None:
-                    compiled_properties.append(
-                        CompiledPropertyDefinition(
-                            name=prop.name,
-                            value_type=value_type,
-                            required=prop.required,
-                            unique=prop.unique,
-                            indexed=prop.indexed,
-                            description=prop.description,
-                            _default_json=default_json,
-                        )
-                    )
-
             compiled_objects.append(
                 CompiledObjectTypeDefinition(
                     name=object_type.name,
-                    properties=tuple(compiled_properties),
+                    semantic_id=object_semantic_id,
+                    state_authority=object_state_authority,
+                    properties=_compile_property_definitions(
+                        object_type.properties,
+                        path=object_path,
+                        diagnostics=diagnostics,
+                        semantic_ids=semantic_ids,
+                    ),
                     parent_types=tuple(object_type.parent_types),
+                    interfaces=tuple(sorted(object_type.interfaces)),
                     abstract=object_type.abstract,
                     icon=object_type.icon,
                     description=object_type.description,
@@ -300,12 +359,29 @@ class OntologyCompiler:
                     )
 
         _validate_parent_cycles(draft.object_types, diagnostics)
+        _validate_interface_implementations(
+            draft.object_types,
+            compiled_objects,
+            compiled_interfaces,
+            diagnostics,
+        )
 
         compiled_links: list[CompiledLinkTypeDefinition] = []
         link_names: set[str] = set()
         for link_index, link_type in enumerate(draft.link_types):
             link_path = f"$.link_types[{link_index}]"
             _validate_identifier(link_type.name, f"{link_path}.name", diagnostics)
+            link_semantic_id = _register_semantic_id(
+                link_type.semantic_id,
+                path=f"{link_path}.semantic_id",
+                semantic_ids=semantic_ids,
+                diagnostics=diagnostics,
+            )
+            link_state_authority = _compile_state_authority(
+                link_type.state_authority,
+                path=f"{link_path}.state_authority",
+                diagnostics=diagnostics,
+            )
             if link_type.name in link_names:
                 diagnostics.append(
                     SchemaDiagnostic(
@@ -342,6 +418,8 @@ class OntologyCompiler:
                 compiled_links.append(
                     CompiledLinkTypeDefinition(
                         name=link_type.name,
+                        semantic_id=link_semantic_id,
+                        state_authority=link_state_authority,
                         source_type=link_type.source_type,
                         target_type=link_type.target_type,
                         cardinality=cardinality,
@@ -361,8 +439,15 @@ class OntologyCompiler:
                 package_id=draft.package_id,
                 namespace=draft.namespace,
                 version=version,
-                object_types=tuple(sorted(compiled_objects, key=lambda item: item.name)),
-                link_types=tuple(sorted(compiled_links, key=lambda item: item.name)),
+                interface_types=tuple(
+                    sorted(compiled_interfaces, key=lambda item: item.name)
+                ),
+                object_types=tuple(
+                    sorted(compiled_objects, key=lambda item: item.semantic_id)
+                ),
+                link_types=tuple(
+                    sorted(compiled_links, key=lambda item: item.semantic_id)
+                ),
             ),
             (),
         )
@@ -381,6 +466,36 @@ def _validate_identifier(
                 "identifier must start with a letter and contain only letters, digits, '.', '_' or '-'",
             )
         )
+
+
+def _register_semantic_id(
+    value: object,
+    *,
+    path: str,
+    semantic_ids: dict[str, str],
+    diagnostics: list[SchemaDiagnostic],
+) -> str:
+    if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
+        diagnostics.append(
+            SchemaDiagnostic(
+                "invalid_semantic_id",
+                path,
+                "semantic_id must be an explicit package-local identifier",
+            )
+        )
+        return ""
+    previous_path = semantic_ids.get(value)
+    if previous_path is not None:
+        diagnostics.append(
+            SchemaDiagnostic(
+                "duplicate_semantic_id",
+                path,
+                f"semantic_id '{value}' is already declared at {previous_path}",
+            )
+        )
+    else:
+        semantic_ids[value] = path
+    return value
 
 
 def _validate_parent_cycles(
@@ -441,6 +556,205 @@ def _normalize_value_type(value: object) -> ValueType | None:
     return None
 
 
+def _normalize_state_authority(value: object) -> StateAuthority | None:
+    if isinstance(value, StateAuthority):
+        return value
+    if isinstance(value, str):
+        try:
+            return StateAuthority(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _compile_state_authority(
+    value: object,
+    *,
+    path: str,
+    diagnostics: list[SchemaDiagnostic],
+) -> StateAuthority:
+    authority = _normalize_state_authority(value)
+    if authority is None:
+        diagnostics.append(
+            SchemaDiagnostic(
+                "invalid_state_authority",
+                path,
+                "state_authority must be 'source-backed', 'ontology-owned', or 'derived'",
+            )
+        )
+        # The compiled value is discarded whenever diagnostics exist.
+        return StateAuthority.ONTOLOGY_OWNED
+    return authority
+
+
+def _compile_property_definitions(
+    properties: tuple[PropertyDefinition, ...] | list[PropertyDefinition],
+    *,
+    path: str,
+    diagnostics: list[SchemaDiagnostic],
+    semantic_ids: dict[str, str] | None,
+) -> tuple[CompiledPropertyDefinition, ...]:
+    compiled: list[CompiledPropertyDefinition] = []
+    names: set[str] = set()
+    for property_index, prop in enumerate(properties):
+        property_path = f"{path}.properties[{property_index}]"
+        _validate_identifier(prop.name, f"{property_path}.name", diagnostics)
+        semantic_id = None
+        state_authority = None
+        if semantic_ids is None:
+            if prop.semantic_id is not None:
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "interface_property_semantic_id_unsupported",
+                        f"{property_path}.semantic_id",
+                        "interface property identity is not part of schema v3",
+                    )
+                )
+            if prop.state_authority is not None:
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "interface_property_state_authority_unsupported",
+                        f"{property_path}.state_authority",
+                        "interface property authority is not part of schema v3",
+                    )
+                )
+        else:
+            semantic_id = _register_semantic_id(
+                prop.semantic_id,
+                path=f"{property_path}.semantic_id",
+                semantic_ids=semantic_ids,
+                diagnostics=diagnostics,
+            )
+            state_authority = _compile_state_authority(
+                prop.state_authority,
+                path=f"{property_path}.state_authority",
+                diagnostics=diagnostics,
+            )
+        if prop.name in names:
+            diagnostics.append(
+                SchemaDiagnostic(
+                    "duplicate_property",
+                    f"{property_path}.name",
+                    f"property '{prop.name}' is declared more than once",
+                )
+            )
+        names.add(prop.name)
+        value_type = _normalize_value_type(prop.value_type)
+        if value_type is None:
+            diagnostics.append(
+                SchemaDiagnostic(
+                    "unsupported_value_type",
+                    f"{property_path}.value_type",
+                    f"unsupported value type '{_value_label(prop.value_type)}'",
+                )
+            )
+        default_json: str | None = None
+        try:
+            default_value = require_json_value(prop.default, name=f"{property_path}.default")
+            default_json = dump_json_value(default_value, sort_keys=True)
+        except JsonValueError as exc:
+            diagnostics.append(
+                SchemaDiagnostic("invalid_default", f"{property_path}.default", str(exc))
+            )
+        if value_type is not None and default_json is not None:
+            compiled.append(
+                CompiledPropertyDefinition(
+                    name=prop.name,
+                    semantic_id=semantic_id,
+                    state_authority=state_authority,
+                    value_type=value_type,
+                    required=prop.required,
+                    unique=prop.unique,
+                    indexed=prop.indexed,
+                    description=prop.description,
+                    _default_json=default_json,
+                )
+            )
+    return tuple(
+        sorted(
+            compiled,
+            key=lambda item: item.name if item.semantic_id is None else item.semantic_id,
+        )
+    )
+
+
+def _validate_interface_implementations(
+    drafts: tuple[ObjectTypeDefinition, ...] | list[ObjectTypeDefinition],
+    compiled_objects: list[CompiledObjectTypeDefinition],
+    compiled_interfaces: list[CompiledInterfaceTypeDefinition],
+    diagnostics: list[SchemaDiagnostic],
+) -> None:
+    objects = {item.name: item for item in compiled_objects}
+    interfaces = {item.name: item for item in compiled_interfaces}
+
+    def resolved_properties(name: str, visiting: set[str]) -> dict[str, CompiledPropertyDefinition]:
+        if name in visiting or name not in objects:
+            return {}
+        visiting.add(name)
+        object_type = objects[name]
+        resolved: dict[str, CompiledPropertyDefinition] = {}
+        for parent_name in object_type.parent_types:
+            resolved.update(resolved_properties(parent_name, visiting))
+        visiting.remove(name)
+        resolved.update({prop.name: prop for prop in object_type.properties})
+        return resolved
+
+    for object_index, draft in enumerate(drafts):
+        properties = resolved_properties(draft.name, set())
+        seen: set[str] = set()
+        for interface_index, interface_name in enumerate(draft.interfaces):
+            path = f"$.object_types[{object_index}].interfaces[{interface_index}]"
+            if interface_name in seen:
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "duplicate_interface_implementation",
+                        path,
+                        f"interface '{interface_name}' is implemented more than once",
+                    )
+                )
+                continue
+            seen.add(interface_name)
+            interface = interfaces.get(interface_name)
+            if interface is None:
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "unknown_interface",
+                        path,
+                        f"interface '{interface_name}' is not declared",
+                    )
+                )
+                continue
+            for interface_property in interface.properties:
+                implementation = properties.get(interface_property.name)
+                property_path = f"{path}.properties.{interface_property.name}"
+                if implementation is None:
+                    diagnostics.append(
+                        SchemaDiagnostic(
+                            "interface_property_missing",
+                            property_path,
+                            f"object type '{draft.name}' does not implement property "
+                            f"'{interface_property.name}'",
+                        )
+                    )
+                elif implementation.value_type is not interface_property.value_type:
+                    diagnostics.append(
+                        SchemaDiagnostic(
+                            "interface_property_type_mismatch",
+                            property_path,
+                            f"property '{draft.name}.{interface_property.name}' has an "
+                            "incompatible value type",
+                        )
+                    )
+                elif interface_property.required and not implementation.required:
+                    diagnostics.append(
+                        SchemaDiagnostic(
+                            "interface_property_requiredness_mismatch",
+                            property_path,
+                            f"property '{draft.name}.{interface_property.name}' must be required",
+                        )
+                    )
+
+
 def _normalize_cardinality(value: object) -> LinkCardinality | None:
     if isinstance(value, LinkCardinality):
         return value
@@ -462,8 +776,10 @@ def _draft_from_document(document: dict[str, JSONValue]) -> OntologyPackageDraft
     if document.get("format") != SCHEMA_FORMAT:
         raise ValueError(f"format must be '{SCHEMA_FORMAT}'")
 
+    interface_values = _optional_list(document, "interface_types")
     object_values = _require_list(document, "object_types")
     link_values = _require_list(document, "link_types")
+    interface_types = [_interface_from_value(value) for value in interface_values]
     object_types = [_object_from_value(value) for value in object_values]
     link_types = [_link_from_value(value) for value in link_values]
 
@@ -471,6 +787,7 @@ def _draft_from_document(document: dict[str, JSONValue]) -> OntologyPackageDraft
         package_id=_require_string(document, "package_id"),
         namespace=_require_string(document, "namespace"),
         version=_require_string(document, "version"),
+        interface_types=interface_types,
         object_types=object_types,
         link_types=link_types,
     )
@@ -478,14 +795,23 @@ def _draft_from_document(document: dict[str, JSONValue]) -> OntologyPackageDraft
 
 def _object_from_value(value: JSONValue) -> ObjectTypeDefinition:
     document = require_json_mapping(value, name="object type")
-    properties = [_property_from_value(item) for item in _require_list(document, "properties")]
+    properties = [
+        _property_from_value(item, require_semantic_id=True)
+        for item in _require_list(document, "properties")
+    ]
     parents = _require_list(document, "parent_types")
+    interfaces = _optional_list(document, "interfaces")
     if not all(isinstance(item, str) for item in parents):
         raise TypeError("parent_types must contain only strings")
+    if not all(isinstance(item, str) for item in interfaces):
+        raise TypeError("interfaces must contain only strings")
     return ObjectTypeDefinition(
         name=_require_string(document, "name"),
+        semantic_id=_require_string(document, "semantic_id"),
+        state_authority=_require_string(document, "state_authority"),
         properties=properties,
         parent_types=cast(list[str], parents),
+        interfaces=cast(list[str], interfaces),
         abstract=_require_bool(document, "abstract"),
         icon=_require_optional_string(document, "icon"),
         description=_require_string(document, "description"),
@@ -493,11 +819,36 @@ def _object_from_value(value: JSONValue) -> ObjectTypeDefinition:
     )
 
 
-def _property_from_value(value: JSONValue) -> PropertyDefinition:
+def _interface_from_value(value: JSONValue) -> InterfaceTypeDefinition:
+    document = require_json_mapping(value, name="interface type")
+    return InterfaceTypeDefinition(
+        name=_require_string(document, "name"),
+        properties=[
+            _property_from_value(item) for item in _require_list(document, "properties")
+        ],
+        description=_require_string(document, "description"),
+    )
+
+
+def _property_from_value(
+    value: JSONValue,
+    *,
+    require_semantic_id: bool = False,
+) -> PropertyDefinition:
     document = require_json_mapping(value, name="property")
     return PropertyDefinition(
         name=_require_string(document, "name"),
         value_type=_require_string(document, "value_type"),
+        semantic_id=(
+            _require_string(document, "semantic_id")
+            if require_semantic_id
+            else None
+        ),
+        state_authority=(
+            _require_string(document, "state_authority")
+            if require_semantic_id
+            else None
+        ),
         required=_require_bool(document, "required"),
         unique=_require_bool(document, "unique"),
         indexed=_require_bool(document, "indexed"),
@@ -512,6 +863,8 @@ def _link_from_value(value: JSONValue) -> LinkTypeDefinition:
         name=_require_string(document, "name"),
         source_type=_require_string(document, "source_type"),
         target_type=_require_string(document, "target_type"),
+        semantic_id=_require_string(document, "semantic_id"),
+        state_authority=_require_string(document, "state_authority"),
         cardinality=_require_string(document, "cardinality"),
         required=_require_bool(document, "required"),
         inverse_name=_require_optional_string(document, "inverse_name"),
@@ -525,6 +878,35 @@ def _require_list(document: dict[str, JSONValue], key: str) -> list[JSONValue]:
     if not isinstance(value, list):
         raise TypeError(f"{key} must be an array")
     return value
+
+
+def _optional_list(document: dict[str, JSONValue], key: str) -> list[JSONValue]:
+    value = document.get(key, [])
+    if not isinstance(value, list):
+        raise TypeError(f"{key} must be an array")
+    return value
+
+
+def _property_document(
+    prop: CompiledPropertyDefinition,
+    *,
+    include_semantic_id: bool,
+) -> dict[str, JSONValue]:
+    document: dict[str, JSONValue] = {
+        "name": prop.name,
+        "value_type": prop.value_type.value,
+        "required": prop.required,
+        "unique": prop.unique,
+        "indexed": prop.indexed,
+        "default": prop.default,
+        "description": prop.description,
+    }
+    if include_semantic_id:
+        assert prop.semantic_id is not None
+        assert prop.state_authority is not None
+        document["semantic_id"] = prop.semantic_id
+        document["state_authority"] = prop.state_authority.value
+    return document
 
 
 def _require_string(document: dict[str, JSONValue], key: str) -> str:
@@ -549,6 +931,7 @@ def _require_bool(document: dict[str, JSONValue], key: str) -> bool:
 
 
 __all__ = [
+    "CompiledInterfaceTypeDefinition",
     "CompiledLinkTypeDefinition",
     "CompiledObjectTypeDefinition",
     "CompiledOntologySchema",

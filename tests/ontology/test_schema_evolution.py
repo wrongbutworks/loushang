@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -15,6 +16,7 @@ from loushang.ontology.schema import (
     OntologyPackageDraft,
     PropertyDefinition,
     SchemaLineageError,
+    StateAuthority,
     ValueType,
     compare_schemas,
 )
@@ -28,6 +30,36 @@ def _compiled(
     object_types: list[ObjectTypeDefinition] | None = None,
     link_types: list[LinkTypeDefinition] | None = None,
 ) -> CompiledOntologySchema:
+    object_types = [
+        replace(
+            object_type,
+            semantic_id=object_type.semantic_id or object_type.name,
+            state_authority=(
+                object_type.state_authority or StateAuthority.ONTOLOGY_OWNED
+            ),
+            properties=tuple(
+                replace(
+                    prop,
+                    semantic_id=prop.semantic_id or prop.name,
+                    state_authority=(
+                        prop.state_authority or StateAuthority.ONTOLOGY_OWNED
+                    ),
+                )
+                for prop in object_type.properties
+            ),
+        )
+        for object_type in (object_types or [])
+    ]
+    link_types = [
+        replace(
+            link,
+            semantic_id=link.semantic_id or link.name,
+            state_authority=(
+                link.state_authority or StateAuthority.ONTOLOGY_OWNED
+            ),
+        )
+        for link in (link_types or [])
+    ]
     compiler = OntologyCompiler()
     schema = compiler.compile(
         OntologyPackageDraft(
@@ -111,12 +143,19 @@ def test_declaration_order_does_not_affect_diff_or_json() -> None:
     assert first.to_json() == second.to_json()
 
 
-def test_renames_are_reported_as_removal_and_addition() -> None:
+def test_stable_ids_distinguish_renames_from_identity_replacement() -> None:
     old = _compiled(
         object_types=[
             ObjectTypeDefinition(
                 "Project",
-                properties=[PropertyDefinition("name", ValueType.STRING)],
+                semantic_id="project-type",
+                properties=[
+                    PropertyDefinition(
+                        "name",
+                        ValueType.STRING,
+                        semantic_id="project-name",
+                    )
+                ],
             )
         ]
     )
@@ -125,7 +164,14 @@ def test_renames_are_reported_as_removal_and_addition() -> None:
         object_types=[
             ObjectTypeDefinition(
                 "Initiative",
-                properties=[PropertyDefinition("name", ValueType.STRING)],
+                semantic_id="project-type",
+                properties=[
+                    PropertyDefinition(
+                        "name",
+                        ValueType.STRING,
+                        semantic_id="project-name",
+                    )
+                ],
             )
         ],
     )
@@ -134,19 +180,125 @@ def test_renames_are_reported_as_removal_and_addition() -> None:
         object_types=[
             ObjectTypeDefinition(
                 "Project",
-                properties=[PropertyDefinition("title", ValueType.STRING)],
+                semantic_id="project-type",
+                properties=[
+                    PropertyDefinition(
+                        "title",
+                        ValueType.STRING,
+                        semantic_id="project-name",
+                    )
+                ],
             )
         ],
     )
 
     assert [change.code for change in compare_schemas(old, renamed_type).changes] == [
-        "object_type_added",
-        "object_type_removed",
+        "object_type_name_changed",
     ]
     assert [change.code for change in compare_schemas(old, renamed_property).changes] == [
-        "property_removed",
-        "property_added",
+        "property_name_changed",
     ]
+
+    replaced_identity = _compiled(
+        version="2.0.0",
+        object_types=[ObjectTypeDefinition("Project", semantic_id="replacement")],
+    )
+    assert [
+        change.code for change in compare_schemas(old, replaced_identity).changes
+    ] == ["object_type_removed", "object_type_added"]
+
+
+def test_link_type_rename_is_matched_by_stable_id() -> None:
+    object_types = [ObjectTypeDefinition("Project"), ObjectTypeDefinition("Task")]
+    old = _compiled(
+        object_types=object_types,
+        link_types=[
+            LinkTypeDefinition(
+                "contains",
+                "Project",
+                "Task",
+                semantic_id="project-task-link",
+            )
+        ],
+    )
+    new = _compiled(
+        version="2.0.0",
+        object_types=object_types,
+        link_types=[
+            LinkTypeDefinition(
+                "includes",
+                "Project",
+                "Task",
+                semantic_id="project-task-link",
+            )
+        ],
+    )
+
+    changes = compare_schemas(old, new).changes
+
+    assert [(item.code, item.impact) for item in changes] == [
+        ("link_type_name_changed", ChangeImpact.BREAKING)
+    ]
+
+
+def test_state_authority_changes_are_explicit_and_breaking() -> None:
+    old = _compiled(
+        object_types=[
+            ObjectTypeDefinition(
+                "Project",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+                properties=[
+                    PropertyDefinition(
+                        "status",
+                        ValueType.STRING,
+                        state_authority=StateAuthority.SOURCE_BACKED,
+                    )
+                ],
+            ),
+            ObjectTypeDefinition("Task"),
+        ],
+        link_types=[
+            LinkTypeDefinition(
+                "contains",
+                "Project",
+                "Task",
+                state_authority=StateAuthority.SOURCE_BACKED,
+            )
+        ],
+    )
+    new = _compiled(
+        version="2.0.0",
+        object_types=[
+            ObjectTypeDefinition(
+                "Project",
+                state_authority=StateAuthority.SOURCE_BACKED,
+                properties=[
+                    PropertyDefinition(
+                        "status",
+                        ValueType.STRING,
+                        state_authority=StateAuthority.DERIVED,
+                    )
+                ],
+            ),
+            ObjectTypeDefinition("Task"),
+        ],
+        link_types=[
+            LinkTypeDefinition(
+                "contains",
+                "Project",
+                "Task",
+                state_authority=StateAuthority.ONTOLOGY_OWNED,
+            )
+        ],
+    )
+
+    changes = compare_schemas(old, new).changes
+
+    assert {(item.code, item.impact) for item in changes} == {
+        ("object_existence_authority_changed", ChangeImpact.BREAKING),
+        ("property_state_authority_changed", ChangeImpact.BREAKING),
+        ("link_state_authority_changed", ChangeImpact.BREAKING),
+    }
 
 
 def test_different_packages_cannot_be_compared() -> None:
@@ -287,7 +439,6 @@ def test_non_breaking_and_behavioral_changes_are_classified() -> None:
                         ValueType.STRING,
                         required=False,
                         default="untitled",
-                        unique=True,
                         indexed=True,
                         description="Display name",
                     ),
@@ -323,7 +474,6 @@ def test_non_breaking_and_behavioral_changes_are_classified() -> None:
     assert impacts["object_type_abstract_relaxed"] is ChangeImpact.NON_BREAKING
     assert impacts["link_type_added"] is ChangeImpact.NON_BREAKING
     assert impacts["property_default_changed"] is ChangeImpact.BEHAVIORAL
-    assert impacts["property_unique_changed"] is ChangeImpact.BEHAVIORAL
     assert impacts["property_indexed_changed"] is ChangeImpact.BEHAVIORAL
     assert impacts["property_description_changed"] is ChangeImpact.BEHAVIORAL
     assert impacts["object_type_icon_changed"] is ChangeImpact.BEHAVIORAL
@@ -334,6 +484,38 @@ def test_non_breaking_and_behavioral_changes_are_classified() -> None:
     assert impacts["link_description_changed"] is ChangeImpact.BEHAVIORAL
     assert impacts["link_required_relaxed"] is ChangeImpact.NON_BREAKING
     assert compare_schemas(old, new).highest_impact is ChangeImpact.BEHAVIORAL
+
+
+def test_unique_tightening_is_breaking_and_relaxing_is_non_breaking() -> None:
+    without_unique = _compiled(
+        object_types=[
+            ObjectTypeDefinition(
+                "Project",
+                properties=[PropertyDefinition("name", ValueType.STRING)],
+            )
+        ]
+    )
+    with_unique = _compiled(
+        version="2.0.0",
+        object_types=[
+            ObjectTypeDefinition(
+                "Project",
+                properties=[
+                    PropertyDefinition("name", ValueType.STRING, unique=True)
+                ],
+            )
+        ],
+    )
+
+    tightened = compare_schemas(without_unique, with_unique).changes
+    relaxed = compare_schemas(with_unique, without_unique).changes
+
+    assert [(item.code, item.impact) for item in tightened] == [
+        ("property_unique_changed", ChangeImpact.BREAKING)
+    ]
+    assert [(item.code, item.impact) for item in relaxed] == [
+        ("property_unique_changed", ChangeImpact.NON_BREAKING)
+    ]
 
 
 def test_remaining_breaking_changes_have_stable_codes_and_paths() -> None:
@@ -447,5 +629,5 @@ def test_diff_json_is_strict_stable_and_detached() -> None:
     exposed["default"] = None
 
     assert diff.to_json() == payload
-    assert json.loads(payload)["format"] == "loushang.ontology.schema-diff/v1"
+    assert json.loads(payload)["format"] == "loushang.ontology.schema-diff/v3"
     assert json.loads(payload)["package_id"] == "test.evolution"

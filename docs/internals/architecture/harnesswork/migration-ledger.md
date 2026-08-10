@@ -39,9 +39,10 @@ Coding、Method 或 Ontology 类型。
 | `session.py` | `harnesswork.integrations.session` | `loushang.work.session` forwarding | 已迁移产品中立 Session ports/runtime，不进入 durable kernel root exports |
 
 Coding binding 已迁至 `coding.adapters.harnesswork`，Channel session binding 已迁至
-`channel.adapters.harnesswork`，Ontology Action binding 位于
-`ontology.integrations.harnesswork`。所有生产消费者已改用 canonical imports；旧路径仅作为
-受测试的 forwarding compatibility 入口。
+`channel.adapters.harnesswork`。Ontology ARD-001 已删除尚未建立正式 Action 语义的早期
+binding；未来由 Product-owned adapter 同时依赖 Ontology 与 HarnessWork，不在任一 core
+协议中加入对方类型。其余生产消费者已改用 canonical imports；旧 Work 路径仅作为受测试的
+forwarding compatibility 入口。
 
 Channel core 继续拥有 typed Work envelope 与稳定 JSON wire codec；这是当前 Channel 作为
 Work transport 的明确边界，不是待抽取的通用 payload bus。`channel.adapters.harnesswork`

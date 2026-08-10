@@ -1,78 +1,207 @@
-"""实验性的 operational ontology infrastructure.
+"""Public contracts for the Loushang operational ontology kernel.
 
-当前公开 facade 保留动态对象图原型的兼容行为。版本化 schema 编译、运行时
-snapshot 和受控 mutation 正在逐步建立；本包不宣称实现完整 Palantir Foundry、
-OWL 推理器或生产级图存储。
-
-核心模块:
-    core    - 本体引擎（对象类型、属性、关系、存储）
-    query   - 图查询引擎（链式查询、时序查询）
-    rules   - 规则引擎（自动推理、触发器）
-    fusion  - 数据融合（多源映射、ETL）
-
-快速开始::
-
-    from loushang.ontology import Ontology, Property
-
-    onto = Ontology()
-
-    onto.define_object_type("Person", properties=[
-        Property("name", str, required=True, indexed=True),
-        Property("age", int),
-    ])
-
-    alice = onto.create("Person", name="Alice", age=30)
-    print(alice.get("name"))  # "Alice"
+FactStore owns accepted semantic records; mapped inputs reproduce state owned
+by external sources. Object, property, and link graphs are immutable,
+replaceable snapshots and never a second business-mutation surface.
 """
 
-from loushang.ontology.core.link_type import Cardinality, LinkType
-from loushang.ontology.core.object import OntologyObject
-from loushang.ontology.core.object_type import ObjectType
-from loushang.ontology.core.ontology import Ontology
-from loushang.ontology.core.property import DerivedProperty, Property, TemporalProperty
-from loushang.ontology.core.store import ObjectStore
-from loushang.ontology.fusion.mapper import DataFusion, FieldMapping, SourceMapping
-from loushang.ontology.query.builder import QueryBuilder
-from loushang.ontology.rules.engine import Rule, RuleEngine
+from loushang.ontology.deployment import (
+    DEPLOYMENT_PROFILE_FORMAT,
+    DeploymentProfile,
+    DeploymentProfileValidationError,
+    SchemaArtifactLock,
+    SourceAdapterArtifactLock,
+    lock_schema_artifact,
+    lock_source_adapter_artifact,
+    validate_deployment_profile,
+)
+from loushang.ontology.facts import (
+    FACT_BATCH_FORMAT,
+    FACT_FORMAT,
+    AssertionKind,
+    FactAssertion,
+    FactBatch,
+    FactBatchConflictError,
+    FactCommit,
+    FactReadStore,
+    FactRecord,
+    FactSelection,
+    FactStore,
+    FactValidationError,
+    LinkAssertion,
+    ObjectAssertion,
+    PropertyAssertion,
+    StoredFact,
+)
+from loushang.ontology.projection import (
+    FACT_SCHEMA_REVALIDATION_FORMAT,
+    FactOrigin,
+    FactSchemaRevalidationDiagnostic,
+    FactSchemaRevalidationReceipt,
+    FactSchemaRevalidationStatus,
+    MaterializationCut,
+    OperationalOrigin,
+    ProjectedLink,
+    ProjectedObject,
+    ProjectedProperty,
+    ProjectionDiagnostic,
+    ProjectionFreshness,
+    ProjectionFreshnessStatus,
+    ProjectionMaterializationError,
+    ProjectionReadStore,
+    ProjectionSnapshot,
+    ProjectionState,
+    ProjectionStore,
+    ProjectionUnavailableError,
+    SchemaDefaultOrigin,
+    SourceOrigin,
+    ValueOrigin,
+    evaluate_projection_freshness,
+    materialize_projection,
+    revalidate_fact_selection,
+)
+from loushang.ontology.query import QueryBuilder, QueryRequest, QueryResult
 from loushang.ontology.schema import (
+    SCHEMA_DIFF_FORMAT,
+    SCHEMA_FORMAT,
+    ChangeImpact,
+    CompiledInterfaceTypeDefinition,
+    CompiledLinkTypeDefinition,
+    CompiledObjectTypeDefinition,
     CompiledOntologySchema,
+    CompiledPropertyDefinition,
+    InterfaceTypeDefinition,
     LinkCardinality,
     LinkTypeDefinition,
     ObjectTypeDefinition,
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    SchemaChange,
     SchemaCompilationError,
     SchemaDiagnostic,
+    SchemaDiff,
+    SchemaIdentity,
+    SchemaLineageError,
     SchemaVersion,
+    StateAuthority,
     ValueType,
+    compare_schemas,
 )
+from loushang.ontology.source import (
+    SOURCE_ADAPTER_MANIFEST_FORMAT,
+    SOURCE_BINDING_FORMAT,
+    ApplicationSchemaIdentity,
+    MappedSourceInput,
+    MappedSourceLink,
+    MappedSourceObject,
+    MappedSourceProperty,
+    MappedSourceSnapshot,
+    SourceAdapter,
+    SourceAdapterContractError,
+    SourceAdapterManifest,
+    SourceBinding,
+    SourceCoverage,
+    SourceInputCut,
+    SourceInputRevision,
+    validate_source_adapter_outputs,
+)
+from loushang.ontology.storage import MemoryFactStore, MemoryProjectionStore
 
 __all__ = [
-    "Ontology",
-    "ObjectType",
-    "Property",
-    "TemporalProperty",
-    "DerivedProperty",
-    "LinkType",
-    "Cardinality",
-    "OntologyObject",
-    "ObjectStore",
-    "QueryBuilder",
-    "RuleEngine",
-    "Rule",
-    "DataFusion",
-    "FieldMapping",
-    "SourceMapping",
+    "DEPLOYMENT_PROFILE_FORMAT",
+    "FACT_BATCH_FORMAT",
+    "FACT_FORMAT",
+    "FACT_SCHEMA_REVALIDATION_FORMAT",
+    "SCHEMA_DIFF_FORMAT",
+    "SCHEMA_FORMAT",
+    "SOURCE_ADAPTER_MANIFEST_FORMAT",
+    "SOURCE_BINDING_FORMAT",
+    "ApplicationSchemaIdentity",
+    "AssertionKind",
+    "ChangeImpact",
+    "CompiledInterfaceTypeDefinition",
+    "CompiledLinkTypeDefinition",
+    "CompiledObjectTypeDefinition",
     "CompiledOntologySchema",
+    "CompiledPropertyDefinition",
+    "DeploymentProfile",
+    "DeploymentProfileValidationError",
+    "FactAssertion",
+    "FactBatch",
+    "FactBatchConflictError",
+    "FactCommit",
+    "FactReadStore",
+    "FactRecord",
+    "FactSelection",
+    "FactStore",
+    "FactValidationError",
+    "FactOrigin",
+    "FactSchemaRevalidationDiagnostic",
+    "FactSchemaRevalidationReceipt",
+    "FactSchemaRevalidationStatus",
+    "InterfaceTypeDefinition",
+    "LinkAssertion",
     "LinkCardinality",
     "LinkTypeDefinition",
+    "MemoryFactStore",
+    "MemoryProjectionStore",
+    "MappedSourceInput",
+    "MappedSourceLink",
+    "MappedSourceObject",
+    "MappedSourceProperty",
+    "MappedSourceSnapshot",
+    "MaterializationCut",
+    "OperationalOrigin",
+    "ObjectAssertion",
     "ObjectTypeDefinition",
     "OntologyCompiler",
     "OntologyPackageDraft",
+    "PropertyAssertion",
     "PropertyDefinition",
+    "ProjectedLink",
+    "ProjectedObject",
+    "ProjectedProperty",
+    "ProjectionDiagnostic",
+    "ProjectionFreshness",
+    "ProjectionFreshnessStatus",
+    "ProjectionMaterializationError",
+    "ProjectionReadStore",
+    "ProjectionSnapshot",
+    "ProjectionState",
+    "ProjectionStore",
+    "ProjectionUnavailableError",
+    "QueryBuilder",
+    "QueryRequest",
+    "QueryResult",
+    "SchemaChange",
+    "SchemaArtifactLock",
     "SchemaCompilationError",
     "SchemaDiagnostic",
+    "SchemaDiff",
+    "SchemaLineageError",
+    "SchemaDefaultOrigin",
+    "SchemaIdentity",
     "SchemaVersion",
+    "StateAuthority",
+    "StoredFact",
+    "SourceBinding",
+    "SourceAdapter",
+    "SourceAdapterArtifactLock",
+    "SourceAdapterContractError",
+    "SourceAdapterManifest",
+    "SourceCoverage",
+    "SourceInputCut",
+    "SourceInputRevision",
+    "SourceOrigin",
+    "ValueOrigin",
     "ValueType",
+    "compare_schemas",
+    "evaluate_projection_freshness",
+    "lock_schema_artifact",
+    "lock_source_adapter_artifact",
+    "materialize_projection",
+    "revalidate_fact_selection",
+    "validate_source_adapter_outputs",
+    "validate_deployment_profile",
 ]

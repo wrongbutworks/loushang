@@ -2,6 +2,7 @@
 
 from loushang.ontology.schema.compiler import (
     SCHEMA_FORMAT,
+    CompiledInterfaceTypeDefinition,
     CompiledLinkTypeDefinition,
     CompiledObjectTypeDefinition,
     CompiledOntologySchema,
@@ -9,12 +10,14 @@ from loushang.ontology.schema.compiler import (
     OntologyCompiler,
 )
 from loushang.ontology.schema.definitions import (
+    InterfaceTypeDefinition,
     LinkCardinality,
     LinkTypeDefinition,
     ObjectTypeDefinition,
     OntologyPackageDraft,
     PropertyDefinition,
     SchemaVersion,
+    StateAuthority,
     ValueType,
 )
 from loushang.ontology.schema.diagnostics import (
@@ -29,15 +32,18 @@ from loushang.ontology.schema.evolution import (
     SchemaLineageError,
     compare_schemas,
 )
+from loushang.ontology.schema.identity import SchemaIdentity
 
 __all__ = [
     "SCHEMA_FORMAT",
     "SCHEMA_DIFF_FORMAT",
+    "CompiledInterfaceTypeDefinition",
     "CompiledLinkTypeDefinition",
     "CompiledObjectTypeDefinition",
     "CompiledOntologySchema",
     "CompiledPropertyDefinition",
     "ChangeImpact",
+    "InterfaceTypeDefinition",
     "LinkCardinality",
     "LinkTypeDefinition",
     "ObjectTypeDefinition",
@@ -49,7 +55,9 @@ __all__ = [
     "SchemaDiagnostic",
     "SchemaDiff",
     "SchemaLineageError",
+    "SchemaIdentity",
     "SchemaVersion",
+    "StateAuthority",
     "ValueType",
     "compare_schemas",
 ]

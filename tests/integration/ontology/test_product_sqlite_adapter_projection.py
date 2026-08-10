@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+from pathlib import Path
+from uuid import UUID
+
+from loushang.ontology.deployment import (
+    DeploymentProfile,
+    lock_schema_artifact,
+    lock_source_adapter_artifact,
+    validate_deployment_profile,
+)
+from loushang.ontology.facts import (
+    AssertionKind,
+    FactBatch,
+    FactRecord,
+    PropertyAssertion,
+)
+from loushang.ontology.projection import (
+    FactOrigin,
+    ProjectionFreshnessStatus,
+    SchemaDefaultOrigin,
+    SourceOrigin,
+    evaluate_projection_freshness,
+    materialize_projection,
+)
+from loushang.ontology.query import QueryBuilder
+from loushang.ontology.schema import (
+    LinkTypeDefinition,
+    ObjectTypeDefinition,
+    OntologyCompiler,
+    OntologyPackageDraft,
+    PropertyDefinition,
+    StateAuthority,
+    ValueType,
+)
+from loushang.ontology.source import SourceAdapter, validate_source_adapter_outputs
+from loushang.ontology.storage import MemoryFactStore, SQLiteProjectionStore
+from tests.integration.ontology.fixtures.sqlite_erp_adapter import (
+    ERP_BINDING_ID,
+    TARGET_SCHEMA_IDENTITY,
+    SQLiteErpAssetAdapter,
+    advance_sqlite_erp_source,
+    erp_asset_object_id,
+    erp_owner_object_id,
+    initialize_sqlite_erp_source,
+)
+
+ASSET_ID = erp_asset_object_id("A-1")
+OWNER_ID = erp_owner_object_id("O-1")
+REVIEW_FACT_ID = UUID("10000000-0000-0000-0000-000000000101")
+
+
+def _schema():
+    return OntologyCompiler().compile(
+        OntologyPackageDraft(
+            package_id=TARGET_SCHEMA_IDENTITY.package_id,
+            namespace=TARGET_SCHEMA_IDENTITY.namespace,
+            version=TARGET_SCHEMA_IDENTITY.version,
+            object_types=(
+                ObjectTypeDefinition(
+                    "Asset",
+                    semantic_id="asset",
+                    state_authority=StateAuthority.SOURCE_BACKED,
+                    properties=(
+                        PropertyDefinition(
+                            "code",
+                            ValueType.STRING,
+                            semantic_id="asset.code",
+                            state_authority=StateAuthority.SOURCE_BACKED,
+                            required=True,
+                            indexed=True,
+                        ),
+                        PropertyDefinition(
+                            "review_status",
+                            ValueType.STRING,
+                            semantic_id="asset.review-status",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
+                            required=True,
+                        ),
+                        PropertyDefinition(
+                            "classification",
+                            ValueType.STRING,
+                            semantic_id="asset.classification",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
+                            default="unclassified",
+                        ),
+                    ),
+                ),
+                ObjectTypeDefinition(
+                    "Owner",
+                    semantic_id="owner",
+                    state_authority=StateAuthority.SOURCE_BACKED,
+                    properties=(
+                        PropertyDefinition(
+                            "name",
+                            ValueType.STRING,
+                            semantic_id="owner.name",
+                            state_authority=StateAuthority.SOURCE_BACKED,
+                            required=True,
+                        ),
+                    ),
+                ),
+            ),
+            link_types=(
+                LinkTypeDefinition(
+                    "owned_by",
+                    "Asset",
+                    "Owner",
+                    semantic_id="asset.owned-by",
+                    state_authority=StateAuthority.SOURCE_BACKED,
+                ),
+            ),
+        )
+    )
+
+
+def _fact_selection():
+    facts = MemoryFactStore()
+    facts.commit_fact_batch(
+        FactBatch(
+            "reference-review",
+            (
+                FactRecord(
+                    fact_id=REVIEW_FACT_ID,
+                    subject_id=ASSET_ID,
+                    schema_identity=TARGET_SCHEMA_IDENTITY,
+                    assertion=PropertyAssertion(
+                        "asset.review-status",
+                        "approved",
+                    ),
+                    assertion_kind=AssertionKind.ASSERTED,
+                    source_ref="reference.review-office",
+                    source_record_ref="approval:101",
+                    valid_from=2,
+                    recorded_at=3,
+                    author_ref="user:reviewer",
+                ),
+            ),
+        )
+    )
+    return facts.select_facts(valid_at=10, recorded_at=10)
+
+
+def test_product_sqlite_adapter_reaches_a_restartable_typed_projection(
+    tmp_path: Path,
+) -> None:
+    source_database = tmp_path / "erp.sqlite3"
+    projection_database = tmp_path / "ontology.sqlite3"
+    initialize_sqlite_erp_source(source_database)
+    adapter = SQLiteErpAssetAdapter(source_database)
+    schema = _schema()
+    assert isinstance(adapter, SourceAdapter)
+    assert str(source_database) not in adapter.manifest.to_json()
+    profile = DeploymentProfile(
+        deployment_id="reference-bureau",
+        schema_lock=lock_schema_artifact(schema),
+        adapter_locks=(lock_source_adapter_artifact(adapter.manifest),),
+        enabled_binding_ids=(ERP_BINDING_ID,),
+        fact_store_ref="store:reference-facts",
+        projection_store_ref="store:reference-projection",
+    )
+    source_bindings = validate_deployment_profile(
+        profile,
+        schema=schema,
+        adapter_manifests=(adapter.manifest,),
+    )
+
+    source_inputs = tuple(
+        adapter.read_snapshot(binding.binding_id)
+        for binding in adapter.manifest.bindings
+    )
+    observed_heads = tuple(
+        adapter.observe_head(binding.binding_id)
+        for binding in adapter.manifest.bindings
+    )
+    validate_source_adapter_outputs(
+        adapter.manifest,
+        source_inputs=source_inputs,
+        observed_heads=observed_heads,
+    )
+
+    selection = _fact_selection()
+    snapshot = materialize_projection(
+        selection,
+        schema,
+        source_bindings=source_bindings,
+        source_inputs=source_inputs,
+        built_at=11,
+    )
+    installed = SQLiteProjectionStore(projection_database)
+    installed.replace(snapshot)
+    installed.close()
+
+    reopened = SQLiteProjectionStore(
+        projection_database,
+        expected_schema=schema,
+    )
+    assert reopened.read_snapshot() == snapshot
+    asset = (
+        QueryBuilder(reopened)
+        .start_from_type("Asset")
+        .where("code", "==", "A-1")
+        .execute_first()
+    )
+    assert asset is not None
+    assert asset.id == ASSET_ID
+    assert asset.get("review_status") == "approved"
+    assert asset.get("classification") == "unclassified"
+    assert isinstance(asset.origin, SourceOrigin)
+    review_status = asset.property("review_status")
+    classification = asset.property("classification")
+    assert review_status is not None
+    assert review_status.origin == FactOrigin(REVIEW_FACT_ID)
+    assert classification is not None
+    assert classification.origin == SchemaDefaultOrigin(
+        TARGET_SCHEMA_IDENTITY
+    )
+    owner = QueryBuilder(reopened).start_from(asset).follow("owned_by").execute_first()
+    assert owner is not None
+    assert owner.id == OWNER_ID
+    assert owner.get("name") == "Operations"
+
+    advance_sqlite_erp_source(source_database)
+    freshness = evaluate_projection_freshness(
+        reopened.projection_state,
+        observed_fact_watermark=selection.fact_watermark,
+        observed_source_heads=(adapter.observe_head(ERP_BINDING_ID),),
+        observed_at=12,
+    )
+    assert freshness.status is ProjectionFreshnessStatus.STALE
+    installed_asset = reopened.get(ASSET_ID)
+    assert installed_asset is not None
+    assert installed_asset.get("code") == "A-1"
+    reopened.close()
