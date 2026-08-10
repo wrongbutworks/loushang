@@ -71,6 +71,19 @@ contracts, and source-head freshness. Change sets, logic bindings, derived
 computation origins, write routing, and a later SQLite physical layout remain
 deferred.
 
+## Proposed Target Designs
+
+[Domain Ontology Ecosystem And Multi-Application Deployment](key-designs/domain-ontology-ecosystem-and-deployment.md)
+proposes how the domain-neutral Ontology substrate can support independently
+delivered domain packages, mature-ontology alignments, standards knowledge,
+vendor adapters, warehouses, and one bureau deployment serving several
+applications. Environmental information systems are its first validation
+scenario; the design explicitly forbids an environmental package or vendor
+adapter dependency in `loushang.ontology`.
+
+This proposal is not Current implementation truth and is not part of the
+accepted ARD reading order until reviewed and accepted.
+
 ## Runtime Shape
 
 ```text

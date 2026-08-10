@@ -1230,6 +1230,10 @@ authority binding 误称为 Action write-back。
 
 ### 后续阶段：Product Source Adapter 与 Identity
 
+领域包、厂商 Adapter、Deployment Profile、省市多应用部署以及环保试点的边界设计，统一见
+[Domain Ontology Ecosystem And Multi-Application Deployment](../key-designs/domain-ontology-ecosystem-and-deployment.md)。
+该文档是 proposed Target key design；本调研稿不再复制其正式边界与制品合同。
+
 - application-version SourceMapping、FieldMapping 和 concrete Product adapters；
 - stable source record identity、alternate keys 和人工 identity resolution；
 - incremental cursor/change set、source coverage 和 mapping review/publish；
