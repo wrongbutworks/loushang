@@ -15,6 +15,11 @@ from loushang.ontology.facts import (
     FactRecord,
     PropertyAssertion,
 )
+from loushang.ontology.identity import (
+    IdentityCrosswalkSnapshot,
+    IdentityResolution,
+    IdentityResolutionStatus,
+)
 from loushang.ontology.projection import (
     FactOrigin,
     ProjectionFreshnessStatus,
@@ -40,13 +45,14 @@ from tests.integration.ontology.fixtures.sqlite_erp_adapter import (
     TARGET_SCHEMA_IDENTITY,
     SQLiteErpAssetAdapter,
     advance_sqlite_erp_source,
-    erp_asset_object_id,
-    erp_owner_object_id,
+    erp_asset_source_identity,
+    erp_owner_source_identity,
     initialize_sqlite_erp_source,
 )
 
-ASSET_ID = erp_asset_object_id("A-1")
-OWNER_ID = erp_owner_object_id("O-1")
+SOURCE_INSTANCE_ID = "erp:reference-bureau"
+ASSET_ID = UUID("00000000-0000-0000-0000-000000000101")
+OWNER_ID = UUID("00000000-0000-0000-0000-000000000102")
 REVIEW_FACT_ID = UUID("10000000-0000-0000-0000-000000000101")
 
 
@@ -141,16 +147,50 @@ def _fact_selection():
     return facts.select_facts(valid_at=10, recorded_at=10)
 
 
+def _identity_crosswalk() -> IdentityCrosswalkSnapshot:
+    return IdentityCrosswalkSnapshot(
+        deployment_id="reference-bureau",
+        identity_namespace="urn:loushang:reference-bureau",
+        revision="identity-revision:1",
+        entries=(
+            IdentityResolution(
+                source_identity=erp_asset_source_identity(
+                    SOURCE_INSTANCE_ID,
+                    "A-1",
+                ),
+                status=IdentityResolutionStatus.CONFIRMED,
+                canonical_object_id=ASSET_ID,
+                resolution_ref="identity-decision:asset-A-1",
+            ),
+            IdentityResolution(
+                source_identity=erp_owner_source_identity(
+                    SOURCE_INSTANCE_ID,
+                    "O-1",
+                ),
+                status=IdentityResolutionStatus.CONFIRMED,
+                canonical_object_id=OWNER_ID,
+                resolution_ref="identity-decision:owner-O-1",
+            ),
+        ),
+    )
+
+
 def test_product_sqlite_adapter_reaches_a_restartable_typed_projection(
     tmp_path: Path,
 ) -> None:
     source_database = tmp_path / "erp.sqlite3"
     projection_database = tmp_path / "ontology.sqlite3"
     initialize_sqlite_erp_source(source_database)
-    adapter = SQLiteErpAssetAdapter(source_database)
+    identity_crosswalk = _identity_crosswalk()
+    adapter = SQLiteErpAssetAdapter(
+        source_database,
+        source_instance_id=SOURCE_INSTANCE_ID,
+        identity_resolver=identity_crosswalk,
+    )
     schema = _schema()
     assert isinstance(adapter, SourceAdapter)
     assert str(source_database) not in adapter.manifest.to_json()
+    assert identity_crosswalk.deployment_id == "reference-bureau"
     profile = DeploymentProfile(
         deployment_id="reference-bureau",
         schema_lock=lock_schema_artifact(schema),

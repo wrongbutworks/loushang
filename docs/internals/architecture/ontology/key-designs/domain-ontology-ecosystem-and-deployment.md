@@ -13,6 +13,7 @@
 - Current evidence:
   - `src/loushang/ontology/schema/`
   - `src/loushang/ontology/source/`
+  - `src/loushang/ontology/identity/`
   - `src/loushang/ontology/deployment/`
   - `src/loushang/ontology/projection/`
   - `tests/ontology/`
@@ -92,8 +93,12 @@ The current implementation already provides:
   persistence with exact input cuts and all operational origin kinds;
 - a serializable Product-hosted adapter manifest, a structural adapter
   protocol, and detached-output conformance validation;
+- an immutable, deployment-scoped explicit identity crosswalk with complete
+  source-record scope, confirmed/unresolved/conflict states, deterministic
+  digest, and a read-only resolver;
 - a fixed Product-side SQLite ERP fixture proving the public adapter-to-query
-  path without placing connector code in `loushang.ontology`;
+  path and injected identity resolution without placing connector or identity
+  provider code in `loushang.ontology`;
 - content-addressed revalidation receipts for rebuilding an exact historical
   Fact selection against a compatible newer schema without rewriting Facts;
 - an immutable single-Schema Deployment Profile with exact Schema/Adapter
@@ -123,7 +128,7 @@ outputs to Ontology contracts.
 | --- | --- | --- | --- |
 | Package identity | One compiled package-shaped schema | Imports, dependency constraints, immutable lock, registry metadata | missing |
 | Source integration | Schema-bound binding, mapped inputs, exact cuts, adapter manifest, application-schema identity, structural protocol, detached-output conformance, and one fixed SQLite ERP reference slice | Concrete adapter SDK/packaging, fixtures across independent vendor implementations, and deployment composition | partial |
-| Identity | Adapter supplies canonical UUID | Deployment-bound crosswalk, alternate keys, ambiguity and review handoff | missing |
+| Identity | Product injects an immutable deployment-scoped crosswalk; only explicit confirmation yields a canonical UUID and ambiguity fails without selection | Mutable indexed provider, alternate keys, matching/review handoff, profile lock, and activation consistency | partial |
 | Deployment composition | Immutable single-Schema profile locks exact Schema and Adapter manifest content, selects enabled bindings, and validates detached artifacts | Multi-package dependency locks, provider references, lifecycle, activation and rollback | partial |
 | Durable multi-source projection | Memory and SQLite v3 preserve exact source cuts, origins, restart, and backup semantics | Operational-scale and incremental persistence only after measured need | partial |
 | Schema upgrade | Schema diff plus exact-selection Fact revalidation receipt; immutable Facts remain bound to their source schema | Package locks, source-input upgrade evidence, and deployment switch/rollback coordination | partial |
@@ -408,6 +413,15 @@ provider owns mutable crosswalk and review state. Ontology owns validation that
 materialized canonical IDs and origin references are explicit and deterministic
 for the selected cut.
 
+The accepted first slice in
+[ARD-009](../ARD-009-explicit-identity-crosswalk-snapshots.md) is intentionally
+narrower than this Target. It defines an immutable explicit provider-output
+snapshot, a read-only resolver, and confirmed/unresolved/conflict failure
+semantics. It does not implement matching, alternate keys, persistence, review,
+or a Deployment Profile identity lock. Product must retain the selected
+snapshot separately because the current `MaterializationCut` locks the resolved
+mapped payload but does not record the crosswalk revision or digest.
+
 An environmental company name, address, or similar label is evidence, not an
 automatic identity key. Cross-bureau federation must not reuse one identity
 namespace without an accepted policy and reconciliation design.
@@ -665,6 +679,9 @@ must not claim future validation as current evidence.
 - [ARD-008](../ARD-008-immutable-deployment-profile-and-artifact-locks.md)
   controls the accepted single-Schema deployment selection, exact artifact
   locks, enabled bindings, and pure compatibility validation.
+- [ARD-009](../ARD-009-explicit-identity-crosswalk-snapshots.md) controls the
+  accepted immutable explicit-crosswalk contract, complete source-record scope,
+  and the rule that ambiguity cannot produce a canonical ID.
 - [Ontology Architecture README](../README.md) controls Current implementation
   status and the accepted reading order.
 - [Operational Infrastructure Draft](../drafts/loushang-ontology-operational-infrastructure.md)

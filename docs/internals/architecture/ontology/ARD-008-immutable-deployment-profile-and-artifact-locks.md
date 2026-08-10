@@ -130,8 +130,10 @@ storage adapters.
 - artifact signatures, trust policy, distribution, and installation;
 - deployment instance lifecycle, activation, rollback, and atomic switching;
 - secret-provider, identity-provider, policy-provider, and source-instance
-  references;
+  references; ARD-009 defines a separately selected immutable identity
+  crosswalk but does not add it to Deployment Profile v1;
 - cross-deployment isolation and tenant authorization;
 - generated API profiles and compatibility reports;
-- Identity Crosswalk persistence and ambiguity resolution;
+- mutable Identity provider persistence, ambiguity review, and a future
+  crosswalk artifact lock;
 - Action write-back and reconciliation configuration.

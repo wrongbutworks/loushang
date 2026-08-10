@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from uuid import UUID, uuid5
 
+from loushang.ontology.identity import (
+    IdentityResolver,
+    SourceRecordIdentity,
+    require_confirmed_identity,
+)
 from loushang.ontology.schema import SchemaIdentity
 from loushang.ontology.source import (
     ApplicationSchemaIdentity,
@@ -27,7 +31,6 @@ TARGET_SCHEMA_IDENTITY = SchemaIdentity(
     "urn:loushang:reference:erp-assets",
     "1.0.0",
 )
-_IDENTITY_NAMESPACE = UUID("d9f45cb8-59e8-4ad2-9413-7bf5a747f107")
 
 ERP_SOURCE_BINDING = SourceBinding(
     binding_id=ERP_BINDING_ID,
@@ -52,12 +55,22 @@ ERP_ADAPTER_MANIFEST = SourceAdapterManifest(
 
 
 class SQLiteErpAssetAdapter:
-    """Read one known ERP schema; the Product host owns its database path."""
+    """Read one ERP schema using a Product-provided explicit identity resolver."""
 
     manifest = ERP_ADAPTER_MANIFEST
 
-    def __init__(self, database: str | Path) -> None:
+    def __init__(
+        self,
+        database: str | Path,
+        *,
+        source_instance_id: str,
+        identity_resolver: IdentityResolver,
+    ) -> None:
+        if not isinstance(source_instance_id, str) or not source_instance_id.strip():
+            raise ValueError("source_instance_id must be a non-empty string")
         self._database = Path(database)
+        self._source_instance_id = source_instance_id
+        self._identity_resolver = identity_resolver
 
     def read_snapshot(self, binding_id: str) -> MappedSourceInput:
         self._require_binding(binding_id)
@@ -67,7 +80,13 @@ class SQLiteErpAssetAdapter:
             revision = self._read_revision(connection)
             owners = tuple(
                 MappedSourceObject(
-                    object_id=erp_owner_object_id(owner_key),
+                    object_id=require_confirmed_identity(
+                        self._identity_resolver,
+                        erp_owner_source_identity(
+                            self._source_instance_id,
+                            owner_key,
+                        ),
+                    ),
                     object_type_id="owner",
                     source_record_ref=f"owner:{owner_key}",
                     identity_field_ref="erp_owners.owner_key",
@@ -98,7 +117,10 @@ class SQLiteErpAssetAdapter:
                 )
             )
             owner_ids = {
-                owner_key: erp_owner_object_id(owner_key)
+                owner_key: require_confirmed_identity(
+                    self._identity_resolver,
+                    erp_owner_source_identity(self._source_instance_id, owner_key),
+                )
                 for (owner_key,) in connection.execute(
                     """
                     SELECT owner_key
@@ -109,7 +131,13 @@ class SQLiteErpAssetAdapter:
             }
             assets = tuple(
                 MappedSourceObject(
-                    object_id=erp_asset_object_id(asset_key),
+                    object_id=require_confirmed_identity(
+                        self._identity_resolver,
+                        erp_asset_source_identity(
+                            self._source_instance_id,
+                            asset_key,
+                        ),
+                    ),
                     object_type_id="asset",
                     source_record_ref=f"asset:{asset_key}",
                     identity_field_ref="erp_assets.asset_key",
@@ -126,7 +154,13 @@ class SQLiteErpAssetAdapter:
             )
             links = tuple(
                 MappedSourceLink(
-                    source_id=erp_asset_object_id(asset_key),
+                    source_id=require_confirmed_identity(
+                        self._identity_resolver,
+                        erp_asset_source_identity(
+                            self._source_instance_id,
+                            asset_key,
+                        ),
+                    ),
                     link_type_id="asset.owned-by",
                     target_id=owner_ids[owner_key],
                     source_record_ref=f"asset:{asset_key}:owner",
@@ -184,16 +218,32 @@ class SQLiteErpAssetAdapter:
             raise KeyError(f"unsupported ERP source binding '{binding_id}'")
 
 
-def erp_asset_object_id(asset_key: str) -> UUID:
-    """Map one stable ERP asset key to this adapter's object namespace."""
+def erp_asset_source_identity(
+    source_instance_id: str,
+    asset_key: str,
+) -> SourceRecordIdentity:
+    """Describe one ERP asset key without deciding its canonical object ID."""
 
-    return uuid5(_IDENTITY_NAMESPACE, f"asset:{asset_key}")
+    return SourceRecordIdentity(
+        source_instance_id=source_instance_id,
+        binding_id=ERP_BINDING_ID,
+        record_type="asset",
+        source_record_key=asset_key,
+    )
 
 
-def erp_owner_object_id(owner_key: str) -> UUID:
-    """Map one stable ERP owner key to this adapter's object namespace."""
+def erp_owner_source_identity(
+    source_instance_id: str,
+    owner_key: str,
+) -> SourceRecordIdentity:
+    """Describe one ERP owner key without deciding its canonical object ID."""
 
-    return uuid5(_IDENTITY_NAMESPACE, f"owner:{owner_key}")
+    return SourceRecordIdentity(
+        source_instance_id=source_instance_id,
+        binding_id=ERP_BINDING_ID,
+        record_type="owner",
+        source_record_key=owner_key,
+    )
 
 
 def initialize_sqlite_erp_source(database: str | Path) -> None:
@@ -267,7 +317,7 @@ __all__ = [
     "SQLiteErpAssetAdapter",
     "TARGET_SCHEMA_IDENTITY",
     "advance_sqlite_erp_source",
-    "erp_asset_object_id",
-    "erp_owner_object_id",
+    "erp_asset_source_identity",
+    "erp_owner_source_identity",
     "initialize_sqlite_erp_source",
 ]

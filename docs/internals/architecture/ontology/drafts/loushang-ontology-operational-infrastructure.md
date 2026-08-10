@@ -1255,7 +1255,11 @@ authority binding 误称为 Action write-back。
 - [ARD-008](../ARD-008-immutable-deployment-profile-and-artifact-locks.md) 已完成
   单 Schema deployment profile、精确 artifact locks 与 enabled binding 校验；
   multi-package lock、provider refs、部署激活和回滚仍未实现；
-- stable source record identity、alternate keys 和人工 identity resolution；
+- [ARD-009](../ARD-009-explicit-identity-crosswalk-snapshots.md) 已完成最小显式
+  identity 边界：按 source instance、binding、record type 和 source key 定位记录，
+  仅 confirmed resolution 可产生 canonical UUID，unresolved/conflict 均显式失败；
+  mutable identity provider、alternate keys、人工 review 和 Deployment Profile lock
+  仍未实现；
 - incremental cursor/change set、partial coverage 合并状态和 mapping review/publish；
 - field-level lineage、source correction 和有限的显式 merge policy。
 

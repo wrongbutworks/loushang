@@ -87,6 +87,9 @@ def test_public_surface_has_no_direct_mutation_or_compatibility_facades() -> Non
     assert hasattr(ontology, "ProjectionStore")
     assert hasattr(ontology, "SourceBinding")
     assert hasattr(ontology, "DeploymentProfile")
+    assert hasattr(ontology, "IdentityCrosswalkSnapshot")
+    assert hasattr(ontology, "IdentityResolver")
+    assert hasattr(ontology, "SourceRecordIdentity")
     assert hasattr(ontology, "SchemaArtifactLock")
     assert hasattr(ontology, "SourceAdapterArtifactLock")
     assert hasattr(ontology, "MappedSourceInput")
@@ -95,6 +98,29 @@ def test_public_surface_has_no_direct_mutation_or_compatibility_facades() -> Non
     assert hasattr(ontology, "OperationalOrigin")
     assert hasattr(ontology, "ValueOrigin")
     assert not hasattr(ontology_facts, "MemoryFactStore")
+
+
+def test_identity_is_a_leaf_contract_injected_at_the_product_boundary() -> None:
+    identity_root = ONTOLOGY_ROOT / "identity"
+    identity_imports: list[str] = []
+    identity_consumers: list[str] = []
+
+    for path in sorted(identity_root.rglob("*.py")):
+        for imported in _absolute_imports(path):
+            if imported.startswith("loushang.ontology") and not imported.startswith(
+                "loushang.ontology.identity"
+            ):
+                identity_imports.append(f"{path.as_posix()} imports {imported}")
+
+    for path in sorted(ONTOLOGY_ROOT.rglob("*.py")):
+        if identity_root in path.parents or path == ONTOLOGY_ROOT / "__init__.py":
+            continue
+        for imported in _absolute_imports(path):
+            if imported.startswith("loushang.ontology.identity"):
+                identity_consumers.append(f"{path.as_posix()} imports {imported}")
+
+    assert identity_imports == []
+    assert identity_consumers == []
 
 
 def test_production_ontology_does_not_import_removed_compatibility_modules() -> None:

@@ -33,6 +33,16 @@ from loushang.ontology.facts import (
     PropertyAssertion,
     StoredFact,
 )
+from loushang.ontology.identity import (
+    IDENTITY_CROSSWALK_FORMAT,
+    IdentityCrosswalkSnapshot,
+    IdentityResolution,
+    IdentityResolutionError,
+    IdentityResolutionStatus,
+    IdentityResolver,
+    SourceRecordIdentity,
+    require_confirmed_identity,
+)
 from loushang.ontology.projection import (
     FACT_SCHEMA_REVALIDATION_FORMAT,
     FactOrigin,
@@ -113,6 +123,7 @@ __all__ = [
     "FACT_BATCH_FORMAT",
     "FACT_FORMAT",
     "FACT_SCHEMA_REVALIDATION_FORMAT",
+    "IDENTITY_CROSSWALK_FORMAT",
     "SCHEMA_DIFF_FORMAT",
     "SCHEMA_FORMAT",
     "SOURCE_ADAPTER_MANIFEST_FORMAT",
@@ -141,6 +152,11 @@ __all__ = [
     "FactSchemaRevalidationReceipt",
     "FactSchemaRevalidationStatus",
     "InterfaceTypeDefinition",
+    "IdentityCrosswalkSnapshot",
+    "IdentityResolution",
+    "IdentityResolutionError",
+    "IdentityResolutionStatus",
+    "IdentityResolver",
     "LinkAssertion",
     "LinkCardinality",
     "LinkTypeDefinition",
@@ -194,6 +210,7 @@ __all__ = [
     "SourceInputCut",
     "SourceInputRevision",
     "SourceOrigin",
+    "SourceRecordIdentity",
     "ValueOrigin",
     "ValueType",
     "compare_schemas",
@@ -202,6 +219,7 @@ __all__ = [
     "lock_source_adapter_artifact",
     "materialize_projection",
     "revalidate_fact_selection",
+    "require_confirmed_identity",
     "validate_source_adapter_outputs",
     "validate_deployment_profile",
 ]

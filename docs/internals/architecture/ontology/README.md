@@ -20,7 +20,9 @@ is implemented. [ARD-005](ARD-005-source-aware-sqlite-v3.md),
 source-aware projection, the Product-hosted adapter boundary, and exact
 Fact-selection reuse across schema versions. [ARD-008](ARD-008-immutable-deployment-profile-and-artifact-locks.md)
 adds the first immutable deployment selection without adding an executable
-deployment runtime.
+deployment runtime. [ARD-009](ARD-009-explicit-identity-crosswalk-snapshots.md)
+adds a Product-injected, immutable explicit identity crosswalk without adding
+an identity matcher or registry.
 
 It currently provides:
 
@@ -39,9 +41,13 @@ It currently provides:
 - deterministic source-adapter manifests that distinguish vendor application
   schema versions from target Ontology schema identity, plus detached output
   conformance checks;
+- deployment-scoped, content-addressed identity crosswalk snapshots with
+  explicit confirmed, unresolved, and conflict states, plus a read-only
+  resolver that never selects an ambiguous candidate;
 - one Product-side fixed SQLite ERP fixture under `tests/integration/ontology/`
-  proving source read, conformance, mixed materialization, durable restart,
-  typed query, and source-head freshness without adding a production connector;
+  proving injected identity resolution, source read, conformance, mixed
+  materialization, durable restart, typed query, and source-head freshness
+  without adding a production connector or identity provider;
 - deterministic source-plus-Fact object/property/link materialization, including
   property bindings independent from object-existence bindings: object existence
   and links expose `FactOrigin` or `SourceOrigin`, while ontology-owned
@@ -70,7 +76,9 @@ not require per-property Facts, while FactStore remains authoritative for
 records inside its declared scope. Memory and SQLite now preserve the same
 source cuts and origin kinds. Source adapter implementations remain hosted and
 executed by Product; Ontology serializes manifests and validates detached
-outputs but contains no connector runtime.
+outputs but contains no connector runtime. Product also owns identity matching,
+review, and mutable identity state; Ontology accepts only an explicit immutable
+resolver result at the Product Adapter boundary.
 Projection replacement installs disposable infrastructure state; it is not
 object CRUD. There is no dynamic `Ontology` facade, mutable ObjectStore,
 callable RuleEngine, direct DataFusion, or Ontology/HarnessWork Action bridge.
@@ -122,6 +130,11 @@ Schema and Adapter artifacts and returns canonical enabled bindings. It does
 not resolve store references, load plugins, run adapters, manage credentials,
 or switch installed deployments.
 
+ARD-009 defines the first executable identity boundary. A source record is
+scoped by source instance, binding, record type, and source key; only an
+explicitly confirmed resolution may become a canonical UUID. Deployment Profile
+v1 does not yet lock the selected crosswalk, so Product must retain it separately.
+
 ## Proposed Target Designs
 
 [Domain Ontology Ecosystem And Multi-Application Deployment](key-designs/domain-ontology-ecosystem-and-deployment.md)
@@ -139,7 +152,9 @@ accepted ARD reading order until reviewed and accepted.
 
 ```text
 DeploymentProfile --> validated Schema + enabled Bindings ------+
-Product-hosted adapter --> Manifest + MappedInput ---------------+
+explicit CrosswalkSnapshot --> Product-hosted adapter -----------+
+Source system -------------> Product-hosted adapter              |
+Product-hosted adapter ----> Manifest + MappedInput -------------+
                                                                |
 Source / Command Adapter --> FactStore --> FactSelection -------+
                                                                |
@@ -175,6 +190,7 @@ facts.ports --------------------------> facts.model
 facts.commit -------------------------> facts.model + facts.ports
 source.model -------------------------> schema.identity + Foundation JSON
 source.adapter -----------------------> source.model + schema.identity
+identity -----------------------------> Foundation JSON
 deployment.model ---------------------> schema.identity + Foundation JSON
 deployment.validation ----------------> deployment.model + schema + source
 projection.model ---------------------> schema + Foundation JSON
@@ -191,6 +207,8 @@ query           -X-> storage
 memory adapter  -X-> SQLite adapter
 SQLite adapter  -X-> memory adapter
 ontology        -X-> Harness / HarnessWork / Method / Product
+schema / source / facts / projection / query / storage / deployment
+                -X-> identity
 ```
 
 Product or domain adapters may depend on public Ontology contracts when they
@@ -211,6 +229,9 @@ product subsystem.
   object/property/link snapshots, exact content-digested cuts, declared
   coverage, observable source revision coordinates, adapter manifests, and
   detached conformance checks; no concrete connector;
+- `identity/`: immutable deployment-scoped explicit crosswalk snapshots,
+  source-record identity, resolution states, and a read-only resolver port; no
+  matching, review, mutable registry, or persistence service;
 - `deployment/`: immutable Schema/Adapter artifact locks, enabled binding
   selection, opaque store references, and pure compatibility validation; no
   runtime loader or deployment service;
@@ -276,8 +297,9 @@ deferred to an Action/write-back ARD.
 6. [ARD-006: Product-Hosted Source Adapter Contract](ARD-006-product-hosted-source-adapter-contract.md)
 7. [ARD-007: Fact Schema Revalidation Receipts](ARD-007-fact-schema-revalidation-receipts.md)
 8. [ARD-008: Immutable Deployment Profile And Artifact Locks](ARD-008-immutable-deployment-profile-and-artifact-locks.md)
-9. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
-10. [Schema Evolution](schema-evolution.md)
+9. [ARD-009: Explicit Identity Crosswalk Snapshots](ARD-009-explicit-identity-crosswalk-snapshots.md)
+10. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
+11. [Schema Evolution](schema-evolution.md)
 
 The larger design and reference analysis remains in
 [`drafts/loushang-ontology-operational-infrastructure.md`](drafts/loushang-ontology-operational-infrastructure.md).
