@@ -13,6 +13,7 @@
 - Current evidence:
   - `src/loushang/ontology/schema/`
   - `src/loushang/ontology/source/`
+  - `src/loushang/ontology/deployment/`
   - `src/loushang/ontology/projection/`
   - `tests/ontology/`
   - `tests/integration/ontology/`
@@ -95,6 +96,8 @@ The current implementation already provides:
   path without placing connector code in `loushang.ontology`;
 - content-addressed revalidation receipts for rebuilding an exact historical
   Fact selection against a compatible newer schema without rewriting Facts;
+- an immutable single-Schema Deployment Profile with exact Schema/Adapter
+  content locks, enabled binding selection, and opaque store references;
 - architecture gates forbidding Ontology dependencies on Product and execution
   subsystems including Harness, HarnessWork, Method, and Agent; the observed
   source also contains no domain implementation.
@@ -121,7 +124,7 @@ outputs to Ontology contracts.
 | Package identity | One compiled package-shaped schema | Imports, dependency constraints, immutable lock, registry metadata | missing |
 | Source integration | Schema-bound binding, mapped inputs, exact cuts, adapter manifest, application-schema identity, structural protocol, detached-output conformance, and one fixed SQLite ERP reference slice | Concrete adapter SDK/packaging, fixtures across independent vendor implementations, and deployment composition | partial |
 | Identity | Adapter supplies canonical UUID | Deployment-bound crosswalk, alternate keys, ambiguity and review handoff | missing |
-| Deployment composition | Caller passes schema, bindings, inputs and stores | Validated deployment profile with exact artifact locks and authority bindings | missing |
+| Deployment composition | Immutable single-Schema profile locks exact Schema and Adapter manifest content, selects enabled bindings, and validates detached artifacts | Multi-package dependency locks, provider references, lifecycle, activation and rollback | partial |
 | Durable multi-source projection | Memory and SQLite v3 preserve exact source cuts, origins, restart, and backup semantics | Operational-scale and incremental persistence only after measured need | partial |
 | Schema upgrade | Schema diff plus exact-selection Fact revalidation receipt; immutable Facts remain bound to their source schema | Package locks, source-input upgrade evidence, and deployment switch/rollback coordination | partial |
 | Mature ontology interop | Directional architecture only | External term alignment metadata, validation, import/export bridges | missing |
@@ -345,6 +348,13 @@ generated API profile
 
 Credentials and raw secret values stay in the host secret system. A profile
 refers to them by deployment-owned identifiers.
+
+The accepted first slice in
+[ARD-008](../ARD-008-immutable-deployment-profile-and-artifact-locks.md) is
+narrower than this Target: it locks one compiled Schema, exact Adapter manifest
+contents, enabled bindings, and opaque Fact/Projection store references. It
+does not yet model multi-package dependencies, provider references, generated
+API profiles, lifecycle, activation, or rollback.
 
 ## 8. Data-Island Mechanics
 
@@ -652,6 +662,9 @@ must not claim future validation as current evidence.
 - [ARD-007](../ARD-007-fact-schema-revalidation-receipts.md) controls exact
   Fact-selection revalidation and the evidence required to build a target
   projection without mutating historical Facts.
+- [ARD-008](../ARD-008-immutable-deployment-profile-and-artifact-locks.md)
+  controls the accepted single-Schema deployment selection, exact artifact
+  locks, enabled bindings, and pure compatibility validation.
 - [Ontology Architecture README](../README.md) controls Current implementation
   status and the accepted reading order.
 - [Operational Infrastructure Draft](../drafts/loushang-ontology-operational-infrastructure.md)

@@ -3,6 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
+from loushang.ontology.deployment import (
+    DeploymentProfile,
+    lock_schema_artifact,
+    lock_source_adapter_artifact,
+    validate_deployment_profile,
+)
 from loushang.ontology.facts import (
     AssertionKind,
     FactBatch,
@@ -142,8 +148,22 @@ def test_product_sqlite_adapter_reaches_a_restartable_typed_projection(
     projection_database = tmp_path / "ontology.sqlite3"
     initialize_sqlite_erp_source(source_database)
     adapter = SQLiteErpAssetAdapter(source_database)
+    schema = _schema()
     assert isinstance(adapter, SourceAdapter)
     assert str(source_database) not in adapter.manifest.to_json()
+    profile = DeploymentProfile(
+        deployment_id="reference-bureau",
+        schema_lock=lock_schema_artifact(schema),
+        adapter_locks=(lock_source_adapter_artifact(adapter.manifest),),
+        enabled_binding_ids=(ERP_BINDING_ID,),
+        fact_store_ref="store:reference-facts",
+        projection_store_ref="store:reference-projection",
+    )
+    source_bindings = validate_deployment_profile(
+        profile,
+        schema=schema,
+        adapter_manifests=(adapter.manifest,),
+    )
 
     source_inputs = tuple(
         adapter.read_snapshot(binding.binding_id)
@@ -162,8 +182,8 @@ def test_product_sqlite_adapter_reaches_a_restartable_typed_projection(
     selection = _fact_selection()
     snapshot = materialize_projection(
         selection,
-        _schema(),
-        source_bindings=adapter.manifest.bindings,
+        schema,
+        source_bindings=source_bindings,
         source_inputs=source_inputs,
         built_at=11,
     )
@@ -173,7 +193,7 @@ def test_product_sqlite_adapter_reaches_a_restartable_typed_projection(
 
     reopened = SQLiteProjectionStore(
         projection_database,
-        expected_schema=_schema(),
+        expected_schema=schema,
     )
     assert reopened.read_snapshot() == snapshot
     asset = (

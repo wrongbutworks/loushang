@@ -18,7 +18,9 @@ is implemented. [ARD-005](ARD-005-source-aware-sqlite-v3.md),
 [ARD-006](ARD-006-product-hosted-source-adapter-contract.md), and
 [ARD-007](ARD-007-fact-schema-revalidation-receipts.md) now close durable
 source-aware projection, the Product-hosted adapter boundary, and exact
-Fact-selection reuse across schema versions.
+Fact-selection reuse across schema versions. [ARD-008](ARD-008-immutable-deployment-profile-and-artifact-locks.md)
+adds the first immutable deployment selection without adding an executable
+deployment runtime.
 
 It currently provides:
 
@@ -57,7 +59,10 @@ It currently provides:
 - SQLite v3 source-aware cut/origin persistence, corruption checks, schema
   identity, restart, and backup;
 - content-addressed Fact schema-revalidation receipts that authorize an exact
-  old-schema Fact selection for one target schema without rewriting Facts.
+  old-schema Fact selection for one target schema without rewriting Facts;
+- strict deployment profiles that independently lock compiled Schema identity
+  and content, Adapter version and manifest content, enabled bindings, and
+  opaque Fact/Projection store references.
 
 The materialization path accepts both a detached `FactSelection` and
 immutable mapped source snapshots. Ordinary source-backed values therefore do
@@ -109,8 +114,13 @@ structural Product-hosted protocol, and public output conformance boundary;
 Ontology still does not run vendor code. ARD-007 permits an exact old-schema
 Fact selection to be validated for a target schema through a content-addressed
 receipt recorded in the materialization cut. Change sets, logic bindings,
-derived computation origins, write routing, multi-package profiles, full Fact
-journal migration, and deployment switching remain deferred.
+derived computation origins, write routing, multi-package dependency profiles,
+full Fact journal migration, and deployment switching remain deferred.
+
+ARD-008 defines the accepted single-Schema deployment lock. It validates exact
+Schema and Adapter artifacts and returns canonical enabled bindings. It does
+not resolve store references, load plugins, run adapters, manage credentials,
+or switch installed deployments.
 
 ## Proposed Target Designs
 
@@ -128,7 +138,8 @@ accepted ARD reading order until reviewed and accepted.
 ## Runtime Shape
 
 ```text
-Product-hosted adapter --> Manifest + Binding + MappedInput ----+
+DeploymentProfile --> validated Schema + enabled Bindings ------+
+Product-hosted adapter --> Manifest + MappedInput ---------------+
                                                                |
 Source / Command Adapter --> FactStore --> FactSelection -------+
                                                                |
@@ -164,6 +175,8 @@ facts.ports --------------------------> facts.model
 facts.commit -------------------------> facts.model + facts.ports
 source.model -------------------------> schema.identity + Foundation JSON
 source.adapter -----------------------> source.model + schema.identity
+deployment.model ---------------------> schema.identity + Foundation JSON
+deployment.validation ----------------> deployment.model + schema + source
 projection.model ---------------------> schema + Foundation JSON
 projection.ports ---------------------> projection.model
 projection.materializer -------------> facts.ports + source
@@ -198,6 +211,9 @@ product subsystem.
   object/property/link snapshots, exact content-digested cuts, declared
   coverage, observable source revision coordinates, adapter manifests, and
   detached conformance checks; no concrete connector;
+- `deployment/`: immutable Schema/Adapter artifact locks, enabled binding
+  selection, opaque store references, and pure compatibility validation; no
+  runtime loader or deployment service;
 - `projection/model.py`: immutable object, property, link, build state,
   value origins, materialization cut, freshness observation, and snapshot;
 - `projection/ports.py`: projection reads and atomic replacement;
@@ -259,8 +275,9 @@ deferred to an Action/write-back ARD.
 5. [ARD-005: Source-Aware SQLite v3](ARD-005-source-aware-sqlite-v3.md)
 6. [ARD-006: Product-Hosted Source Adapter Contract](ARD-006-product-hosted-source-adapter-contract.md)
 7. [ARD-007: Fact Schema Revalidation Receipts](ARD-007-fact-schema-revalidation-receipts.md)
-8. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
-9. [Schema Evolution](schema-evolution.md)
+8. [ARD-008: Immutable Deployment Profile And Artifact Locks](ARD-008-immutable-deployment-profile-and-artifact-locks.md)
+9. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
+10. [Schema Evolution](schema-evolution.md)
 
 The larger design and reference analysis remains in
 [`drafts/loushang-ontology-operational-infrastructure.md`](drafts/loushang-ontology-operational-infrastructure.md).

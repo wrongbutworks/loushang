@@ -61,9 +61,11 @@ Fact/Provenance spine、[ARD-001](../ARD-001-factstore-semantic-authority.md)
 - 带 `storage_layout=source-aware-projection` 的 SQLite v3 严格格式检测、
   source cut/origin 精确恢复、重启和在线备份；
 - Product-hosted `SourceAdapterManifest`、结构化 Adapter protocol 与脱离实现的
-  output conformance 校验；
+  output conformance 校验，以及固定 SQLite ERP 的 Product-side 端到端证据；
 - 对精确 FactSelection 的 schema revalidation receipt，可在不修改旧 Fact 的前提下
-  构建兼容的新 schema 投影。
+  构建兼容的新 schema 投影；
+- 单 Schema 的 immutable `DeploymentProfile`，分别锁定 Schema identity/content、
+  Adapter version/manifest content、enabled bindings 和不含凭据的 store refs。
 
 动态 `Ontology` facade、Callable RuleEngine、直接 DataFusion、公开 ObjectStore mutation
 以及尚无正式 Action 语义的 HarnessWork bridge 已删除；`ontology.core` 也已整体退出
@@ -1250,6 +1252,9 @@ authority binding 误称为 Action write-back。
   conformance；concrete Product adapters、SDK/包分发仍未实现；
 - [ARD-007](../ARD-007-fact-schema-revalidation-receipts.md) 已支持精确 FactSelection
   在兼容新 schema 下的不可变重校验；source mapping/input 的升级凭据与部署切换仍未实现；
+- [ARD-008](../ARD-008-immutable-deployment-profile-and-artifact-locks.md) 已完成
+  单 Schema deployment profile、精确 artifact locks 与 enabled binding 校验；
+  multi-package lock、provider refs、部署激活和回滚仍未实现；
 - stable source record identity、alternate keys 和人工 identity resolution；
 - incremental cursor/change set、partial coverage 合并状态和 mapping review/publish；
 - field-level lineage、source correction 和有限的显式 merge policy。

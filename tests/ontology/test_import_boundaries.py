@@ -86,6 +86,9 @@ def test_public_surface_has_no_direct_mutation_or_compatibility_facades() -> Non
     assert hasattr(ontology_storage, "SQLiteProjectionStore")
     assert hasattr(ontology, "ProjectionStore")
     assert hasattr(ontology, "SourceBinding")
+    assert hasattr(ontology, "DeploymentProfile")
+    assert hasattr(ontology, "SchemaArtifactLock")
+    assert hasattr(ontology, "SourceAdapterArtifactLock")
     assert hasattr(ontology, "MappedSourceInput")
     assert hasattr(ontology, "MappedSourceLink")
     assert hasattr(ontology, "MaterializationCut")
@@ -109,6 +112,7 @@ def test_ontology_internal_dependency_direction() -> None:
         (
             Path("src/loushang/ontology/schema"),
             (
+                "loushang.ontology.deployment",
                 "loushang.ontology.facts",
                 "loushang.ontology.projection",
                 "loushang.ontology.query",
@@ -119,6 +123,7 @@ def test_ontology_internal_dependency_direction() -> None:
         (
             Path("src/loushang/ontology/source"),
             (
+                "loushang.ontology.deployment",
                 "loushang.ontology.facts",
                 "loushang.ontology.projection",
                 "loushang.ontology.query",
@@ -128,6 +133,7 @@ def test_ontology_internal_dependency_direction() -> None:
         (
             Path("src/loushang/ontology/query"),
             (
+                "loushang.ontology.deployment",
                 "loushang.ontology.facts",
                 "loushang.ontology.storage",
             ),
@@ -135,6 +141,7 @@ def test_ontology_internal_dependency_direction() -> None:
         (
             Path("src/loushang/ontology/storage"),
             (
+                "loushang.ontology.deployment",
                 "loushang.ontology.query",
                 "loushang.ontology.rules",
                 "loushang.ontology.fusion",
@@ -145,6 +152,7 @@ def test_ontology_internal_dependency_direction() -> None:
         (
             Path("src/loushang/ontology/facts"),
             (
+                "loushang.ontology.deployment",
                 "loushang.ontology.projection",
                 "loushang.ontology.query",
                 "loushang.ontology.storage",
@@ -156,9 +164,19 @@ def test_ontology_internal_dependency_direction() -> None:
         (
             Path("src/loushang/ontology/projection"),
             (
+                "loushang.ontology.deployment",
                 "loushang.ontology.query",
                 "loushang.ontology.storage",
                 "loushang.harnesswork",
+            ),
+        ),
+        (
+            Path("src/loushang/ontology/deployment"),
+            (
+                "loushang.ontology.facts",
+                "loushang.ontology.projection",
+                "loushang.ontology.query",
+                "loushang.ontology.storage",
             ),
         ),
     )

@@ -5,6 +5,16 @@ by external sources. Object, property, and link graphs are immutable,
 replaceable snapshots and never a second business-mutation surface.
 """
 
+from loushang.ontology.deployment import (
+    DEPLOYMENT_PROFILE_FORMAT,
+    DeploymentProfile,
+    DeploymentProfileValidationError,
+    SchemaArtifactLock,
+    SourceAdapterArtifactLock,
+    lock_schema_artifact,
+    lock_source_adapter_artifact,
+    validate_deployment_profile,
+)
 from loushang.ontology.facts import (
     FACT_BATCH_FORMAT,
     FACT_FORMAT,
@@ -99,6 +109,7 @@ from loushang.ontology.source import (
 from loushang.ontology.storage import MemoryFactStore, MemoryProjectionStore
 
 __all__ = [
+    "DEPLOYMENT_PROFILE_FORMAT",
     "FACT_BATCH_FORMAT",
     "FACT_FORMAT",
     "FACT_SCHEMA_REVALIDATION_FORMAT",
@@ -114,6 +125,8 @@ __all__ = [
     "CompiledObjectTypeDefinition",
     "CompiledOntologySchema",
     "CompiledPropertyDefinition",
+    "DeploymentProfile",
+    "DeploymentProfileValidationError",
     "FactAssertion",
     "FactBatch",
     "FactBatchConflictError",
@@ -162,6 +175,7 @@ __all__ = [
     "QueryRequest",
     "QueryResult",
     "SchemaChange",
+    "SchemaArtifactLock",
     "SchemaCompilationError",
     "SchemaDiagnostic",
     "SchemaDiff",
@@ -173,6 +187,7 @@ __all__ = [
     "StoredFact",
     "SourceBinding",
     "SourceAdapter",
+    "SourceAdapterArtifactLock",
     "SourceAdapterContractError",
     "SourceAdapterManifest",
     "SourceCoverage",
@@ -183,7 +198,10 @@ __all__ = [
     "ValueType",
     "compare_schemas",
     "evaluate_projection_freshness",
+    "lock_schema_artifact",
+    "lock_source_adapter_artifact",
     "materialize_projection",
     "revalidate_fact_selection",
     "validate_source_adapter_outputs",
+    "validate_deployment_profile",
 ]

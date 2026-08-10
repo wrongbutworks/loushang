@@ -2,6 +2,10 @@
 
 Status: Accepted, 2026-08-10.
 
+[ARD-008](ARD-008-immutable-deployment-profile-and-artifact-locks.md) later
+locks exact Adapter manifest content and selects enabled bindings without
+moving Adapter execution into Ontology.
+
 ## Context
 
 Ontology accepts `SourceBinding`, `MappedSourceInput`, and observable source
@@ -87,10 +91,10 @@ Ontology core --------------X Product, vendor package, connector runtime
 The fixed Product-side fixture in
 [`tests/integration/ontology/`](../../../../tests/integration/ontology/)
 reads one known SQLite ERP schema and exercises the entire public boundary:
-manifest delivery, detached output conformance, source-plus-Fact-plus-default
-materialization, SQLite v3 restart, typed query, and stale source-head
-observation. It is contract evidence only; it is not a shipped connector or a
-generic SQL mapping framework.
+ARD-008 Profile validation, manifest delivery, detached output conformance,
+source-plus-Fact-plus-default materialization, SQLite v3 restart, typed query,
+and stale source-head observation. It is contract evidence only; it is not a
+shipped connector or a generic SQL mapping framework.
 
 ## Deferred
 
