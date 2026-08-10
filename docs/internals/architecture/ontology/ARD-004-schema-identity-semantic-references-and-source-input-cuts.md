@@ -2,6 +2,12 @@
 
 Status: Accepted, 2026-08-10.
 
+[ARD-005](ARD-005-source-aware-sqlite-v3.md) later persists these exact cuts in
+SQLite v3. [ARD-006](ARD-006-product-hosted-source-adapter-contract.md) places
+schema-bound bindings in a versioned vendor manifest, and
+[ARD-007](ARD-007-fact-schema-revalidation-receipts.md) defines explicit reuse
+of old-schema Fact selections without weakening the identity check.
+
 ## Context
 
 ARD-003 established package-local stable semantic IDs, declared state
@@ -173,7 +179,9 @@ Costs:
 - multi-package `DeploymentProfile` and installed-profile identity;
 - package dependency locks, artifact registries, signing, and distribution;
 - online Fact/schema migration and cross-version journal policy;
-- Adapter Manifest and source-application/schema compatibility metadata;
+- concrete adapter packaging, registry, and deployment composition beyond the
+  ARD-006 manifest and conformance boundary;
 - partial snapshot merge state, change sets, CDC, and scheduling;
 - source-backed write routing and Action reconciliation;
-- the next SQLite physical layout for durable multi-source projections.
+- incremental projection persistence beyond ARD-005's whole-snapshot SQLite v3
+  layout.

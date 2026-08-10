@@ -53,19 +53,23 @@ Fact/Provenance spine、[ARD-001](../ARD-001-factstore-semantic-authority.md)
 
 - package/namespace/version、类型、接口、约束、编译与 schema evolution；
 - asserted/derived/inferred Fact、双时间、provenance、correction lineage；
-- append-only Memory/SQLite v2 FactStore、纯 commit planner 和 idempotent FactBatch；
+- append-only Memory/SQLite FactStore、纯 commit planner 和 idempotent FactBatch；
 - 确定性 Fact materializer、immutable ProjectionSnapshot 和 typed query；
 - source-backed object/property/link 的 versioned binding、mapped snapshot、
   `MaterializationCut`、完整 origin 与显式 freshness；
 - 原子 whole-snapshot ProjectionStore replacement，以及独立的 Memory/SQLite adapters；
-- 带 `storage_layout=phase2` 的 SQLite v2 严格格式检测、重启和在线备份。
+- 带 `storage_layout=source-aware-projection` 的 SQLite v3 严格格式检测、
+  source cut/origin 精确恢复、重启和在线备份；
+- Product-hosted `SourceAdapterManifest`、结构化 Adapter protocol 与脱离实现的
+  output conformance 校验；
+- 对精确 FactSelection 的 schema revalidation receipt，可在不修改旧 Fact 的前提下
+  构建兼容的新 schema 投影。
 
 动态 `Ontology` facade、Callable RuleEngine、直接 DataFusion、公开 ObjectStore mutation
 以及尚无正式 Action 语义的 HarnessWork bridge 已删除；`ontology.core` 也已整体退出
 源码。当前主要缺口是：
 
 - 还没有负责调度、重试和发布 diagnostics 的 runtime/materialization coordinator；
-- FactBatch 尚未绑定明确的 published schema identity；
 - 还没有将 ontology-owned command 编译为 deterministic FactBatch、将 source-backed
   command 规划为显式 source-write contract 的编译层；
 - safe derivation 尚未重建；source mapping 已具备纯 contract，但没有 Product connector、
@@ -1230,16 +1234,22 @@ authority binding 误称为 Action write-back。
 - 已明确 authority 冒充、binding/input 不匹配、多来源 object/link 冲突、未知 source
   head 和 mapped link endpoint 的失败语义。
 
-读取与物化 contract 已完成这一轮校准；下一步可以单独决策 SQLite source cut/origin
-物理布局，不在本阶段夹带 migration 或兼容层。
+读取与物化 contract 已完成这一轮校准；
+[ARD-005](../ARD-005-source-aware-sqlite-v3.md) 已用 SQLite v3 持久化 source cut 与
+完整 origin，并保持 whole-snapshot replacement、重启和备份语义。没有引入 v2
+兼容层或 migration。
 
-### 后续阶段：Product Source Adapter 与 Identity
+### 当前窄边界与后续阶段：Product Source Adapter 与 Identity
 
 领域包、厂商 Adapter、Deployment Profile、省市多应用部署以及环保试点的边界设计，统一见
 [Domain Ontology Ecosystem And Multi-Application Deployment](../key-designs/domain-ontology-ecosystem-and-deployment.md)。
 该文档是 proposed Target key design；本调研稿不再复制其正式边界与制品合同。
 
-- application-version SourceMapping、FieldMapping 和 concrete Product adapters；
+- [ARD-006](../ARD-006-product-hosted-source-adapter-contract.md) 已完成
+  application-schema identity、Adapter manifest、结构化 protocol 与 detached output
+  conformance；concrete Product adapters、SDK/包分发仍未实现；
+- [ARD-007](../ARD-007-fact-schema-revalidation-receipts.md) 已支持精确 FactSelection
+  在兼容新 schema 下的不可变重校验；source mapping/input 的升级凭据与部署切换仍未实现；
 - stable source record identity、alternate keys 和人工 identity resolution；
 - incremental cursor/change set、partial coverage 合并状态和 mapping review/publish；
 - field-level lineage、source correction 和有限的显式 merge policy。

@@ -26,9 +26,20 @@ from loushang.ontology.projection.ports import (
     ProjectionStore,
     ProjectionUnavailableError,
 )
+from loushang.ontology.projection.revalidation import revalidate_fact_selection
+from loushang.ontology.projection.revalidation_model import (
+    FACT_SCHEMA_REVALIDATION_FORMAT,
+    FactSchemaRevalidationDiagnostic,
+    FactSchemaRevalidationReceipt,
+    FactSchemaRevalidationStatus,
+)
 
 __all__ = [
+    "FACT_SCHEMA_REVALIDATION_FORMAT",
     "FactOrigin",
+    "FactSchemaRevalidationDiagnostic",
+    "FactSchemaRevalidationReceipt",
+    "FactSchemaRevalidationStatus",
     "MaterializationCut",
     "OperationalOrigin",
     "ProjectedLink",
@@ -48,4 +59,5 @@ __all__ = [
     "ValueOrigin",
     "evaluate_projection_freshness",
     "materialize_projection",
+    "revalidate_fact_selection",
 ]

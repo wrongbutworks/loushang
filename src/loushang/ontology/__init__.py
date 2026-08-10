@@ -24,7 +24,11 @@ from loushang.ontology.facts import (
     StoredFact,
 )
 from loushang.ontology.projection import (
+    FACT_SCHEMA_REVALIDATION_FORMAT,
     FactOrigin,
+    FactSchemaRevalidationDiagnostic,
+    FactSchemaRevalidationReceipt,
+    FactSchemaRevalidationStatus,
     MaterializationCut,
     OperationalOrigin,
     ProjectedLink,
@@ -44,6 +48,7 @@ from loushang.ontology.projection import (
     ValueOrigin,
     evaluate_projection_freshness,
     materialize_projection,
+    revalidate_fact_selection,
 )
 from loushang.ontology.query import QueryBuilder, QueryRequest, QueryResult
 from loushang.ontology.schema import (
@@ -74,23 +79,34 @@ from loushang.ontology.schema import (
     compare_schemas,
 )
 from loushang.ontology.source import (
+    SOURCE_ADAPTER_MANIFEST_FORMAT,
+    SOURCE_BINDING_FORMAT,
+    ApplicationSchemaIdentity,
     MappedSourceInput,
     MappedSourceLink,
     MappedSourceObject,
     MappedSourceProperty,
     MappedSourceSnapshot,
+    SourceAdapter,
+    SourceAdapterContractError,
+    SourceAdapterManifest,
     SourceBinding,
     SourceCoverage,
     SourceInputCut,
     SourceInputRevision,
+    validate_source_adapter_outputs,
 )
 from loushang.ontology.storage import MemoryFactStore, MemoryProjectionStore
 
 __all__ = [
     "FACT_BATCH_FORMAT",
     "FACT_FORMAT",
+    "FACT_SCHEMA_REVALIDATION_FORMAT",
     "SCHEMA_DIFF_FORMAT",
     "SCHEMA_FORMAT",
+    "SOURCE_ADAPTER_MANIFEST_FORMAT",
+    "SOURCE_BINDING_FORMAT",
+    "ApplicationSchemaIdentity",
     "AssertionKind",
     "ChangeImpact",
     "CompiledInterfaceTypeDefinition",
@@ -108,6 +124,9 @@ __all__ = [
     "FactStore",
     "FactValidationError",
     "FactOrigin",
+    "FactSchemaRevalidationDiagnostic",
+    "FactSchemaRevalidationReceipt",
+    "FactSchemaRevalidationStatus",
     "InterfaceTypeDefinition",
     "LinkAssertion",
     "LinkCardinality",
@@ -153,6 +172,9 @@ __all__ = [
     "StateAuthority",
     "StoredFact",
     "SourceBinding",
+    "SourceAdapter",
+    "SourceAdapterContractError",
+    "SourceAdapterManifest",
     "SourceCoverage",
     "SourceInputCut",
     "SourceInputRevision",
@@ -162,4 +184,6 @@ __all__ = [
     "compare_schemas",
     "evaluate_projection_freshness",
     "materialize_projection",
+    "revalidate_fact_selection",
+    "validate_source_adapter_outputs",
 ]

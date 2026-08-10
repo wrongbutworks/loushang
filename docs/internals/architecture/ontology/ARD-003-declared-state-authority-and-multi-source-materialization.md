@@ -6,13 +6,14 @@ Tracking: [#439](https://github.com/zhnt/loushang/issues/439).
 
 This decision partially supersedes ARD-001 and narrowly amends the
 materialization and freshness parts of ARD-002. Its implemented foundation
-slices change runtime and schema contracts but keep the Phase 2 SQLite v2 table
-layout. Stable semantic IDs and StateAuthority declarations are implemented in
+slices originally kept the Phase 2 SQLite v2 table layout. Stable semantic IDs
+and StateAuthority declarations are implemented in
 the schema v3 contract. Concrete source bindings, full mapped object/property/
 link snapshots, multi-input cuts, operational origins, authority failure
 contracts, and source-head freshness are implemented for the Memory-only
-slices. Change sets, logic bindings, transient derivation, and SQLite source
-persistence remain unimplemented.
+slices. [ARD-005](ARD-005-source-aware-sqlite-v3.md) later implements durable
+SQLite source cuts and origins. Change sets, logic bindings, and transient
+derivation remain unimplemented.
 
 [ARD-004](ARD-004-schema-identity-semantic-references-and-source-input-cuts.md)
 later refines this decision's identity and reproducibility coordinates: Facts
@@ -344,11 +345,9 @@ The following ARD-001 decisions remain:
 - failed projection installation cannot discard accepted semantic records;
 - raw, unmapped external records are not Ontology Facts.
 
-ARD-002 remains authoritative for port separation, adapter independence,
-immutable whole-snapshot replacement, and the currently implemented SQLite v2
-layout. Later implementation decisions may replace only its remaining Fact-only
-materialization assumptions and physical layout as needed. No compatibility
-reader or migration is implied.
+ARD-002 remains authoritative for port separation, adapter independence, and
+immutable whole-snapshot replacement. Its then-current SQLite v2 layout was
+later replaced by ARD-005; no compatibility reader or migration is implied.
 
 This ARD also supersedes the target identity rule in
 [Schema Evolution](schema-evolution.md): object-type, property, and link-type
@@ -448,8 +447,9 @@ Completed in the Memory-only mapped-source and origin-contract slices:
   link endpoints, and multi-source freshness are explicit regression contracts;
 - `ProjectionState` now owns a `MaterializationCut` with exact schema, source,
   Fact, validity, and recording coordinates;
-- SQLite v2 explicitly rejects source cuts and `SourceOrigin` values rather
-  than silently discarding lineage;
+- at this decision's first slice, SQLite v2 explicitly rejected source cuts and
+  `SourceOrigin` values rather than silently discarding lineage; ARD-005 later
+  supplied their durable representation;
 - Ontology gains no import dependency on Harness, HarnessWork, Method, Product,
   or a concrete source adapter.
 
@@ -458,8 +458,6 @@ Remaining gates after this slice:
 - reproducible change-set payloads with retained base-revision chains;
 - concrete versioned logic bindings and a computation origin before transient
   derived values enter a projection;
-- a new physical storage decision before SQLite persists source revision
-  vectors and source origins;
 - source-backed write routing, acknowledgement, and reconciliation remain in a
   later Action/write-back ARD.
 
@@ -472,7 +470,8 @@ Remaining gates after this slice:
 - source-specific freshness and query dependency aggregation;
 - multi-source precedence, merge, and identity-resolution policies;
 - selective factization of source-backed operational state;
-- the physical SQLite layout after the contracts stabilize.
+- incremental physical persistence beyond ARD-005's whole-snapshot SQLite v3
+  layout.
 
 ## Evidence Reviewed
 

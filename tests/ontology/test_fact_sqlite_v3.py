@@ -118,7 +118,7 @@ def _classification_batch() -> FactBatch:
     )
 
 
-def test_sqlite_fact_adapter_writes_directly_to_phase2_fact_tables(
+def test_sqlite_fact_adapter_writes_directly_to_v3_fact_tables(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "facts.sqlite3"
@@ -143,7 +143,7 @@ def test_sqlite_fact_adapter_writes_directly_to_phase2_fact_tables(
             1,
         )
 
-    assert SQLITE_STORAGE_FORMAT_VERSION == 2
+    assert SQLITE_STORAGE_FORMAT_VERSION == 3
     assert {"semantic_facts", "fact_batches"} <= tables
     assert metadata["fact_watermark"] == "1"
 

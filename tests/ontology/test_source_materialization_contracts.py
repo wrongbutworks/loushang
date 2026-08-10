@@ -195,6 +195,7 @@ def test_whole_snapshot_materialization_rejects_incomplete_source_coverage(
         "mapping-v1",
         SOURCE_SCHEMA_IDENTITY,
         object_existence_ids=("asset",),
+        coverage=coverage,
     )
     source_input = MappedSourceInput(
         binding_id="erp.assets",
@@ -212,6 +213,31 @@ def test_whole_snapshot_materialization_rejects_incomplete_source_coverage(
             source_inputs=(source_input,),
         )
     ) == {"source_coverage_unsupported"}
+
+
+def test_source_input_coverage_must_match_its_binding_contract() -> None:
+    binding = SourceBinding(
+        "erp.assets",
+        "mapping-v1",
+        SOURCE_SCHEMA_IDENTITY,
+        object_existence_ids=("asset",),
+    )
+    source_input = MappedSourceInput(
+        binding_id="erp.assets",
+        mapping_version="mapping-v1",
+        source_revision="revision-1",
+        coverage=SourceCoverage.PARTIAL,
+        payload=MappedSourceSnapshot(),
+    )
+
+    assert _codes(
+        lambda: materialize_projection(
+            _empty_selection(),
+            _source_schema(),
+            source_bindings=(binding,),
+            source_inputs=(source_input,),
+        )
+    ) == {"source_coverage_mismatch"}
 
 
 def test_source_binding_cannot_claim_ontology_owned_state() -> None:

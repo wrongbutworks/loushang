@@ -18,6 +18,8 @@ from loushang.foundation.json import (
 )
 from loushang.ontology.schema.identity import SchemaIdentity
 
+SOURCE_BINDING_FORMAT = "loushang.ontology.source-binding/v1"
+
 
 def _non_empty_text(name: str, value: object) -> str:
     if not isinstance(value, str) or not value.strip():
@@ -102,12 +104,15 @@ class SourceBinding:
     object_existence_ids: tuple[str, ...] = ()
     property_ids: tuple[str, ...] = ()
     link_type_ids: tuple[str, ...] = ()
+    coverage: SourceCoverage = SourceCoverage.COMPLETE
 
     def __post_init__(self) -> None:
         _non_empty_text("binding_id", self.binding_id)
         _non_empty_text("mapping_version", self.mapping_version)
         if not isinstance(self.schema_identity, SchemaIdentity):
             raise TypeError("schema_identity must be a SchemaIdentity")
+        if not isinstance(self.coverage, SourceCoverage):
+            raise TypeError("coverage must be a SourceCoverage")
         for name in ("object_existence_ids", "property_ids", "link_type_ids"):
             raw = tuple(getattr(self, name))
             if any(not isinstance(item, str) for item in raw):
@@ -126,6 +131,36 @@ class SourceBinding:
             raise ValueError(
                 "source binding must declare at least one authority target"
             )
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return {
+            "format": SOURCE_BINDING_FORMAT,
+            "binding_id": self.binding_id,
+            "mapping_version": self.mapping_version,
+            "schema_identity": self.schema_identity.to_dict(),
+            "object_existence_ids": list(self.object_existence_ids),
+            "property_ids": list(self.property_ids),
+            "link_type_ids": list(self.link_type_ids),
+            "coverage": self.coverage.value,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> SourceBinding:
+        document = require_json_mapping(value, name="source binding")
+        if document.get("format") != SOURCE_BINDING_FORMAT:
+            raise ValueError("unsupported source binding format")
+        return cls(
+            binding_id=_document_text(document, "binding_id"),
+            mapping_version=_document_text(document, "mapping_version"),
+            schema_identity=SchemaIdentity.from_dict(document["schema_identity"]),
+            object_existence_ids=_document_text_tuple(
+                document,
+                "object_existence_ids",
+            ),
+            property_ids=_document_text_tuple(document, "property_ids"),
+            link_type_ids=_document_text_tuple(document, "link_type_ids"),
+            coverage=SourceCoverage(_document_text(document, "coverage")),
+        )
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -403,7 +438,28 @@ class MappedSourceInput:
         )
 
 
+def _document_text(document: dict[str, JSONValue], name: str) -> str:
+    try:
+        return _non_empty_text(name, document[name])
+    except KeyError as exc:
+        raise ValueError(f"source binding is missing {name}") from exc
+
+
+def _document_text_tuple(
+    document: dict[str, JSONValue],
+    name: str,
+) -> tuple[str, ...]:
+    try:
+        value = document[name]
+    except KeyError as exc:
+        raise ValueError(f"source binding is missing {name}") from exc
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValueError(f"source binding {name} must be a list of strings")
+    return tuple(cast(list[str], value))
+
+
 __all__ = [
+    "SOURCE_BINDING_FORMAT",
     "MappedSourceInput",
     "MappedSourceLink",
     "MappedSourceObject",

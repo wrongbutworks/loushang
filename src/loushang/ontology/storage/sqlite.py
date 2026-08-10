@@ -1,4 +1,4 @@
-"""SQLite v2 adapters for semantic facts and immutable projections."""
+"""SQLite v3 adapters for semantic facts and source-aware projections."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 from typing import cast
 from uuid import UUID
 
-from loushang.foundation.json import dump_json_value
+from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
 from loushang.ontology.facts.commit import (
     CommittedFactBatch,
     prepare_fact_commit,
@@ -21,7 +21,6 @@ from loushang.ontology.facts.model import (
     FactBatch,
     FactRecord,
     FactValidationError,
-    ObjectAssertion,
 )
 from loushang.ontology.facts.ports import FactCommit, FactSelection, StoredFact
 from loushang.ontology.projection import (
@@ -43,10 +42,11 @@ from loushang.ontology.schema import (
     SchemaIdentity,
     ValueType,
 )
+from loushang.ontology.source import SourceCoverage, SourceInputCut
 
 SQLITE_STORAGE_FORMAT = "loushang.ontology.sqlite"
-SQLITE_STORAGE_FORMAT_VERSION = 2
-SQLITE_STORAGE_LAYOUT = "phase2"
+SQLITE_STORAGE_FORMAT_VERSION = 3
+SQLITE_STORAGE_LAYOUT = "source-aware-projection"
 
 _REQUIRED_TABLES = frozenset(
     {
@@ -55,6 +55,7 @@ _REQUIRED_TABLES = frozenset(
         "semantic_facts",
         "fact_batches",
         "projection_metadata",
+        "projection_source_inputs",
         "projection_objects",
         "projection_properties",
         "projection_links",
@@ -76,13 +77,91 @@ _REQUIRED_METADATA_KEYS = frozenset(
     }
 )
 
+_ORIGIN_FACT = "fact"
+_ORIGIN_SOURCE = "source"
+_ORIGIN_SCHEMA_DEFAULT = "schema_default"
+
+
+def _encode_origin(
+    origin: FactOrigin | SourceOrigin | SchemaDefaultOrigin,
+) -> tuple[str, str]:
+    if isinstance(origin, FactOrigin):
+        kind = _ORIGIN_FACT
+        document: dict[str, JSONValue] = {"fact_id": str(origin.fact_id)}
+    elif isinstance(origin, SourceOrigin):
+        kind = _ORIGIN_SOURCE
+        document = {
+            "binding_id": origin.binding_id,
+            "mapping_version": origin.mapping_version,
+            "source_revision": origin.source_revision,
+            "source_record_ref": origin.source_record_ref,
+            "field_ref": origin.field_ref,
+        }
+    elif isinstance(origin, SchemaDefaultOrigin):
+        kind = _ORIGIN_SCHEMA_DEFAULT
+        document = {"schema_identity": origin.schema_identity.to_dict()}
+    else:  # pragma: no cover - public projection values prevent this state
+        raise TypeError("unsupported projection origin")
+    return kind, dump_json_value(document, name="projection origin", sort_keys=True)
+
+
+def _decode_origin(
+    kind: object,
+    payload: object,
+) -> FactOrigin | SourceOrigin | SchemaDefaultOrigin:
+    if not isinstance(kind, str) or not isinstance(payload, str):
+        raise FactValidationError("stored projection origin is invalid")
+    document = require_json_mapping(json.loads(payload), name="projection origin")
+    if kind == _ORIGIN_FACT:
+        _require_origin_keys(document, {"fact_id"})
+        return FactOrigin(UUID(_origin_text(document, "fact_id")))
+    if kind == _ORIGIN_SOURCE:
+        _require_origin_keys(
+            document,
+            {
+                "binding_id",
+                "mapping_version",
+                "source_revision",
+                "source_record_ref",
+                "field_ref",
+            },
+        )
+        return SourceOrigin(
+            binding_id=_origin_text(document, "binding_id"),
+            mapping_version=_origin_text(document, "mapping_version"),
+            source_revision=_origin_text(document, "source_revision"),
+            source_record_ref=_origin_text(document, "source_record_ref"),
+            field_ref=_origin_text(document, "field_ref"),
+        )
+    if kind == _ORIGIN_SCHEMA_DEFAULT:
+        _require_origin_keys(document, {"schema_identity"})
+        return SchemaDefaultOrigin(
+            SchemaIdentity.from_dict(document["schema_identity"])
+        )
+    raise FactValidationError(f"stored projection origin kind '{kind}' is invalid")
+
+
+def _require_origin_keys(
+    document: dict[str, JSONValue],
+    expected: set[str],
+) -> None:
+    if set(document) != expected:
+        raise FactValidationError("stored projection origin fields are invalid")
+
+
+def _origin_text(document: dict[str, JSONValue], name: str) -> str:
+    value = document[name]
+    if not isinstance(value, str) or not value:
+        raise FactValidationError(f"stored projection origin {name} is invalid")
+    return value
+
 
 class SQLiteStoreCompatibilityError(RuntimeError):
     """Base class for failures detected before a SQLite store can be used."""
 
 
 class SQLiteStorageFormatError(SQLiteStoreCompatibilityError):
-    """Raised when an existing database is not the Phase 2 v2 layout."""
+    """Raised when an existing database is not the source-aware v3 layout."""
 
     def __init__(
         self,
@@ -287,7 +366,7 @@ class _SQLiteAdapter:
         if metadata.get("storage_layout") != SQLITE_STORAGE_LAYOUT:
             raise SQLiteStorageFormatError(
                 self._database,
-                "pre-Phase-2 v2 layout is unsupported; recreate the development store",
+                "pre-v3 layout is unsupported; recreate the development store",
                 found_format=found_format,
                 found_version=found_version,
             )
@@ -351,11 +430,25 @@ class _SQLiteAdapter:
                     recorded_at REAL NOT NULL,
                     projection_version INTEGER NOT NULL,
                     built_at REAL NOT NULL,
-                    fact_ids_json TEXT NOT NULL
+                    fact_ids_json TEXT NOT NULL,
+                    fact_revalidation_digest TEXT
+                );
+                CREATE TABLE projection_source_inputs (
+                    binding_id TEXT PRIMARY KEY,
+                    mapping_version TEXT NOT NULL,
+                    source_revision TEXT NOT NULL,
+                    payload_digest TEXT NOT NULL,
+                    coverage TEXT NOT NULL CHECK (
+                        coverage IN ('complete', 'partial', 'unknown')
+                    )
                 );
                 CREATE TABLE projection_objects (
                     object_id TEXT PRIMARY KEY,
-                    object_type TEXT NOT NULL
+                    object_type TEXT NOT NULL,
+                    origin_kind TEXT NOT NULL CHECK (
+                        origin_kind IN ('fact', 'source', 'schema_default')
+                    ),
+                    origin_json TEXT NOT NULL
                 );
                 CREATE INDEX projection_objects_type
                     ON projection_objects(object_type);
@@ -368,6 +461,10 @@ class _SQLiteAdapter:
                     fact_id TEXT,
                     author_ref TEXT,
                     source_ref TEXT NOT NULL,
+                    origin_kind TEXT NOT NULL CHECK (
+                        origin_kind IN ('fact', 'source', 'schema_default')
+                    ),
+                    origin_json TEXT NOT NULL,
                     PRIMARY KEY (object_id, property_name),
                     FOREIGN KEY (object_id) REFERENCES projection_objects(object_id)
                         ON DELETE CASCADE
@@ -380,8 +477,12 @@ class _SQLiteAdapter:
                     target_id TEXT NOT NULL,
                     properties_json TEXT NOT NULL,
                     valid_from REAL NOT NULL,
-                    fact_id TEXT NOT NULL,
+                    fact_id TEXT,
                     source_ref TEXT NOT NULL,
+                    origin_kind TEXT NOT NULL CHECK (
+                        origin_kind IN ('fact', 'source', 'schema_default')
+                    ),
+                    origin_json TEXT NOT NULL,
                     PRIMARY KEY (source_id, link_type, target_id),
                     FOREIGN KEY (source_id) REFERENCES projection_objects(object_id)
                         ON DELETE CASCADE,
@@ -436,6 +537,7 @@ class _SQLiteAdapter:
             "semantic_facts",
             "fact_batches",
             "projection_metadata",
+            "projection_source_inputs",
             "projection_objects",
             "projection_properties",
             "projection_links",
@@ -481,29 +583,6 @@ class _SQLiteAdapter:
             entries.append(StoredFact(sequence=cast(int, sequence), fact=fact))
         return tuple(entries)
 
-    def _read_fact_entries_by_ids(
-        self,
-        fact_ids: set[str],
-    ) -> tuple[StoredFact, ...]:
-        entries: list[StoredFact] = []
-        ordered_ids = sorted(fact_ids)
-        for offset in range(0, len(ordered_ids), 500):
-            chunk = ordered_ids[offset : offset + 500]
-            placeholders = ", ".join("?" for _ in chunk)
-            rows = self._connection.execute(
-                "SELECT sequence, fact_id, payload FROM semantic_facts "
-                f"WHERE fact_id IN ({placeholders}) ORDER BY sequence",
-                chunk,
-            )
-            for sequence, fact_id, payload in rows:
-                fact = FactRecord.from_json(cast(str, payload))
-                if str(fact.fact_id) != fact_id:
-                    raise FactValidationError(
-                        "stored semantic fact identity does not match its payload"
-                    )
-                entries.append(StoredFact(sequence=cast(int, sequence), fact=fact))
-        return tuple(sorted(entries, key=lambda item: item.sequence))
-
     def _read_committed_batches(self) -> dict[str, CommittedFactBatch]:
         batches: dict[str, CommittedFactBatch] = {}
         for row in self._connection.execute(
@@ -545,7 +624,8 @@ class _SQLiteAdapter:
             """
             SELECT schema_version, source_fact_watermark,
                    projected_fact_watermark, valid_at, recorded_at,
-                   projection_version, built_at, fact_ids_json
+                   projection_version, built_at, fact_ids_json,
+                   fact_revalidation_digest
             FROM projection_metadata
             WHERE singleton = 1
             """
@@ -556,6 +636,7 @@ class _SQLiteAdapter:
                 self._connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0],
             )
             for table in (
+                "projection_source_inputs",
                 "projection_objects",
                 "projection_properties",
                 "projection_links",
@@ -578,6 +659,7 @@ class _SQLiteAdapter:
             projection_version,
             built_at,
             fact_ids_json,
+            fact_revalidation_digest,
         ) = row
         if source_watermark != projected_watermark:
             raise FactValidationError("stored projection build watermarks disagree")
@@ -588,28 +670,34 @@ class _SQLiteAdapter:
             raise FactValidationError("stored projection fact ids are invalid")
         properties_by_object: dict[UUID, list[ProjectedProperty]] = {}
         schema_identity = SchemaIdentity.from_schema(self._schema)
-        selected_fact_ids = set(cast(list[str], raw_fact_ids))
-        object_origins: dict[tuple[UUID, str], FactOrigin] = {}
-        for entry in self._read_fact_entries_by_ids(selected_fact_ids):
-            assertion = entry.fact.assertion
-            if str(entry.fact.fact_id) in selected_fact_ids and isinstance(
-                assertion, ObjectAssertion
-            ):
-                object_definition = self._schema.object_type_by_id(
-                    assertion.object_type_id
-                )
-                if object_definition is None:
-                    raise FactValidationError(
-                        "stored ObjectAssertion semantic ID is not declared"
-                    )
-                object_origins.setdefault(
-                    (entry.fact.subject_id, object_definition.name),
-                    FactOrigin(entry.fact.fact_id),
-                )
+        source_inputs = tuple(
+            SourceInputCut(
+                binding_id=cast(str, binding_id),
+                mapping_version=cast(str, mapping_version),
+                source_revision=cast(str, source_revision),
+                payload_digest=cast(str, payload_digest),
+                coverage=SourceCoverage(cast(str, coverage)),
+            )
+            for (
+                binding_id,
+                mapping_version,
+                source_revision,
+                payload_digest,
+                coverage,
+            ) in self._connection.execute(
+                """
+                SELECT binding_id, mapping_version, source_revision,
+                       payload_digest, coverage
+                FROM projection_source_inputs
+                ORDER BY binding_id
+                """
+            )
+        )
         for property_row in self._connection.execute(
             """
             SELECT object_id, property_name, value_type, value_json,
-                   valid_from, fact_id, author_ref, source_ref
+                   valid_from, fact_id, author_ref, source_ref,
+                   origin_kind, origin_json
             FROM projection_properties
             ORDER BY object_id, property_name
             """
@@ -623,6 +711,8 @@ class _SQLiteAdapter:
                 fact_id,
                 author_ref,
                 source_ref,
+                origin_kind,
+                origin_json,
             ) = property_row
             parsed_value = json.loads(cast(str, value_json))
             projected_fact_id = None if fact_id is None else UUID(cast(str, fact_id))
@@ -634,31 +724,29 @@ class _SQLiteAdapter:
                 fact_id=projected_fact_id,
                 author_ref=cast(str | None, author_ref),
                 source_ref=cast(str, source_ref),
-                origin=(
-                    SchemaDefaultOrigin(schema_identity)
-                    if projected_fact_id is None
-                    else FactOrigin(projected_fact_id)
-                ),
+                origin=_decode_origin(origin_kind, origin_json),
             )
             properties_by_object.setdefault(UUID(cast(str, object_id)), []).append(
                 projected
             )
         objects: list[ProjectedObject] = []
-        for object_id, object_type in self._connection.execute(
-            "SELECT object_id, object_type FROM projection_objects ORDER BY object_id"
+        for object_id, object_type, origin_kind, origin_json in self._connection.execute(
+            """
+            SELECT object_id, object_type, origin_kind, origin_json
+            FROM projection_objects
+            ORDER BY object_id
+            """
         ):
             checked_object_id = UUID(cast(str, object_id))
             checked_object_type = cast(str, object_type)
-            origin = object_origins.get((checked_object_id, checked_object_type))
-            if origin is None:
-                raise FactValidationError(
-                    "stored projected object has no selected ObjectAssertion origin"
-                )
             objects.append(
                 ProjectedObject(
                     object_id=checked_object_id,
                     object_type=checked_object_type,
-                    origin=origin,
+                    origin=cast(
+                        FactOrigin | SourceOrigin,
+                        _decode_origin(origin_kind, origin_json),
+                    ),
                     properties=properties_by_object.get(checked_object_id, ()),
                 )
             )
@@ -669,9 +757,12 @@ class _SQLiteAdapter:
                 target_id=UUID(cast(str, target_id)),
                 properties=json.loads(cast(str, properties_json)),
                 valid_from=cast(float, link_valid_from),
-                fact_id=UUID(cast(str, fact_id)),
+                fact_id=None if fact_id is None else UUID(cast(str, fact_id)),
                 source_ref=cast(str, source_ref),
-                origin=FactOrigin(UUID(cast(str, fact_id))),
+                origin=cast(
+                    FactOrigin | SourceOrigin,
+                    _decode_origin(origin_kind, origin_json),
+                ),
             )
             for (
                 source_id,
@@ -681,10 +772,12 @@ class _SQLiteAdapter:
                 link_valid_from,
                 fact_id,
                 source_ref,
+                origin_kind,
+                origin_json,
             ) in self._connection.execute(
                 """
                 SELECT source_id, link_type, target_id, properties_json,
-                       valid_from, fact_id, source_ref
+                       valid_from, fact_id, source_ref, origin_kind, origin_json
                 FROM projection_links
                 ORDER BY source_id, link_type, target_id
                 """
@@ -695,10 +788,14 @@ class _SQLiteAdapter:
             projection_version=cast(int, projection_version),
             materialization_cut=MaterializationCut(
                 schema_identity=schema_identity,
-                source_inputs=(),
+                source_inputs=source_inputs,
                 fact_watermark=cast(int, projected_watermark),
                 valid_at=cast(float, valid_at),
                 recorded_at=cast(float, recorded_at),
+                fact_revalidation_digest=cast(
+                    str | None,
+                    fact_revalidation_digest,
+                ),
             ),
             built_at=cast(float, built_at),
         )
@@ -870,20 +967,63 @@ class SQLiteProjectionStore(_SQLiteAdapter):
     def replace(self, snapshot: ProjectionSnapshot) -> ProjectionState:
         if not isinstance(snapshot, ProjectionSnapshot):
             raise TypeError("replace requires a ProjectionSnapshot")
-        has_source_origin = (
-            any(isinstance(obj.origin, SourceOrigin) for obj in snapshot.objects)
-            or any(
-                isinstance(prop.origin, SourceOrigin)
-                for obj in snapshot.objects
-                for prop in obj.properties
-            )
-            or any(isinstance(link.origin, SourceOrigin) for link in snapshot.links)
-        )
-        if snapshot.state.materialization_cut.source_inputs or has_source_origin:
-            raise ValueError(
-                "SQLite v2 cannot store mapped-source cuts or SourceOrigin values"
-            )
         self._require_open()
+        object_rows: list[tuple[str, str, str, str]] = []
+        property_rows: list[
+            tuple[
+                str,
+                str,
+                str,
+                str,
+                float,
+                str | None,
+                str | None,
+                str,
+                str,
+                str,
+            ]
+        ] = []
+        link_rows: list[
+            tuple[str, str, str, str, float, str | None, str, str, str]
+        ] = []
+        for obj in snapshot.objects:
+            origin_kind, origin_json = _encode_origin(obj.origin)
+            object_rows.append(
+                (str(obj.id), obj.object_type, origin_kind, origin_json)
+            )
+            for prop in obj.properties:
+                property_origin_kind, property_origin_json = _encode_origin(
+                    prop.origin
+                )
+                property_rows.append(
+                    (
+                        str(obj.id),
+                        prop.name,
+                        prop.value_type.value,
+                        dump_json_value(prop.raw_value, sort_keys=True),
+                        prop.valid_from,
+                        None if prop.fact_id is None else str(prop.fact_id),
+                        prop.author_ref,
+                        prop.source_ref,
+                        property_origin_kind,
+                        property_origin_json,
+                    )
+                )
+        for link in snapshot.links:
+            origin_kind, origin_json = _encode_origin(link.origin)
+            link_rows.append(
+                (
+                    str(link.source_id),
+                    link.link_type,
+                    str(link.target_id),
+                    dump_json_value(link.properties, sort_keys=True),
+                    link.valid_from,
+                    None if link.fact_id is None else str(link.fact_id),
+                    link.source_ref,
+                    origin_kind,
+                    origin_json,
+                )
+            )
         self._connection.execute("BEGIN IMMEDIATE")
         if self._schema is None:
             self._schema = self._load_schema(snapshot.schema)
@@ -911,51 +1051,51 @@ class SQLiteProjectionStore(_SQLiteAdapter):
             self._connection.execute("DELETE FROM projection_links")
             self._connection.execute("DELETE FROM projection_properties")
             self._connection.execute("DELETE FROM projection_objects")
+            self._connection.execute("DELETE FROM projection_source_inputs")
             self._connection.executemany(
-                "INSERT INTO projection_objects(object_id, object_type) VALUES (?, ?)",
-                ((str(obj.id), obj.object_type) for obj in snapshot.objects),
+                """
+                INSERT INTO projection_source_inputs(
+                    binding_id, mapping_version, source_revision,
+                    payload_digest, coverage
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    (
+                        item.binding_id,
+                        item.mapping_version,
+                        item.source_revision,
+                        item.payload_digest,
+                        item.coverage.value,
+                    )
+                    for item in snapshot.state.materialization_cut.source_inputs
+                ),
+            )
+            self._connection.executemany(
+                """
+                INSERT INTO projection_objects(
+                    object_id, object_type, origin_kind, origin_json
+                ) VALUES (?, ?, ?, ?)
+                """,
+                object_rows,
             )
             self._connection.executemany(
                 """
                 INSERT INTO projection_properties(
                     object_id, property_name, value_type, value_json,
-                    valid_from, fact_id, author_ref, source_ref
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    valid_from, fact_id, author_ref, source_ref,
+                    origin_kind, origin_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    (
-                        str(obj.id),
-                        prop.name,
-                        prop.value_type.value,
-                        dump_json_value(prop.raw_value, sort_keys=True),
-                        prop.valid_from,
-                        None if prop.fact_id is None else str(prop.fact_id),
-                        prop.author_ref,
-                        prop.source_ref,
-                    )
-                    for obj in snapshot.objects
-                    for prop in obj.properties
-                ),
+                property_rows,
             )
             self._connection.executemany(
                 """
                 INSERT INTO projection_links(
                     source_id, link_type, target_id, properties_json,
-                    valid_from, fact_id, source_ref
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    valid_from, fact_id, source_ref, origin_kind, origin_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    (
-                        str(link.source_id),
-                        link.link_type,
-                        str(link.target_id),
-                        dump_json_value(link.properties, sort_keys=True),
-                        link.valid_from,
-                        str(link.fact_id),
-                        link.source_ref,
-                    )
-                    for link in snapshot.links
-                ),
+                link_rows,
             )
             state = snapshot.state
             self._connection.execute(
@@ -963,8 +1103,9 @@ class SQLiteProjectionStore(_SQLiteAdapter):
                 INSERT INTO projection_metadata(
                     singleton, schema_version, source_fact_watermark,
                     projected_fact_watermark, valid_at, recorded_at,
-                    projection_version, built_at, fact_ids_json
-                ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+                    projection_version, built_at, fact_ids_json,
+                    fact_revalidation_digest
+                ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(singleton) DO UPDATE SET
                     schema_version = excluded.schema_version,
                     source_fact_watermark = excluded.source_fact_watermark,
@@ -973,7 +1114,8 @@ class SQLiteProjectionStore(_SQLiteAdapter):
                     recorded_at = excluded.recorded_at,
                     projection_version = excluded.projection_version,
                     built_at = excluded.built_at,
-                    fact_ids_json = excluded.fact_ids_json
+                    fact_ids_json = excluded.fact_ids_json,
+                    fact_revalidation_digest = excluded.fact_revalidation_digest
                 """,
                 (
                     state.schema_version,
@@ -987,6 +1129,7 @@ class SQLiteProjectionStore(_SQLiteAdapter):
                         [str(fact_id) for fact_id in snapshot.fact_ids],
                         sort_keys=True,
                     ),
+                    state.materialization_cut.fact_revalidation_digest,
                 ),
             )
             self._connection.commit()

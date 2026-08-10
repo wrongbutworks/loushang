@@ -86,7 +86,12 @@ The current implementation already provides:
   `SchemaIdentity`, with durable assertions resolved by stable semantic ID;
 - atomic Fact selection, deterministic multi-source Memory materialization,
   complete operational origins, `MaterializationCut`, and explicit freshness;
-- backend-neutral projection reads and a Fact-only SQLite v2 projection subset;
+- backend-neutral projection reads and source-aware SQLite v3 projection
+  persistence with exact input cuts and all operational origin kinds;
+- a serializable Product-hosted adapter manifest, a structural adapter
+  protocol, and detached-output conformance validation;
+- content-addressed revalidation receipts for rebuilding an exact historical
+  Fact selection against a compatible newer schema without rewriting Facts;
 - architecture gates forbidding Ontology dependencies on Product and execution
   subsystems including Harness, HarnessWork, Method, and Agent; the observed
   source also contains no domain implementation.
@@ -111,10 +116,11 @@ outputs to Ontology contracts.
 | Capability | Current | Target delta | Classification |
 | --- | --- | --- | --- |
 | Package identity | One compiled package-shaped schema | Imports, dependency constraints, immutable lock, registry metadata | missing |
-| Source integration | Schema-bound binding, mapped-input values, coverage and exact input cuts | Adapter manifest, SDK, application-schema compatibility and conformance kit | partial |
+| Source integration | Schema-bound binding, mapped inputs, exact cuts, adapter manifest, application-schema identity, structural protocol, and detached-output conformance | Concrete adapter SDK/packaging, fixtures across vendor implementations, and deployment composition | partial |
 | Identity | Adapter supplies canonical UUID | Deployment-bound crosswalk, alternate keys, ambiguity and review handoff | missing |
 | Deployment composition | Caller passes schema, bindings, inputs and stores | Validated deployment profile with exact artifact locks and authority bindings | missing |
-| Durable multi-source projection | Memory supports source cuts; SQLite rejects them | Source-aware SQLite layout with origin and revision-vector round trips | partial |
+| Durable multi-source projection | Memory and SQLite v3 preserve exact source cuts, origins, restart, and backup semantics | Operational-scale and incremental persistence only after measured need | partial |
+| Schema upgrade | Schema diff plus exact-selection Fact revalidation receipt; immutable Facts remain bound to their source schema | Package locks, source-input upgrade evidence, and deployment switch/rollback coordination | partial |
 | Mature ontology interop | Directional architecture only | External term alignment metadata, validation, import/export bridges | missing |
 | Standards integration | Directional architecture only | Versioned standards knowledge packages and later logic bindings | missing |
 | Multi-deployment isolation | Not modeled | Isolated deployment state with reusable immutable package binaries | missing |
@@ -310,10 +316,13 @@ An application upgrade produces a new adapter or mapping version. It does not
 silently mutate an installed mapping and does not require a rename of stable
 domain semantics.
 
-The initial read contract should remain narrow: produce reproducible
-`MappedSourceInput` and observable source heads. A connector registry, CDC
-engine, scheduler, arbitrary transformation DSL, and generic write-back are not
-implied by the Adapter Package concept.
+The accepted initial read contract is deliberately narrow:
+`SourceAdapterManifest` declares the application schema, target Ontology schema,
+and source bindings; a Product-hosted structural adapter produces reproducible
+`MappedSourceInput` values and observable source heads; and Ontology validates
+the detached outputs. A connector registry, CDC engine, scheduler, arbitrary
+transformation DSL, and generic write-back are not implied by the Adapter
+Package concept.
 
 ### 7.3 Deployment profiles
 
@@ -632,6 +641,14 @@ must not claim future validation as current evidence.
   controls single-package schema identity, stable Fact predicates, source
   coverage, exact mapped-payload cuts, and the separation between installed
   cuts and observable source heads.
+- [ARD-005](../ARD-005-source-aware-sqlite-v3.md) controls durable source cuts,
+  operational origins, and the one supported SQLite physical format.
+- [ARD-006](../ARD-006-product-hosted-source-adapter-contract.md) controls the
+  Product-hosted adapter manifest, structural protocol, and detached-output
+  conformance boundary.
+- [ARD-007](../ARD-007-fact-schema-revalidation-receipts.md) controls exact
+  Fact-selection revalidation and the evidence required to build a target
+  projection without mutating historical Facts.
 - [Ontology Architecture README](../README.md) controls Current implementation
   status and the accepted reading order.
 - [Operational Infrastructure Draft](../drafts/loushang-ontology-operational-infrastructure.md)

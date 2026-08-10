@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from uuid import UUID
 
@@ -46,6 +47,7 @@ from loushang.ontology.storage import (
     MemoryFactStore,
     MemoryProjectionStore,
     SQLiteProjectionStore,
+    SQLiteStorageFormatError,
 )
 
 ASSET_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -380,8 +382,10 @@ def test_source_freshness_is_explicit_and_does_not_mutate_the_cut() -> None:
     assert cut.source_inputs[0].source_revision == "erp-42"
 
 
-def test_sqlite_v2_rejects_source_lineage_instead_of_losing_it(
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_projection_stores_share_the_source_aware_snapshot_contract(
     tmp_path: Path,
+    backend: str,
 ) -> None:
     snapshot = materialize_projection(
         _selection(),
@@ -389,12 +393,71 @@ def test_sqlite_v2_rejects_source_lineage_instead_of_losing_it(
         source_bindings=(_binding(),),
         source_inputs=(_source_input(),),
     )
-    store = SQLiteProjectionStore(tmp_path / "ontology.sqlite3")
+    store = (
+        MemoryProjectionStore()
+        if backend == "memory"
+        else SQLiteProjectionStore(tmp_path / "ontology.sqlite3")
+    )
     try:
-        with pytest.raises(ValueError, match="SQLite v2 cannot store mapped-source"):
-            store.replace(snapshot)
+        assert store.replace(snapshot) == snapshot.state
+        assert store.read_snapshot() == snapshot
     finally:
-        store.close()
+        if isinstance(store, SQLiteProjectionStore):
+            store.close()
+
+
+def test_sqlite_v3_round_trips_source_cuts_and_every_origin_kind(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "ontology.sqlite3"
+    backup = tmp_path / "backup.sqlite3"
+    snapshot = materialize_projection(
+        _selection(),
+        _schema(),
+        source_bindings=(_binding(),),
+        source_inputs=(_source_input(),),
+    )
+    store = SQLiteProjectionStore(database)
+    assert store.replace(snapshot) == snapshot.state
+    assert store.read_snapshot() == snapshot
+    store.backup_to(backup)
+    store.close()
+
+    reopened = SQLiteProjectionStore(database, expected_schema=_schema())
+    assert reopened.read_snapshot() == snapshot
+    reopened.close()
+    restored = SQLiteProjectionStore(backup, expected_schema=_schema())
+    assert restored.read_snapshot() == snapshot
+    restored.close()
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "UPDATE projection_source_inputs SET payload_digest = 'bad'",
+        "DELETE FROM projection_source_inputs",
+        "UPDATE projection_objects SET origin_json = '{not-json'",
+    ],
+)
+def test_sqlite_v3_rejects_corrupt_source_cuts_and_origins(
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    database = tmp_path / "ontology.sqlite3"
+    snapshot = materialize_projection(
+        _selection(),
+        _schema(),
+        source_bindings=(_binding(),),
+        source_inputs=(_source_input(),),
+    )
+    store = SQLiteProjectionStore(database)
+    store.replace(snapshot)
+    store.close()
+    with sqlite3.connect(database) as connection:
+        connection.execute(corruption)
+
+    with pytest.raises(SQLiteStorageFormatError, match="runtime data"):
+        SQLiteProjectionStore(database)
 
 
 def test_transient_derived_values_wait_for_a_computation_origin() -> None:

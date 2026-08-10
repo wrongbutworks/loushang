@@ -27,6 +27,9 @@ from loushang.ontology.projection.model import (
     SchemaDefaultOrigin,
     SourceOrigin,
 )
+from loushang.ontology.projection.revalidation_model import (
+    FactSchemaRevalidationReceipt,
+)
 from loushang.ontology.schema import (
     CompiledObjectTypeDefinition,
     CompiledOntologySchema,
@@ -84,6 +87,7 @@ def materialize_projection(
     *,
     source_bindings: Iterable[SourceBinding] = (),
     source_inputs: Iterable[MappedSourceInput] = (),
+    fact_revalidation: FactSchemaRevalidationReceipt | None = None,
     projection_version: int = 1,
     built_at: float | None = None,
 ) -> ProjectionSnapshot:
@@ -99,6 +103,27 @@ def materialize_projection(
     built_at = recorded_at if built_at is None else _finite("built_at", built_at)
     diagnostics: list[ProjectionDiagnostic] = []
     schema_identity = SchemaIdentity.from_schema(schema)
+    accepted_fact_schema = schema_identity
+    fact_revalidation_digest: str | None = None
+    if fact_revalidation is not None:
+        if not isinstance(fact_revalidation, FactSchemaRevalidationReceipt):
+            raise TypeError(
+                "fact_revalidation must be a FactSchemaRevalidationReceipt or None"
+            )
+        try:
+            fact_revalidation.validate_for(selection, schema)
+        except ValueError as exc:
+            raise ProjectionMaterializationError(
+                (
+                    ProjectionDiagnostic(
+                        "fact_revalidation_invalid",
+                        "$.fact_revalidation",
+                        str(exc),
+                    ),
+                )
+            ) from exc
+        accepted_fact_schema = fact_revalidation.source_schema
+        fact_revalidation_digest = fact_revalidation.receipt_digest
     binding_values = tuple(source_bindings)
     input_values = tuple(source_inputs)
     if any(not isinstance(item, SourceBinding) for item in binding_values):
@@ -124,13 +149,13 @@ def materialize_projection(
     link_facts: dict[tuple[UUID, str, UUID], list[StoredFact]] = {}
 
     for item in selected:
-        if item.fact.schema_identity != schema_identity:
+        if item.fact.schema_identity != accepted_fact_schema:
             diagnostics.append(
                 ProjectionDiagnostic(
                     "fact_schema_identity_mismatch",
                     f"facts.{item.fact.fact_id}.schema_identity",
                     f"Fact {item.fact.fact_id} targets {item.fact.schema_identity}, "
-                    f"not selected schema {schema_identity}",
+                    f"not accepted Fact schema {accepted_fact_schema}",
                 )
             )
             continue
@@ -214,6 +239,7 @@ def materialize_projection(
         fact_watermark=selection.fact_watermark,
         valid_at=valid_at,
         recorded_at=recorded_at,
+        fact_revalidation_digest=fact_revalidation_digest,
     )
     state = ProjectionState(
         schema_identity=schema_identity,
@@ -394,6 +420,16 @@ def _resolve_source_inputs(
                     f"'{matched_binding.mapping_version}'",
                 )
             )
+        elif matched_binding.coverage is not source_input.coverage:
+            diagnostics.append(
+                ProjectionDiagnostic(
+                    "source_coverage_mismatch",
+                    f"{path}.coverage",
+                    f"source input coverage '{source_input.coverage.value}' "
+                    f"does not match binding coverage "
+                    f"'{matched_binding.coverage.value}'",
+                )
+            )
         elif source_input.coverage is not SourceCoverage.COMPLETE:
             diagnostics.append(
                 ProjectionDiagnostic(
@@ -426,6 +462,7 @@ def _resolve_source_inputs(
             matched_binding is None
             or matched_binding.mapping_version != source_input.mapping_version
             or matched_binding.schema_identity != schema_identity
+            or matched_binding.coverage is not source_input.coverage
             or source_input.coverage is not SourceCoverage.COMPLETE
         ):
             continue

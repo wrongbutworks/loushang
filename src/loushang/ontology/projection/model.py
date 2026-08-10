@@ -32,6 +32,7 @@ class MaterializationCut:
     fact_watermark: int
     valid_at: float
     recorded_at: float
+    fact_revalidation_digest: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.schema_identity, SchemaIdentity):
@@ -54,6 +55,16 @@ class MaterializationCut:
             raise ValueError("fact_watermark must be a non-negative integer")
         for name in ("valid_at", "recorded_at"):
             object.__setattr__(self, name, _finite(name, getattr(self, name)))
+        if self.fact_revalidation_digest is not None and (
+            len(self.fact_revalidation_digest) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.fact_revalidation_digest
+            )
+        ):
+            raise ValueError(
+                "fact_revalidation_digest must be a lowercase SHA-256 digest or None"
+            )
 
 
 @dataclass(frozen=True, slots=True)
