@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from pathlib import Path
+from threading import Barrier, BrokenBarrierError
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -225,6 +229,60 @@ def test_projection_rebuild_replaces_the_whole_snapshot_monotonically(
     assert projections.all_objects() == rebuilt.objects
     with pytest.raises(ValueError, match="projection_version must be 3"):
         projections.replace(rebuilt)
+
+
+def test_memory_projection_replacement_serializes_competing_writers() -> None:
+    facts = MemoryFactStore()
+    facts.commit_fact_batch(_initial_batch())
+    store = MemoryProjectionStore()
+    store.replace(
+        materialize_projection(
+            facts.select_facts(valid_at=10, recorded_at=10),
+            _schema(),
+        )
+    )
+    facts.commit_fact_batch(_score_update())
+    first = materialize_projection(
+        facts.select_facts(valid_at=30, recorded_at=30),
+        _schema(),
+        projection_version=2,
+        built_at=30,
+    )
+    second = materialize_projection(
+        facts.select_facts(valid_at=30, recorded_at=30),
+        _schema(),
+        projection_version=2,
+        built_at=31,
+    )
+
+    barrier = Barrier(2)
+    installed = store.read_snapshot()
+
+    class CoordinatedInstalledSnapshot:
+        @property
+        def state(self):
+            with suppress(BrokenBarrierError):
+                barrier.wait(timeout=0.5)
+            return installed.state
+
+        @property
+        def schema(self):
+            return installed.schema
+
+    store._snapshot = CoordinatedInstalledSnapshot()  # type: ignore[assignment]
+
+    def replace(snapshot: Any) -> object:
+        try:
+            return store.replace(snapshot)
+        except ValueError as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = tuple(executor.map(replace, (first, second)))
+
+    assert sum(not isinstance(item, Exception) for item in outcomes) == 1
+    assert sum(isinstance(item, ValueError) for item in outcomes) == 1
+    assert store.projection_state.projection_version == 2
 
 
 def test_projection_state_is_immutable_and_freshness_is_an_explicit_observation(

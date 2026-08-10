@@ -12,7 +12,7 @@ from loushang.ontology.facts import (
     ObjectAssertion,
     PropertyAssertion,
 )
-from loushang.ontology.projection import materialize_projection
+from loushang.ontology.projection import SchemaIdentity, materialize_projection
 from loushang.ontology.query import (
     PropertyFilter,
     QueryBuilder,
@@ -126,7 +126,11 @@ def test_typed_query_reports_schema_and_projection_build_coordinates() -> None:
     result = execute_query(
         projection,
         QueryRequest(
-            schema_version="2.0.0",
+            schema_identity=SchemaIdentity(
+                "test.query",
+                "urn:test:query",
+                "2.0.0",
+            ),
             steps=(
                 StartFromType("Asset"),
                 PropertyFilter("score", ">=", 5),
@@ -135,7 +139,7 @@ def test_typed_query_reports_schema_and_projection_build_coordinates() -> None:
     )
 
     assert result.object_ids == (SELECTED_ID,)
-    assert result.schema_version == "2.0.0"
+    assert result.schema_identity == projection.state.schema_identity
     assert result.projection.fact_watermark == 9
     assert result.diagnostics == ()
 
@@ -146,14 +150,18 @@ def test_query_schema_mismatch_is_visible_without_returning_objects() -> None:
     result = execute_query(
         projection,
         QueryRequest(
-            schema_version="1.0.0",
+            schema_identity=SchemaIdentity(
+                "another.package",
+                "urn:another:package",
+                "2.0.0",
+            ),
             steps=(StartFromType("Asset"),),
         ),
     )
 
     assert result.object_ids == ()
     assert [diagnostic.code for diagnostic in result.diagnostics] == [
-        "schema_version_mismatch"
+        "schema_identity_mismatch"
     ]
 
 

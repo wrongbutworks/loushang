@@ -511,7 +511,7 @@ Policy Projection
   - prevent hidden endpoints from leaking through traversal/counts
         |
         v
-Typed QueryResult(schema_version, data, cursor, freshness, diagnostics)
+Typed QueryResult(schema_identity, data, cursor, freshness, diagnostics)
 ```
 
 关键约束：
@@ -697,7 +697,7 @@ supersedes / corrects
 
 ```text
 ServingProjection
-  projection_id / schema_version / projection_version
+  projection_id / schema_identity / projection_version
   materialization_cut
     source_inputs[(binding_id, mapping_version, source_revision)]
     fact_watermark / valid_at / recorded_at

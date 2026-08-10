@@ -89,11 +89,13 @@ class MemoryProjectionStore:
     """Atomic in-memory holder for a complete immutable snapshot."""
 
     def __init__(self) -> None:
+        self._lock = RLock()
         self._snapshot: ProjectionSnapshot | None = None
 
     @property
     def snapshot(self) -> ProjectionSnapshot | None:
-        return self._snapshot
+        with self._lock:
+            return self._snapshot
 
     @property
     def schema(self) -> CompiledOntologySchema:
@@ -109,17 +111,20 @@ class MemoryProjectionStore:
     def replace(self, snapshot: ProjectionSnapshot) -> ProjectionState:
         if not isinstance(snapshot, ProjectionSnapshot):
             raise TypeError("replace requires a ProjectionSnapshot")
-        expected_version = (
-            1 if self._snapshot is None else self._snapshot.state.projection_version + 1
-        )
-        if self._snapshot is not None and self._snapshot.schema != snapshot.schema:
-            raise ValueError("projection schema cannot change within one store")
-        if snapshot.state.projection_version != expected_version:
-            raise ValueError(
-                f"projection_version must be {expected_version} for this replacement"
+        with self._lock:
+            expected_version = (
+                1
+                if self._snapshot is None
+                else self._snapshot.state.projection_version + 1
             )
-        self._snapshot = snapshot
-        return snapshot.state
+            if self._snapshot is not None and self._snapshot.schema != snapshot.schema:
+                raise ValueError("projection schema cannot change within one store")
+            if snapshot.state.projection_version != expected_version:
+                raise ValueError(
+                    f"projection_version must be {expected_version} for this replacement"
+                )
+            self._snapshot = snapshot
+            return snapshot.state
 
     def get(self, object_id: UUID) -> ProjectedObject | None:
         return self._require_snapshot().get(object_id)
@@ -143,9 +148,10 @@ class MemoryProjectionStore:
         return self._require_snapshot().all_objects()
 
     def _require_snapshot(self) -> ProjectionSnapshot:
-        if self._snapshot is None:
-            raise ProjectionUnavailableError("no ontology projection is installed")
-        return self._snapshot
+        with self._lock:
+            if self._snapshot is None:
+                raise ProjectionUnavailableError("no ontology projection is installed")
+            return self._snapshot
 
 
 __all__ = ["MemoryFactStore", "MemoryProjectionStore"]

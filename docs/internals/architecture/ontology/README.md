@@ -24,13 +24,18 @@ It currently provides:
   `FactSelection`;
 - immutable source bindings and mapped source snapshots for source-backed
   object existence, properties, and links;
-- deterministic source-plus-Fact object/property/link materialization: object
-  existence and links expose `FactOrigin` or `SourceOrigin`, while properties
-  may additionally expose `SchemaDefaultOrigin`;
+- deterministic source-plus-Fact object/property/link materialization, including
+  property bindings independent from object-existence bindings: object existence
+  and links expose `FactOrigin` or `SourceOrigin`, while ontology-owned
+  properties may additionally expose `SchemaDefaultOrigin`;
+- explicit rejection of mapped properties or links whose `valid_from` is later
+  than the selected materialization `valid_at`;
 - immutable `MaterializationCut` build coordinates plus explicit, pure Fact and
   source-head `ProjectionFreshness` evaluation;
-- a narrow ProjectionReadStore and atomic whole-snapshot ProjectionStore;
-- backend-neutral typed queries over projection reads;
+- a narrow ProjectionReadStore and atomic whole-snapshot ProjectionStore,
+  including synchronized replacement in the Memory reference adapter;
+- backend-neutral typed queries over projection reads, guarded by complete
+  `SchemaIdentity` rather than a version string alone;
 - independent Memory and SQLite FactStore/ProjectionStore adapters;
 - SQLite v2 format detection, corruption checks, schema identity, restart, and
   backup.

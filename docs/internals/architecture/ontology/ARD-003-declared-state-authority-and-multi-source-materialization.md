@@ -191,9 +191,11 @@ FactStore is not required for:
 - transient derived values that are cheap and deterministic to recompute;
 - projections, indexes, and caches.
 
-Source-backed Facts are not prohibited. A binding may selectively factize a
-source value when its independent bitemporal or audit lifecycle justifies the
-cost. That choice must be explicit rather than a universal ingestion rule.
+Source-backed Facts are not prohibited as a future modeling choice. A binding
+may eventually select a source value for factization when its independent
+bitemporal or audit lifecycle justifies the cost. The current materializer does
+not accept such Facts as source-backed operational state; that contract remains
+deferred and must be explicit rather than becoming a universal ingestion rule.
 
 ### 6. Capture immutable selections and cuts
 
@@ -282,10 +284,11 @@ SchemaDefaultOrigin(schema_identity)
 ```
 
 Object existence and links use the operational subset `FactOrigin |
-SourceOrigin`; only properties may use `SchemaDefaultOrigin`. A mapped object
-therefore carries the source field used to establish its canonical identity,
-and a mapped link carries the source field or record that established the
-relationship.
+SourceOrigin`; only ontology-owned properties may materialize
+`SchemaDefaultOrigin`. A missing source-backed property remains unknown even if
+its schema definition carries a default. A mapped object therefore carries the
+source field used to establish its canonical identity, and a mapped link carries
+the source field or record that established the relationship.
 
 Ontology-owned edits and published derived Claims can initially use
 `FactOrigin`. Recursive computation lineage, Action edit origins, and policy
@@ -346,7 +349,7 @@ This ARD also supersedes the target identity rule in
 names stop being stable identity keys and become versioned metadata; explicit
 stable semantic IDs drive comparison and rename recognition. The remaining
 offline comparison, impact classification, determinism, and non-goal rules stay
-in force. Schema and schema-diff v2 now implement this identity rule for object
+in force. Schema and schema-diff v3 now implement this identity rule for object
 types, object properties, and link types; interface identity remains name-keyed.
 
 ## Consequences
@@ -429,6 +432,11 @@ Completed in the Memory-only mapped-source and origin-contract slices:
   produces `unknown`;
 - source bindings refer to object-existence, property, and link-family authority
   declarations through stable semantic IDs rather than API names;
+- object existence and properties can be supplied by different bindings without
+  depending on input order, and source values later than the selected valid time
+  fail materialization;
+- source-backed property absence remains unknown rather than being replaced by
+  an ontology schema default;
 - missing inputs, mapping-version mismatches, unknown stable IDs, inherited
   property IDs, cross-authority impersonation, ambiguous objects/links, mapped
   link endpoints, and multi-source freshness are explicit regression contracts;
@@ -457,6 +465,7 @@ Remaining gates after this slice:
 - delta versus full-snapshot source persistence;
 - source-specific freshness and query dependency aggregation;
 - multi-source precedence, merge, and identity-resolution policies;
+- selective factization of source-backed operational state;
 - the physical SQLite layout after the contracts stabilize.
 
 ## Evidence Reviewed

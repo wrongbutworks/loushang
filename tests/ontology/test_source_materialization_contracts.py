@@ -364,6 +364,204 @@ def test_inherited_property_binding_uses_stable_semantic_id() -> None:
     assert isinstance(asset.property("code").origin, SourceOrigin)  # type: ignore[union-attr]
 
 
+def test_property_authority_composes_independently_from_object_existence() -> None:
+    schema = _source_schema()
+    existence_binding = SourceBinding(
+        "z-master.assets",
+        "mapping-v1",
+        object_existence_ids=("asset",),
+    )
+    property_binding = SourceBinding(
+        "a-erp.asset-code",
+        "mapping-v2",
+        property_ids=("asset.code",),
+    )
+    existence_input = MappedSourceInput(
+        binding_id="z-master.assets",
+        mapping_version="mapping-v1",
+        source_revision="master-7",
+        payload=MappedSourceSnapshot(
+            objects=(
+                MappedSourceObject(
+                    object_id=ASSET_ID,
+                    object_type_id="asset",
+                    source_record_ref="asset:A-1",
+                    identity_field_ref="assets.asset_id",
+                ),
+            )
+        ),
+    )
+    property_input = MappedSourceInput(
+        binding_id="a-erp.asset-code",
+        mapping_version="mapping-v2",
+        source_revision="erp-12",
+        payload=MappedSourceSnapshot(
+            objects=(
+                MappedSourceObject(
+                    object_id=ASSET_ID,
+                    object_type_id="asset",
+                    source_record_ref="erp-asset:A-1",
+                    identity_field_ref="erp_assets.asset_id",
+                    properties=(
+                        MappedSourceProperty(
+                            property_id="asset.code",
+                            value="A-1",
+                            field_ref="erp_assets.asset_code",
+                            valid_from=1,
+                        ),
+                    ),
+                ),
+            )
+        ),
+    )
+
+    snapshot = materialize_projection(
+        _empty_selection(),
+        schema,
+        source_bindings=(existence_binding, property_binding),
+        source_inputs=(existence_input, property_input),
+    )
+
+    asset = snapshot.get(ASSET_ID)
+    assert asset is not None
+    assert asset.get("code") == "A-1"
+    assert asset.origin == SourceOrigin(
+        "z-master.assets",
+        "mapping-v1",
+        "master-7",
+        "asset:A-1",
+        "assets.asset_id",
+    )
+    assert asset.property("code").origin == SourceOrigin(  # type: ignore[union-attr]
+        "a-erp.asset-code",
+        "mapping-v2",
+        "erp-12",
+        "erp-asset:A-1",
+        "erp_assets.asset_code",
+    )
+
+
+def test_future_mapped_source_values_are_rejected_for_the_selected_valid_time() -> None:
+    binding = SourceBinding(
+        "erp.assets",
+        "mapping-v1",
+        object_existence_ids=("asset", "owner"),
+        property_ids=("asset.code",),
+        link_type_ids=("asset.owned-by",),
+    )
+    source_input = MappedSourceInput(
+        binding_id="erp.assets",
+        mapping_version="mapping-v1",
+        source_revision="revision-1",
+        payload=MappedSourceSnapshot(
+            objects=(
+                MappedSourceObject(
+                    object_id=ASSET_ID,
+                    object_type_id="asset",
+                    source_record_ref="asset:A-1",
+                    identity_field_ref="assets.asset_id",
+                    properties=(
+                        MappedSourceProperty(
+                            property_id="asset.code",
+                            value="A-1",
+                            field_ref="assets.asset_code",
+                            valid_from=11,
+                        ),
+                    ),
+                ),
+                MappedSourceObject(
+                    object_id=OWNER_ID,
+                    object_type_id="owner",
+                    source_record_ref="owner:O-1",
+                    identity_field_ref="owners.owner_id",
+                ),
+            ),
+            links=(
+                MappedSourceLink(
+                    source_id=ASSET_ID,
+                    link_type_id="asset.owned-by",
+                    target_id=OWNER_ID,
+                    source_record_ref="ownership:A-1:O-1",
+                    field_ref="ownership.owner_id",
+                    valid_from=12,
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(ProjectionMaterializationError) as exc_info:
+        materialize_projection(
+            _empty_selection(),
+            _source_schema(),
+            source_bindings=(binding,),
+            source_inputs=(source_input,),
+        )
+
+    future_values = [
+        diagnostic
+        for diagnostic in exc_info.value.diagnostics
+        if diagnostic.code == "source_value_not_yet_valid"
+    ]
+    assert len(future_values) == 2
+    assert all("selected valid_at 10.0" in item.message for item in future_values)
+
+
+def test_source_backed_property_default_does_not_replace_unknown_source_state() -> None:
+    schema = OntologyCompiler().compile(
+        OntologyPackageDraft(
+            package_id="test.source-default",
+            namespace="urn:test:source-default",
+            version="1.0.0",
+            object_types=[
+                ObjectTypeDefinition(
+                    "Asset",
+                    semantic_id="asset",
+                    state_authority=StateAuthority.SOURCE_BACKED,
+                    properties=[
+                        PropertyDefinition(
+                            "status",
+                            ValueType.STRING,
+                            semantic_id="asset.status",
+                            state_authority=StateAuthority.SOURCE_BACKED,
+                            default="unknown",
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+    binding = SourceBinding(
+        "master.assets",
+        "mapping-v1",
+        object_existence_ids=("asset",),
+    )
+    source_input = MappedSourceInput(
+        binding_id="master.assets",
+        mapping_version="mapping-v1",
+        source_revision="master-1",
+        payload=MappedSourceSnapshot(
+            objects=(
+                MappedSourceObject(
+                    object_id=ASSET_ID,
+                    object_type_id="asset",
+                    source_record_ref="asset:A-1",
+                    identity_field_ref="assets.asset_id",
+                ),
+            )
+        ),
+    )
+
+    asset = materialize_projection(
+        _empty_selection(),
+        schema,
+        source_bindings=(binding,),
+        source_inputs=(source_input,),
+    ).get(ASSET_ID)
+
+    assert asset is not None
+    assert asset.property("status") is None
+
+
 def test_mapped_link_keeps_endpoint_failures_in_materialization_diagnostics() -> None:
     binding = SourceBinding(
         "erp.assets",
