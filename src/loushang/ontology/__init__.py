@@ -26,6 +26,7 @@ from loushang.ontology.facts import (
 from loushang.ontology.projection import (
     FactOrigin,
     MaterializationCut,
+    OperationalOrigin,
     ProjectedLink,
     ProjectedObject,
     ProjectedProperty,
@@ -74,6 +75,7 @@ from loushang.ontology.schema import (
 )
 from loushang.ontology.source import (
     MappedSourceInput,
+    MappedSourceLink,
     MappedSourceObject,
     MappedSourceProperty,
     MappedSourceSnapshot,
@@ -111,10 +113,12 @@ __all__ = [
     "MemoryFactStore",
     "MemoryProjectionStore",
     "MappedSourceInput",
+    "MappedSourceLink",
     "MappedSourceObject",
     "MappedSourceProperty",
     "MappedSourceSnapshot",
     "MaterializationCut",
+    "OperationalOrigin",
     "ObjectAssertion",
     "ObjectTypeDefinition",
     "OntologyCompiler",

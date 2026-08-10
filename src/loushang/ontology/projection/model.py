@@ -125,7 +125,8 @@ class SchemaDefaultOrigin:
             raise TypeError("schema_identity must be a SchemaIdentity")
 
 
-ValueOrigin = FactOrigin | SourceOrigin | SchemaDefaultOrigin
+OperationalOrigin = FactOrigin | SourceOrigin
+ValueOrigin = OperationalOrigin | SchemaDefaultOrigin
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -202,8 +203,9 @@ class ProjectedLink:
     link_type: str
     target_id: UUID
     valid_from: float
-    fact_id: UUID
+    fact_id: UUID | None
     source_ref: str
+    origin: OperationalOrigin
     _properties_json: str = field(repr=False)
 
     def __init__(
@@ -214,13 +216,17 @@ class ProjectedLink:
         target_id: UUID,
         properties: object,
         valid_from: float,
-        fact_id: UUID,
         source_ref: str,
+        origin: OperationalOrigin,
+        fact_id: UUID | None = None,
     ) -> None:
         if not isinstance(source_id, UUID) or not isinstance(target_id, UUID):
             raise TypeError("projected link endpoints must be UUID values")
-        if not isinstance(fact_id, UUID):
-            raise TypeError("projected link fact_id must be a UUID")
+        if fact_id is not None and not isinstance(fact_id, UUID):
+            raise TypeError("projected link fact_id must be a UUID or None")
+        _validate_operational_origin("projected link", origin, fact_id)
+        if isinstance(origin, FactOrigin) and fact_id != origin.fact_id:
+            raise ValueError("projected link FactOrigin must match fact_id")
         _non_empty_text("link_type", link_type)
         _non_empty_text("source_ref", source_ref)
         checked_properties = require_json_mapping(
@@ -233,6 +239,7 @@ class ProjectedLink:
         object.__setattr__(self, "valid_from", _finite("valid_from", valid_from))
         object.__setattr__(self, "fact_id", fact_id)
         object.__setattr__(self, "source_ref", source_ref)
+        object.__setattr__(self, "origin", origin)
         object.__setattr__(
             self,
             "_properties_json",
@@ -254,6 +261,7 @@ class ProjectedObject:
 
     id: UUID
     object_type: str
+    origin: OperationalOrigin
     _properties: tuple[ProjectedProperty, ...] = field(repr=False)
 
     def __init__(
@@ -261,10 +269,12 @@ class ProjectedObject:
         *,
         object_id: UUID,
         object_type: str,
+        origin: OperationalOrigin,
         properties: Iterable[ProjectedProperty] = (),
     ) -> None:
         if not isinstance(object_id, UUID):
             raise TypeError("object_id must be a UUID")
+        _validate_operational_origin("projected object", origin, None)
         _non_empty_text("object_type", object_type)
         values = tuple(sorted(properties, key=lambda item: item.name))
         names = [item.name for item in values]
@@ -272,6 +282,7 @@ class ProjectedObject:
             raise ValueError("projected object contains duplicate properties")
         object.__setattr__(self, "id", object_id)
         object.__setattr__(self, "object_type", object_type)
+        object.__setattr__(self, "origin", origin)
         object.__setattr__(self, "_properties", values)
 
     @property
@@ -510,25 +521,33 @@ class ProjectionSnapshot:
             prop.fact_id is not None and prop.fact_id not in known_fact_ids
             for obj in object_values
             for prop in obj.properties
-        ) or any(link.fact_id not in known_fact_ids for link in link_values):
+        ) or any(
+            link.fact_id is not None and link.fact_id not in known_fact_ids
+            for link in link_values
+        ):
             raise ValueError("projected values must reference selected fact_ids")
         source_revisions = set(state.materialization_cut.source_inputs)
         for obj in object_values:
+            _validate_snapshot_origin(
+                obj.origin,
+                known_fact_ids=known_fact_ids,
+                source_revisions=source_revisions,
+                schema_identity=state.schema_identity,
+            )
             for prop in obj.properties:
-                if isinstance(prop.origin, FactOrigin):
-                    if prop.origin.fact_id not in known_fact_ids:
-                        raise ValueError(
-                            "projected FactOrigin must reference a selected fact_id"
-                        )
-                elif isinstance(prop.origin, SourceOrigin):
-                    if prop.origin.input_revision not in source_revisions:
-                        raise ValueError(
-                            "projected SourceOrigin must reference the materialization cut"
-                        )
-                elif prop.origin.schema_identity != state.schema_identity:
-                    raise ValueError(
-                        "projected SchemaDefaultOrigin must match the projection schema"
-                    )
+                _validate_snapshot_origin(
+                    prop.origin,
+                    known_fact_ids=known_fact_ids,
+                    source_revisions=source_revisions,
+                    schema_identity=state.schema_identity,
+                )
+        for link in link_values:
+            _validate_snapshot_origin(
+                link.origin,
+                known_fact_ids=known_fact_ids,
+                source_revisions=source_revisions,
+                schema_identity=state.schema_identity,
+            )
         _validate_schema_shape(schema, object_values, link_values)
         object.__setattr__(self, "schema", schema)
         object.__setattr__(self, "state", state)
@@ -593,6 +612,40 @@ def _finite(name: str, value: object) -> float:
     ):
         raise ValueError(f"{name} must be a finite number")
     return float(cast(int | float, value))
+
+
+def _validate_operational_origin(
+    subject: str,
+    origin: object,
+    fact_id: UUID | None,
+) -> None:
+    if not isinstance(origin, (FactOrigin, SourceOrigin)):
+        raise TypeError(f"{subject} origin must be a FactOrigin or SourceOrigin")
+    if isinstance(origin, FactOrigin) and fact_id not in (None, origin.fact_id):
+        raise ValueError(f"{subject} FactOrigin must match fact_id")
+    if isinstance(origin, SourceOrigin) and fact_id is not None:
+        raise ValueError(f"{subject} SourceOrigin cannot carry a fact_id")
+
+
+def _validate_snapshot_origin(
+    origin: ValueOrigin,
+    *,
+    known_fact_ids: set[UUID],
+    source_revisions: set[SourceInputRevision],
+    schema_identity: SchemaIdentity,
+) -> None:
+    if isinstance(origin, FactOrigin):
+        if origin.fact_id not in known_fact_ids:
+            raise ValueError("projected FactOrigin must reference a selected fact_id")
+    elif isinstance(origin, SourceOrigin):
+        if origin.input_revision not in source_revisions:
+            raise ValueError(
+                "projected SourceOrigin must reference the materialization cut"
+            )
+    elif origin.schema_identity != schema_identity:
+        raise ValueError(
+            "projected SchemaDefaultOrigin must match the projection schema"
+        )
 
 
 def _non_empty_text(name: str, value: object) -> str:
@@ -738,6 +791,7 @@ def _schema_properties(
 __all__ = [
     "FactOrigin",
     "MaterializationCut",
+    "OperationalOrigin",
     "ProjectedLink",
     "ProjectedObject",
     "ProjectedProperty",

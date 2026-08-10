@@ -22,6 +22,8 @@ from loushang.ontology.projection import (
     materialize_projection,
 )
 from loushang.ontology.schema import (
+    LinkCardinality,
+    LinkTypeDefinition,
     ObjectTypeDefinition,
     OntologyCompiler,
     OntologyPackageDraft,
@@ -31,6 +33,7 @@ from loushang.ontology.schema import (
 )
 from loushang.ontology.source import (
     MappedSourceInput,
+    MappedSourceLink,
     MappedSourceObject,
     MappedSourceProperty,
     MappedSourceSnapshot,
@@ -44,6 +47,7 @@ from loushang.ontology.storage import (
 )
 
 ASSET_ID = UUID("00000000-0000-0000-0000-000000000001")
+OWNER_ID = UUID("00000000-0000-0000-0000-000000000002")
 REVIEW_FACT_ID = UUID("10000000-0000-0000-0000-000000000001")
 
 
@@ -81,6 +85,21 @@ def _schema():
                             default="unreviewed",
                         ),
                     ],
+                ),
+                ObjectTypeDefinition(
+                    "Owner",
+                    semantic_id="owner",
+                    state_authority=StateAuthority.SOURCE_BACKED,
+                ),
+            ],
+            link_types=[
+                LinkTypeDefinition(
+                    "owned_by",
+                    "Asset",
+                    "Owner",
+                    semantic_id="asset.owned-by",
+                    state_authority=StateAuthority.SOURCE_BACKED,
+                    cardinality=LinkCardinality.MANY_TO_ONE,
                 )
             ],
         )
@@ -114,8 +133,9 @@ def _binding(*, binding_id: str = "erp.assets") -> SourceBinding:
     return SourceBinding(
         binding_id=binding_id,
         mapping_version="mapping-v3",
-        object_existence_ids=("asset",),
+        object_existence_ids=("asset", "owner"),
         property_ids=("asset.code",),
+        link_type_ids=("asset.owned-by",),
     )
 
 
@@ -130,6 +150,7 @@ def _source_input(*, binding_id: str = "erp.assets") -> MappedSourceInput:
                     object_id=ASSET_ID,
                     object_type_id="asset",
                     source_record_ref="asset:A-1",
+                    identity_field_ref="assets.asset_id",
                     properties=(
                         MappedSourceProperty(
                             property_id="asset.code",
@@ -139,7 +160,24 @@ def _source_input(*, binding_id: str = "erp.assets") -> MappedSourceInput:
                         ),
                     ),
                 ),
-            )
+                MappedSourceObject(
+                    object_id=OWNER_ID,
+                    object_type_id="owner",
+                    source_record_ref="owner:O-1",
+                    identity_field_ref="owners.owner_id",
+                ),
+            ),
+            links=(
+                MappedSourceLink(
+                    source_id=ASSET_ID,
+                    link_type_id="asset.owned-by",
+                    target_id=OWNER_ID,
+                    source_record_ref="ownership:A-1:O-1",
+                    field_ref="ownership.owner_id",
+                    valid_from=1,
+                    properties={"role": "primary"},
+                ),
+            ),
         ),
     )
 
@@ -157,10 +195,26 @@ def test_memory_slice_combines_source_fact_and_default_with_exact_origins() -> N
     installed.replace(snapshot)
 
     asset = installed.get(ASSET_ID)
+    owner = installed.get(OWNER_ID)
     assert asset is not None
+    assert owner is not None
     assert asset.get("code") == "A-1"
     assert asset.get("review_status") == "approved"
     assert asset.get("risk") == "unreviewed"
+    assert asset.origin == SourceOrigin(
+        binding_id="erp.assets",
+        mapping_version="mapping-v3",
+        source_revision="erp-42",
+        source_record_ref="asset:A-1",
+        field_ref="assets.asset_id",
+    )
+    assert owner.origin == SourceOrigin(
+        binding_id="erp.assets",
+        mapping_version="mapping-v3",
+        source_revision="erp-42",
+        source_record_ref="owner:O-1",
+        field_ref="owners.owner_id",
+    )
     assert asset.property("code").origin == SourceOrigin(  # type: ignore[union-attr]
         binding_id="erp.assets",
         mapping_version="mapping-v3",
@@ -173,6 +227,15 @@ def test_memory_slice_combines_source_fact_and_default_with_exact_origins() -> N
     )
     assert asset.property("risk").origin == SchemaDefaultOrigin(  # type: ignore[union-attr]
         snapshot.state.schema_identity
+    )
+    assert snapshot.find_neighbors(ASSET_ID, "owned_by") == (owner,)
+    assert snapshot.links[0].properties == {"role": "primary"}
+    assert snapshot.links[0].origin == SourceOrigin(
+        binding_id="erp.assets",
+        mapping_version="mapping-v3",
+        source_revision="erp-42",
+        source_record_ref="ownership:A-1:O-1",
+        field_ref="ownership.owner_id",
     )
     assert snapshot.state.materialization_cut.source_inputs == (
         SourceInputRevision("erp.assets", "mapping-v3", "erp-42"),
@@ -197,6 +260,10 @@ def test_mapped_source_values_are_detached_and_materialization_is_deterministic(
     assert source_property.raw_value == {"labels": ["critical"]}
     with pytest.raises(AttributeError):
         source_property.property_id = "changed"  # type: ignore[misc]
+    source_link = _source_input().payload.links[0]
+    exposed_link_properties = source_link.properties
+    exposed_link_properties["role"] = "changed"
+    assert source_link.properties == {"role": "primary"}
 
     first = materialize_projection(
         _selection(),
@@ -228,9 +295,10 @@ def test_ambiguous_source_authority_fails_instead_of_using_input_order() -> None
             ),
         )
 
-    assert "source_authority_binding_conflict" in {
-        item.code for item in exc_info.value.diagnostics
-    }
+    codes = {item.code for item in exc_info.value.diagnostics}
+    assert "source_authority_binding_conflict" in codes
+    assert "source_object_conflict" in codes
+    assert "source_link_conflict" in codes
 
 
 def test_source_freshness_is_explicit_and_does_not_mutate_the_cut() -> None:

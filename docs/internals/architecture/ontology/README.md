@@ -10,8 +10,8 @@ projection, and adapter split in
 materialization-correctness, stable semantic identity, and declared
 StateAuthority slices of
 [ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
-are implemented. Its first Memory-only mapped-source materialization slice is
-also implemented.
+are implemented. Its Memory-only mapped-source materialization and complete
+operational-origin slices are also implemented.
 
 It currently provides:
 
@@ -23,10 +23,10 @@ It currently provides:
 - pure, deterministic Fact commit planning and atomic bitemporal
   `FactSelection`;
 - immutable source bindings and mapped source snapshots for source-backed
-  object existence and properties;
-- deterministic source-plus-Fact object/property materialization, with schema
-  defaults and explicit `SourceOrigin`, `FactOrigin`, and
-  `SchemaDefaultOrigin` lineage;
+  object existence, properties, and links;
+- deterministic source-plus-Fact object/property/link materialization: object
+  existence and links expose `FactOrigin` or `SourceOrigin`, while properties
+  may additionally expose `SchemaDefaultOrigin`;
 - immutable `MaterializationCut` build coordinates plus explicit, pure Fact and
   source-head `ProjectionFreshness` evaluation;
 - a narrow ProjectionReadStore and atomic whole-snapshot ProjectionStore;
@@ -60,15 +60,16 @@ mapped source inputs, and separating a projection's build cut from observed
 freshness. It is tracked in
 [#439](https://github.com/zhnt/loushang/issues/439).
 
-Four ARD-003 foundation slices are implemented: materialization correctness
+The implemented ARD-003 foundation includes materialization correctness
 (atomic Fact selection, immutable build coordinates, explicit Fact freshness,
 and snapshot-consistent SQLite reads), stable semantic identity, and declared
 state ownership (schema v3 plus identity/authority-aware schema-diff v3), plus
-the first Memory-only source composition slice. The latter adds concrete source
-bindings, full mapped snapshots, `MaterializationCut`, property `ValueOrigin`,
-and source-head freshness. Source-backed links, change sets, logic bindings,
-derived computation origins, write routing, and a later SQLite physical layout
-remain deferred.
+the Memory-only source composition and origin-contract slices. They add
+concrete source bindings, full mapped object/property/link snapshots,
+`MaterializationCut`, complete operational origins, explicit authority failure
+contracts, and source-head freshness. Change sets, logic bindings, derived
+computation origins, write routing, and a later SQLite physical layout remain
+deferred.
 
 ## Runtime Shape
 
@@ -136,8 +137,8 @@ product subsystem.
   `FactSelection`;
 - `facts/commit.py`: pure commit planning, journal validation, lineage, and
   bitemporal selection;
-- `source/`: immutable source authority bindings, mapped full snapshots, and
-  source revision coordinates; no concrete connector;
+- `source/`: immutable source authority bindings, mapped object/property/link
+  snapshots, and source revision coordinates; no concrete connector;
 - `projection/model.py`: immutable object, property, link, build state,
   value origins, materialization cut, freshness observation, and snapshot;
 - `projection/ports.py`: projection reads and atomic replacement;
@@ -164,9 +165,10 @@ projection_properties   projection_links
 ```
 
 `authority_objects`, `mutation_journal`, and `projection_unique_values` are
-not part of the current layout. SQLite v2 has no source revision-vector or
-`SourceOrigin` columns; `SQLiteProjectionStore` rejects such snapshots instead
-of persisting an incomplete representation.
+not part of the current layout. SQLite v2 reconstructs Fact-backed object and
+link origins from the exact selected Fact IDs. It has no source revision-vector
+or `SourceOrigin` columns, so `SQLiteProjectionStore` rejects source-backed
+snapshots instead of persisting an incomplete representation.
 
 ## Removed Greenfield Surface
 

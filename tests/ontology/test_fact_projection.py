@@ -15,6 +15,7 @@ from loushang.ontology.facts import (
     PropertyAssertion,
 )
 from loushang.ontology.projection import (
+    FactOrigin,
     ProjectionMaterializationError,
     materialize_projection,
 )
@@ -155,6 +156,9 @@ def test_materializer_builds_an_immutable_reproducible_snapshot() -> None:
     assert snapshot.state.valid_at == 20
     assert snapshot.state.recorded_at == 20
     assert snapshot.fact_ids == tuple(item.fact_id for item in _complete_facts())
+    assert asset.origin == FactOrigin(_complete_facts()[0].fact_id)
+    assert owner.origin == FactOrigin(_complete_facts()[4].fact_id)
+    assert snapshot.links[0].origin == FactOrigin(_complete_facts()[5].fact_id)
     assert asset.property("code").valid_from == 0  # type: ignore[union-attr]
     assert not hasattr(asset, "set")
     assert not hasattr(snapshot, "create")

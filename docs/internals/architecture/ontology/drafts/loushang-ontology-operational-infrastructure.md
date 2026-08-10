@@ -10,8 +10,9 @@ ARD 或 live architecture 文档冲突，应以后者为准。
 
 多业务系统 StateAuthority、Source View 和 multi-source materialization 的收口方案见
 [ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。其
-materialization-correctness、stable semantic ID 与 declared StateAuthority slice
-已实现；concrete authority binding、mapped source input 和多来源合成仍未实现。
+materialization-correctness、stable semantic ID、declared StateAuthority、
+Memory-only mapped-source 合成与完整 operational origin slice 已实现；change set、
+logic binding、SQLite source persistence 和 write-back 仍未实现。
 
 调研快照日期为 2026-08-06。参考仓库只用于本体子系统研发和架构研究，保持只读；
 本文的规模数据来自静态文件统计，不等同于测试通过率或生产成熟度。
@@ -54,6 +55,8 @@ Fact/Provenance spine、[ARD-001](../ARD-001-factstore-semantic-authority.md)
 - asserted/derived/inferred Fact、双时间、provenance、correction lineage；
 - append-only Memory/SQLite v2 FactStore、纯 commit planner 和 idempotent FactBatch；
 - 确定性 Fact materializer、immutable ProjectionSnapshot 和 typed query；
+- source-backed object/property/link 的 versioned binding、mapped snapshot、
+  `MaterializationCut`、完整 origin 与显式 freshness；
 - 原子 whole-snapshot ProjectionStore replacement，以及独立的 Memory/SQLite adapters；
 - 带 `storage_layout=phase2` 的 SQLite v2 严格格式检测、重启和在线备份。
 
@@ -65,8 +68,8 @@ Fact/Provenance spine、[ARD-001](../ARD-001-factstore-semantic-authority.md)
 - FactBatch 尚未绑定明确的 published schema identity；
 - 还没有将 ontology-owned command 编译为 deterministic FactBatch、将 source-backed
   command 规划为显式 source-write contract 的编译层；
-- safe derivation 和 source mapping 尚未以区分 Fact 与 mapped source input 的 contract
-  重建；
+- safe derivation 尚未重建；source mapping 已具备纯 contract，但没有 Product connector、
+  delta/change-set retention 或同步 runtime；
 - 没有 ActionType、MutationPlan、审批需求、外部能力需求和原子提交协议；
 - 没有 DecisionType、DecisionRecord、Scenario、OutcomeDefinition 或 LogicBinding，尚不能
   保存“为什么选择这个动作”以及预期结果和实际结果的差异；
@@ -298,9 +301,9 @@ published ontology fact。
 
 > 目标架构提案，正式收口见
 > [ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。
-> 当前 runtime 已实现 correctness slice 和首个 Memory-only mapped-source
-> 合成切片；source-backed link、change set、derived computation 与持久化等
-> 其余多来源内容仍是后续方向。
+> 当前 runtime 已实现 correctness、Memory-only mapped-source 合成和完整
+> object/property/link origin slice；change set、derived computation 与 source
+> persistence 等其余多来源内容仍是后续方向。
 
 ERP、HR、CRM、OA 等业务系统不应被统称为 Ontology projection。对每个业务系统自身而言，
 它的数据库仍是其职责范围内的 system of record；从企业级 Ontology 视角看，每个系统只
@@ -1192,7 +1195,7 @@ curated review、ontology quality audit agent、Neo4j/Chroma 可选降级和可�
 
 ### 已完成底座：Schema、Facts、Ports 与 Immutable Projection
 
-实施状态（2026-08-09）：当前实现由
+实施状态（2026-08-10）：当前实现由
 [ARD-001](../ARD-001-factstore-semantic-authority.md) 和
 [ARD-002](../ARD-002-ports-immutable-projection-and-sqlite-v2.md) 收口，包括 schema
 compiler/diff、双时态 Fact/Provenance、Memory/SQLite ports、immutable
@@ -1202,27 +1205,30 @@ ObjectStore、动态 facade、Callable rules、直接 fusion 和临时 Action br
 Schema v3 已为 ObjectType、object Property 和 LinkType 实现独立于名称的显式
 `semantic_id` 与三类 StateAuthority，并由 schema-diff v3 识别 rename、identity
 replacement 和 authority reassignment。InterfaceType 目前仍按名称识别；source/logic
-binding 还没有实现，不能提前宣称声明已经能够路由写入或驱动多来源架构。
+binding 中的 source binding 已实现，logic binding 和写入路由仍未实现，不能把读取侧
+authority binding 误称为 Action write-back。
 
-### 下一阶段：Authority Binding 与 Multi-Source Materialization
+### 已完成：Authority Binding 与 Memory-only Multi-Source Materialization
 
 按照已接受的
 [ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)
 继续实现：
 
-- 已在 schema 声明层区分 `StateAuthority` 与 `AssertionKind`；后续投影引入
-  `ValueOrigin`；
-- 已完成 stable semantic ID；后续增加 `SourceBinding`、`MappingVersion`、
+- 已在 schema 声明层区分 `StateAuthority` 与 `AssertionKind`，投影对象、属性和关系
+  暴露受约束的 operational origin；
+- 已完成 stable semantic ID、`SourceBinding`、`MappingVersion` 和
   `SourceRevision`；
 - 已完成原子 `FactSelection`、immutable projection state 与运行时 freshness 分离；
-- 以 `MaterializationCut` 记录后续多输入构建坐标；
-- 先用 Memory 验证一个 source-backed value、一个 ontology-owned Fact 和一个 schema
-  default 的最小合成切片；
-- 明确冲突可见、未知 coverage 和 identity 不确定时的拒绝语义。
+- 以 `MaterializationCut` 记录多输入构建坐标；
+- 已用 Memory 验证 source-backed object/property/link、ontology-owned Fact 和 schema
+  default 的确定性合成；
+- 已明确 authority 冒充、binding/input 不匹配、多来源 object/link 冲突、未知 source
+  head 和 mapped link endpoint 的失败语义。
 
-验收后再校准 SQLite；在 contract 稳定前不创建多来源物理表或 migration。
+读取与物化 contract 已完成这一轮校准；下一步可以单独决策 SQLite source cut/origin
+物理布局，不在本阶段夹带 migration 或兼容层。
 
-### 后续阶段：Source Binding 与 Identity
+### 后续阶段：Product Source Adapter 与 Identity
 
 - application-version SourceMapping、FieldMapping 和 concrete Product adapters；
 - stable source record identity、alternate keys 和人工 identity resolution；

@@ -8,6 +8,7 @@ from loushang.ontology.projection.materializer import (
 from loushang.ontology.projection.model import (
     FactOrigin,
     MaterializationCut,
+    OperationalOrigin,
     ProjectedLink,
     ProjectedObject,
     ProjectedProperty,
@@ -30,6 +31,7 @@ from loushang.ontology.projection.ports import (
 __all__ = [
     "FactOrigin",
     "MaterializationCut",
+    "OperationalOrigin",
     "ProjectedLink",
     "ProjectedObject",
     "ProjectedProperty",

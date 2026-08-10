@@ -2,6 +2,7 @@
 
 from loushang.ontology.source.model import (
     MappedSourceInput,
+    MappedSourceLink,
     MappedSourceObject,
     MappedSourceProperty,
     MappedSourceSnapshot,
@@ -11,6 +12,7 @@ from loushang.ontology.source.model import (
 
 __all__ = [
     "MappedSourceInput",
+    "MappedSourceLink",
     "MappedSourceObject",
     "MappedSourceProperty",
     "MappedSourceSnapshot",

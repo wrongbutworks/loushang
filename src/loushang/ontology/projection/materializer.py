@@ -92,7 +92,9 @@ def materialize_projection(
         raise TypeError("source_inputs must contain MappedSourceInput values")
     (
         source_types,
+        source_object_origins,
         source_properties,
+        source_links,
         source_revisions,
     ) = _resolve_source_inputs(
         binding_values,
@@ -100,16 +102,17 @@ def materialize_projection(
         schema,
         diagnostics,
     )
-    object_type_facts: dict[UUID, set[str]] = {}
+    object_type_facts: dict[UUID, dict[str, list[StoredFact]]] = {}
     property_facts: dict[tuple[UUID, str], list[StoredFact]] = {}
     link_facts: dict[tuple[UUID, str, UUID], list[StoredFact]] = {}
 
     for item in selected:
         assertion = item.fact.assertion
         if isinstance(assertion, ObjectAssertion):
-            object_type_facts.setdefault(item.fact.subject_id, set()).add(
-                assertion.object_type
-            )
+            object_type_facts.setdefault(item.fact.subject_id, {}).setdefault(
+                assertion.object_type,
+                [],
+            ).append(item)
         elif isinstance(assertion, PropertyAssertion):
             property_facts.setdefault(
                 (item.fact.subject_id, assertion.property_name),
@@ -121,11 +124,12 @@ def materialize_projection(
                 [],
             ).append(item)
 
-    resolved_types = _resolve_object_types(
+    resolved_types, resolved_object_origins = _resolve_object_types(
         object_type_facts,
         schema,
         diagnostics,
-        initial=source_types,
+        initial_types=source_types,
+        initial_origins=source_object_origins,
     )
     resolved_properties = _resolve_property_facts(
         property_facts,
@@ -152,6 +156,7 @@ def materialize_projection(
         resolved_types,
         schema,
         diagnostics,
+        initial=source_links,
     )
     _validate_link_integrity(
         resolved_types,
@@ -166,6 +171,7 @@ def materialize_projection(
         ProjectedObject(
             object_id=object_id,
             object_type=object_type,
+            origin=resolved_object_origins[object_id],
             properties=resolved_properties.get(object_id, {}).values(),
         )
         for object_id, object_type in resolved_types.items()
@@ -200,12 +206,15 @@ def _resolve_source_inputs(
     diagnostics: list[ProjectionDiagnostic],
 ) -> tuple[
     dict[UUID, str],
+    dict[UUID, SourceOrigin],
     dict[UUID, dict[str, ProjectedProperty]],
+    list[ProjectedLink],
     tuple[SourceInputRevision, ...],
 ]:
     binding_by_id: dict[str, SourceBinding] = {}
     object_target_owner: dict[str, str] = {}
     property_target_owner: dict[str, str] = {}
+    link_target_owner: dict[str, str] = {}
     for binding in sorted(bindings, key=lambda item: item.binding_id):
         path = f"source_bindings.{binding.binding_id}"
         if binding.binding_id in binding_by_id:
@@ -226,8 +235,8 @@ def _resolve_source_inputs(
                 owners=object_target_owner,
                 diagnostics=diagnostics,
             )
-            definition = schema.object_type_by_id(semantic_id)
-            if definition is None:
+            object_declaration = schema.object_type_by_id(semantic_id)
+            if object_declaration is None:
                 diagnostics.append(
                     ProjectionDiagnostic(
                         "unknown_source_authority_target",
@@ -235,13 +244,14 @@ def _resolve_source_inputs(
                         f"object semantic ID '{semantic_id}' is not declared",
                     )
                 )
-            elif definition.state_authority is not StateAuthority.SOURCE_BACKED:
+            elif object_declaration.state_authority is not StateAuthority.SOURCE_BACKED:
                 diagnostics.append(
                     ProjectionDiagnostic(
                         "source_authority_mismatch",
                         f"{path}.object_existence_ids.{semantic_id}",
                         f"object existence '{semantic_id}' is "
-                        f"{definition.state_authority.value}, not source-backed",
+                        f"{object_declaration.state_authority.value}, "
+                        "not source-backed",
                     )
                 )
         for semantic_id in binding.property_ids:
@@ -269,6 +279,32 @@ def _resolve_source_inputs(
                         f"{path}.property_ids.{semantic_id}",
                         f"property '{semantic_id}' is "
                         f"{_authority_label(authority)}, not source-backed",
+                    )
+                )
+        for semantic_id in binding.link_type_ids:
+            _register_source_authority_target(
+                semantic_id,
+                binding.binding_id,
+                target_kind="link family",
+                owners=link_target_owner,
+                diagnostics=diagnostics,
+            )
+            link_declaration = schema.link_type_by_id(semantic_id)
+            if link_declaration is None:
+                diagnostics.append(
+                    ProjectionDiagnostic(
+                        "unknown_source_authority_target",
+                        f"{path}.link_type_ids.{semantic_id}",
+                        f"link semantic ID '{semantic_id}' is not declared",
+                    )
+                )
+            elif link_declaration.state_authority is not StateAuthority.SOURCE_BACKED:
+                diagnostics.append(
+                    ProjectionDiagnostic(
+                        "source_authority_mismatch",
+                        f"{path}.link_type_ids.{semantic_id}",
+                        f"link family '{semantic_id}' is "
+                        f"{link_declaration.state_authority.value}, not source-backed",
                     )
                 )
 
@@ -324,7 +360,10 @@ def _resolve_source_inputs(
         )
 
     resolved_types: dict[UUID, str] = {}
+    resolved_object_origins: dict[UUID, SourceOrigin] = {}
     resolved_properties: dict[UUID, dict[str, ProjectedProperty]] = {}
+    resolved_links: list[ProjectedLink] = []
+    resolved_link_keys: set[tuple[UUID, str, UUID]] = set()
     revisions: list[SourceInputRevision] = []
     for binding_id, source_input in sorted(input_by_binding.items()):
         matched_binding = binding_by_id.get(binding_id)
@@ -378,6 +417,13 @@ def _resolve_source_inputs(
                 )
                 continue
             resolved_types[mapped_object.object_id] = object_definition.name
+            resolved_object_origins[mapped_object.object_id] = SourceOrigin(
+                binding_id=binding_id,
+                mapping_version=source_input.mapping_version,
+                source_revision=source_input.source_revision,
+                source_record_ref=mapped_object.source_record_ref,
+                field_ref=mapped_object.identity_field_ref,
+            )
             declarations = {
                 definition.semantic_id: (name, definition)
                 for name, (_, definition) in _resolved_properties(
@@ -441,7 +487,72 @@ def _resolve_source_inputs(
                         field_ref=mapped_property.field_ref,
                     ),
                 )
-    return resolved_types, resolved_properties, tuple(revisions)
+        for mapped_link in source_input.payload.links:
+            link_path = (
+                f"source_inputs.{binding_id}.links.{mapped_link.source_id}."
+                f"{mapped_link.link_type_id}.{mapped_link.target_id}"
+            )
+            link_definition = schema.link_type_by_id(mapped_link.link_type_id)
+            if link_definition is None:
+                diagnostics.append(
+                    ProjectionDiagnostic(
+                        "unknown_mapped_link_type",
+                        link_path,
+                        f"link semantic ID '{mapped_link.link_type_id}' is not declared",
+                    )
+                )
+                continue
+            if mapped_link.link_type_id not in matched_binding.link_type_ids:
+                diagnostics.append(
+                    ProjectionDiagnostic(
+                        "unbound_mapped_link",
+                        link_path,
+                        f"binding '{binding_id}' does not own link family "
+                        f"'{mapped_link.link_type_id}'",
+                    )
+                )
+                continue
+            link_key = (
+                mapped_link.source_id,
+                link_definition.name,
+                mapped_link.target_id,
+            )
+            if link_key in resolved_link_keys:
+                diagnostics.append(
+                    ProjectionDiagnostic(
+                        "source_link_conflict",
+                        link_path,
+                        f"multiple source records produce link "
+                        f"{mapped_link.source_id}.{link_definition.name}."
+                        f"{mapped_link.target_id}",
+                    )
+                )
+                continue
+            resolved_link_keys.add(link_key)
+            resolved_links.append(
+                ProjectedLink(
+                    source_id=mapped_link.source_id,
+                    link_type=link_definition.name,
+                    target_id=mapped_link.target_id,
+                    properties=mapped_link.properties,
+                    valid_from=mapped_link.valid_from,
+                    source_ref=f"source.binding:{binding_id}",
+                    origin=SourceOrigin(
+                        binding_id=binding_id,
+                        mapping_version=source_input.mapping_version,
+                        source_revision=source_input.source_revision,
+                        source_record_ref=mapped_link.source_record_ref,
+                        field_ref=mapped_link.field_ref,
+                    ),
+                )
+            )
+    return (
+        resolved_types,
+        resolved_object_origins,
+        resolved_properties,
+        resolved_links,
+        tuple(revisions),
+    )
 
 
 def _register_source_authority_target(
@@ -482,13 +593,17 @@ def _authority_label(authority: StateAuthority | None) -> str:
 
 
 def _resolve_object_types(
-    candidates: dict[UUID, set[str]],
+    candidates: dict[UUID, dict[str, list[StoredFact]]],
     schema: CompiledOntologySchema,
     diagnostics: list[ProjectionDiagnostic],
     *,
-    initial: dict[UUID, str] | None = None,
-) -> dict[UUID, str]:
-    resolved = {} if initial is None else dict(initial)
+    initial_types: dict[UUID, str] | None = None,
+    initial_origins: dict[UUID, SourceOrigin] | None = None,
+) -> tuple[dict[UUID, str], dict[UUID, FactOrigin | SourceOrigin]]:
+    resolved = {} if initial_types is None else dict(initial_types)
+    origins: dict[UUID, FactOrigin | SourceOrigin] = (
+        {} if initial_origins is None else dict(initial_origins)
+    )
     for subject_id, candidate_types in sorted(
         candidates.items(),
         key=lambda item: str(item[0]),
@@ -545,7 +660,9 @@ def _resolve_object_types(
             )
             continue
         resolved[subject_id] = candidate_type
-    return resolved
+        selected = min(candidate_types[candidate_type], key=lambda item: item.sequence)
+        origins[subject_id] = FactOrigin(selected.fact.fact_id)
+    return resolved, origins
 
 
 def _resolve_property_facts(
@@ -741,8 +858,10 @@ def _resolve_link_facts(
     resolved_types: dict[UUID, str],
     schema: CompiledOntologySchema,
     diagnostics: list[ProjectionDiagnostic],
+    *,
+    initial: list[ProjectedLink] | None = None,
 ) -> list[ProjectedLink]:
-    resolved: list[ProjectedLink] = []
+    resolved = [] if initial is None else list(initial)
     for (source_id, link_type, target_id), values in sorted(
         candidates.items(),
         key=lambda item: (str(item[0][0]), item[0][1], str(item[0][2])),
@@ -820,6 +939,7 @@ def _resolve_link_facts(
                 valid_from=selected.fact.valid_from,
                 fact_id=selected.fact.fact_id,
                 source_ref=selected.fact.source_ref,
+                origin=FactOrigin(selected.fact.fact_id),
             )
         )
     return resolved
@@ -831,8 +951,48 @@ def _validate_link_integrity(
     schema: CompiledOntologySchema,
     diagnostics: list[ProjectionDiagnostic],
 ) -> None:
+    valid_links: list[ProjectedLink] = []
+    for link in links:
+        path = f"objects.{link.source_id}.links.{link.link_type}.{link.target_id}"
+        source_type = resolved_types.get(link.source_id)
+        target_type = resolved_types.get(link.target_id)
+        if source_type is None or target_type is None:
+            missing_role = "source" if source_type is None else "target"
+            diagnostics.append(
+                ProjectionDiagnostic(
+                    "link_endpoint_missing",
+                    path,
+                    f"link '{link.link_type}' has no projected {missing_role} object",
+                )
+            )
+            continue
+        definition = schema.link_type(link.link_type)
+        if definition is None:
+            diagnostics.append(
+                ProjectionDiagnostic(
+                    "unknown_link_type",
+                    path,
+                    f"link type '{link.link_type}' is not declared by the schema",
+                )
+            )
+            continue
+        if (
+            source_type != definition.source_type
+            or target_type != definition.target_type
+        ):
+            diagnostics.append(
+                ProjectionDiagnostic(
+                    "link_endpoint_type_invalid",
+                    path,
+                    f"link '{link.link_type}' requires {definition.source_type} -> "
+                    f"{definition.target_type}, got {source_type} -> {target_type}",
+                )
+            )
+            continue
+        valid_links.append(link)
+
     for definition in schema.link_types:
-        matching = [link for link in links if link.link_type == definition.name]
+        matching = [link for link in valid_links if link.link_type == definition.name]
         outgoing: dict[UUID, int] = {}
         incoming: dict[UUID, int] = {}
         for link in matching:

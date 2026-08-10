@@ -17,7 +17,12 @@ from loushang.ontology.facts.commit import (
     select_facts_as_of,
     validate_fact_journal,
 )
-from loushang.ontology.facts.model import FactBatch, FactRecord, FactValidationError
+from loushang.ontology.facts.model import (
+    FactBatch,
+    FactRecord,
+    FactValidationError,
+    ObjectAssertion,
+)
 from loushang.ontology.facts.ports import FactCommit, FactSelection, StoredFact
 from loushang.ontology.projection import (
     FactOrigin,
@@ -476,6 +481,29 @@ class _SQLiteAdapter:
             entries.append(StoredFact(sequence=cast(int, sequence), fact=fact))
         return tuple(entries)
 
+    def _read_fact_entries_by_ids(
+        self,
+        fact_ids: set[str],
+    ) -> tuple[StoredFact, ...]:
+        entries: list[StoredFact] = []
+        ordered_ids = sorted(fact_ids)
+        for offset in range(0, len(ordered_ids), 500):
+            chunk = ordered_ids[offset : offset + 500]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = self._connection.execute(
+                "SELECT sequence, fact_id, payload FROM semantic_facts "
+                f"WHERE fact_id IN ({placeholders}) ORDER BY sequence",
+                chunk,
+            )
+            for sequence, fact_id, payload in rows:
+                fact = FactRecord.from_json(cast(str, payload))
+                if str(fact.fact_id) != fact_id:
+                    raise FactValidationError(
+                        "stored semantic fact identity does not match its payload"
+                    )
+                entries.append(StoredFact(sequence=cast(int, sequence), fact=fact))
+        return tuple(sorted(entries, key=lambda item: item.sequence))
+
     def _read_committed_batches(self) -> dict[str, CommittedFactBatch]:
         batches: dict[str, CommittedFactBatch] = {}
         for row in self._connection.execute(
@@ -560,6 +588,17 @@ class _SQLiteAdapter:
             raise FactValidationError("stored projection fact ids are invalid")
         properties_by_object: dict[UUID, list[ProjectedProperty]] = {}
         schema_identity = SchemaIdentity.from_schema(self._schema)
+        selected_fact_ids = set(cast(list[str], raw_fact_ids))
+        object_origins: dict[tuple[UUID, str], FactOrigin] = {}
+        for entry in self._read_fact_entries_by_ids(selected_fact_ids):
+            assertion = entry.fact.assertion
+            if str(entry.fact.fact_id) in selected_fact_ids and isinstance(
+                assertion, ObjectAssertion
+            ):
+                object_origins.setdefault(
+                    (entry.fact.subject_id, assertion.object_type),
+                    FactOrigin(entry.fact.fact_id),
+                )
         for property_row in self._connection.execute(
             """
             SELECT object_id, property_name, value_type, value_json,
@@ -597,16 +636,25 @@ class _SQLiteAdapter:
             properties_by_object.setdefault(UUID(cast(str, object_id)), []).append(
                 projected
             )
-        objects = [
-            ProjectedObject(
-                object_id=UUID(cast(str, object_id)),
-                object_type=cast(str, object_type),
-                properties=properties_by_object.get(UUID(cast(str, object_id)), ()),
+        objects: list[ProjectedObject] = []
+        for object_id, object_type in self._connection.execute(
+            "SELECT object_id, object_type FROM projection_objects ORDER BY object_id"
+        ):
+            checked_object_id = UUID(cast(str, object_id))
+            checked_object_type = cast(str, object_type)
+            origin = object_origins.get((checked_object_id, checked_object_type))
+            if origin is None:
+                raise FactValidationError(
+                    "stored projected object has no selected ObjectAssertion origin"
+                )
+            objects.append(
+                ProjectedObject(
+                    object_id=checked_object_id,
+                    object_type=checked_object_type,
+                    origin=origin,
+                    properties=properties_by_object.get(checked_object_id, ()),
+                )
             )
-            for object_id, object_type in self._connection.execute(
-                "SELECT object_id, object_type FROM projection_objects ORDER BY object_id"
-            )
-        ]
         links = [
             ProjectedLink(
                 source_id=UUID(cast(str, source_id)),
@@ -616,6 +664,7 @@ class _SQLiteAdapter:
                 valid_from=cast(float, link_valid_from),
                 fact_id=UUID(cast(str, fact_id)),
                 source_ref=cast(str, source_ref),
+                origin=FactOrigin(UUID(cast(str, fact_id))),
             )
             for (
                 source_id,
@@ -808,11 +857,16 @@ class SQLiteProjectionStore(_SQLiteAdapter):
     def replace(self, snapshot: ProjectionSnapshot) -> ProjectionState:
         if not isinstance(snapshot, ProjectionSnapshot):
             raise TypeError("replace requires a ProjectionSnapshot")
-        if snapshot.state.materialization_cut.source_inputs or any(
-            isinstance(prop.origin, SourceOrigin)
-            for obj in snapshot.objects
-            for prop in obj.properties
-        ):
+        has_source_origin = (
+            any(isinstance(obj.origin, SourceOrigin) for obj in snapshot.objects)
+            or any(
+                isinstance(prop.origin, SourceOrigin)
+                for obj in snapshot.objects
+                for prop in obj.properties
+            )
+            or any(isinstance(link.origin, SourceOrigin) for link in snapshot.links)
+        )
+        if snapshot.state.materialization_cut.source_inputs or has_source_origin:
             raise ValueError(
                 "SQLite v2 cannot store mapped-source cuts or SourceOrigin values"
             )

@@ -8,11 +8,11 @@ This decision partially supersedes ARD-001 and narrowly amends the
 materialization and freshness parts of ARD-002. Its implemented foundation
 slices change runtime and schema contracts but keep the Phase 2 SQLite v2 table
 layout. Stable semantic IDs and StateAuthority declarations are implemented in
-the schema v3 contract. Concrete source bindings, full mapped snapshots,
-multi-input cuts, property value origins, and source-head freshness are
-implemented for the first Memory-only slice. Source-backed links, change sets,
-logic bindings, transient derivation, and SQLite source persistence remain
-unimplemented.
+the schema v3 contract. Concrete source bindings, full mapped object/property/
+link snapshots, multi-input cuts, operational origins, authority failure
+contracts, and source-head freshness are implemented for the Memory-only
+slices. Change sets, logic bindings, transient derivation, and SQLite source
+persistence remain unimplemented.
 
 ## Context
 
@@ -281,6 +281,12 @@ SourceOrigin(binding_id, mapping_version, source_revision,
 SchemaDefaultOrigin(schema_identity)
 ```
 
+Object existence and links use the operational subset `FactOrigin |
+SourceOrigin`; only properties may use `SchemaDefaultOrigin`. A mapped object
+therefore carries the source field used to establish its canonical identity,
+and a mapped link carries the source field or record that established the
+relationship.
+
 Ontology-owned edits and published derived Claims can initially use
 `FactOrigin`. Recursive computation lineage, Action edit origins, and policy
 origins are deferred until a demonstrated contract requires them. Transient
@@ -408,11 +414,12 @@ Completed in the declared StateAuthority slice:
 - declarations alone do not select a concrete source/logic binding or route
   writes.
 
-Completed in the first Memory-only mapped-source slice:
+Completed in the Memory-only mapped-source and origin-contract slices:
 
 - one Memory-only slice combines one source-backed value, one ontology-owned
   Fact, and one schema default into a deterministic projection;
-- every projected property exposes `FactOrigin`, `SourceOrigin`, or
+- every projected object existence and link exposes `FactOrigin` or
+  `SourceOrigin`; every projected property additionally permits
   `SchemaDefaultOrigin`;
 - the initial slice contains no transient derived value until a computation
   origin is defined;
@@ -420,8 +427,11 @@ Completed in the first Memory-only mapped-source slice:
 - in the one-source slice, a supplied newer source revision makes an older cut
   stale without mutating that cut, while a missing source-head observation
   produces `unknown`;
-- source bindings refer to object-existence and property authority declarations
-  through stable semantic IDs rather than API names;
+- source bindings refer to object-existence, property, and link-family authority
+  declarations through stable semantic IDs rather than API names;
+- missing inputs, mapping-version mismatches, unknown stable IDs, inherited
+  property IDs, cross-authority impersonation, ambiguous objects/links, mapped
+  link endpoints, and multi-source freshness are explicit regression contracts;
 - `ProjectionState` now owns a `MaterializationCut` with exact schema, source,
   Fact, validity, and recording coordinates;
 - SQLite v2 explicitly rejects source cuts and `SourceOrigin` values rather
@@ -431,7 +441,6 @@ Completed in the first Memory-only mapped-source slice:
 
 Remaining gates after this slice:
 
-- source-backed link mapping and lineage;
 - reproducible change-set payloads with retained base-revision chains;
 - concrete versioned logic bindings and a computation origin before transient
   derived values enter a projection;

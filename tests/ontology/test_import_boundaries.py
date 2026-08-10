@@ -87,7 +87,9 @@ def test_public_surface_has_no_direct_mutation_or_compatibility_facades() -> Non
     assert hasattr(ontology, "ProjectionStore")
     assert hasattr(ontology, "SourceBinding")
     assert hasattr(ontology, "MappedSourceInput")
+    assert hasattr(ontology, "MappedSourceLink")
     assert hasattr(ontology, "MaterializationCut")
+    assert hasattr(ontology, "OperationalOrigin")
     assert hasattr(ontology, "ValueOrigin")
     assert not hasattr(ontology_facts, "MemoryFactStore")
 
