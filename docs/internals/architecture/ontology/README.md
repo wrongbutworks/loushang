@@ -11,7 +11,10 @@ materialization-correctness, stable semantic identity, and declared
 StateAuthority slices of
 [ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
 are implemented. Its Memory-only mapped-source materialization and complete
-operational-origin slices are also implemented.
+operational-origin slices are also implemented. The identity and
+reproducibility closure in
+[ARD-004](ARD-004-schema-identity-semantic-references-and-source-input-cuts.md)
+is implemented without changing the SQLite v2 physical layout.
 
 It currently provides:
 
@@ -19,19 +22,23 @@ It currently provides:
   schema diff, with package-local stable semantic IDs for object types,
   object properties, and link types, plus an explicit StateAuthority for each
   operational definition;
-- an append-only bitemporal FactStore with provenance and lineage;
+- an append-only bitemporal FactStore with provenance and lineage, where Fact
+  v2 records bind a complete `SchemaIdentity` and durable assertions use stable
+  semantic IDs rather than renameable API names;
 - pure, deterministic Fact commit planning and atomic bitemporal
   `FactSelection`;
-- immutable source bindings and mapped source snapshots for source-backed
-  object existence, properties, and links;
+- immutable, schema-bound source bindings and mapped source snapshots for
+  source-backed object existence, properties, and links, with explicit
+  complete/partial/unknown coverage;
 - deterministic source-plus-Fact object/property/link materialization, including
   property bindings independent from object-existence bindings: object existence
   and links expose `FactOrigin` or `SourceOrigin`, while ontology-owned
   properties may additionally expose `SchemaDefaultOrigin`;
 - explicit rejection of mapped properties or links whose `valid_from` is later
   than the selected materialization `valid_at`;
-- immutable `MaterializationCut` build coordinates plus explicit, pure Fact and
-  source-head `ProjectionFreshness` evaluation;
+- immutable `MaterializationCut` build coordinates containing deterministic
+  mapped-payload digests plus explicit, pure Fact and source-head
+  `ProjectionFreshness` evaluation;
 - a narrow ProjectionReadStore and atomic whole-snapshot ProjectionStore,
   including synchronized replacement in the Memory reference adapter;
 - backend-neutral typed queries over projection reads, guarded by complete
@@ -72,8 +79,16 @@ state ownership (schema v3 plus identity/authority-aware schema-diff v3), plus
 the Memory-only source composition and origin-contract slices. They add
 concrete source bindings, full mapped object/property/link snapshots,
 `MaterializationCut`, complete operational origins, explicit authority failure
-contracts, and source-head freshness. Change sets, logic bindings, derived
-computation origins, write routing, and a later SQLite physical layout remain
+contracts, and source-head freshness.
+
+[ARD-004](ARD-004-schema-identity-semantic-references-and-source-input-cuts.md)
+closes the first runtime identity boundary: schema owns the single-package
+`SchemaIdentity`; Facts and source bindings target it explicitly; Fact
+assertions use stable semantic IDs; and a selected source cut includes coverage
+and the exact mapped-payload digest while freshness continues to compare cheap
+observable heads. Whole-snapshot materialization accepts only complete source
+coverage. Change sets, logic bindings, derived computation origins, write
+routing, multi-package profiles, and a later SQLite physical layout remain
 deferred.
 
 ## Proposed Target Designs
@@ -121,11 +136,12 @@ Fact and source heads through `evaluate_projection_freshness(...)`.
 ## Dependency Direction
 
 ```text
-schema -------------------------------> Foundation JSON
-facts.model --------------------------> Foundation JSON
+schema.identity ----------------------> Foundation JSON
+schema compiler/diff -----------------> schema.identity + Foundation JSON
+facts.model --------------------------> schema.identity + Foundation JSON
 facts.ports --------------------------> facts.model
 facts.commit -------------------------> facts.model + facts.ports
-source.model -------------------------> Foundation JSON
+source.model -------------------------> schema.identity + Foundation JSON
 projection.model ---------------------> schema + Foundation JSON
 projection.ports ---------------------> projection.model
 projection.materializer -------------> facts.ports + source
@@ -155,8 +171,9 @@ product subsystem.
   `FactSelection`;
 - `facts/commit.py`: pure commit planning, journal validation, lineage, and
   bitemporal selection;
-- `source/`: immutable source authority bindings, mapped object/property/link
-  snapshots, and source revision coordinates; no concrete connector;
+- `source/`: immutable schema-bound source authority bindings, mapped
+  object/property/link snapshots, exact content-digested cuts, declared
+  coverage, and observable source revision coordinates; no concrete connector;
 - `projection/model.py`: immutable object, property, link, build state,
   value origins, materialization cut, freshness observation, and snapshot;
 - `projection/ports.py`: projection reads and atomic replacement;
@@ -210,8 +227,9 @@ deferred to an Action/write-back ARD.
 1. [ARD-001: FactStore Is The Sole Semantic Authority](ARD-001-factstore-semantic-authority.md)
 2. [ARD-002: Ports, Immutable Projections, And The Phase 2 SQLite v2 Layout](ARD-002-ports-immutable-projection-and-sqlite-v2.md)
 3. [ARD-003: Declared State Authority And Multi-Source Materialization](ARD-003-declared-state-authority-and-multi-source-materialization.md)
-4. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
-5. [Schema Evolution](schema-evolution.md)
+4. [ARD-004: Schema Identity, Semantic References, And Source Input Cuts](ARD-004-schema-identity-semantic-references-and-source-input-cuts.md)
+5. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
+6. [Schema Evolution](schema-evolution.md)
 
 The larger design and reference analysis remains in
 [`drafts/loushang-ontology-operational-infrastructure.md`](drafts/loushang-ontology-operational-infrastructure.md).

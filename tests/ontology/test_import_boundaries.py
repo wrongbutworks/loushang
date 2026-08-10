@@ -122,7 +122,6 @@ def test_ontology_internal_dependency_direction() -> None:
                 "loushang.ontology.facts",
                 "loushang.ontology.projection",
                 "loushang.ontology.query",
-                "loushang.ontology.schema",
                 "loushang.ontology.storage",
             ),
         ),
@@ -148,7 +147,6 @@ def test_ontology_internal_dependency_direction() -> None:
             (
                 "loushang.ontology.projection",
                 "loushang.ontology.query",
-                "loushang.ontology.schema",
                 "loushang.ontology.storage",
                 "loushang.ontology.rules",
                 "loushang.ontology.fusion",
@@ -173,6 +171,26 @@ def test_ontology_internal_dependency_direction() -> None:
                     offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
+
+
+def test_fact_and_source_contracts_depend_only_on_the_schema_identity_leaf() -> None:
+    offenders: list[str] = []
+    for root in (ONTOLOGY_ROOT / "facts", ONTOLOGY_ROOT / "source"):
+        for path in sorted(root.rglob("*.py")):
+            for imported in _absolute_imports(path):
+                if imported.startswith("loushang.ontology.schema") and imported != (
+                    "loushang.ontology.schema.identity"
+                ):
+                    offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+    identity_imports = _absolute_imports(ONTOLOGY_ROOT / "schema" / "identity.py")
+    assert {
+        imported
+        for imported in identity_imports
+        if imported.startswith("loushang.ontology")
+    } == set()
 
 
 def test_storage_adapters_do_not_depend_on_each_other() -> None:

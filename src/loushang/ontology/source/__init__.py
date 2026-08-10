@@ -7,6 +7,8 @@ from loushang.ontology.source.model import (
     MappedSourceProperty,
     MappedSourceSnapshot,
     SourceBinding,
+    SourceCoverage,
+    SourceInputCut,
     SourceInputRevision,
 )
 
@@ -17,5 +19,7 @@ __all__ = [
     "MappedSourceProperty",
     "MappedSourceSnapshot",
     "SourceBinding",
+    "SourceCoverage",
+    "SourceInputCut",
     "SourceInputRevision",
 ]

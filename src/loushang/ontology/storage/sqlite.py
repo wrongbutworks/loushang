@@ -34,13 +34,13 @@ from loushang.ontology.projection import (
     ProjectionState,
     ProjectionUnavailableError,
     SchemaDefaultOrigin,
-    SchemaIdentity,
     SourceOrigin,
 )
 from loushang.ontology.schema import (
     CompiledOntologySchema,
     OntologyCompiler,
     SchemaCompilationError,
+    SchemaIdentity,
     ValueType,
 )
 
@@ -595,8 +595,15 @@ class _SQLiteAdapter:
             if str(entry.fact.fact_id) in selected_fact_ids and isinstance(
                 assertion, ObjectAssertion
             ):
+                object_definition = self._schema.object_type_by_id(
+                    assertion.object_type_id
+                )
+                if object_definition is None:
+                    raise FactValidationError(
+                        "stored ObjectAssertion semantic ID is not declared"
+                    )
                 object_origins.setdefault(
-                    (entry.fact.subject_id, assertion.object_type),
+                    (entry.fact.subject_id, object_definition.name),
                     FactOrigin(entry.fact.fact_id),
                 )
         for property_row in self._connection.execute(
@@ -785,6 +792,12 @@ class SQLiteFactStore(_SQLiteAdapter):
         self._require_open()
         if self._schema is None:
             raise RuntimeError("SQLite fact commits require a bound schema")
+        expected_identity = SchemaIdentity.from_schema(self._schema)
+        if batch.schema_identity != expected_identity:
+            raise FactValidationError(
+                f"Fact batch targets {batch.schema_identity}, not bound schema "
+                f"{expected_identity}"
+            )
         self._connection.execute("BEGIN IMMEDIATE")
         try:
             plan = prepare_fact_commit(

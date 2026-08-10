@@ -32,6 +32,7 @@ from loushang.ontology.schema.evolution import (
     SchemaLineageError,
     compare_schemas,
 )
+from loushang.ontology.schema.identity import SchemaIdentity
 
 __all__ = [
     "SCHEMA_FORMAT",
@@ -54,6 +55,7 @@ __all__ = [
     "SchemaDiagnostic",
     "SchemaDiff",
     "SchemaLineageError",
+    "SchemaIdentity",
     "SchemaVersion",
     "StateAuthority",
     "ValueType",

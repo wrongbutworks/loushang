@@ -8,6 +8,11 @@
 > [ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
 > later replaced direct live-store materialization with atomic `FactSelection`
 > and separated immutable projection state from runtime freshness.
+> [ARD-004](ARD-004-schema-identity-semantic-references-and-source-input-cuts.md)
+> advances Fact and FactBatch JSON to v2: every Fact targets one complete
+> `SchemaIdentity`, and assertion predicates are stable semantic IDs rather
+> than renameable API names. Those ARD-004 rules supersede the original payload
+> names below.
 
 ## Status
 
@@ -57,7 +62,8 @@ path.
 
 Every immutable `FactRecord` contains:
 
-- a stable `fact_id` and one typed assertion payload;
+- a stable `fact_id`, one complete `SchemaIdentity`, and one typed assertion
+  payload using package-local stable semantic IDs;
 - `assertion_kind`: `asserted`, `derived`, or `inferred`;
 - non-empty `source_ref` and `source_record_ref`;
 - optional ordered `evidence_refs`, `methodology_ref`, `author_ref`, and
@@ -71,9 +77,9 @@ The three infrastructure assertion payloads are deliberately small:
 
 | Assertion | Meaning |
 | --- | --- |
-| `ObjectAssertion(object_type)` | the subject exists as one schema object type |
-| `PropertyAssertion(property_name, value)` | one strict Foundation JSON value is asserted for a subject property |
-| `LinkAssertion(link_type, target_id, properties)` | one typed edge exists from subject to target |
+| `ObjectAssertion(object_type_id)` | the subject exists as one stable schema object-type ID |
+| `PropertyAssertion(property_id, value)` | one strict Foundation JSON value is asserted for a stable property ID |
+| `LinkAssertion(link_type_id, target_id, properties)` | one stable link-family edge exists from subject to target |
 
 Measurement and Claim are domain object types built with these facts, not new
 hard-coded infrastructure enums. Property `null` is a real JSON value and is
@@ -113,7 +119,8 @@ of choosing a winner. Equivalent assertions are safely coalesced.
 ## Batch And Idempotency Contract
 
 `FactBatch` is the atomic ingestion unit and has a stable non-empty `batch_id`.
-All fact IDs within a batch are unique.
+All fact IDs within a batch are unique, and all Facts in the batch carry the
+same complete `SchemaIdentity`. A Fact journal cannot mix schema identities.
 
 - the first successful commit appends each fact with one contiguous fact
   sequence and advances the fact watermark;

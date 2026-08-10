@@ -28,6 +28,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    SchemaIdentity,
     StateAuthority,
     ValueType,
 )
@@ -38,6 +39,7 @@ from loushang.ontology.source import (
     MappedSourceProperty,
     MappedSourceSnapshot,
     SourceBinding,
+    SourceCoverage,
     SourceInputRevision,
 )
 from loushang.ontology.storage import (
@@ -49,6 +51,11 @@ from loushang.ontology.storage import (
 ASSET_ID = UUID("00000000-0000-0000-0000-000000000001")
 OWNER_ID = UUID("00000000-0000-0000-0000-000000000002")
 REVIEW_FACT_ID = UUID("10000000-0000-0000-0000-000000000001")
+MAPPED_SCHEMA_IDENTITY = SchemaIdentity(
+    "test.mapped-source",
+    "urn:test:mapped-source",
+    "1.0.0",
+)
 
 
 def _schema():
@@ -115,7 +122,8 @@ def _selection():
                 FactRecord(
                     fact_id=REVIEW_FACT_ID,
                     subject_id=ASSET_ID,
-                    assertion=PropertyAssertion("review_status", "approved"),
+                    schema_identity=MAPPED_SCHEMA_IDENTITY,
+                    assertion=PropertyAssertion("asset.review-status", "approved"),
                     assertion_kind=AssertionKind.ASSERTED,
                     source_ref="review.office",
                     source_record_ref="approval:17",
@@ -133,6 +141,7 @@ def _binding(*, binding_id: str = "erp.assets") -> SourceBinding:
     return SourceBinding(
         binding_id=binding_id,
         mapping_version="mapping-v3",
+        schema_identity=MAPPED_SCHEMA_IDENTITY,
         object_existence_ids=("asset", "owner"),
         property_ids=("asset.code",),
         link_type_ids=("asset.owned-by",),
@@ -144,6 +153,7 @@ def _source_input(*, binding_id: str = "erp.assets") -> MappedSourceInput:
         binding_id=binding_id,
         mapping_version="mapping-v3",
         source_revision="erp-42",
+        coverage=SourceCoverage.COMPLETE,
         payload=MappedSourceSnapshot(
             objects=(
                 MappedSourceObject(
@@ -238,7 +248,7 @@ def test_memory_slice_combines_source_fact_and_default_with_exact_origins() -> N
         field_ref="ownership.owner_id",
     )
     assert snapshot.state.materialization_cut.source_inputs == (
-        SourceInputRevision("erp.assets", "mapping-v3", "erp-42"),
+        _source_input().cut,
     )
     assert snapshot.state.materialization_cut.fact_watermark == 1
     assert snapshot.state.materialization_cut.valid_at == 10
@@ -278,6 +288,36 @@ def test_mapped_source_values_are_detached_and_materialization_is_deterministic(
         source_inputs=tuple(reversed((_source_input(),))),
     )
     assert first == second
+
+
+def test_source_cut_distinguishes_payloads_that_share_one_observable_head() -> None:
+    empty = MappedSourceInput(
+        binding_id="erp.assets",
+        mapping_version="mapping-v3",
+        source_revision="erp-42",
+        coverage=SourceCoverage.COMPLETE,
+        payload=MappedSourceSnapshot(),
+    )
+    populated = MappedSourceInput(
+        binding_id="erp.assets",
+        mapping_version="mapping-v3",
+        source_revision="erp-42",
+        coverage=SourceCoverage.COMPLETE,
+        payload=MappedSourceSnapshot(
+            objects=(
+                MappedSourceObject(
+                    object_id=ASSET_ID,
+                    object_type_id="asset",
+                    source_record_ref="asset:A-1",
+                    identity_field_ref="assets.asset_id",
+                ),
+            )
+        ),
+    )
+
+    assert empty.revision == populated.revision
+    assert empty.cut.payload_digest != populated.cut.payload_digest
+    assert empty.cut != populated.cut
 
 
 def test_ambiguous_source_authority_fails_instead_of_using_input_order() -> None:
@@ -389,7 +429,12 @@ def test_transient_derived_values_wait_for_a_computation_origin() -> None:
                 FactRecord(
                     fact_id=REVIEW_FACT_ID,
                     subject_id=ASSET_ID,
-                    assertion=ObjectAssertion("Asset"),
+                    schema_identity=SchemaIdentity(
+                        "test.derived-cut",
+                        "urn:test:derived-cut",
+                        "1.0.0",
+                    ),
+                    assertion=ObjectAssertion("asset"),
                     assertion_kind=AssertionKind.ASSERTED,
                     source_ref="test",
                     source_record_ref="asset:A-1",

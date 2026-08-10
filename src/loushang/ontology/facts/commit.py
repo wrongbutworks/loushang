@@ -46,6 +46,11 @@ def prepare_fact_commit(
         raise FactValidationError("commit_fact_batch requires a FactBatch")
     existing_entries = tuple(current_facts)
     validate_fact_journal(existing_entries, committed_batches)
+    existing_identities = {item.fact.schema_identity for item in existing_entries}
+    if existing_identities and batch.schema_identity not in existing_identities:
+        raise FactValidationError(
+            "FactStore cannot mix complete schema identities in one journal"
+        )
     digest = batch.content_digest
     existing_batch = committed_batches.get(batch.batch_id)
     if existing_batch is not None:
@@ -123,6 +128,10 @@ def select_facts_as_of(
     valid_at = require_timestamp("valid_at", valid_at)
     recorded_at = require_timestamp("recorded_at", recorded_at)
     entries = tuple(facts)
+    if len({entry.fact.schema_identity for entry in entries}) > 1:
+        raise FactValidationError(
+            "stored Fact journal mixes complete schema identities"
+        )
     retired = {
         predecessor
         for item in entries
@@ -145,6 +154,10 @@ def validate_fact_journal(
     """Validate persisted journal continuity, lineage, and batch coverage."""
 
     entries = tuple(facts)
+    if len({entry.fact.schema_identity for entry in entries}) > 1:
+        raise FactValidationError(
+            "stored Fact journal mixes complete schema identities"
+        )
     known: dict[UUID, StoredFact] = {}
     successors: dict[UUID, UUID] = {}
     for expected_sequence, entry in enumerate(entries, start=1):
@@ -203,6 +216,8 @@ def validate_fact_journal(
 
 
 def validate_fact_lineage(predecessor: FactRecord, successor: FactRecord) -> None:
+    if predecessor.schema_identity != successor.schema_identity:
+        raise FactValidationError("fact lineage must preserve its schema identity")
     predecessor_coordinate = predecessor.lineage_coordinate
     successor_coordinate = successor.lineage_coordinate
     if predecessor_coordinate[:4] != successor_coordinate[:4]:

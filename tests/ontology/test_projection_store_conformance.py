@@ -35,6 +35,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    SchemaIdentity,
     StateAuthority,
     ValueType,
 )
@@ -49,6 +50,11 @@ from loushang.ontology.storage import (
 ASSET_ID = UUID("00000000-0000-0000-0000-000000000001")
 OWNER_ID = UUID("00000000-0000-0000-0000-000000000002")
 SCORE_ID = UUID("10000000-0000-0000-0000-000000000003")
+SCHEMA_IDENTITY = SchemaIdentity(
+    "test.projection-store",
+    "urn:test:projection-store",
+    "1.0.0",
+)
 
 
 def _schema():
@@ -109,6 +115,7 @@ def _fact(
     return FactRecord(
         fact_id=UUID(f"10000000-0000-0000-0000-{suffix:012d}"),
         subject_id=subject_id,
+        schema_identity=SCHEMA_IDENTITY,
         assertion=assertion,  # type: ignore[arg-type]
         assertion_kind=AssertionKind.ASSERTED,
         source_ref="source.erp",
@@ -123,16 +130,16 @@ def _initial_batch() -> FactBatch:
     return FactBatch(
         "initial",
         [
-            _fact(1, ASSET_ID, ObjectAssertion("Asset")),
-            _fact(2, ASSET_ID, PropertyAssertion("code", "A-1")),
+            _fact(1, ASSET_ID, ObjectAssertion("asset")),
+            _fact(2, ASSET_ID, PropertyAssertion("asset.code", "A-1")),
             _fact(
                 3,
                 ASSET_ID,
-                PropertyAssertion("score", 1),
+                PropertyAssertion("asset.score", 1),
                 source_record_ref="asset:A-1:score",
             ),
-            _fact(4, OWNER_ID, ObjectAssertion("Owner")),
-            _fact(5, ASSET_ID, LinkAssertion("owned_by", OWNER_ID)),
+            _fact(4, OWNER_ID, ObjectAssertion("owner")),
+            _fact(5, ASSET_ID, LinkAssertion("asset.owned_by", OWNER_ID)),
         ],
     )
 
@@ -144,7 +151,7 @@ def _score_update() -> FactBatch:
             _fact(
                 6,
                 ASSET_ID,
-                PropertyAssertion("score", 2),
+                PropertyAssertion("asset.score", 2),
                 source_record_ref="asset:A-1:score",
                 recorded_at=20,
                 supersedes=SCORE_ID,

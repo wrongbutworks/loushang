@@ -1218,8 +1218,13 @@ authority binding 误称为 Action write-back。
   暴露受约束的 operational origin；
 - 已完成 stable semantic ID、`SourceBinding`、`MappingVersion` 和
   `SourceRevision`；
+- 已按
+  [ARD-004](../ARD-004-schema-identity-semantic-references-and-source-input-cuts.md)
+  让 Fact v2 与 SourceBinding 绑定完整 `SchemaIdentity`，Fact 断言保存 stable
+  semantic ID；
 - 已完成原子 `FactSelection`、immutable projection state 与运行时 freshness 分离；
-- 以 `MaterializationCut` 记录多输入构建坐标；
+- 以 `MaterializationCut` 记录带 coverage 与 mapped-payload digest 的精确多输入构建
+  坐标，同时保持 source head 为低成本 freshness 观测；
 - 已用 Memory 验证 source-backed object/property/link、ontology-owned Fact 和 schema
   default 的确定性合成；
 - 已明确 authority 冒充、binding/input 不匹配、多来源 object/link 冲突、未知 source
@@ -1236,7 +1241,7 @@ authority binding 误称为 Action write-back。
 
 - application-version SourceMapping、FieldMapping 和 concrete Product adapters；
 - stable source record identity、alternate keys 和人工 identity resolution；
-- incremental cursor/change set、source coverage 和 mapping review/publish；
+- incremental cursor/change set、partial coverage 合并状态和 mapping review/publish；
 - field-level lineage、source correction 和有限的显式 merge policy。
 
 验收标准：同一对象的多个来源可以按 stable ID 合成且不丢 lineage；不确定 identity 和

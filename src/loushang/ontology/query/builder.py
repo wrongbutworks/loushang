@@ -8,7 +8,6 @@ from uuid import UUID
 from loushang.ontology.projection import (
     ProjectedObject,
     ProjectionReadStore,
-    SchemaIdentity,
 )
 from loushang.ontology.query.contracts import (
     Limit,
@@ -25,6 +24,7 @@ from loushang.ontology.query.contracts import (
     Traverse,
 )
 from loushang.ontology.query.engine import execute_query
+from loushang.ontology.schema import SchemaIdentity
 
 
 class QueryBuilder:

@@ -40,7 +40,6 @@ from loushang.ontology.projection import (
     ProjectionStore,
     ProjectionUnavailableError,
     SchemaDefaultOrigin,
-    SchemaIdentity,
     SourceOrigin,
     ValueOrigin,
     evaluate_projection_freshness,
@@ -67,6 +66,7 @@ from loushang.ontology.schema import (
     SchemaCompilationError,
     SchemaDiagnostic,
     SchemaDiff,
+    SchemaIdentity,
     SchemaLineageError,
     SchemaVersion,
     StateAuthority,
@@ -80,6 +80,8 @@ from loushang.ontology.source import (
     MappedSourceProperty,
     MappedSourceSnapshot,
     SourceBinding,
+    SourceCoverage,
+    SourceInputCut,
     SourceInputRevision,
 )
 from loushang.ontology.storage import MemoryFactStore, MemoryProjectionStore
@@ -151,6 +153,8 @@ __all__ = [
     "StateAuthority",
     "StoredFact",
     "SourceBinding",
+    "SourceCoverage",
+    "SourceInputCut",
     "SourceInputRevision",
     "SourceOrigin",
     "ValueOrigin",

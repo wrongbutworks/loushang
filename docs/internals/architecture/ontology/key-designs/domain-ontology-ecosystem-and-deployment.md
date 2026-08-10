@@ -80,7 +80,10 @@ The current implementation already provides:
 - a compiled schema with package-local stable semantic IDs and explicit
   `StateAuthority` for object existence, properties, and link families;
 - immutable `SourceBinding`, `MappedSourceInput`, mapped object/property/link
-  snapshots, and source revision coordinates;
+  snapshots, declared coverage, exact payload-digested input cuts, and
+  observable source revision coordinates;
+- Fact v2 records and source bindings bound to one complete single-package
+  `SchemaIdentity`, with durable assertions resolved by stable semantic ID;
 - atomic Fact selection, deterministic multi-source Memory materialization,
   complete operational origins, `MaterializationCut`, and explicit freshness;
 - backend-neutral projection reads and a Fact-only SQLite v2 projection subset;
@@ -108,7 +111,7 @@ outputs to Ontology contracts.
 | Capability | Current | Target delta | Classification |
 | --- | --- | --- | --- |
 | Package identity | One compiled package-shaped schema | Imports, dependency constraints, immutable lock, registry metadata | missing |
-| Source integration | Pure binding and mapped-input values | Adapter manifest, SDK, mapping validation, compatibility and conformance kit | partial |
+| Source integration | Schema-bound binding, mapped-input values, coverage and exact input cuts | Adapter manifest, SDK, application-schema compatibility and conformance kit | partial |
 | Identity | Adapter supplies canonical UUID | Deployment-bound crosswalk, alternate keys, ambiguity and review handoff | missing |
 | Deployment composition | Caller passes schema, bindings, inputs and stores | Validated deployment profile with exact artifact locks and authority bindings | missing |
 | Durable multi-source projection | Memory supports source cuts; SQLite rejects them | Source-aware SQLite layout with origin and revision-vector round trips | partial |
@@ -625,6 +628,10 @@ must not claim future validation as current evidence.
 - [ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)
   controls declared state authority, mapped source inputs, origins,
   materialization cuts, and current deferred write-back semantics.
+- [ARD-004](../ARD-004-schema-identity-semantic-references-and-source-input-cuts.md)
+  controls single-package schema identity, stable Fact predicates, source
+  coverage, exact mapped-payload cuts, and the separation between installed
+  cuts and observable source heads.
 - [Ontology Architecture README](../README.md) controls Current implementation
   status and the accepted reading order.
 - [Operational Infrastructure Draft](../drafts/loushang-ontology-operational-infrastructure.md)

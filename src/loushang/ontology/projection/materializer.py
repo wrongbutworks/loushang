@@ -25,7 +25,6 @@ from loushang.ontology.projection.model import (
     ProjectionSnapshot,
     ProjectionState,
     SchemaDefaultOrigin,
-    SchemaIdentity,
     SourceOrigin,
 )
 from loushang.ontology.schema import (
@@ -33,13 +32,15 @@ from loushang.ontology.schema import (
     CompiledOntologySchema,
     CompiledPropertyDefinition,
     LinkCardinality,
+    SchemaIdentity,
     StateAuthority,
     ValueType,
 )
 from loushang.ontology.source import (
     MappedSourceInput,
     SourceBinding,
-    SourceInputRevision,
+    SourceCoverage,
+    SourceInputCut,
 )
 
 
@@ -97,6 +98,7 @@ def materialize_projection(
     recorded_at = selection.recorded_at
     built_at = recorded_at if built_at is None else _finite("built_at", built_at)
     diagnostics: list[ProjectionDiagnostic] = []
+    schema_identity = SchemaIdentity.from_schema(schema)
     binding_values = tuple(source_bindings)
     input_values = tuple(source_inputs)
     if any(not isinstance(item, SourceBinding) for item in binding_values):
@@ -108,11 +110,12 @@ def materialize_projection(
         source_object_origins,
         source_property_candidates,
         source_links,
-        source_revisions,
+        source_cuts,
     ) = _resolve_source_inputs(
         binding_values,
         input_values,
         schema,
+        schema_identity=schema_identity,
         valid_at=valid_at,
         diagnostics=diagnostics,
     )
@@ -121,20 +124,30 @@ def materialize_projection(
     link_facts: dict[tuple[UUID, str, UUID], list[StoredFact]] = {}
 
     for item in selected:
+        if item.fact.schema_identity != schema_identity:
+            diagnostics.append(
+                ProjectionDiagnostic(
+                    "fact_schema_identity_mismatch",
+                    f"facts.{item.fact.fact_id}.schema_identity",
+                    f"Fact {item.fact.fact_id} targets {item.fact.schema_identity}, "
+                    f"not selected schema {schema_identity}",
+                )
+            )
+            continue
         assertion = item.fact.assertion
         if isinstance(assertion, ObjectAssertion):
             object_type_facts.setdefault(item.fact.subject_id, {}).setdefault(
-                assertion.object_type,
+                assertion.object_type_id,
                 [],
             ).append(item)
         elif isinstance(assertion, PropertyAssertion):
             property_facts.setdefault(
-                (item.fact.subject_id, assertion.property_name),
+                (item.fact.subject_id, assertion.property_id),
                 [],
             ).append(item)
         elif isinstance(assertion, LinkAssertion):
             link_facts.setdefault(
-                (item.fact.subject_id, assertion.link_type, assertion.target_id),
+                (item.fact.subject_id, assertion.link_type_id, assertion.target_id),
                 [],
             ).append(item)
 
@@ -195,10 +208,9 @@ def materialize_projection(
         )
         for object_id, object_type in resolved_types.items()
     ]
-    schema_identity = SchemaIdentity.from_schema(schema)
     cut = MaterializationCut(
         schema_identity=schema_identity,
-        source_inputs=source_revisions,
+        source_inputs=source_cuts,
         fact_watermark=selection.fact_watermark,
         valid_at=valid_at,
         recorded_at=recorded_at,
@@ -223,6 +235,7 @@ def _resolve_source_inputs(
     inputs: tuple[MappedSourceInput, ...],
     schema: CompiledOntologySchema,
     *,
+    schema_identity: SchemaIdentity,
     valid_at: float,
     diagnostics: list[ProjectionDiagnostic],
 ) -> tuple[
@@ -230,7 +243,7 @@ def _resolve_source_inputs(
     dict[UUID, SourceOrigin],
     tuple[_MappedPropertyCandidate, ...],
     list[ProjectedLink],
-    tuple[SourceInputRevision, ...],
+    tuple[SourceInputCut, ...],
 ]:
     binding_by_id: dict[str, SourceBinding] = {}
     object_target_owner: dict[str, str] = {}
@@ -248,6 +261,17 @@ def _resolve_source_inputs(
             )
             continue
         binding_by_id[binding.binding_id] = binding
+        if binding.schema_identity != schema_identity:
+            diagnostics.append(
+                ProjectionDiagnostic(
+                    "source_binding_schema_identity_mismatch",
+                    f"{path}.schema_identity",
+                    f"source binding '{binding.binding_id}' targets "
+                    f"{binding.schema_identity}, not selected schema "
+                    f"{schema_identity}",
+                )
+            )
+            continue
         for semantic_id in binding.object_existence_ids:
             _register_source_authority_target(
                 semantic_id,
@@ -370,6 +394,16 @@ def _resolve_source_inputs(
                     f"'{matched_binding.mapping_version}'",
                 )
             )
+        elif source_input.coverage is not SourceCoverage.COMPLETE:
+            diagnostics.append(
+                ProjectionDiagnostic(
+                    "source_coverage_unsupported",
+                    f"{path}.coverage",
+                    f"whole-snapshot materialization requires complete coverage; "
+                    f"binding '{source_input.binding_id}' supplied "
+                    f"{source_input.coverage.value}",
+                )
+            )
 
     for binding_id in sorted(binding_by_id.keys() - input_by_binding.keys()):
         diagnostics.append(
@@ -385,15 +419,17 @@ def _resolve_source_inputs(
     property_candidates: list[_MappedPropertyCandidate] = []
     resolved_links: list[ProjectedLink] = []
     resolved_link_keys: set[tuple[UUID, str, UUID]] = set()
-    revisions: list[SourceInputRevision] = []
+    cuts: list[SourceInputCut] = []
     for binding_id, source_input in sorted(input_by_binding.items()):
         matched_binding = binding_by_id.get(binding_id)
         if (
             matched_binding is None
             or matched_binding.mapping_version != source_input.mapping_version
+            or matched_binding.schema_identity != schema_identity
+            or source_input.coverage is not SourceCoverage.COMPLETE
         ):
             continue
-        revisions.append(source_input.revision)
+        cuts.append(source_input.cut)
         for mapped_object in source_input.payload.objects:
             object_path = (
                 f"source_inputs.{binding_id}.objects.{mapped_object.object_id}"
@@ -605,7 +641,7 @@ def _resolve_source_inputs(
         resolved_object_origins,
         tuple(property_candidates),
         resolved_links,
-        tuple(revisions),
+        tuple(cuts),
     )
 
 
@@ -723,14 +759,15 @@ def _resolve_object_types(
                 )
             )
             continue
-        candidate_type = next(iter(candidate_types))
-        definition = schema.object_type(candidate_type)
+        candidate_type_id = next(iter(candidate_types))
+        definition = schema.object_type_by_id(candidate_type_id)
         if definition is None:
             diagnostics.append(
                 ProjectionDiagnostic(
                     "unknown_object_type",
                     path,
-                    f"object type '{candidate_type}' is not declared by the schema",
+                    f"object semantic ID '{candidate_type_id}' is not declared by "
+                    "the schema",
                 )
             )
             continue
@@ -739,7 +776,7 @@ def _resolve_object_types(
                 ProjectionDiagnostic(
                     "abstract_object_type",
                     path,
-                    f"abstract object type '{candidate_type}' cannot be materialized",
+                    f"abstract object type '{definition.name}' cannot be materialized",
                 )
             )
             continue
@@ -748,7 +785,7 @@ def _resolve_object_types(
                 ProjectionDiagnostic(
                     "object_fact_authority_mismatch",
                     path,
-                    f"object existence '{candidate_type}' is "
+                    f"object existence '{candidate_type_id}' is "
                     f"{definition.state_authority.value}, not ontology-owned",
                 )
             )
@@ -763,8 +800,11 @@ def _resolve_object_types(
                 )
             )
             continue
-        resolved[subject_id] = candidate_type
-        selected = min(candidate_types[candidate_type], key=lambda item: item.sequence)
+        resolved[subject_id] = definition.name
+        selected = min(
+            candidate_types[candidate_type_id],
+            key=lambda item: item.sequence,
+        )
         origins[subject_id] = FactOrigin(selected.fact.fact_id)
     return resolved, origins
 
@@ -782,34 +822,41 @@ def _resolve_property_facts(
         if initial is None
         else {object_id: dict(values) for object_id, values in initial.items()}
     )
-    for (subject_id, property_name), values in sorted(
+    for (subject_id, property_id), values in sorted(
         candidates.items(),
         key=lambda item: (str(item[0][0]), item[0][1]),
     ):
-        path = f"objects.{subject_id}.properties.{property_name}"
+        path = f"objects.{subject_id}.properties.{property_id}"
         subject_type = resolved_types.get(subject_id)
         if subject_type is None:
             diagnostics.append(
                 ProjectionDiagnostic(
                     "property_subject_missing",
                     path,
-                    f"property fact '{property_name}' has no projected object subject "
+                    f"property fact '{property_id}' has no projected object subject "
                     f"{subject_id}",
                 )
             )
             continue
-        declaration = _resolved_properties(schema, subject_type).get(property_name)
+        declarations = {
+            definition.semantic_id: (name, definition)
+            for name, (_, definition) in _resolved_properties(
+                schema,
+                subject_type,
+            ).items()
+        }
+        declaration = declarations.get(property_id)
         if declaration is None:
             diagnostics.append(
                 ProjectionDiagnostic(
                     "unknown_property",
                     path,
-                    f"property '{property_name}' is not declared for object type "
+                    f"property semantic ID '{property_id}' is not declared for object type "
                     f"'{subject_type}'",
                 )
             )
             continue
-        _, definition = declaration
+        property_name, definition = declaration
         if definition.state_authority is not StateAuthority.ONTOLOGY_OWNED:
             diagnostics.append(
                 ProjectionDiagnostic(
@@ -834,7 +881,7 @@ def _resolve_property_facts(
                 ProjectionDiagnostic(
                     "property_fact_conflict",
                     path,
-                    f"conflicting property facts for {subject_id}.{property_name}",
+                    f"conflicting property facts for {subject_id}.{property_id}",
                 )
             )
             continue
@@ -976,11 +1023,11 @@ def _resolve_link_facts(
     initial: list[ProjectedLink] | None = None,
 ) -> list[ProjectedLink]:
     resolved = [] if initial is None else list(initial)
-    for (source_id, link_type, target_id), values in sorted(
+    for (source_id, link_type_id, target_id), values in sorted(
         candidates.items(),
         key=lambda item: (str(item[0][0]), item[0][1], str(item[0][2])),
     ):
-        path = f"objects.{source_id}.links.{link_type}.{target_id}"
+        path = f"objects.{source_id}.links.{link_type_id}.{target_id}"
         source_type = resolved_types.get(source_id)
         target_type = resolved_types.get(target_id)
         if source_type is None or target_type is None:
@@ -989,17 +1036,17 @@ def _resolve_link_facts(
                 ProjectionDiagnostic(
                     "link_endpoint_missing",
                     path,
-                    f"link fact '{link_type}' has no projected {missing_role} object",
+                    f"link fact '{link_type_id}' has no projected {missing_role} object",
                 )
             )
             continue
-        definition = schema.link_type(link_type)
+        definition = schema.link_type_by_id(link_type_id)
         if definition is None:
             diagnostics.append(
                 ProjectionDiagnostic(
                     "unknown_link_type",
                     path,
-                    f"link type '{link_type}' is not declared by the schema",
+                    f"link semantic ID '{link_type_id}' is not declared by the schema",
                 )
             )
             continue
@@ -1008,7 +1055,7 @@ def _resolve_link_facts(
                 ProjectionDiagnostic(
                     "link_fact_authority_mismatch",
                     path,
-                    f"link family '{link_type}' is "
+                    f"link family '{link_type_id}' is "
                     f"{definition.state_authority.value}, not ontology-owned",
                 )
             )
@@ -1021,7 +1068,7 @@ def _resolve_link_facts(
                 ProjectionDiagnostic(
                     "link_endpoint_type_invalid",
                     path,
-                    f"link '{link_type}' requires {definition.source_type} -> "
+                    f"link '{definition.name}' requires {definition.source_type} -> "
                     f"{definition.target_type}, got {source_type} -> {target_type}",
                 )
             )
@@ -1039,7 +1086,8 @@ def _resolve_link_facts(
                 ProjectionDiagnostic(
                     "link_fact_conflict",
                     path,
-                    f"conflicting link facts for {source_id}.{link_type}.{target_id}",
+                    f"conflicting link facts for "
+                    f"{source_id}.{link_type_id}.{target_id}",
                 )
             )
             continue
@@ -1047,7 +1095,7 @@ def _resolve_link_facts(
         resolved.append(
             ProjectedLink(
                 source_id=source_id,
-                link_type=link_type,
+                link_type=definition.name,
                 target_id=target_id,
                 properties=next(iter(by_json.values())),
                 valid_from=selected.fact.valid_from,

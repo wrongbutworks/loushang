@@ -19,6 +19,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    SchemaIdentity,
     StateAuthority,
     ValueType,
 )
@@ -32,6 +33,11 @@ SUBJECT_ID = UUID("00000000-0000-0000-0000-000000000001")
 FACT_ID = UUID("10000000-0000-0000-0000-000000000001")
 DERIVED_FACT_ID = UUID("10000000-0000-0000-0000-000000000002")
 INFERRED_FACT_ID = UUID("10000000-0000-0000-0000-000000000003")
+SCHEMA_IDENTITY = SchemaIdentity(
+    "test.sqlite-facts",
+    "urn:test:sqlite-facts",
+    "1.0.0",
+)
 
 
 def _schema():
@@ -66,7 +72,8 @@ def _batch() -> FactBatch:
             FactRecord(
                 fact_id=FACT_ID,
                 subject_id=SUBJECT_ID,
-                assertion=ObjectAssertion("Asset"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=ObjectAssertion("asset"),
                 assertion_kind=AssertionKind.ASSERTED,
                 source_ref="source.erp",
                 source_record_ref="asset:A-1",
@@ -85,7 +92,8 @@ def _classification_batch() -> FactBatch:
             FactRecord(
                 fact_id=DERIVED_FACT_ID,
                 subject_id=SUBJECT_ID,
-                assertion=PropertyAssertion("signal", 0.8),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=PropertyAssertion("asset.signal", 0.8),
                 assertion_kind=AssertionKind.DERIVED,
                 source_ref="rule:1",
                 source_record_ref="asset:A-1:signal",
@@ -96,7 +104,8 @@ def _classification_batch() -> FactBatch:
             FactRecord(
                 fact_id=INFERRED_FACT_ID,
                 subject_id=SUBJECT_ID,
-                assertion=PropertyAssertion("signal", "likely"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=PropertyAssertion("asset.signal", "likely"),
                 assertion_kind=AssertionKind.INFERRED,
                 source_ref="model:1",
                 source_record_ref="asset:A-1:signal",

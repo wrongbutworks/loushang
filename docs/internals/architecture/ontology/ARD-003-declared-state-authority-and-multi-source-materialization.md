@@ -14,6 +14,12 @@ contracts, and source-head freshness are implemented for the Memory-only
 slices. Change sets, logic bindings, transient derivation, and SQLite source
 persistence remain unimplemented.
 
+[ARD-004](ARD-004-schema-identity-semantic-references-and-source-input-cuts.md)
+later refines this decision's identity and reproducibility coordinates: Facts
+and source bindings target one complete schema identity, Fact predicates use
+stable semantic IDs, and installed source cuts add coverage plus an exact
+mapped-payload digest while freshness retains cheap revision-head comparison.
+
 ## Context
 
 [ARD-001](ARD-001-factstore-semantic-authority.md) removed a dangerous split

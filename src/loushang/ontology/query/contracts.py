@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from typing import TypeAlias
 from uuid import UUID
 
-from loushang.ontology.projection import ProjectionState, SchemaIdentity
+from loushang.ontology.projection import ProjectionState
+from loushang.ontology.schema import SchemaIdentity
 
 
 @dataclass(frozen=True, slots=True)
