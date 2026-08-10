@@ -117,6 +117,11 @@ source-key-to-UUID decision additionally requires the Product host to retain
 the selected crosswalk snapshot. This limitation is explicit rather than
 papered over with a second implicit provenance model.
 
+ARD-010 later supersedes this transitional Profile relationship: Profile v2
+locks the selected Crosswalk namespace, revision, and digest and binds its
+source scopes to selected source instances. The immutable Crosswalk and refusal
+semantics in this ARD remain current.
+
 ## Dependency Direction
 
 ```text
@@ -165,8 +170,9 @@ ontology.identity           -X-------> Product, database, matcher, review UI
   cuts. This ARD only defines how Product Adapter code may obtain those UUIDs.
 - ARD-006 still keeps concrete Adapter execution in Product. The new resolver
   is injected at that same Product boundary.
-- ARD-008 remains the exact Deployment Profile v1 contract. This ARD does not
-  silently add an identity lock to it.
+- ARD-008 was the exact Deployment Profile v1 contract when this decision was
+  accepted. ARD-010 now supersedes that shape with Profile v2 and an explicit
+  Crosswalk lock.
 
 ## Deferred
 
@@ -174,8 +180,8 @@ ontology.identity           -X-------> Product, database, matcher, review UI
 - alternate keys, probabilistic matching, confidence, merge/split history, and
   human review workflow;
 - cross-source precedence and automated entity-resolution policy;
-- identity-provider artifact locks and crosswalk retention in a future
-  Deployment Profile version;
+- identity-provider service references and Product retention/activation beyond
+  the immutable Crosswalk lock now defined by ARD-010;
 - incremental crosswalk changes and activation consistency with source reads;
 - authorization and tenant isolation for identity decisions;
 - exposing identity-decision provenance directly in `MaterializationCut` or

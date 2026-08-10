@@ -1,6 +1,12 @@
 # ARD-008: Immutable Deployment Profile And Artifact Locks
 
-Status: Accepted, 2026-08-10.
+Status: Superseded by
+[ARD-010](ARD-010-deployment-bound-source-instances-and-identity-lock.md),
+2026-08-10.
+
+This document preserves the rationale for the first immutable artifact locks.
+Its Profile v1 shape, including `enabled_binding_ids`, is no longer implemented
+and has no compatibility reader.
 
 ## Context
 

@@ -1252,14 +1252,22 @@ authority binding 误称为 Action write-back。
   conformance；concrete Product adapters、SDK/包分发仍未实现；
 - [ARD-007](../ARD-007-fact-schema-revalidation-receipts.md) 已支持精确 FactSelection
   在兼容新 schema 下的不可变重校验；source mapping/input 的升级凭据与部署切换仍未实现；
-- [ARD-008](../ARD-008-immutable-deployment-profile-and-artifact-locks.md) 已完成
-  单 Schema deployment profile、精确 artifact locks 与 enabled binding 校验；
-  multi-package lock、provider refs、部署激活和回滚仍未实现；
+- [ARD-008](../ARD-008-immutable-deployment-profile-and-artifact-locks.md) 保留
+  Profile v1 的历史 artifact-lock 理由，其格式已被 ARD-010 取代；
 - [ARD-009](../ARD-009-explicit-identity-crosswalk-snapshots.md) 已完成最小显式
   identity 边界：按 source instance、binding、record type 和 source key 定位记录，
   仅 confirmed resolution 可产生 canonical UUID，unresolved/conflict 均显式失败；
-  mutable identity provider、alternate keys、人工 review 和 Deployment Profile lock
+  mutable identity provider、alternate keys 和人工 review 仍未实现；
+- [ARD-010](../ARD-010-deployment-bound-source-instances-and-identity-lock.md)
+  已以唯一 Profile v2 格式绑定 source instance、Adapter binding 与精确 Crosswalk
+  namespace/revision/digest；没有保留 v1 reader，也没有引入 endpoint、credential、
+  部署激活或回滚服务；
+- [ARD-011](../ARD-011-deterministic-ontology-package-artifacts.md) 已完成单 Schema
+  package artifact、精确 dependency lock 与 closed-set 校验；multi-package semantic
+  import/runtime composition、registry、版本求解以及 Alignment/Standards payload
   仍未实现；
+- 两个 Product-side SQLite ERP/maintenance fixture 已证明不同 source key 可映射为
+  同一 canonical object 并提供互不重叠的属性，且 unresolved/conflict 不会被静默合并；
 - incremental cursor/change set、partial coverage 合并状态和 mapping review/publish；
 - field-level lineage、source correction 和有限的显式 merge policy。
 

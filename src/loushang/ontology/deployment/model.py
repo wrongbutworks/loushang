@@ -10,7 +10,7 @@ from typing import cast
 from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
 from loushang.ontology.schema.identity import SchemaIdentity
 
-DEPLOYMENT_PROFILE_FORMAT = "loushang.ontology.deployment-profile/v1"
+DEPLOYMENT_PROFILE_FORMAT = "loushang.ontology.deployment-profile/v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,15 +84,96 @@ class SourceAdapterArtifactLock:
 
 
 @dataclass(frozen=True, slots=True)
+class IdentityCrosswalkArtifactLock:
+    """Exact immutable identity-provider output selected by one deployment."""
+
+    identity_namespace: str
+    revision: str
+    content_digest: str
+
+    def __post_init__(self) -> None:
+        _non_empty_text("identity_namespace", self.identity_namespace)
+        _non_empty_text("revision", self.revision)
+        _require_digest("content_digest", self.content_digest)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return {
+            "identity_namespace": self.identity_namespace,
+            "revision": self.revision,
+            "content_digest": self.content_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> IdentityCrosswalkArtifactLock:
+        document = _exact_document(
+            value,
+            name="identity crosswalk artifact lock",
+            keys={"identity_namespace", "revision", "content_digest"},
+        )
+        return cls(
+            identity_namespace=_document_text(document, "identity_namespace"),
+            revision=_document_text(document, "revision"),
+            content_digest=_document_text(document, "content_digest"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SourceInstanceSelection:
+    """Bind one concrete Product source instance to declared Adapter bindings."""
+
+    source_instance_id: str
+    adapter_id: str
+    binding_ids: tuple[str, ...] | list[str]
+
+    def __post_init__(self) -> None:
+        _non_empty_text("source_instance_id", self.source_instance_id)
+        _non_empty_text("adapter_id", self.adapter_id)
+        binding_ids = tuple(sorted(self.binding_ids))
+        if not binding_ids:
+            raise ValueError("source instance selection requires binding_ids")
+        if any(not isinstance(item, str) or not item.strip() for item in binding_ids):
+            raise ValueError("binding_ids must contain non-empty strings")
+        if len(binding_ids) != len(set(binding_ids)):
+            raise ValueError("source instance selection contains duplicate binding IDs")
+        object.__setattr__(self, "binding_ids", binding_ids)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return {
+            "source_instance_id": self.source_instance_id,
+            "adapter_id": self.adapter_id,
+            "binding_ids": list(self.binding_ids),
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> SourceInstanceSelection:
+        document = _exact_document(
+            value,
+            name="source instance selection",
+            keys={"source_instance_id", "adapter_id", "binding_ids"},
+        )
+        raw_binding_ids = _document_list(document, "binding_ids")
+        if any(not isinstance(item, str) for item in raw_binding_ids):
+            raise ValueError("source instance binding_ids must be a string list")
+        return cls(
+            source_instance_id=_document_text(document, "source_instance_id"),
+            adapter_id=_document_text(document, "adapter_id"),
+            binding_ids=cast(list[str], raw_binding_ids),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class DeploymentProfile:
     """Content-addressed artifact selection; contains no runtime credentials."""
 
     deployment_id: str
     schema_lock: SchemaArtifactLock
-    adapter_locks: tuple[SourceAdapterArtifactLock, ...] | list[
-        SourceAdapterArtifactLock
-    ]
-    enabled_binding_ids: tuple[str, ...] | list[str]
+    adapter_locks: (
+        tuple[SourceAdapterArtifactLock, ...] | list[SourceAdapterArtifactLock]
+    )
+    source_instances: (
+        tuple[SourceInstanceSelection, ...] | list[SourceInstanceSelection]
+    )
+    identity_crosswalk_lock: IdentityCrosswalkArtifactLock | None
     fact_store_ref: str
     projection_store_ref: str
     format: str = DEPLOYMENT_PROFILE_FORMAT
@@ -112,12 +193,37 @@ class DeploymentProfile:
             raise ValueError("deployment profile contains duplicate adapter IDs")
         object.__setattr__(self, "adapter_locks", locks)
 
-        binding_ids = tuple(sorted(self.enabled_binding_ids))
-        if any(not isinstance(item, str) or not item.strip() for item in binding_ids):
-            raise ValueError("enabled_binding_ids must contain non-empty strings")
-        if len(binding_ids) != len(set(binding_ids)):
-            raise ValueError("deployment profile contains duplicate binding IDs")
-        object.__setattr__(self, "enabled_binding_ids", binding_ids)
+        source_instances = tuple(self.source_instances)
+        if any(
+            not isinstance(item, SourceInstanceSelection) for item in source_instances
+        ):
+            raise TypeError(
+                "source_instances must contain SourceInstanceSelection values"
+            )
+        source_instances = tuple(
+            sorted(source_instances, key=lambda item: item.source_instance_id)
+        )
+        source_instance_ids = [item.source_instance_id for item in source_instances]
+        if len(source_instance_ids) != len(set(source_instance_ids)):
+            raise ValueError("deployment profile contains duplicate source instances")
+        selected_binding_ids = [
+            binding_id
+            for source_instance in source_instances
+            for binding_id in source_instance.binding_ids
+        ]
+        if len(selected_binding_ids) != len(set(selected_binding_ids)):
+            raise ValueError(
+                "deployment profile assigns a binding to multiple source instances"
+            )
+        object.__setattr__(self, "source_instances", source_instances)
+        if self.identity_crosswalk_lock is not None and not isinstance(
+            self.identity_crosswalk_lock,
+            IdentityCrosswalkArtifactLock,
+        ):
+            raise TypeError(
+                "identity_crosswalk_lock must be an "
+                "IdentityCrosswalkArtifactLock or None"
+            )
         _non_empty_text("fact_store_ref", self.fact_store_ref)
         _non_empty_text("projection_store_ref", self.projection_store_ref)
         if self.format != DEPLOYMENT_PROFILE_FORMAT:
@@ -133,7 +239,12 @@ class DeploymentProfile:
             "deployment_id": self.deployment_id,
             "schema_lock": self.schema_lock.to_dict(),
             "adapter_locks": [item.to_dict() for item in self.adapter_locks],
-            "enabled_binding_ids": list(self.enabled_binding_ids),
+            "source_instances": [item.to_dict() for item in self.source_instances],
+            "identity_crosswalk_lock": (
+                None
+                if self.identity_crosswalk_lock is None
+                else self.identity_crosswalk_lock.to_dict()
+            ),
             "fact_store_ref": self.fact_store_ref,
             "projection_store_ref": self.projection_store_ref,
         }
@@ -156,7 +267,8 @@ class DeploymentProfile:
                     "deployment_id",
                     "schema_lock",
                     "adapter_locks",
-                    "enabled_binding_ids",
+                    "source_instances",
+                    "identity_crosswalk_lock",
                     "fact_store_ref",
                     "projection_store_ref",
                 },
@@ -166,19 +278,22 @@ class DeploymentProfile:
         if document["format"] != DEPLOYMENT_PROFILE_FORMAT:
             raise ValueError("unsupported deployment profile format")
         raw_adapter_locks = _document_list(document, "adapter_locks")
-        raw_binding_ids = _document_list(document, "enabled_binding_ids")
-        if any(not isinstance(item, str) for item in raw_binding_ids):
-            raise ValueError(
-                "deployment profile enabled_binding_ids must be a string list"
-            )
+        raw_source_instances = _document_list(document, "source_instances")
+        raw_identity_lock = document["identity_crosswalk_lock"]
         return cls(
             deployment_id=_document_text(document, "deployment_id"),
             schema_lock=SchemaArtifactLock.from_dict(document["schema_lock"]),
             adapter_locks=[
-                SourceAdapterArtifactLock.from_dict(item)
-                for item in raw_adapter_locks
+                SourceAdapterArtifactLock.from_dict(item) for item in raw_adapter_locks
             ],
-            enabled_binding_ids=cast(list[str], raw_binding_ids),
+            source_instances=[
+                SourceInstanceSelection.from_dict(item) for item in raw_source_instances
+            ],
+            identity_crosswalk_lock=(
+                None
+                if raw_identity_lock is None
+                else IdentityCrosswalkArtifactLock.from_dict(raw_identity_lock)
+            ),
             fact_store_ref=_document_text(document, "fact_store_ref"),
             projection_store_ref=_document_text(document, "projection_store_ref"),
         )
@@ -203,8 +318,10 @@ def _non_empty_text(name: str, value: object) -> str:
 
 
 def _require_digest(name: str, value: object) -> str:
-    if not isinstance(value, str) or len(value) != 64 or any(
-        character not in "0123456789abcdef" for character in value
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
     ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
     return value
@@ -230,6 +347,8 @@ def _document_list(
 __all__ = [
     "DEPLOYMENT_PROFILE_FORMAT",
     "DeploymentProfile",
+    "IdentityCrosswalkArtifactLock",
     "SchemaArtifactLock",
     "SourceAdapterArtifactLock",
+    "SourceInstanceSelection",
 ]

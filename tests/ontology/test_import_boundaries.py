@@ -88,19 +88,23 @@ def test_public_surface_has_no_direct_mutation_or_compatibility_facades() -> Non
     assert hasattr(ontology, "SourceBinding")
     assert hasattr(ontology, "DeploymentProfile")
     assert hasattr(ontology, "IdentityCrosswalkSnapshot")
+    assert hasattr(ontology, "IdentityCrosswalkArtifactLock")
     assert hasattr(ontology, "IdentityResolver")
     assert hasattr(ontology, "SourceRecordIdentity")
     assert hasattr(ontology, "SchemaArtifactLock")
     assert hasattr(ontology, "SourceAdapterArtifactLock")
+    assert hasattr(ontology, "SourceInstanceSelection")
     assert hasattr(ontology, "MappedSourceInput")
     assert hasattr(ontology, "MappedSourceLink")
     assert hasattr(ontology, "MaterializationCut")
+    assert hasattr(ontology, "OntologyPackageArtifact")
+    assert hasattr(ontology, "OntologyPackageDependencyLock")
     assert hasattr(ontology, "OperationalOrigin")
     assert hasattr(ontology, "ValueOrigin")
     assert not hasattr(ontology_facts, "MemoryFactStore")
 
 
-def test_identity_is_a_leaf_contract_injected_at_the_product_boundary() -> None:
+def test_identity_remains_a_leaf_with_only_deployment_validation_consuming_it() -> None:
     identity_root = ONTOLOGY_ROOT / "identity"
     identity_imports: list[str] = []
     identity_consumers: list[str] = []
@@ -120,7 +124,35 @@ def test_identity_is_a_leaf_contract_injected_at_the_product_boundary() -> None:
                 identity_consumers.append(f"{path.as_posix()} imports {imported}")
 
     assert identity_imports == []
-    assert identity_consumers == []
+    assert identity_consumers == [
+        "src/loushang/ontology/deployment/validation.py imports "
+        "loushang.ontology.identity"
+    ]
+
+
+def test_package_artifacts_depend_only_on_schema_and_are_not_runtime_inputs() -> None:
+    package_root = ONTOLOGY_ROOT / "package"
+    package_imports: list[str] = []
+    package_consumers: list[str] = []
+
+    for path in sorted(package_root.rglob("*.py")):
+        for imported in _absolute_imports(path):
+            if (
+                imported.startswith("loushang.ontology")
+                and not imported.startswith("loushang.ontology.package")
+                and not imported.startswith("loushang.ontology.schema")
+            ):
+                package_imports.append(f"{path.as_posix()} imports {imported}")
+
+    for path in sorted(ONTOLOGY_ROOT.rglob("*.py")):
+        if package_root in path.parents or path == ONTOLOGY_ROOT / "__init__.py":
+            continue
+        for imported in _absolute_imports(path):
+            if imported.startswith("loushang.ontology.package"):
+                package_consumers.append(f"{path.as_posix()} imports {imported}")
+
+    assert package_imports == []
+    assert package_consumers == []
 
 
 def test_production_ontology_does_not_import_removed_compatibility_modules() -> None:

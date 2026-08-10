@@ -22,7 +22,11 @@ Fact-selection reuse across schema versions. [ARD-008](ARD-008-immutable-deploym
 adds the first immutable deployment selection without adding an executable
 deployment runtime. [ARD-009](ARD-009-explicit-identity-crosswalk-snapshots.md)
 adds a Product-injected, immutable explicit identity crosswalk without adding
-an identity matcher or registry.
+an identity matcher or registry. [ARD-010](ARD-010-deployment-bound-source-instances-and-identity-lock.md)
+replaces Profile v1 with source-instance-aware v2 and locks the selected
+Crosswalk. [ARD-011](ARD-011-deterministic-ontology-package-artifacts.md)
+adds deterministic single-Schema package artifacts and exact dependency-closure
+validation without adding a registry or multi-package runtime.
 
 It currently provides:
 
@@ -44,10 +48,11 @@ It currently provides:
 - deployment-scoped, content-addressed identity crosswalk snapshots with
   explicit confirmed, unresolved, and conflict states, plus a read-only
   resolver that never selects an ambiguous candidate;
-- one Product-side fixed SQLite ERP fixture under `tests/integration/ontology/`
-  proving injected identity resolution, source read, conformance, mixed
-  materialization, durable restart, typed query, and source-head freshness
-  without adding a production connector or identity provider;
+- two Product-side SQLite ERP and maintenance fixtures under
+  `tests/integration/ontology/` proving that different source keys can resolve
+  to one canonical object, contribute non-overlapping authority, remain input
+  order independent, survive restart, and reject ambiguous identity without
+  adding production connectors or an identity provider;
 - deterministic source-plus-Fact object/property/link materialization, including
   property bindings independent from object-existence bindings: object existence
   and links expose `FactOrigin` or `SourceOrigin`, while ontology-owned
@@ -66,9 +71,12 @@ It currently provides:
   identity, restart, and backup;
 - content-addressed Fact schema-revalidation receipts that authorize an exact
   old-schema Fact selection for one target schema without rewriting Facts;
-- strict deployment profiles that independently lock compiled Schema identity
-  and content, Adapter version and manifest content, enabled bindings, and
-  opaque Fact/Projection store references.
+- strict Deployment Profile v2 values that independently lock compiled Schema,
+  Adapter manifests, concrete source-instance/binding selections, an optional
+  immutable Identity Crosswalk, and opaque Fact/Projection store references;
+- deterministic Ontology package artifacts that bundle one compiled Schema,
+  exact direct dependency locks, and closed-set diagnostics for missing,
+  changed, duplicated, namespace-conflicting, or cyclic package artifacts.
 
 The materialization path accepts both a detached `FactSelection` and
 immutable mapped source snapshots. Ordinary source-backed values therefore do
@@ -125,15 +133,21 @@ receipt recorded in the materialization cut. Change sets, logic bindings,
 derived computation origins, write routing, multi-package dependency profiles,
 full Fact journal migration, and deployment switching remain deferred.
 
-ARD-008 defines the accepted single-Schema deployment lock. It validates exact
-Schema and Adapter artifacts and returns canonical enabled bindings. It does
-not resolve store references, load plugins, run adapters, manage credentials,
-or switch installed deployments.
+ARD-008 records the historical Profile v1 rationale. Its v1 shape is superseded
+by ARD-010 and has no compatibility reader.
 
 ARD-009 defines the first executable identity boundary. A source record is
 scoped by source instance, binding, record type, and source key; only an
-explicitly confirmed resolution may become a canonical UUID. Deployment Profile
-v1 does not yet lock the selected crosswalk, so Product must retain it separately.
+explicitly confirmed resolution may become a canonical UUID.
+
+ARD-010 defines the current Profile v2 contract. Source instances select
+bindings through locked Adapters, and an optional Crosswalk lock validates
+deployment, namespace, revision, content, and selected source scope. It still
+does not load endpoints, credentials, stores, or Adapter implementations.
+
+ARD-011 defines a pure package artifact and exact dependency-closure check. It
+does not merge Schemas, resolve versions, publish artifacts, or alter the
+single-Schema runtime and Deployment Profile.
 
 ## Proposed Target Designs
 
@@ -151,8 +165,9 @@ accepted ARD reading order until reviewed and accepted.
 ## Runtime Shape
 
 ```text
-DeploymentProfile --> validated Schema + enabled Bindings ------+
-explicit CrosswalkSnapshot --> Product-hosted adapter -----------+
+OntologyPackageArtifact --> compiled Schema ---------------------+
+DeploymentProfile v2 --> validated Schema + source instances ---+
+locked CrosswalkSnapshot --> Product-hosted adapter -------------+
 Source system -------------> Product-hosted adapter              |
 Product-hosted adapter ----> Manifest + MappedInput -------------+
                                                                |
@@ -191,8 +206,10 @@ facts.commit -------------------------> facts.model + facts.ports
 source.model -------------------------> schema.identity + Foundation JSON
 source.adapter -----------------------> source.model + schema.identity
 identity -----------------------------> Foundation JSON
+package ------------------------------> schema + Foundation JSON
 deployment.model ---------------------> schema.identity + Foundation JSON
 deployment.validation ----------------> deployment.model + schema + source
+                                       + identity
 projection.model ---------------------> schema + Foundation JSON
 projection.ports ---------------------> projection.model
 projection.materializer -------------> facts.ports + source
@@ -207,8 +224,9 @@ query           -X-> storage
 memory adapter  -X-> SQLite adapter
 SQLite adapter  -X-> memory adapter
 ontology        -X-> Harness / HarnessWork / Method / Product
-schema / source / facts / projection / query / storage / deployment
-                -X-> identity
+schema / source / facts / projection / query / storage -X-> identity
+facts / source / identity / projection / query / storage / deployment
+                -X-> package
 ```
 
 Product or domain adapters may depend on public Ontology contracts when they
@@ -232,9 +250,12 @@ product subsystem.
 - `identity/`: immutable deployment-scoped explicit crosswalk snapshots,
   source-record identity, resolution states, and a read-only resolver port; no
   matching, review, mutable registry, or persistence service;
-- `deployment/`: immutable Schema/Adapter artifact locks, enabled binding
-  selection, opaque store references, and pure compatibility validation; no
-  runtime loader or deployment service;
+- `package/`: one compiled Schema, exact package dependency locks, canonical
+  artifact digests, and pure closed-set validation; no registry, version solver,
+  multi-Schema composition, Alignment payload, or Standards payload;
+- `deployment/`: immutable Schema/Adapter/Crosswalk artifact locks,
+  source-instance/binding selection, opaque store references, and pure
+  compatibility validation; no runtime loader or deployment service;
 - `projection/model.py`: immutable object, property, link, build state,
   value origins, materialization cut, freshness observation, and snapshot;
 - `projection/ports.py`: projection reads and atomic replacement;
@@ -298,8 +319,10 @@ deferred to an Action/write-back ARD.
 7. [ARD-007: Fact Schema Revalidation Receipts](ARD-007-fact-schema-revalidation-receipts.md)
 8. [ARD-008: Immutable Deployment Profile And Artifact Locks](ARD-008-immutable-deployment-profile-and-artifact-locks.md)
 9. [ARD-009: Explicit Identity Crosswalk Snapshots](ARD-009-explicit-identity-crosswalk-snapshots.md)
-10. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
-11. [Schema Evolution](schema-evolution.md)
+10. [ARD-010: Deployment-Bound Source Instances And Identity Lock](ARD-010-deployment-bound-source-instances-and-identity-lock.md)
+11. [ARD-011: Deterministic Ontology Package Artifacts](ARD-011-deterministic-ontology-package-artifacts.md)
+12. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
+13. [Schema Evolution](schema-evolution.md)
 
 The larger design and reference analysis remains in
 [`drafts/loushang-ontology-operational-infrastructure.md`](drafts/loushang-ontology-operational-infrastructure.md).
