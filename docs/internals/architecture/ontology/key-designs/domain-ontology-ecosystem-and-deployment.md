@@ -15,6 +15,7 @@
   - `src/loushang/ontology/source/`
   - `src/loushang/ontology/projection/`
   - `tests/ontology/`
+  - `tests/integration/ontology/`
 
 This document proposes how a domain-neutral Loushang Ontology substrate can
 support independently delivered domain ontologies, standards knowledge,
@@ -90,6 +91,8 @@ The current implementation already provides:
   persistence with exact input cuts and all operational origin kinds;
 - a serializable Product-hosted adapter manifest, a structural adapter
   protocol, and detached-output conformance validation;
+- a fixed Product-side SQLite ERP fixture proving the public adapter-to-query
+  path without placing connector code in `loushang.ontology`;
 - content-addressed revalidation receipts for rebuilding an exact historical
   Fact selection against a compatible newer schema without rewriting Facts;
 - architecture gates forbidding Ontology dependencies on Product and execution
@@ -116,7 +119,7 @@ outputs to Ontology contracts.
 | Capability | Current | Target delta | Classification |
 | --- | --- | --- | --- |
 | Package identity | One compiled package-shaped schema | Imports, dependency constraints, immutable lock, registry metadata | missing |
-| Source integration | Schema-bound binding, mapped inputs, exact cuts, adapter manifest, application-schema identity, structural protocol, and detached-output conformance | Concrete adapter SDK/packaging, fixtures across vendor implementations, and deployment composition | partial |
+| Source integration | Schema-bound binding, mapped inputs, exact cuts, adapter manifest, application-schema identity, structural protocol, detached-output conformance, and one fixed SQLite ERP reference slice | Concrete adapter SDK/packaging, fixtures across independent vendor implementations, and deployment composition | partial |
 | Identity | Adapter supplies canonical UUID | Deployment-bound crosswalk, alternate keys, ambiguity and review handoff | missing |
 | Deployment composition | Caller passes schema, bindings, inputs and stores | Validated deployment profile with exact artifact locks and authority bindings | missing |
 | Durable multi-source projection | Memory and SQLite v3 preserve exact source cuts, origins, restart, and backup semantics | Operational-scale and incremental persistence only after measured need | partial |

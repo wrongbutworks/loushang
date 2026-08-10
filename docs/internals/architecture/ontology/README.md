@@ -37,6 +37,9 @@ It currently provides:
 - deterministic source-adapter manifests that distinguish vendor application
   schema versions from target Ontology schema identity, plus detached output
   conformance checks;
+- one Product-side fixed SQLite ERP fixture under `tests/integration/ontology/`
+  proving source read, conformance, mixed materialization, durable restart,
+  typed query, and source-head freshness without adding a production connector;
 - deterministic source-plus-Fact object/property/link materialization, including
   property bindings independent from object-existence bindings: object existence
   and links expose `FactOrigin` or `SourceOrigin`, while ontology-owned

@@ -82,6 +82,16 @@ Ontology core --------------X Product, vendor package, connector runtime
 - Ontology gains no Product, Harness, registry, scheduler, or credential
   dependency.
 
+## Implementation Evidence
+
+The fixed Product-side fixture in
+[`tests/integration/ontology/`](../../../../tests/integration/ontology/)
+reads one known SQLite ERP schema and exercises the entire public boundary:
+manifest delivery, detached output conformance, source-plus-Fact-plus-default
+materialization, SQLite v3 restart, typed query, and stale source-head
+observation. It is contract evidence only; it is not a shipped connector or a
+generic SQL mapping framework.
+
 ## Deferred
 
 - package registry, signatures, dependency solving, and installation;
