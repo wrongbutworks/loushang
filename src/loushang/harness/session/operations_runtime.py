@@ -66,13 +66,17 @@ class SessionOperations:
         self.ports = ports
         self.composition = ports.composition
 
-    async def dispatch_event(self, event: object, *, source_record_id: str | None = None) -> None:
+    async def dispatch_event(
+        self, event: object, *, source_record_id: str | None = None
+    ) -> None:
         await self.composition.session_runtime.dispatch_event(
             event,
             source_record_id=source_record_id,
         )
 
-    async def set_active_tools(self, tool_names: list[str], *, emit_refresh: bool) -> None:
+    async def set_active_tools(
+        self, tool_names: list[str], *, emit_refresh: bool
+    ) -> None:
         self.composition.tool_controller.apply_active_tools(tool_names)
         if emit_refresh:
             await self.composition.extension_bridge.refresh(
@@ -93,11 +97,7 @@ class SessionOperations:
             cast(Model | ModelSelection, model)
         )
         previous = self.ports.agent.model
-        endpoint_id = getattr(model, "endpoint_id", None) if _is_model_selection(model) else None
-        await self.composition.selection_runtime.apply_model(
-            resolved,
-            endpoint_id=endpoint_id,
-        )
+        await self.composition.selection_runtime.apply_model(resolved)
         if emit_refresh:
             await self.composition.extension_bridge.refresh(
                 reason="model_selection_changed"
@@ -187,7 +187,9 @@ class SessionOperations:
     def abort_branch_summary(self) -> None:
         self.composition.navigation_runtime.abort()
 
-    async def dispose(self, session_shutdown_event: SessionShutdownEvent | None = None) -> None:
+    async def dispose(
+        self, session_shutdown_event: SessionShutdownEvent | None = None
+    ) -> None:
         try:
             await self.composition.resource_watch_controller.stop()
             if self.ports.extension_runner is not None:
@@ -257,7 +259,9 @@ class SessionOperations:
         *,
         custom_instructions: str | None,
         replace_instructions: bool,
-    ) -> Callable[[Sequence[object], CancellationSignal], Awaitable[BranchSummaryOutput]]:
+    ) -> Callable[
+        [Sequence[object], CancellationSignal], Awaitable[BranchSummaryOutput]
+    ]:
         async def run(
             entries: Sequence[object],
             signal: CancellationSignal,
@@ -271,9 +275,4 @@ class SessionOperations:
             )
 
         return run
-
-def _is_model_selection(value: object) -> bool:
-    return value.__class__.__name__ == "ModelSelection"
-
-
 __all__ = ["SessionOperations", "SessionOperationsPorts"]

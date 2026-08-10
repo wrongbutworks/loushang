@@ -791,6 +791,7 @@ def test_openai_responses_payload_maps_assistant_tool_call_and_synthesizes_missi
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -842,6 +843,7 @@ def test_openai_responses_payload_normalizes_cross_provider_tool_call_ids(
         ],
         api="anthropic-messages",
         provider="anthropic",
+        endpoint="test-endpoint",
         model="claude-test",
         response_id="resp_1",
         usage=Usage(
@@ -901,6 +903,7 @@ def test_openai_responses_payload_replays_assistant_thinking_signature(
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -949,6 +952,7 @@ def test_openai_responses_payload_replays_assistant_text_signature_and_phase(
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -1113,6 +1117,7 @@ def test_openai_responses_payload_maps_tool_result_images(
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -1643,6 +1648,7 @@ def _tool_result_followed_by_user_context(*, system_prompt: str) -> Context:
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(

@@ -93,6 +93,7 @@ def start_provider_runtime(
         stream=stream,
         api=model.api or "",
         provider=model.provider_id,
+        endpoint=model.endpoint_id,
         model=model.id,
         pricing=model.pricing,
     )

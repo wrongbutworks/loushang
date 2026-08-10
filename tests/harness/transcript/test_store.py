@@ -165,7 +165,9 @@ def test_provisional_store_materializes_with_staged_records_on_first_user_messag
         assert await backend.scan(_key().namespace) == ()
 
         staged = await store.append_model_selection(
-            ModelSelectionSnapshot(provider="provider", model_id="model")
+            ModelSelectionSnapshot(
+                endpoint_id="test-endpoint", provider="provider", model_id="model"
+            )
         )
         assert staged.receipt is None
         assert staged.durable is False
@@ -334,7 +336,9 @@ def test_store_exposes_all_standard_typed_append_operations() -> None:
         ).record
         await store.append_thinking_selection(ThinkingSelectionSnapshot(level="high"))
         await store.append_model_selection(
-            ModelSelectionSnapshot(provider="test", model_id="model")
+            ModelSelectionSnapshot(
+                endpoint_id="test-endpoint", provider="test", model_id="model"
+            )
         )
         await store.append_command_execution(
             CommandExecutionRecord(command="pwd", output="/tmp", exit_code=0)

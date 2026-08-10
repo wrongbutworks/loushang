@@ -206,6 +206,7 @@ def transform_messages_result(
                     content=normalized_content,  # type: ignore[arg-type]
                     api=message.api,
                     provider=message.provider,
+                    endpoint=message.endpoint,
                     model=message.model,
                     response_id=message.response_id,
                     usage=message.usage,
@@ -393,6 +394,7 @@ def _aborted_boundary_message(message: AssistantMessage) -> AssistantMessage:
         content=[TextPart(type="text", text=text)],
         api=message.api,
         provider=message.provider,
+        endpoint=message.endpoint,
         model=message.model,
         response_id=message.response_id,
         usage=message.usage,
@@ -530,6 +532,7 @@ def coerce_cross_provider_assistant_message_result(
             content=coerced_content,  # type: ignore[arg-type]
             api=message.api,
             provider=message.provider,
+            endpoint=message.endpoint,
             model=message.model,
             response_id=message.response_id,
             usage=message.usage,

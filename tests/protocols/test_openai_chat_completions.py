@@ -141,6 +141,7 @@ def _adapter_config_from_compat(
         raw["reasoningFormat"] = compat[THINKING_FORMAT]
     return OpenAICompletionsConfig.from_raw(raw)
 
+
 def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_result_mixed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -159,6 +160,7 @@ def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_
         ],
         api="openai-completions",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -931,6 +933,7 @@ def test_openai_completions_payload_synthesizes_missing_tool_result_for_assistan
         ],
         api="openai-completions",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(

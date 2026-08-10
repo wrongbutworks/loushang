@@ -130,6 +130,7 @@ def canonicalize_message(message: object) -> object:
             content=[_assistant_content_part(part) for part in message.content],
             api=message.api,
             provider=message.provider,
+            endpoint=message.endpoint,
             model=message.model,
             response_id=message.response_id,
             usage=_usage_from_dict(message.usage),
@@ -204,6 +205,7 @@ def _assistant_message_from_dict(message: dict[str, Any]) -> AssistantMessage:
         ],
         api=str(message.get("api", "")),
         provider=str(message.get("provider", "")),
+        endpoint=str(message.get("endpoint", "")),
         model=str(message.get("model", "")),
         response_id=_optional_str(
             message.get("response_id", message.get("responseId"))
