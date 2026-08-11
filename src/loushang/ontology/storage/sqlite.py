@@ -13,6 +13,7 @@ from loushang.foundation.json import JSONValue, dump_json_value, require_json_ma
 from loushang.ontology.facts.commit import (
     CommittedFactBatch,
     prepare_fact_commit,
+    prepare_guarded_fact_commit,
     require_sequence,
     select_facts_as_of,
     validate_fact_journal,
@@ -886,6 +887,28 @@ class SQLiteFactStore(_SQLiteAdapter):
     def commit_fact_batch(self, batch: FactBatch) -> FactCommit:
         """Plan and persist a fact batch in one immediate SQLite transaction."""
 
+        return self._commit_fact_batch(batch, expected_watermark=None)
+
+    def commit_fact_batch_guarded(
+        self,
+        batch: FactBatch,
+        *,
+        expected_watermark: int,
+    ) -> FactCommit:
+        """Atomically compare one planning watermark and commit or replay."""
+
+        return self._commit_fact_batch(
+            batch,
+            expected_watermark=expected_watermark,
+        )
+
+    def _commit_fact_batch(
+        self,
+        batch: FactBatch,
+        *,
+        expected_watermark: int | None,
+    ) -> FactCommit:
+
         self._require_open()
         if self._schema is None:
             raise RuntimeError("SQLite fact commits require a bound schema")
@@ -897,10 +920,21 @@ class SQLiteFactStore(_SQLiteAdapter):
             )
         self._connection.execute("BEGIN IMMEDIATE")
         try:
-            plan = prepare_fact_commit(
-                batch,
-                current_facts=self._read_fact_entries(),
-                committed_batches=self._read_committed_batches(),
+            current_facts = self._read_fact_entries()
+            committed_batches = self._read_committed_batches()
+            plan = (
+                prepare_fact_commit(
+                    batch,
+                    current_facts=current_facts,
+                    committed_batches=committed_batches,
+                )
+                if expected_watermark is None
+                else prepare_guarded_fact_commit(
+                    batch,
+                    expected_watermark=expected_watermark,
+                    current_facts=current_facts,
+                    committed_batches=committed_batches,
+                )
             )
             if not plan.commit.replayed:
                 self._connection.executemany(

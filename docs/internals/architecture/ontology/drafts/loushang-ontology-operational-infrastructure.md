@@ -15,7 +15,8 @@ Memory-only mapped-source 合成、完整 operational origin slice 和 SQLite v3
 persistence 已实现；change set 与 logic binding 仍未实现。首个 authority-aware Action
 规划和 Product-hosted write-back 边界已经由
 [ARD-012](../ARD-012-authority-aware-action-planning-and-product-hosted-write-back.md)
-接受，但 Action 代码尚未实现。
+接受；其中 ontology-owned `SetProperty` 的 Schema v4、纯规划、guarded Fact commit
+和投影刷新纵向切片已经实现，source-backed write-back 仍未实现。
 
 调研快照日期为 2026-08-06。参考仓库只用于本体子系统研发和架构研究，保持只读；
 本文的规模数据来自静态文件统计，不等同于测试通过率或生产成熟度。
@@ -71,15 +72,17 @@ Fact/Provenance spine、[ARD-001](../ARD-001-factstore-semantic-authority.md)
   Adapter version/manifest content、enabled bindings 和不含凭据的 store refs。
 
 动态 `Ontology` facade、Callable RuleEngine、直接 DataFusion、公开 ObjectStore mutation
-以及尚无正式 Action 语义的 HarnessWork bridge 已删除；`ontology.core` 也已整体退出
-源码。当前主要缺口是：
+以及旧 HarnessWork Action bridge 已删除；`ontology.core` 也已整体退出源码。当前主要
+缺口是：
 
 - 还没有负责调度、重试和发布 diagnostics 的 runtime/materialization coordinator；
-- 还没有将 ontology-owned command 编译为 deterministic FactBatch、将 source-backed
-  command 规划为显式 source-write contract 的编译层；
+- ontology-owned `SetProperty` 已能编译为 deterministic FactBatch；source-backed
+  Action 尚未产出或执行显式 source-write contract；
 - safe derivation 尚未重建；source mapping 已具备纯 contract，但没有 Product connector、
   delta/change-set retention 或同步 runtime；
-- 没有 ActionType、MutationPlan、审批需求、外部能力需求和原子提交协议；
+- 已有最小 `ActionDefinition`、`ActionRequest`、`ActionPlan`、opaque policy requirement
+  和原子 guarded Fact commit；尚无 Product 侧授权/执行 ledger、外部 write capability、
+  acknowledgement 与 reconciliation 实现；
 - 没有 DecisionType、DecisionRecord、Scenario、OutcomeDefinition 或 LogicBinding，尚不能
   保存“为什么选择这个动作”以及预期结果和实际结果的差异；
 - 没有 RDF/OWL/JSON-LD import/export、SHACL validation 或 round-trip diagnostics；
@@ -365,8 +368,8 @@ Ontology 内哪些 semantic records 由 FactStore 持久化；`AssertionKind` �
 `StateAuthority`；多个来源提供同一属性时，必须配置主来源或显式报告冲突，不能按接入
 顺序静默覆盖。Derived 状态不可直接修改，ontology-owned 状态由 Ontology 自己持久化。
 Source-backed 状态不能被本地 Fact 冒充为已经由源系统确认；ARD-012 已决定首个切片采用
-Product-hosted external write-back，不采用 managed edit overlay。该决定尚未实现，并且不
-代表所有未来 Action 都已完成设计。
+Product-hosted external write-back，不采用 managed edit overlay。其中 ontology-owned
+路径已经实现，source-backed 路径尚未实现；该决定不代表所有未来 Action 都已完成设计。
 
 局部 Source View 的合成还依赖 canonical identity。Adapter 必须把各系统的 source record
 identity 映射到稳定对象 ID，并保留 alternate keys；无法可靠确认两个记录为同一对象时，
@@ -1212,11 +1215,12 @@ compiler/diff、双时态 Fact/Provenance、Memory/SQLite ports、immutable
 `ProjectionSnapshot`、whole-snapshot replacement 和 reference query engine。旧的可变
 ObjectStore、动态 facade、Callable rules、直接 fusion 和临时 Action bridge 已删除。
 
-Schema v3 已为 ObjectType、object Property 和 LinkType 实现独立于名称的显式
-`semantic_id` 与三类 StateAuthority，并由 schema-diff v3 识别 rename、identity
-replacement 和 authority reassignment。InterfaceType 目前仍按名称识别；source/logic
-binding 中的 source binding 已实现，logic binding 和写入路由仍未实现，不能把读取侧
-authority binding 误称为 Action write-back。
+Schema v4 已为 ObjectType、object Property、LinkType 和 Action 实现独立于名称的显式
+`semantic_id`；ObjectType、object Property 和 LinkType 同时声明三类 StateAuthority，
+schema-diff v4 识别 rename、identity replacement、authority reassignment 和 Action
+contract change。InterfaceType 目前仍按名称识别；source/logic binding 中的 source
+binding 已实现，logic binding 和 source write routing 仍未实现，不能把读取侧 authority
+binding 误称为 Action write-back。
 
 ### 已完成：Authority Binding 与 Memory-only Multi-Source Materialization
 
@@ -1278,12 +1282,13 @@ authority binding 误称为 Action write-back。
 验收标准：同一对象的多个来源可以按 stable ID 合成且不丢 lineage；不确定 identity 和
 未声明多来源冲突不会静默合并或覆盖。
 
-### 后续阶段：最小 Operational Action
+### 进行中：最小 Operational Action
 
-Action 实现前先写独立 write-back/reconciliation ARD，决定 source-backed 的 external
-write-back 与 managed edit 策略、effect/commit 顺序、acknowledgement、幂等和失败恢复。
-第一版只验证一个 ontology-owned Action 和一个 source-backed Action；跨 `StateAuthority` Action
-可以直接拒绝，不先建设 saga。
+[ARD-012](../ARD-012-authority-aware-action-planning-and-product-hosted-write-back.md)
+已经决定 source-backed 的 external write-back 与 managed edit 策略、effect/commit 顺序、
+acknowledgement、幂等和失败恢复边界。ontology-owned `SetProperty` 的最小纵向切片已经
+实现；下一步只验证一个 source-backed Action。跨 `StateAuthority` Action 继续直接拒绝，
+不先建设 saga。
 
 ### 后续阶段：Decision-Centric Operations
 
@@ -1370,7 +1375,7 @@ surface，不暴露任意 mutation。
 
 在后续 ARD 中需要进一步决定：
 
-- ARD-003 选择的 package-local stable ID + namespace resolution 已由 schema v3
+- ARD-003 选择的 package-local stable ID + namespace resolution 已由 schema v4
   serialization contract 收口；interface identity 是否扩展仍待具体需求；
 - schema package 的 SemVer compatibility 规则；
 - InterfaceType 是 structural conformance 还是 nominal declaration，或两者都支持；

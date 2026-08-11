@@ -1,12 +1,13 @@
 # ARD-012: Authority-Aware Action Planning And Product-Hosted Write-Back
 
-Status: Accepted, 2026-08-11. Implementation has not started.
+Status: Accepted, 2026-08-11. The ontology-owned Phase 2 slice is implemented;
+source-backed write-back remains unimplemented.
 
 ## Context
 
-The current Ontology runtime can describe operational state, materialize one
-immutable read snapshot, and explain whether each value is source-backed,
-ontology-owned, or derived. It cannot yet change that state through a published
+The pre-Phase-2 Ontology runtime could describe operational state, materialize
+one immutable read snapshot, and explain whether each value was source-backed,
+ontology-owned, or derived. It could not change that state through a published
 semantic Action.
 
 Treating every Action as object CRUD would break the authority boundary already
@@ -28,14 +29,14 @@ contracts without inventing a distributed transaction.
 
 ### 1. Put published Action semantics in the compiled Schema
 
-`ActionDefinition` is versioned semantic metadata. A later implementation will
-add it to the Schema draft and `CompiledOntologySchema`, which means it will be
-content-addressed inside `OntologyPackageArtifact` and selected by the existing
-Schema lock in Deployment Profile v2.
+`ActionDefinition` is versioned semantic metadata. Phase 2 adds it to the Schema
+draft and `CompiledOntologySchema`, so it is content-addressed inside
+`OntologyPackageArtifact` and selected by the existing Schema lock in
+Deployment Profile v2.
 
 There will not be a second mutable Action catalog or registry beside the
-compiled Schema. Adding the field requires a deliberate Schema format upgrade;
-the current `loushang.ontology.schema/v3` format is unchanged by this decision.
+compiled Schema. Phase 2 directly replaces the undeployed schema v3 contract
+with `loushang.ontology.schema/v4`; there is no v3 compatibility reader.
 
 The first format is deliberately narrow:
 
@@ -63,8 +64,8 @@ general workflow language.
 
 ### 2. Make Action planning pure and snapshot-guarded
 
-The future `loushang.ontology.action` package will accept immutable values and
-return an immutable plan. It will not open stores, call APIs, write databases,
+The implemented `loushang.ontology.action` package accepts immutable values and
+returns an immutable plan. It does not open stores, call APIs, write databases,
 evaluate identity credentials, or execute tools.
 
 An `ActionRequest` conceptually contains:
@@ -82,16 +83,23 @@ ProjectionGuard:
   projection_version
   materialization_cut
 actor_context_ref
+valid_from
+recorded_at
 ```
 
 The guard identifies the exact projection against which the user, service, or
 Agent chose the action. `built_at` is not part of the semantic guard. The
-planner requires one matching immutable `ProjectionSnapshot`, validates the
-target and arguments, and emits an `ActionPlan` with a canonical `plan_digest`.
-A mismatched Schema, projection version, cut, object type, parameter, or target
-fails explicitly; the planner never silently replans against newer state.
+planner requires one matching immutable `ProjectionSnapshot` and the detached
+`FactSelection` that exactly reproduces its Fact IDs, watermark, `valid_at`, and
+`recorded_at`. The selection supplies any predecessor Fact envelope needed to
+preserve lineage without giving the planner a Store. The planner validates the
+target and arguments and emits an `ActionPlan` with a canonical `plan_digest`.
+A mismatched Schema, projection version, cut, Fact selection, object type,
+parameter, or target fails explicitly; the planner never silently replans
+against newer state. Explicit `valid_from` and `recorded_at` values keep Fact
+planning deterministic and free from a hidden wall clock.
 
-The plan contains one of two mutually exclusive effects:
+The accepted target contains one of two mutually exclusive effects:
 
 ```text
 OntologyFactEffect
@@ -106,6 +114,10 @@ SourceWriteRequirement
   expected_source_revision
   semantic SetProperty intent
 ```
+
+Phase 2 implements only `OntologyFactEffect`. A published source-backed Action
+fails with `source_backed_action_unsupported`; `SourceWriteRequirement` is not
+present as a placeholder public class. Derived properties fail as non-writable.
 
 Planning uses the exact validated Deployment Profile v2 selection and enabled
 `SourceBinding` values to resolve a source-backed property to one concrete
@@ -138,12 +150,15 @@ The Fact effect uses the current immutable Fact model and an idempotent
 action, and request ID; reusing that identity with different content remains a
 conflict.
 
-Normal Fact ingestion may remain unconditional. Action execution, however,
-must atomically compare the plan's `expected_fact_watermark` and commit its
+Normal Fact ingestion remains unconditional. Action execution, however,
+atomically compares the plan's `expected_fact_watermark` and commits its
 Fact batch. A caller-side read followed by an ordinary commit is not sufficient
-because it creates a time-of-check/time-of-use race. The first implementation
-slice must therefore add a guarded Fact commit operation rather than pretending
-the current `commit_fact_batch(...)` already supplies optimistic concurrency.
+because it creates a time-of-check/time-of-use race. Phase 2 therefore adds an
+explicit guarded Fact commit operation to both Memory and SQLite rather than
+pretending `commit_fact_batch(...)` supplies optimistic concurrency. Existing
+same-content replay and same-ID content conflict are evaluated before the
+watermark guard, so a recovered request can retrieve its prior result after the
+journal has advanced.
 
 An accepted Fact commit is durable semantic state. It does not mutate the
 installed Projection. Materialization and atomic Projection replacement remain
@@ -287,11 +302,7 @@ below it. Product remains the composition root.
 
 ## Implementation Boundary And Acceptance Gates
 
-This Phase 1 accepts the decision only. It adds no Action classes, Schema v4,
-store port, executor, receipt store, connector, or migration.
-
-The first code slice may start only with ontology-owned `SetProperty` and must
-prove:
+Phase 2 implements only ontology-owned `SetProperty` and proves:
 
 - deterministic Action definition/request/plan serialization and digests;
 - compile-time target and value-type validation;
@@ -301,6 +312,11 @@ prove:
   SQLite conformance suites;
 - accepted Fact state remains separate from later Projection refresh;
 - architecture gates preserve the dependency direction above.
+
+The fixed Product-boundary integration slice uses a source-backed Project with
+an ontology-owned review note. It proves plan, guarded commit, stale old
+Projection, rematerialization, and typed query without adding a connector or
+execution runtime.
 
 The later source-backed slice must additionally prove:
 
@@ -328,12 +344,13 @@ The later source-backed slice must additionally prove:
 - ARD-010 remains authoritative for source-instance/binding selection. Action
   routing consumes that validated selection and does not add endpoints or
   credentials to Deployment Profile v2.
-- ARD-011 remains authoritative for package artifacts. Action definitions will
-  enter their digest only when a future Schema format actually contains them.
+- ARD-011 remains authoritative for package artifacts. Schema v4 Action
+  definitions now enter the existing package digest without changing the
+  package envelope format.
 
 ## Non-Goals And Deferred Decisions
 
-- no Action implementation in this phase;
+- no source-backed Action planning or execution in Phase 2;
 - no mutable edit overlay or optimistic local claim for source-backed state;
 - no object creation/deletion, property clear, link mutation, bulk mutation,
   or multi-effect Action;

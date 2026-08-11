@@ -7,8 +7,8 @@ Tracking: [#439](https://github.com/zhnt/loushang/issues/439).
 This decision partially supersedes ARD-001 and narrowly amends the
 materialization and freshness parts of ARD-002. Its implemented foundation
 slices originally kept the Phase 2 SQLite v2 table layout. Stable semantic IDs
-and StateAuthority declarations are implemented in
-the schema v3 contract. Concrete source bindings, full mapped object/property/
+and StateAuthority declarations were introduced in schema v3 and are retained
+by the current schema v4 contract. Concrete source bindings, full mapped object/property/
 link snapshots, multi-input cuts, operational origins, authority failure
 contracts, and source-head freshness are implemented for the Memory-only
 slices. [ARD-005](ARD-005-source-aware-sqlite-v3.md) later implements durable
@@ -354,8 +354,9 @@ This ARD also supersedes the target identity rule in
 names stop being stable identity keys and become versioned metadata; explicit
 stable semantic IDs drive comparison and rename recognition. The remaining
 offline comparison, impact classification, determinism, and non-goal rules stay
-in force. Schema and schema-diff v3 now implement this identity rule for object
-types, object properties, and link types; interface identity remains name-keyed.
+in force. Schema and schema-diff v3 introduced this identity rule for object
+types, object properties, and link types; schema v4 retains it while adding
+Action identity. Interface identity remains name-keyed.
 
 ## Consequences
 
@@ -406,8 +407,9 @@ Completed in the stable semantic ID slice:
 
 - object types, object properties, and link types require an explicit
   package-local `semantic_id`;
-- compiled schema v3 enforces package-wide uniqueness and round-trips those IDs;
-- schema-diff v3 matches definitions by ID, reports an explicit breaking rename
+- compiled schema v3 introduced package-wide uniqueness and round-tripped those
+  IDs; schema v4 retains that contract;
+- schema-diff v3 introduced matching by ID, explicit breaking rename
   when only the name changes, and treats an ID change as removal plus addition;
 - current runtime lookups by API name remain available.
 
@@ -415,8 +417,8 @@ Completed in the declared StateAuthority slice:
 
 - object existence, object properties, and link families require exactly one
   `source-backed`, `ontology-owned`, or `derived` declaration;
-- authority declarations round-trip in compiled schema v3 and authority changes
-  are breaking in schema-diff v3;
+- authority declarations round-trip in compiled schema v4 and authority changes
+  are breaking in schema-diff v4;
 - interface contracts remain structural and do not accept operational
   authority;
 - declarations alone do not select a concrete source/logic binding or route
@@ -459,7 +461,8 @@ Remaining gates after this slice:
 - concrete versioned logic bindings and a computation origin before transient
   derived values enter a projection;
 - ARD-012 now decides the first source-backed write routing, acknowledgement,
-  and reconciliation boundary; its Action implementation remains outstanding.
+  and reconciliation boundary. Its ontology-owned Action path is implemented;
+  source-backed planning and execution remain outstanding.
 
 ## Deferred Decisions
 

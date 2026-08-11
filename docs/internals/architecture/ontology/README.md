@@ -28,20 +28,23 @@ Crosswalk. [ARD-011](ARD-011-deterministic-ontology-package-artifacts.md)
 adds deterministic single-Schema package artifacts and exact dependency-closure
 validation without adding a registry or multi-package runtime.
 [ARD-012](ARD-012-authority-aware-action-planning-and-product-hosted-write-back.md)
-accepts the first authority-aware Action planning and Product-hosted write-back
-boundary. It is a design decision only; no Action code has been implemented.
+now implements the ontology-owned half of the first authority-aware Action
+boundary; Product-hosted source write-back remains unimplemented.
 
 It currently provides:
 
-- versioned schema drafts, compilation, immutable snapshots, diagnostics, and
-  schema diff, with package-local stable semantic IDs for object types,
-  object properties, and link types, plus an explicit StateAuthority for each
-  operational definition;
+- versioned Schema v4 drafts, compilation, immutable snapshots, diagnostics,
+  and schema diff, with package-local stable semantic IDs for object types,
+  object properties, link types, and narrow `SetProperty` Action definitions,
+  plus an explicit StateAuthority for each operational state definition;
 - an append-only bitemporal FactStore with provenance and lineage, where Fact
   v2 records bind a complete `SchemaIdentity` and durable assertions use stable
   semantic IDs rather than renameable API names;
 - pure, deterministic Fact commit planning and atomic bitemporal
   `FactSelection`;
+- an explicit guarded Fact commit that performs idempotent replay/content
+  conflict checks before atomically comparing the expected watermark in both
+  Memory and SQLite;
 - immutable, schema-bound source bindings and mapped source snapshots for
   source-backed object existence, properties, and links, with explicit
   complete/partial/unknown coverage;
@@ -79,7 +82,11 @@ It currently provides:
   immutable Identity Crosswalk, and opaque Fact/Projection store references;
 - deterministic Ontology package artifacts that bundle one compiled Schema,
   exact direct dependency locks, and closed-set diagnostics for missing,
-  changed, duplicated, namespace-conflicting, or cyclic package artifacts.
+  changed, duplicated, namespace-conflicting, or cyclic package artifacts;
+- strict `ActionRequest`, `ProjectionGuard`, and `ActionPlan` values plus a pure
+  planner that consumes one exact Projection and detached Fact selection,
+  deterministically emits an ontology-owned Fact batch, rejects derived writes,
+  and reports source-backed Actions as not implemented.
 
 The materialization path accepts both a detached `FactSelection` and
 immutable mapped source snapshots. Ordinary source-backed values therefore do
@@ -95,9 +102,9 @@ object CRUD. There is no dynamic `Ontology` facade, mutable ObjectStore,
 callable RuleEngine, direct DataFusion, or Ontology/HarnessWork Action bridge.
 
 This is infrastructure, not a domain ontology and not a Palantir product
-clone. Runtime coordination, concrete vendor adapters, Action implementation,
-Decisions, generated SDKs, standards bridges, SQL pushdown, and environmental
-packages remain later work.
+clone. Runtime coordination, concrete vendor adapters, source-backed Action
+execution, Decisions, generated SDKs, standards bridges, SQL pushdown, and
+environmental packages remain later work.
 
 ## Accepted Direction And Implementation Boundary
 
@@ -112,7 +119,7 @@ freshness. It is tracked in
 The implemented ARD-003 foundation includes materialization correctness
 (atomic Fact selection, immutable build coordinates, explicit Fact freshness,
 and snapshot-consistent SQLite reads), stable semantic identity, and declared
-state ownership (schema v3 plus identity/authority-aware schema-diff v3), plus
+state ownership (now carried forward by schema v4 and schema-diff v4), plus
 the Memory-only source composition and origin-contract slices. They add
 concrete source bindings, full mapped object/property/link snapshots,
 `MaterializationCut`, complete operational origins, explicit authority failure
@@ -133,8 +140,8 @@ structural Product-hosted protocol, and public output conformance boundary;
 Ontology still does not run vendor code. ARD-007 permits an exact old-schema
 Fact selection to be validated for a target schema through a content-addressed
 receipt recorded in the materialization cut. Change sets, logic bindings,
-derived computation origins, write routing, multi-package dependency profiles,
-full Fact journal migration, and deployment switching remain deferred.
+derived computation origins, source write routing, multi-package dependency
+profiles, full Fact journal migration, and deployment switching remain deferred.
 
 ARD-008 records the historical Profile v1 rationale. Its v1 shape is superseded
 by ARD-010 and has no compatibility reader.
@@ -152,15 +159,14 @@ ARD-011 defines a pure package artifact and exact dependency-closure check. It
 does not merge Schemas, resolve versions, publish artifacts, or alter the
 single-Schema runtime and Deployment Profile.
 
-ARD-012 defines the accepted future Action boundary without implementing it.
-Published `ActionDefinition` values will belong to the compiled Schema; a pure
-planner will route one guarded `SetProperty` effect by the target property's
-`StateAuthority`. Ontology-owned effects become guarded Fact batches;
-source-backed effects become detached requirements executed by Product-hosted
-adapters; derived state is not writable. Authorization is bound to the exact
-plan outside Ontology, and external acknowledgement remains distinct from
-later Projection observation. Cross-authority Actions, overlays, sagas, and
-generic effect DSLs remain deferred.
+ARD-012's ontology-owned Phase 2 slice is implemented. Published
+`ActionDefinition` values belong to compiled Schema v4 and package content; a
+pure planner validates one exact Profile, Projection guard, and detached Fact
+selection before emitting a deterministic guarded Fact batch. Derived state is
+not writable and source-backed Actions fail explicitly until the locked write
+capability and Product-hosted adapter slice exists. Authorization remains
+outside Ontology. External acknowledgement, cross-authority Actions, overlays,
+sagas, and generic effect DSLs remain deferred.
 
 ## Proposed Target Designs
 
@@ -184,7 +190,7 @@ locked CrosswalkSnapshot --> Product-hosted adapter -------------+
 Source system -------------> Product-hosted adapter              |
 Product-hosted adapter ----> Manifest + MappedInput -------------+
                                                                |
-Source / Command Adapter --> FactStore --> FactSelection -------+
+Fact Producer -------------> FactStore --> FactSelection -------+
                                                                |
 CompiledOntologySchema -----------------------------------------+
                                                                v
@@ -208,6 +214,29 @@ Fact batch. A later Fact commit or source revision never mutates the installed
 snapshot's build coordinates. Callers compare its cut with explicitly observed
 Fact and source heads through `evaluate_projection_freshness(...)`.
 
+The implemented ontology-owned Action path is separate from materialization:
+
+```text
+ActionRequest + DeploymentProfile v2
+ProjectionSnapshot + exact FactSelection
+                |
+                v
+        +---------------------+
+        | Pure Action Planner |
+        +---------------------+
+                |
+                v
+ OntologyFactEffect(FactBatch + expected watermark)
+                |
+       guarded commit
+                v
+            FactStore
+                |
+       later materialization
+                v
+        refreshed Projection
+```
+
 ## Dependency Direction
 
 ```text
@@ -228,6 +257,8 @@ projection.ports ---------------------> projection.model
 projection.materializer -------------> facts.ports + source
                                        + projection.model + schema
 projection.revalidation -------------> facts + schema + materializer
+action ------------------------------> deployment + facts + projection
+                                       + schema + source
 query --------------------------------> projection ports/models
 storage.memory -----------------------> facts + projection ports/models
 storage.sqlite -----------------------> facts + projection ports/models + schema
@@ -240,6 +271,8 @@ ontology        -X-> Harness / HarnessWork / Method / Product
 schema / source / facts / projection / query / storage -X-> identity
 facts / source / identity / projection / query / storage / deployment
                 -X-> package
+schema / source / facts / projection / query / storage / deployment
+                -X-> action
 ```
 
 Product or domain adapters may depend on public Ontology contracts when they
@@ -253,7 +286,7 @@ product subsystem.
 - `facts/model.py`: immutable Fact envelope, typed assertions, provenance, and
   FactBatch;
 - `facts/ports.py`: Fact read/write ports, stable commit values, and atomic
-  `FactSelection`;
+  `FactSelection`, including explicit guarded Action commit;
 - `facts/commit.py`: pure commit planning, journal validation, lineage, and
   bitemporal selection;
 - `source/`: immutable schema-bound source authority bindings, mapped
@@ -269,6 +302,9 @@ product subsystem.
 - `deployment/`: immutable Schema/Adapter/Crosswalk artifact locks,
   source-instance/binding selection, opaque store references, and pure
   compatibility validation; no runtime loader or deployment service;
+- `action/`: strict request/guard/plan contracts and pure ontology-owned
+  `SetProperty` planning; no Store access, authorization, source write, Product,
+  Harness, or HarnessWork execution;
 - `projection/model.py`: immutable object, property, link, build state,
   value origins, materialization cut, freshness observation, and snapshot;
 - `projection/ports.py`: projection reads and atomic replacement;
@@ -316,10 +352,10 @@ These paths and symbols intentionally do not exist:
 - public `SQLiteObjectStore`;
 - `FactProjection` wrappers and runtime-sealed mutable views.
 
-They must not return as compatibility aliases. Future CRUD, derivation,
-Agent, Action, and Decision surfaces use their declared authority. Ontology-owned
-commands remain Fact-backed; ARD-012 now controls the accepted source-backed
-command boundary, although it has not yet been implemented.
+They must not return as compatibility aliases. Future broader CRUD, derivation,
+Agent, source-backed Action, and Decision surfaces use their declared
+authority. Implemented ontology-owned Actions are Fact-backed; ARD-012 controls
+the source-backed command boundary, which remains unimplemented.
 
 ## Normative Reading Order
 

@@ -12,6 +12,7 @@ from loushang.ontology.facts.model import FactBatch, FactRecord, FactValidationE
 from loushang.ontology.facts.ports import (
     FactBatchConflictError,
     FactCommit,
+    FactWatermarkConflictError,
     StoredFact,
 )
 
@@ -114,6 +115,39 @@ def prepare_fact_commit(
         digest=digest,
         entries=tuple(entries),
         commit=commit,
+    )
+
+
+def prepare_guarded_fact_commit(
+    batch: FactBatch,
+    *,
+    expected_watermark: int,
+    current_facts: Iterable[StoredFact],
+    committed_batches: Mapping[str, CommittedFactBatch],
+) -> PreparedFactCommit:
+    """Plan one conditional commit with idempotent replay before the guard."""
+
+    expected_watermark = require_sequence(
+        "expected_watermark",
+        expected_watermark,
+    )
+    if not isinstance(batch, FactBatch):
+        raise FactValidationError("commit_fact_batch_guarded requires a FactBatch")
+    existing_entries = tuple(current_facts)
+    validate_fact_journal(existing_entries, committed_batches)
+    if batch.batch_id in committed_batches:
+        return prepare_fact_commit(
+            batch,
+            current_facts=existing_entries,
+            committed_batches=committed_batches,
+        )
+    actual_watermark = len(existing_entries)
+    if expected_watermark != actual_watermark:
+        raise FactWatermarkConflictError(expected_watermark, actual_watermark)
+    return prepare_fact_commit(
+        batch,
+        current_facts=existing_entries,
+        committed_batches=committed_batches,
     )
 
 
@@ -249,6 +283,7 @@ __all__ = [
     "CommittedFactBatch",
     "PreparedFactCommit",
     "prepare_fact_commit",
+    "prepare_guarded_fact_commit",
     "require_sequence",
     "require_timestamp",
     "select_facts_as_of",
