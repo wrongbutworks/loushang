@@ -343,9 +343,7 @@ async def _run_loop(
                 return
             pending_messages = await _poll_immediate_inputs(config)
 
-        mailbox_messages = await _maybe_call(
-            config.get_mailbox_messages, default=[]
-        )
+        mailbox_messages = await _maybe_call(config.get_mailbox_messages, default=[])
         if mailbox_messages:
             pending_messages = mailbox_messages
             continue
@@ -627,11 +625,11 @@ async def _execute_tool_calls_sequential(
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         if preparation.kind == "immediate":
             finalized = await _emit_tool_call_outcome(
-                    preparation.tool_call,
-                    preparation.result,
-                    preparation.is_error,
-                    emit,
-                )
+                preparation.tool_call,
+                preparation.result,
+                preparation.is_error,
+                emit,
+            )
             finalized_results.append(finalized)
             finalized_messages.append(finalized.message)
             continue
@@ -639,14 +637,14 @@ async def _execute_tool_calls_sequential(
         if _is_aborted(signal):
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         finalized = await _finalize_executed_tool_call(
-                current_context,
-                assistant_message,
-                preparation,
-                executed,
-                config,
-                emit,
-                signal=signal,
-            )
+            current_context,
+            assistant_message,
+            preparation,
+            executed,
+            config,
+            emit,
+            signal=signal,
+        )
         finalized_results.append(finalized)
         finalized_messages.append(finalized.message)
     return _ToolCallBatchOutcome(
@@ -687,11 +685,11 @@ async def _execute_tool_calls_parallel(
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         if preparation.kind == "immediate":
             finalized = await _emit_tool_call_outcome(
-                    preparation.tool_call,
-                    preparation.result,
-                    preparation.is_error,
-                    emit,
-                )
+                preparation.tool_call,
+                preparation.result,
+                preparation.is_error,
+                emit,
+            )
             finalized_results.append(finalized)
             finalized_messages.append(finalized.message)
         else:
@@ -716,14 +714,14 @@ async def _execute_tool_calls_parallel(
                     terminate=True,
                 )
             finalized = await _finalize_executed_tool_call(
-                    current_context,
-                    assistant_message,
-                    prepared,
-                    executed,
-                    config,
-                    emit,
-                    signal=signal,
-                )
+                current_context,
+                assistant_message,
+                prepared,
+                executed,
+                config,
+                emit,
+                signal=signal,
+            )
             finalized_results.append(finalized)
             finalized_messages.append(finalized.message)
     except asyncio.CancelledError:
@@ -766,6 +764,7 @@ def _create_aborted_assistant_message(
         content=[TextPart(type="text", text="")],
         api=config.model.endpoint_id,
         provider=config.model.provider_id,
+        endpoint=config.model.endpoint_id,
         model=config.model.id,
         response_id=None,
         usage=_empty_usage(),

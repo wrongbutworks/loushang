@@ -128,6 +128,7 @@ def provider_error_info_from_raw(
     *,
     source: str,
     provider: str | None = None,
+    endpoint: str | None = None,
     model: str | None = None,
 ) -> AIErrorInfo:
     outer_status_code = _http_status_code(part.get("code"))
@@ -142,6 +143,7 @@ def provider_error_info_from_raw(
             canonical,
             source=source,
             provider=provider if provider is not None else canonical.provider,
+            endpoint=endpoint if endpoint is not None else canonical.endpoint,
             model=model if model is not None else canonical.model,
             details=canonical.details,
         )
@@ -152,6 +154,7 @@ def provider_error_info_from_raw(
         source=source,
         retryable=_is_retryable_provider_error(code),
         provider=provider,
+        endpoint=endpoint,
         model=model,
         status_code=outer_status_code,
         details=_raw_code_details(part.get("code"), code, outer_status_code),

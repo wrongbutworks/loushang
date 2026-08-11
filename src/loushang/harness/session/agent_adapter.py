@@ -192,8 +192,8 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         if session_context.model is not None and self.model_registry is not None:
             selection = ModelSelection(
                 provider=session_context.model["provider"],
+                endpoint_id=session_context.model["endpoint_id"],
                 model_id=session_context.model["model_id"],
-                endpoint_id=session_context.model.get("endpoint_id"),
             )
             with suppress(KeyError, ValueError):
                 resolved_model = self.model_registry.build_model(selection)
@@ -259,9 +259,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     ) -> None:
         self._approval_runtime.close_session(reason)
 
-    async def _before_bash(
-        self, request: UserBashRequest
-    ) -> UserBashHookResult | None:
+    async def _before_bash(self, request: UserBashRequest) -> UserBashHookResult | None:
         runner = self._extension_runner
         if runner is None or not runner.has_handlers("user_bash"):
             return None
@@ -715,9 +713,7 @@ def initialize_composed_session(
         application_input=composition.extension_message_controller,
         event_projector=project_session_runtime_event,
         approval_interaction=(
-            session._approval_runtime
-            if session._approval_runtime.enabled
-            else None
+            session._approval_runtime if session._approval_runtime.enabled else None
         ),
     )
     apply_context(session_manager.build_session_context())

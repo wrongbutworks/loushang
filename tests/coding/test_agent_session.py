@@ -105,6 +105,7 @@ def _usage() -> Usage:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -349,6 +350,7 @@ def test_agent_session_abort_mid_stream_cleans_run_state_and_keeps_queued_messag
                 {
                     "type": "error",
                     "error": AssistantMessage(
+                        endpoint="test-endpoint",
                         role="assistant",
                         content=[TextPart(type="text", text="")],
                         api="anthropic-messages",
@@ -1116,6 +1118,7 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
         assert options is not None
         return _stream_with_assistant_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     ToolCall(
@@ -2466,7 +2469,7 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
     asyncio.run(session.set_thinking_level("high"))
 
     assert session.get_model_selection() == ModelSelection(
-        provider="alt", model_id="alt-model"
+        endpoint_id="responses", provider="alt", model_id="alt-model"
     )
     assert session.get_state().thinking_level == "high"
     assert [entry.kind for entry in manager.get_entries()] == [
@@ -2475,6 +2478,7 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
     ]
     assert session.get_session_context().model == {
         "provider": "alt",
+        "endpoint_id": "responses",
         "model_id": "alt-model",
     }
 
@@ -2557,10 +2561,10 @@ def test_agent_session_cycles_model_and_thinking_level(tmp_path) -> None:
     )
 
     assert asyncio.run(session.cycle_model()) == ModelSelection(
-        provider="alt", model_id="alt-model"
+        endpoint_id="responses", provider="alt", model_id="alt-model"
     )
     assert session.get_model_selection() == ModelSelection(
-        provider="alt", model_id="alt-model"
+        endpoint_id="responses", provider="alt", model_id="alt-model"
     )
     assert asyncio.run(session.cycle_thinking_level()) == "medium"
     assert session.get_state().thinking_level == "medium"
@@ -2618,7 +2622,7 @@ def test_agent_session_emits_model_select_event_for_async_model_control(
 
     asyncio.run(session.set_model(second))
     assert asyncio.run(session.cycle_model("backward")) == ModelSelection(
-        provider="faux", model_id="faux-model"
+        endpoint_id="anthropic-messages", provider="faux", model_id="faux-model"
     )
 
     assert seen == [
@@ -2659,14 +2663,14 @@ def test_agent_session_exposes_standard_model_and_session_mutators(tmp_path) -> 
 
     asyncio.run(session.set_model(second))
     assert session.get_model_selection() == ModelSelection(
-        provider="alt", model_id="alt-model"
+        endpoint_id="responses", provider="alt", model_id="alt-model"
     )
 
     assert asyncio.run(session.cycle_model("backward")) == ModelSelection(
-        provider="faux", model_id="faux-model"
+        endpoint_id="anthropic-messages", provider="faux", model_id="faux-model"
     )
     assert session.get_model_selection() == ModelSelection(
-        provider="faux", model_id="faux-model"
+        endpoint_id="anthropic-messages", provider="faux", model_id="faux-model"
     )
 
     asyncio.run(session.set_thinking_level("high"))
@@ -2939,7 +2943,11 @@ def test_agent_session_exposes_standard_scoped_models_and_resources(tmp_path) ->
         [
             {"model": first, "thinkingLevel": "low"},
             {
-                "model": {"provider": "alt", "model_id": "alt-model"},
+                "model": {
+                    "provider": "alt",
+                    "endpoint_id": "responses",
+                    "model_id": "alt-model",
+                },
                 "thinkingLevel": "high",
             },
         ]
@@ -2947,7 +2955,7 @@ def test_agent_session_exposes_standard_scoped_models_and_resources(tmp_path) ->
 
     assert session.scoped_models[0]["model"] is first
     assert asyncio.run(session.cycle_model()) == ModelSelection(
-        provider="alt", model_id="alt-model"
+        endpoint_id="responses", provider="alt", model_id="alt-model"
     )
     assert session.thinking_level == "high"
     assert session.resource_loader is loader
@@ -3546,9 +3554,7 @@ def test_agent_session_approval_presenter_replacement_replays_pending(
     from loushang.harness.approval import ApprovalRequest
 
     async def run() -> None:
-        session, resolver, interaction = await _approval_interaction_session(
-            tmp_path
-        )
+        session, resolver, interaction = await _approval_interaction_session(tmp_path)
         first_presented = asyncio.Event()
         first_payloads: list[dict[str, object]] = []
 
@@ -3602,13 +3608,9 @@ def test_agent_session_superseded_approval_lease_cannot_close_replacement(
     from loushang.harness.approval import ApprovalRequest
 
     async def run() -> None:
-        session, resolver, interaction = await _approval_interaction_session(
-            tmp_path
-        )
+        session, resolver, interaction = await _approval_interaction_session(tmp_path)
         first_presented = asyncio.Event()
-        first = interaction.bind_presenter(
-            lambda _payload: first_presented.set()
-        )
+        first = interaction.bind_presenter(lambda _payload: first_presented.set())
         pending = asyncio.create_task(
             resolver.resolve(
                 ApprovalRequest(
@@ -3621,9 +3623,7 @@ def test_agent_session_superseded_approval_lease_cannot_close_replacement(
         await asyncio.wait_for(first_presented.wait(), timeout=0.5)
 
         second_presented = asyncio.Event()
-        second = interaction.bind_presenter(
-            lambda _payload: second_presented.set()
-        )
+        second = interaction.bind_presenter(lambda _payload: second_presented.set())
         await asyncio.wait_for(second_presented.wait(), timeout=0.5)
         first.close()
 
@@ -3631,9 +3631,7 @@ def test_agent_session_superseded_approval_lease_cannot_close_replacement(
         pending_ids = [
             item.permission_id for item in resolver.permissions_snapshot().pending
         ]
-        assert pending_ids == [
-            "superseded-lease"
-        ]
+        assert pending_ids == ["superseded-lease"]
         assert await interaction.respond(
             "superseded-lease",
             outcome="allow_once",
@@ -3651,13 +3649,9 @@ def test_agent_session_current_approval_lease_close_denies_pending(
     from loushang.harness.approval import ApprovalRequest
 
     async def run() -> None:
-        session, resolver, interaction = await _approval_interaction_session(
-            tmp_path
-        )
+        session, resolver, interaction = await _approval_interaction_session(tmp_path)
         first_presented = asyncio.Event()
-        interaction.bind_presenter(
-            lambda _payload: first_presented.set()
-        )
+        interaction.bind_presenter(lambda _payload: first_presented.set())
         pending = asyncio.create_task(
             resolver.resolve(
                 ApprovalRequest(
@@ -3670,9 +3664,7 @@ def test_agent_session_current_approval_lease_close_denies_pending(
         await asyncio.wait_for(first_presented.wait(), timeout=0.5)
 
         second_presented = asyncio.Event()
-        second = interaction.bind_presenter(
-            lambda _payload: second_presented.set()
-        )
+        second = interaction.bind_presenter(lambda _payload: second_presented.set())
         await asyncio.wait_for(second_presented.wait(), timeout=0.5)
         second.close("Replacement presenter disconnected")
 
@@ -5039,6 +5031,7 @@ def test_agent_session_exposes_context_usage_and_stats(tmp_path) -> None:
     asyncio.run(
         manager.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     TextPart(type="text", text="reading"),
