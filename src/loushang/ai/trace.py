@@ -46,6 +46,7 @@ _SAFE_SCALAR_KEYS = frozenset(
         "valid_json",
         "repair_valid",
         "kind",
+        "mode",
         "present",
         "empty",
         "error_position",

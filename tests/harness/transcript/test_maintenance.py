@@ -194,6 +194,17 @@ def test_compaction_runtime_commits_checkpoint_and_publishes_common_events() -> 
             "tokens_before": 20,
             "details": {"plan": "standard"},
         }
+        status = runtime.get_status()
+        assert status.last_reason == "manual"
+        assert status.last_stage == "committed"
+        assert status.last_started_at is not None
+        assert status.last_completed_at is not None
+        assert status.last_tokens_before == 20
+        assert status.last_tokens_after is None
+        assert status.last_summary_mode == "complete"
+        assert status.last_succeeded is True
+        assert status.context_window == 100
+        assert status.reserve_tokens == 10
 
     asyncio.run(scenario())
 
