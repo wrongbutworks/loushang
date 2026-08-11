@@ -458,14 +458,16 @@ Remaining gates after this slice:
 - reproducible change-set payloads with retained base-revision chains;
 - concrete versioned logic bindings and a computation origin before transient
   derived values enter a projection;
-- source-backed write routing, acknowledgement, and reconciliation remain in a
-  later Action/write-back ARD.
+- ARD-012 now decides the first source-backed write routing, acknowledgement,
+  and reconciliation boundary; its Action implementation remains outstanding.
 
 ## Deferred Decisions
 
-- source-backed Action write-back versus managed edit overlay;
-- external effect ordering, acknowledgement, idempotency, and reconciliation;
-- cross-authority Action behavior;
+- broader source-backed Action write-back beyond ARD-012's first external
+  `SetProperty` slice, including any managed edit overlay;
+- external multi-effect ordering and general reconciliation scheduling beyond
+  ARD-012's request and receipt contract;
+- cross-authority Action behavior beyond ARD-012's explicit rejection;
 - delta versus full-snapshot source persistence;
 - source-specific freshness and query dependency aggregation;
 - multi-source precedence, merge, and identity-resolution policies;

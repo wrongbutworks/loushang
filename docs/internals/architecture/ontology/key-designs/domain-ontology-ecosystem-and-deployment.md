@@ -668,8 +668,9 @@ must not claim future validation as current evidence.
 - No automatic entity resolution or label-based merge is accepted.
 - No unanchored change set, CDC engine, connector registry, scheduler, or
   distributed materializer is introduced.
-- No generic Action write-back, overlay, saga, reconciliation, or federation
-  protocol is decided here.
+- This Target design does not decide generic Action write-back, overlay, saga,
+  reconciliation, or federation. ARD-012 separately accepts only a narrow
+  single-authority `SetProperty` planning and Product-hosted write-back boundary.
 - No multi-tenant security model is inferred from deployment isolation; policy
   and federation require their own requirements and decisions.
 - No OWL reasoner becomes the operational query or action runtime.
@@ -703,6 +704,10 @@ must not claim future validation as current evidence.
 - [ARD-011](../ARD-011-deterministic-ontology-package-artifacts.md) controls the
   accepted single-Schema package artifact and exact closed-set dependency
   validation boundary.
+- [ARD-012](../ARD-012-authority-aware-action-planning-and-product-hosted-write-back.md)
+  controls the accepted single-authority Action planning, guarded Fact commit,
+  Product-hosted source write, acknowledgement, and reconciliation boundary;
+  its implementation has not started.
 - [Ontology Architecture README](../README.md) controls Current implementation
   status and the accepted reading order.
 - [Operational Infrastructure Draft](../drafts/loushang-ontology-operational-infrastructure.md)
@@ -710,5 +715,5 @@ must not claim future validation as current evidence.
   it is not a substitute for this scoped Target design.
 - A later package/profile decision must define cross-package semantic imports,
   version resolution, multi-package deployment locks, and runtime composition.
-- A later Action/write-back ARD must define source effects, acknowledgement,
-  idempotency, reconciliation, and cross-authority behavior.
+- ARD-012 now defines the first source-effect, acknowledgement, idempotency, and
+  reconciliation boundary. Cross-authority Actions remain deferred.

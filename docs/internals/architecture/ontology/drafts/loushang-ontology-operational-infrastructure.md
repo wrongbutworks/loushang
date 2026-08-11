@@ -11,8 +11,11 @@ ARD 或 live architecture 文档冲突，应以后者为准。
 多业务系统 StateAuthority、Source View 和 multi-source materialization 的收口方案见
 [ARD-003](../ARD-003-declared-state-authority-and-multi-source-materialization.md)。其
 materialization-correctness、stable semantic ID、declared StateAuthority、
-Memory-only mapped-source 合成与完整 operational origin slice 已实现；change set、
-logic binding、SQLite source persistence 和 write-back 仍未实现。
+Memory-only mapped-source 合成、完整 operational origin slice 和 SQLite v3 source
+persistence 已实现；change set 与 logic binding 仍未实现。首个 authority-aware Action
+规划和 Product-hosted write-back 边界已经由
+[ARD-012](../ARD-012-authority-aware-action-planning-and-product-hosted-write-back.md)
+接受，但 Action 代码尚未实现。
 
 调研快照日期为 2026-08-06。参考仓库只用于本体子系统研发和架构研究，保持只读；
 本文的规模数据来自静态文件统计，不等同于测试通过率或生产成熟度。
@@ -361,8 +364,9 @@ Ontology 内哪些 semantic records 由 FactStore 持久化；`AssertionKind` �
 `ValueOrigin` 描述投影值来自哪份不可变输入。第一版应坚持一个可写状态只有一个主
 `StateAuthority`；多个来源提供同一属性时，必须配置主来源或显式报告冲突，不能按接入
 顺序静默覆盖。Derived 状态不可直接修改，ontology-owned 状态由 Ontology 自己持久化。
-Source-backed 状态不能被本地 Fact 冒充为已经由源系统确认；它究竟采用 external
-write-back 还是 managed edit overlay，留给后续 Action write-back ARD 决定。
+Source-backed 状态不能被本地 Fact 冒充为已经由源系统确认；ARD-012 已决定首个切片采用
+Product-hosted external write-back，不采用 managed edit overlay。该决定尚未实现，并且不
+代表所有未来 Action 都已完成设计。
 
 局部 Source View 的合成还依赖 canonical identity。Adapter 必须把各系统的 source record
 identity 映射到稳定对象 ID，并保留 alternate keys；无法可靠确认两个记录为同一对象时，
@@ -391,10 +395,10 @@ FactStore 只说明内部物化完成，不能证明 ERP、HR、CRM 或 OA 已�
 写入同样按 `StateAuthority` 规划：Ontology 自有备注进入 FactStore，派生风险由已发布
 逻辑重新计算；修改预算、人员或审批状态必须产生 source-backed write requirement，不能
 直接提交成本体已经确认的值。Product Adapter 可以将该 requirement 绑定为 ERP、HR、OA
-write-back，也可以在未来被明确批准的 managed-edit contract 中处理。跨多个
-`StateAuthority` 的 Action 不能宣称数据库级原子事务；Ontology 只产出可审查
-plan、revision/precondition 和 capability requirements，外部 effect 由 Product Adapter
-与 Harness/HarnessWork 执行。
+write-back。跨多个 `StateAuthority` 的 Action 不能宣称数据库级原子事务。ARD-012 将首个
+effect 进一步限制为单对象、单属性 `SetProperty`：Ontology 只产出带
+projection/source precondition 的可审查 plan，外部 effect 由 Product-hosted adapter
+执行；HarnessWork 只是 Product 可选的 durable execution host，不是 Ontology 依赖。
 
 这个边界意味着需要重新审视“所有外部语义状态都逐属性写入 FactStore”的范围。外部
 Source View 可以通过 source binding、source revision、source record、mapping version 和

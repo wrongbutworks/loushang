@@ -27,6 +27,9 @@ replaces Profile v1 with source-instance-aware v2 and locks the selected
 Crosswalk. [ARD-011](ARD-011-deterministic-ontology-package-artifacts.md)
 adds deterministic single-Schema package artifacts and exact dependency-closure
 validation without adding a registry or multi-package runtime.
+[ARD-012](ARD-012-authority-aware-action-planning-and-product-hosted-write-back.md)
+accepts the first authority-aware Action planning and Product-hosted write-back
+boundary. It is a design decision only; no Action code has been implemented.
 
 It currently provides:
 
@@ -92,9 +95,9 @@ object CRUD. There is no dynamic `Ontology` facade, mutable ObjectStore,
 callable RuleEngine, direct DataFusion, or Ontology/HarnessWork Action bridge.
 
 This is infrastructure, not a domain ontology and not a Palantir product
-clone. Runtime coordination, concrete vendor adapters, command compilation,
-Actions, Decisions, generated SDKs, standards bridges, SQL pushdown, and
-environmental packages remain later work.
+clone. Runtime coordination, concrete vendor adapters, Action implementation,
+Decisions, generated SDKs, standards bridges, SQL pushdown, and environmental
+packages remain later work.
 
 ## Accepted Direction And Implementation Boundary
 
@@ -148,6 +151,16 @@ does not load endpoints, credentials, stores, or Adapter implementations.
 ARD-011 defines a pure package artifact and exact dependency-closure check. It
 does not merge Schemas, resolve versions, publish artifacts, or alter the
 single-Schema runtime and Deployment Profile.
+
+ARD-012 defines the accepted future Action boundary without implementing it.
+Published `ActionDefinition` values will belong to the compiled Schema; a pure
+planner will route one guarded `SetProperty` effect by the target property's
+`StateAuthority`. Ontology-owned effects become guarded Fact batches;
+source-backed effects become detached requirements executed by Product-hosted
+adapters; derived state is not writable. Authorization is bound to the exact
+plan outside Ontology, and external acknowledgement remains distinct from
+later Projection observation. Cross-authority Actions, overlays, sagas, and
+generic effect DSLs remain deferred.
 
 ## Proposed Target Designs
 
@@ -305,8 +318,8 @@ These paths and symbols intentionally do not exist:
 
 They must not return as compatibility aliases. Future CRUD, derivation,
 Agent, Action, and Decision surfaces use their declared authority. Ontology-owned
-commands remain Fact-backed; the later source-backed command contract is
-deferred to an Action/write-back ARD.
+commands remain Fact-backed; ARD-012 now controls the accepted source-backed
+command boundary, although it has not yet been implemented.
 
 ## Normative Reading Order
 
@@ -321,8 +334,9 @@ deferred to an Action/write-back ARD.
 9. [ARD-009: Explicit Identity Crosswalk Snapshots](ARD-009-explicit-identity-crosswalk-snapshots.md)
 10. [ARD-010: Deployment-Bound Source Instances And Identity Lock](ARD-010-deployment-bound-source-instances-and-identity-lock.md)
 11. [ARD-011: Deterministic Ontology Package Artifacts](ARD-011-deterministic-ontology-package-artifacts.md)
-12. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
-13. [Schema Evolution](schema-evolution.md)
+12. [ARD-012: Authority-Aware Action Planning And Product-Hosted Write-Back](ARD-012-authority-aware-action-planning-and-product-hosted-write-back.md)
+13. [Wave 2A Facts And Provenance](wave2a-facts-provenance.md)
+14. [Schema Evolution](schema-evolution.md)
 
 The larger design and reference analysis remains in
 [`drafts/loushang-ontology-operational-infrastructure.md`](drafts/loushang-ontology-operational-infrastructure.md).
