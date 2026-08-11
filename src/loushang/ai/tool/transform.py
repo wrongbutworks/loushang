@@ -419,12 +419,14 @@ def coerce_cross_provider_assistant_message(
     *,
     target_api: str,
     target_provider: str | None = None,
+    target_endpoint: str | None = None,
     target_model: str | None = None,
 ) -> AssistantMessage:
     return coerce_cross_provider_assistant_message_result(
         message,
         target_api=target_api,
         target_provider=target_provider,
+        target_endpoint=target_endpoint,
         target_model=target_model,
     ).message
 
@@ -434,15 +436,17 @@ def coerce_cross_provider_assistant_message_result(
     *,
     target_api: str,
     target_provider: str | None = None,
+    target_endpoint: str | None = None,
     target_model: str | None = None,
     path: str = "messages",
 ) -> AssistantMessageCoercionResult:
-    same_model = (
+    same_target = (
         message.api == target_api
-        and (target_provider is None or message.provider == target_provider)
-        and (target_model is None or message.model == target_model)
+        and message.provider == target_provider
+        and message.endpoint == target_endpoint
+        and message.model == target_model
     )
-    if same_model or not message.api:
+    if same_target:
         return AssistantMessageCoercionResult(message=message)
     coerced_content: list[object] = []
     diagnostics: list[NormalizationDiagnostic] = []

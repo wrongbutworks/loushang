@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from loushang.ai.errors import AICancelledError, AIRateLimitError
+from loushang.ai.errors import AICancelledError, AIRateLimitError, AIStreamError
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model import Pricing
 from loushang.ai.types import AssistantMessage, Usage
@@ -371,7 +371,9 @@ def test_raw_assembler_preserves_http_error_code() -> None:
     assert events[-1]["error_info"]["source"] == "openai-responses"
     assert events[-1]["error_info"]["retryable"] is True
     assert events[-1]["error_info"]["provider"] == "openai"
+    assert events[-1]["error_info"]["endpoint"] == "test-endpoint"
     assert events[-1]["error_info"]["model"] == "gpt-test"
+    assert events[-1]["error"].endpoint == "test-endpoint"
 
 
 def test_event_stream_result_raises_typed_error_for_error_terminal() -> None:
@@ -395,7 +397,7 @@ def test_event_stream_result_raises_typed_error_for_error_terminal() -> None:
                 "source": "openai-responses",
                 "retryable": True,
                 "provider": "openai",
-                "endpoint": None,
+                "endpoint": "wrong-endpoint",
                 "model": "gpt-test",
                 "statusCode": 429,
                 "requestId": "req_123",
@@ -411,10 +413,43 @@ def test_event_stream_result_raises_typed_error_for_error_terminal() -> None:
     assert error.info.status_code == 429
     assert error.info.request_id == "req_123"
     assert error.info.retryable is True
+    assert error.info.endpoint == "test-endpoint"
 
     message = asyncio.run(stream.final_message())
     assert message.stop_reason == "error"
     assert message.error_message == "Provider rate limit exceeded."
+    assert message.endpoint == "test-endpoint"
+
+
+def test_event_stream_fallback_error_uses_message_endpoint() -> None:
+    stream = AssistantMessageEventStream()
+    message = AssistantMessage(
+        role="assistant",
+        content=[],
+        api="openai-responses",
+        provider="openai",
+        endpoint="test-endpoint",
+        model="gpt-test",
+        response_id=None,
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost=None,
+        ),
+        stop_reason="error",
+        error_message="stream failed",
+        timestamp=0.0,
+    )
+    stream.push({"type": "error", "reason": "error", "error": message})
+
+    with pytest.raises(AIStreamError) as exc_info:
+        asyncio.run(stream.result())
+
+    assert exc_info.value.info.endpoint == "test-endpoint"
+    assert asyncio.run(stream.final_message()).endpoint == "test-endpoint"
 
 
 def test_event_stream_result_raises_cancelled_for_aborted_terminal() -> None:
@@ -433,8 +468,11 @@ def test_event_stream_result_raises_cancelled_for_aborted_terminal() -> None:
         asyncio.run(stream.result())
 
     assert exc_info.value.info.provider == "openai"
+    assert exc_info.value.info.endpoint == "test-endpoint"
     assert exc_info.value.info.model == "gpt-test"
-    assert asyncio.run(stream.final_message()).stop_reason == "aborted"
+    message = asyncio.run(stream.final_message())
+    assert message.stop_reason == "aborted"
+    assert message.endpoint == "test-endpoint"
 
 
 def test_raw_assembler_keeps_first_terminal_event() -> None:

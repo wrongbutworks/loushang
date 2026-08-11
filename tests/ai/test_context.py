@@ -750,6 +750,62 @@ def test_normalize_context_result_reports_cross_provider_downgrades_and_signatur
     ]
 
 
+def test_normalize_context_propagates_target_endpoint_to_signature_coercion() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ThinkingPart(
+                type="thinking",
+                thinking="private reasoning",
+                thinking_signature="thinking-sig",
+            ),
+            TextPart(type="text", text="answer", text_signature="text-sig"),
+            ToolCall(
+                type="toolCall",
+                id="call_1",
+                name="calc",
+                arguments={"x": 1},
+                thought_signature="thought-sig",
+            ),
+        ],
+        api="openai-responses",
+        provider="openai",
+        endpoint="source-endpoint",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    normalized = normalize_context(
+        {"messages": [assistant, tool_result]},
+        model=SimpleNamespace(
+            api="openai-responses",
+            provider_id="openai",
+            endpoint_id="target-endpoint",
+            id="gpt-test",
+        ),
+    )
+
+    normalized_assistant = normalized.messages[0]
+    assert isinstance(normalized_assistant, AssistantMessage)
+    assert normalized_assistant.content == [
+        TextPart(type="text", text="private reasoning"),
+        TextPart(type="text", text="answer"),
+        ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1}),
+    ]
+
+
 def test_normalize_context_result_reports_dropped_thinking_blocks() -> None:
     assistant = AssistantMessage(
         role="assistant",

@@ -160,7 +160,7 @@ def test_openai_completions_payload_maps_user_image_assistant_toolcall_and_tool_
         ],
         api="openai-completions",
         provider="openai",
-        endpoint="test-endpoint",
+        endpoint="openai-completions",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(

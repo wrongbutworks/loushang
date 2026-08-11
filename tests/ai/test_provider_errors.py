@@ -231,6 +231,32 @@ def test_raw_non_authentication_retry_policy_is_preserved() -> None:
     assert info.retryable is False
 
 
+def test_raw_error_call_context_overrides_conflicting_route_identity() -> None:
+    info = provider_error_info_from_raw(
+        {
+            "type": "response_error",
+            "error_info": {
+                "code": "provider",
+                "message": "unsafe",
+                "source": "wrong-api",
+                "retryable": False,
+                "provider": "wrong-provider",
+                "endpoint": "wrong-endpoint",
+                "model": "wrong-model",
+            },
+        },
+        source="openai-responses",
+        provider="openai",
+        endpoint="actual-endpoint",
+        model="gpt-test",
+    )
+
+    assert info.source == "openai-responses"
+    assert info.provider == "openai"
+    assert info.endpoint == "actual-endpoint"
+    assert info.model == "gpt-test"
+
+
 def test_outer_http_status_is_the_authoritative_error_classification() -> None:
     info = provider_error_info_from_raw(
         {

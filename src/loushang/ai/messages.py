@@ -97,6 +97,7 @@ def normalize_messages_result(
                     message,
                     target_api=target_api,
                     target_provider=getattr(model, "provider_id", None),
+                    target_endpoint=getattr(model, "endpoint_id", None),
                     target_model=getattr(model, "id", None),
                     path=transformed_paths[index],
                 )

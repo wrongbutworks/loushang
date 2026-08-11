@@ -885,6 +885,87 @@ def test_openai_responses_payload_normalizes_cross_provider_tool_call_ids(
     }
 
 
+def _responses_tool_call_history(*, endpoint: str) -> AssistantMessage:
+    return AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(
+                type="toolCall",
+                id="call_1|fc_source",
+                name="calc",
+                arguments={"x": 1},
+            )
+        ],
+        api="openai-responses",
+        provider="openai",
+        endpoint=endpoint,
+        model="gpt-test",
+        response_id="resp_1",
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost={},
+        ),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+
+def test_openai_responses_reuses_item_id_for_same_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                OpenAIResponsesAdapter(),
+                _Model(),
+                {
+                    "messages": [
+                        _responses_tool_call_history(endpoint="openai-responses")
+                    ]
+                },
+                CallOptions(auth=ApiKeyAuth("test-key"), pairing_mode="repair"),
+            )
+        )
+    )
+
+    function_call = _FakeAsyncOpenAI.last_create_kwargs["input"][0]
+    assert function_call["id"] == "fc_source"
+
+
+def test_openai_responses_does_not_reuse_item_id_across_endpoints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                OpenAIResponsesAdapter(),
+                _Model(),
+                {
+                    "messages": [
+                        _responses_tool_call_history(endpoint="alternate-responses")
+                    ]
+                },
+                CallOptions(auth=ApiKeyAuth("test-key"), pairing_mode="repair"),
+            )
+        )
+    )
+
+    function_call = _FakeAsyncOpenAI.last_create_kwargs["input"][0]
+    assert function_call["id"].startswith("fc_")
+    assert function_call["id"] != "fc_source"
+
+
 def test_openai_responses_payload_replays_assistant_thinking_signature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -903,7 +984,7 @@ def test_openai_responses_payload_replays_assistant_thinking_signature(
         ],
         api="openai-responses",
         provider="openai",
-        endpoint="test-endpoint",
+        endpoint="openai-responses",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -952,7 +1033,7 @@ def test_openai_responses_payload_replays_assistant_text_signature_and_phase(
         ],
         api="openai-responses",
         provider="openai",
-        endpoint="test-endpoint",
+        endpoint="openai-responses",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(

@@ -410,6 +410,7 @@ class RawAssembler:
                 response_error_part,
                 source=self._api,
                 provider=self._provider,
+                endpoint=self._endpoint,
                 model=self._model,
             )
             message = self._build_message(
