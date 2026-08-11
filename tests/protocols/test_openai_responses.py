@@ -1746,12 +1746,15 @@ def test_openai_responses_forwards_authoritative_auth_headers(
     )
 
     headers = _FakeAsyncOpenAI.last_create_kwargs["extra_headers"]
-    assert _FakeAsyncOpenAI.last_init_kwargs["api_key"] == ""
+    sdk_api_key = _FakeAsyncOpenAI.last_init_kwargs["api_key"]
+    assert isinstance(sdk_api_key, str) and sdk_api_key
+    assert sdk_api_key not in headers.values()
     if not expected_headers:
         assert isinstance(headers["Authorization"], _FakeOmit)
         assert isinstance(headers["X-Api-Key"], _FakeOmit)
     else:
-        assert headers | expected_headers == headers
+        assert all(headers[name] == value for name, value in expected_headers.items())
+        assert sdk_api_key not in expected_headers.values()
 
 
 def test_openai_responses_uses_catalog_auth_header_and_prefix(
