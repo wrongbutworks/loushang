@@ -476,6 +476,15 @@ def _emit_runtime_error_trace(
         event["statusCode"] = error_info.status_code
     if error_info.request_id is not None:
         event["requestId"] = error_info.request_id
+    details = error_info.details
+    exception_type = details.get("exceptionType")
+    if isinstance(exception_type, str) and exception_type:
+        event["exceptionType"] = exception_type
+    response_summary = cast(Mapping[str, object], part).get(
+        "provider_response_summary"
+    )
+    if isinstance(response_summary, str) and response_summary:
+        event["providerResponseSummary"] = response_summary
     emit_trace(options, event)
 
 

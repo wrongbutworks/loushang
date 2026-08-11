@@ -13,6 +13,7 @@ from loushang.ai.provider.errors import (
     provider_error_info_from_raw,
     provider_error_part,
     provider_error_part_from_raw,
+    provider_response_summary,
 )
 
 
@@ -26,6 +27,12 @@ class _HttpErrorWithHeaders(_HttpError):
     def __init__(self, message: str, status_code: int) -> None:
         super().__init__(message, status_code)
         self.headers = {"x-request-id": "req_headers"}
+
+
+class _HttpErrorWithBody(_HttpError):
+    def __init__(self, body: object) -> None:
+        super().__init__("unsafe exception text", 400)
+        self.body = body
 
 
 HttpxReadTimeout = type("ReadTimeout", (Exception,), {"__module__": "httpx"})
@@ -153,6 +160,39 @@ def test_normalize_provider_error_preserves_request_id_from_headers() -> None:
     )
 
     assert normalized.info.request_id == "req_headers"
+
+
+def test_provider_response_summary_keeps_only_diagnostic_fields_and_redacts() -> None:
+    error = _HttpErrorWithBody(
+        {
+            "error": {
+                "type": "invalid_request_error",
+                "message": "max_tokens is too large; Bearer secret-token",
+                "api_key": "sk-secret",
+            },
+            "request": {"prompt": "private user prompt"},
+        }
+    )
+
+    summary = provider_response_summary(error)
+
+    assert summary == (
+        '{"error":{"type":"invalid_request_error","message":'
+        '"max_tokens is too large; Bearer [REDACTED]"}}'
+    )
+    assert "sk-secret" not in summary
+    assert "private user prompt" not in summary
+
+
+def test_provider_response_summary_is_bounded_for_plain_text() -> None:
+    error = _HttpErrorWithBody("token=secret " + ("x" * 800))
+
+    summary = provider_response_summary(error)
+
+    assert summary is not None
+    assert len(summary) == 512
+    assert summary.endswith("…")
+    assert "secret" not in summary
 
 
 def test_existing_authentication_error_is_forced_non_retryable() -> None:

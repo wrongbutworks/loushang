@@ -41,6 +41,7 @@ _SAFE_SCALAR_KEYS = frozenset(
         "remaining",
         "event_type",
         "exceptionType",
+        "providerResponseSummary",
         "args_source",
         "valid_json",
         "repair_valid",
