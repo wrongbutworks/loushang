@@ -610,6 +610,7 @@ class Agent:
             content=[TextPart(type="text", text="")],
             api=_resolve_failure_message_api(self._state.model),
             provider=self._state.model.provider_id,
+            endpoint=self._state.model.endpoint_id,
             model=self._state.model.id,
             response_id=None,
             usage=_empty_usage(),
@@ -711,7 +712,9 @@ def _reasoning_options(
 def _retry_options(max_retry_delay_ms: int | None) -> RetryOptions | None:
     if not isinstance(max_retry_delay_ms, int):
         return None
-    return RetryOptions(max_attempts=1, max_delay_seconds=max(0, max_retry_delay_ms) / 1000)
+    return RetryOptions(
+        max_attempts=1, max_delay_seconds=max(0, max_retry_delay_ms) / 1000
+    )
 
 
 def _empty_usage() -> Usage:

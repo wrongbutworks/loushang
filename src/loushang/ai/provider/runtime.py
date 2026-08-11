@@ -93,6 +93,7 @@ def start_provider_runtime(
         stream=stream,
         api=model.api or "",
         provider=model.provider_id,
+        endpoint=model.endpoint_id,
         model=model.id,
         pricing=model.pricing,
     )
@@ -452,6 +453,7 @@ def _emit_runtime_error_trace(
             cast(Mapping[str, object], part),
             source=request.model.api or "",
             provider=request.model.provider_id,
+            endpoint=request.model.endpoint_id,
             model=getattr(model, "id", None),
         )
     except Exception:
@@ -637,6 +639,7 @@ def _retryable_response_error_part(
             cast(Mapping[str, object], part),
             source=request.model.api or "",
             provider=request.model.provider_id,
+            endpoint=request.model.endpoint_id,
             model=getattr(model, "id", None),
         )
     except Exception:
@@ -770,6 +773,7 @@ def _retry_reason_from_part(
             cast(Mapping[str, object], part),
             source=request.model.api or "",
             provider=request.model.provider_id,
+            endpoint=request.model.endpoint_id,
             model=getattr(model, "id", None),
         )
     except Exception:
