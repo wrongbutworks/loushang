@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, TypeAlias, cast
 
 from loushang.agent import Agent
@@ -122,8 +122,8 @@ class SessionOperations:
         return result
 
     def get_compaction_status(self) -> CompactionStatus:
-        return CompactionStatus(
-            is_compacting=self.composition.compaction_runtime.is_compacting,
+        return replace(
+            self.composition.compaction_runtime.get_status(),
             is_branch_summarizing=self.composition.navigation_runtime.is_summarizing,
         )
 

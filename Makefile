@@ -111,6 +111,7 @@ HARNESS_TEST_PATHS := \
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
 .PHONY: check-harness lint-harness typecheck-harness test-harness
 .PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
+.PHONY: lane-status
 
 bootstrap:
 	test -d .venv || uv venv .venv
@@ -166,6 +167,9 @@ test-tui:
 
 test-tui-render-contract:
 	uv --cache-dir .uv-cache run --extra dev pytest tests/tui tests/harnesstui tests/coding -m tui_render_contract -q
+
+lane-status:
+	uv run python scripts/dev/lane_status.py
 
 lint-ai:
 	. .venv/bin/activate && uv run ruff check src/loushang/ai examples/ai examples/auth tests/ai tests/protocols tests/examples/test_auth_examples.py scripts/ai

@@ -303,6 +303,8 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     def _get_builtin_session_info(self) -> dict[str, object]:
         record = self.session_manager.get_session_record()
         stats = self._composition.session_inspector.build_session_stats()
+        compaction = self.get_compaction_status()
+        context = stats.context_usage
         session_file = record.session_file
         return {
             "session_id": record.session_id,
@@ -317,6 +319,29 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
             "active_tool_count": stats.active_tool_count,
             "is_retrying": stats.is_retrying,
             "is_compacting": stats.is_compacting,
+            "compaction": {
+                "is_compacting": compaction.is_compacting,
+                "is_branch_summarizing": compaction.is_branch_summarizing,
+                "last_reason": compaction.last_reason,
+                "last_stage": compaction.last_stage,
+                "last_started_at": compaction.last_started_at,
+                "last_completed_at": compaction.last_completed_at,
+                "last_tokens_before": compaction.last_tokens_before,
+                "last_tokens_after": compaction.last_tokens_after,
+                "last_summary_mode": compaction.last_summary_mode,
+                "last_succeeded": compaction.last_succeeded,
+                "last_error": compaction.last_error,
+                "aborted": compaction.aborted,
+            },
+            "context": {
+                "tokens": context.tokens,
+                "context_window": context.context_window,
+                "reserve_tokens": context.reserve_tokens,
+                "threshold_tokens": context.threshold_tokens,
+                "threshold_reason": context.threshold_reason,
+            }
+            if context is not None
+            else None,
         }
 
     async def _reload_from_extension(self) -> None:

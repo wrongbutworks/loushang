@@ -15,6 +15,7 @@ from typing import cast
 
 from loushang.agent.types import AgentMessage
 from loushang.ai import ApiKeyAuth, CallOptions, Context, Model, complete, stream
+from loushang.ai.trace import emit_trace
 from loushang.ai.types import AssistantMessage, TextPart, UserMessage
 from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.context import (
@@ -494,6 +495,18 @@ async def _complete_text(
     options: CallOptions | None,
 ) -> str:
     typed_model = cast(Model, model)
+    mode = "stream" if typed_model.supports_stream else "complete"
+    emit_trace(
+        options,
+        {
+            "type": "summary:request",
+            "mode": mode,
+            "api": typed_model.api,
+            "provider": typed_model.provider_id,
+            "endpoint": typed_model.endpoint_id,
+            "model": typed_model.id,
+        },
+    )
     if typed_model.supports_stream:
         event_stream = await stream(typed_model, context, options)
         message = await event_stream.result()
