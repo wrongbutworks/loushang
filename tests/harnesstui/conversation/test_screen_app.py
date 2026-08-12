@@ -104,7 +104,9 @@ def test_screen_conversation_app_owns_compaction_window_mechanics() -> None:
     )
 
 
-def test_screen_conversation_app_appends_compaction_fact_without_trimming_records() -> None:
+def test_screen_conversation_app_appends_compaction_fact_without_trimming_records() -> (
+    None
+):
     app = _app()
     app.state.records.extend(UserPromptRecord(str(index)) for index in range(3))
 

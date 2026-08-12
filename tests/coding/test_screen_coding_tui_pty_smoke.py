@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import pty
 import select
+import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -34,6 +36,126 @@ def test_screen_tui_cli_pty_smoke_quit_cleans_bottom_frame() -> None:
     final_tail = strip_control_sequences(output[final_sync_end:])
     assert " | idle" not in final_tail
     assert " | running" not in final_tail
+
+
+@pytest.mark.tui_render_contract
+def test_screen_tui_tmux_pty_preserves_compact_history_and_streamed_tail(
+    tmp_path: Path,
+) -> None:
+    if os.name == "nt":
+        pytest.skip("tmux PTY regression uses POSIX terminals")
+    tmux = shutil.which("tmux")
+    if tmux is None:
+        pytest.skip("tmux is not installed")
+
+    repo_root = _repo_root()
+    ready_file = tmp_path / "compact-playback.ready"
+    tmux_config = tmp_path / "tmux.conf"
+    tmux_config.write_text("set-option -g history-limit 20000\n", encoding="utf-8")
+    socket_name = f"loushang-compact-{os.getpid()}"
+    command = shlex.join(
+        [
+            sys.executable,
+            str(
+                repo_root
+                / "tests/coding/tui_support/compact_pty_fixture.py"
+            ),
+            "--ready-file",
+            str(ready_file),
+        ]
+    )
+    env = _subprocess_env(repo_root)
+    tmux_args = [tmux, "-f", str(tmux_config), "-L", socket_name]
+    try:
+        started = subprocess.run(
+            [
+                *tmux_args,
+                "new-session",
+                "-d",
+                "-x",
+                "80",
+                "-y",
+                "18",
+                "-s",
+                "compact",
+                command,
+            ],
+            cwd=repo_root,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        assert started.returncode == 0, started.stderr
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline and not ready_file.exists():
+            time.sleep(0.05)
+        assert ready_file.exists(), _capture_tmux(tmux_args, env=env, cwd=repo_root)
+
+        captured = _capture_tmux(tmux_args, env=env, cwd=repo_root)
+
+        early_lines = tuple(
+            f"PLAYBACK_EARLY_{index:03d}" for index in range(1, 81)
+        )
+        after_lines = tuple(
+            f"AFTER_COMPACT_{index:03d}" for index in range(1, 41)
+        )
+        early_counts = {line: captured.count(line) for line in early_lines}
+        after_counts = {line: captured.count(line) for line in after_lines}
+        assert all(count >= 1 for count in early_counts.values()), (
+            early_counts,
+            captured,
+        )
+        assert all(count >= 1 for count in after_counts.values()), (
+            after_counts,
+            captured,
+        )
+        assert [captured.rfind(line) for line in early_lines] == sorted(
+            captured.rfind(line) for line in early_lines
+        )
+        assert [captured.rfind(line) for line in after_lines] == sorted(
+            captured.rfind(line) for line in after_lines
+        )
+        assert "Context compacted (500000 tokens before)" in captured
+        assert "hidden summary line one" not in captured
+        assert "hidden summary line two" not in captured
+    finally:
+        subprocess.run(
+            [*tmux_args, "kill-server"],
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+
+
+def _capture_tmux(
+    tmux_args: list[str],
+    *,
+    env: dict[str, str],
+    cwd: Path,
+) -> str:
+    captured = subprocess.run(
+        [
+            *tmux_args,
+            "capture-pane",
+            "-p",
+            "-J",
+            "-S",
+            "-",
+            "-t",
+            "compact:0.0",
+        ],
+        cwd=cwd,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    return captured.stdout + captured.stderr
 
 
 def _run_pty_command(

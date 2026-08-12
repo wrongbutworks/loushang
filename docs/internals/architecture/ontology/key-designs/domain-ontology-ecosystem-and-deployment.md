@@ -13,6 +13,8 @@
 - Current evidence:
   - `src/loushang/ontology/schema/`
   - `src/loushang/ontology/source/`
+  - `src/loushang/ontology/identity/`
+  - `src/loushang/ontology/package/`
   - `src/loushang/ontology/deployment/`
   - `src/loushang/ontology/projection/`
   - `tests/ontology/`
@@ -92,12 +94,20 @@ The current implementation already provides:
   persistence with exact input cuts and all operational origin kinds;
 - a serializable Product-hosted adapter manifest, a structural adapter
   protocol, and detached-output conformance validation;
-- a fixed Product-side SQLite ERP fixture proving the public adapter-to-query
-  path without placing connector code in `loushang.ontology`;
+- an immutable, deployment-scoped explicit identity crosswalk with complete
+  source-record scope, confirmed/unresolved/conflict states, deterministic
+  digest, and a read-only resolver;
+- fixed Product-side SQLite ERP and maintenance fixtures proving that two
+  different source keys can resolve to one object, contribute non-overlapping
+  authority, remain input-order independent, and reject ambiguous identity
+  without placing connector or identity-provider code in `loushang.ontology`;
 - content-addressed revalidation receipts for rebuilding an exact historical
   Fact selection against a compatible newer schema without rewriting Facts;
-- an immutable single-Schema Deployment Profile with exact Schema/Adapter
-  content locks, enabled binding selection, and opaque store references;
+- an immutable single-Schema Deployment Profile v2 with exact Schema, Adapter,
+  source-instance/binding, and optional Crosswalk selection plus opaque store
+  references;
+- deterministic single-Schema Ontology package artifacts with exact dependency
+  locks and pure closed-set validation, without runtime Schema composition;
 - architecture gates forbidding Ontology dependencies on Product and execution
   subsystems including Harness, HarnessWork, Method, and Agent; the observed
   source also contains no domain implementation.
@@ -121,10 +131,10 @@ outputs to Ontology contracts.
 
 | Capability | Current | Target delta | Classification |
 | --- | --- | --- | --- |
-| Package identity | One compiled package-shaped schema | Imports, dependency constraints, immutable lock, registry metadata | missing |
-| Source integration | Schema-bound binding, mapped inputs, exact cuts, adapter manifest, application-schema identity, structural protocol, detached-output conformance, and one fixed SQLite ERP reference slice | Concrete adapter SDK/packaging, fixtures across independent vendor implementations, and deployment composition | partial |
-| Identity | Adapter supplies canonical UUID | Deployment-bound crosswalk, alternate keys, ambiguity and review handoff | missing |
-| Deployment composition | Immutable single-Schema profile locks exact Schema and Adapter manifest content, selects enabled bindings, and validates detached artifacts | Multi-package dependency locks, provider references, lifecycle, activation and rollback | partial |
+| Package identity | Deterministic artifact bundles one compiled Schema and exact direct dependency locks; closed-set validation detects missing/drifted/duplicate/conflicting/cyclic artifacts | Cross-package semantic imports, version constraints/resolver, registry, signatures, Alignment/Standards payloads | partial |
+| Source integration | Schema-bound binding, mapped inputs, exact cuts, adapter manifest, application-schema identity, structural protocol, detached-output conformance, and fixed SQLite ERP plus maintenance reference slices | Concrete adapter SDK/packaging and fixtures across independent vendor implementations | partial |
+| Identity | Product injects an immutable deployment-scoped crosswalk; only explicit confirmation yields a canonical UUID, ambiguity fails without selection, and Profile v2 locks its exact content and source scope | Mutable indexed provider, alternate keys, matching/review handoff, and activation consistency | partial |
+| Deployment composition | Immutable single-Schema Profile v2 locks exact Schema, Adapter manifests, source-instance/binding selections, and optional Crosswalk content | Multi-package locks, provider references, lifecycle, activation and rollback | partial |
 | Durable multi-source projection | Memory and SQLite v3 preserve exact source cuts, origins, restart, and backup semantics | Operational-scale and incremental persistence only after measured need | partial |
 | Schema upgrade | Schema diff plus exact-selection Fact revalidation receipt; immutable Facts remain bound to their source schema | Package locks, source-input upgrade evidence, and deployment switch/rollback coordination | partial |
 | Mature ontology interop | Directional architecture only | External term alignment metadata, validation, import/export bridges | missing |
@@ -253,6 +263,13 @@ semantic definitions, dependency constraints, compatibility metadata, and
 optional alignment or standards resources. It contains no deployment secrets
 and cannot import a Product implementation.
 
+The accepted first artifact slice in
+[ARD-011](../ARD-011-deterministic-ontology-package-artifacts.md) bundles one
+compiled Schema with exact direct dependency locks and validates a closed set.
+It does not yet implement dependency constraints, cross-package semantic
+imports, registry metadata, multi-Schema runtime composition, or the distinct
+Alignment and Standards payload contracts described below.
+
 Domain-specific package layers remain outside Loushang. An environmental
 distribution can use:
 
@@ -349,12 +366,14 @@ generated API profile
 Credentials and raw secret values stay in the host secret system. A profile
 refers to them by deployment-owned identifiers.
 
-The accepted first slice in
-[ARD-008](../ARD-008-immutable-deployment-profile-and-artifact-locks.md) is
-narrower than this Target: it locks one compiled Schema, exact Adapter manifest
-contents, enabled bindings, and opaque Fact/Projection store references. It
-does not yet model multi-package dependencies, provider references, generated
-API profiles, lifecycle, activation, or rollback.
+The accepted current slice in
+[ARD-010](../ARD-010-deployment-bound-source-instances-and-identity-lock.md) is
+narrower than this Target: Profile v2 locks one compiled Schema, exact Adapter
+manifest contents, concrete source-instance/binding selections, an optional
+Crosswalk, and opaque Fact/Projection store references. It does not yet model
+multi-package selection, endpoint/credential providers, generated API profiles,
+lifecycle, activation, or rollback. ARD-008 preserves the superseded v1
+rationale only.
 
 ## 8. Data-Island Mechanics
 
@@ -407,6 +426,16 @@ The Product Adapter owns extraction of source keys. The deployment identity
 provider owns mutable crosswalk and review state. Ontology owns validation that
 materialized canonical IDs and origin references are explicit and deterministic
 for the selected cut.
+
+The accepted identity-value slice in
+[ARD-009](../ARD-009-explicit-identity-crosswalk-snapshots.md) is intentionally
+narrower than this Target. It defines an immutable explicit provider-output
+snapshot, a read-only resolver, and confirmed/unresolved/conflict failure
+semantics. It does not implement matching, alternate keys, persistence, or
+review. ARD-010 now locks the selected Crosswalk in Profile v2 and validates its
+source scope; Product still retains the Profile and Crosswalk alongside the
+`MaterializationCut`, which locks resolved mapped payloads but does not duplicate
+their deployment coordinates.
 
 An environmental company name, address, or similar label is evidence, not an
 automatic identity key. Cross-bureau federation must not reuse one identity
@@ -639,8 +668,9 @@ must not claim future validation as current evidence.
 - No automatic entity resolution or label-based merge is accepted.
 - No unanchored change set, CDC engine, connector registry, scheduler, or
   distributed materializer is introduced.
-- No generic Action write-back, overlay, saga, reconciliation, or federation
-  protocol is decided here.
+- This Target design does not decide generic Action write-back, overlay, saga,
+  reconciliation, or federation. ARD-012 separately accepts only a narrow
+  single-authority `SetProperty` planning and Product-hosted write-back boundary.
 - No multi-tenant security model is inferred from deployment isolation; policy
   and federation require their own requirements and decisions.
 - No OWL reasoner becomes the operational query or action runtime.
@@ -663,15 +693,27 @@ must not claim future validation as current evidence.
   Fact-selection revalidation and the evidence required to build a target
   projection without mutating historical Facts.
 - [ARD-008](../ARD-008-immutable-deployment-profile-and-artifact-locks.md)
-  controls the accepted single-Schema deployment selection, exact artifact
-  locks, enabled bindings, and pure compatibility validation.
+  preserves the historical Profile v1 artifact-lock rationale; its Profile
+  shape is superseded by ARD-010.
+- [ARD-009](../ARD-009-explicit-identity-crosswalk-snapshots.md) controls the
+  accepted immutable explicit-crosswalk contract, complete source-record scope,
+  and the rule that ambiguity cannot produce a canonical ID.
+- [ARD-010](../ARD-010-deployment-bound-source-instances-and-identity-lock.md)
+  controls Profile v2 source-instance/binding selection, exact Crosswalk lock,
+  and pure deployment compatibility validation.
+- [ARD-011](../ARD-011-deterministic-ontology-package-artifacts.md) controls the
+  accepted single-Schema package artifact and exact closed-set dependency
+  validation boundary.
+- [ARD-012](../ARD-012-authority-aware-action-planning-and-product-hosted-write-back.md)
+  controls the accepted single-authority Action planning, guarded Fact commit,
+  Product-hosted source write, acknowledgement, and reconciliation boundary;
+  its implementation has not started.
 - [Ontology Architecture README](../README.md) controls Current implementation
   status and the accepted reading order.
 - [Operational Infrastructure Draft](../drafts/loushang-ontology-operational-infrastructure.md)
   contains the broader research synthesis and environmental reference notes;
   it is not a substitute for this scoped Target design.
-- A later accepted package/profile decision must define compatibility,
-  dependency resolution, and artifact identity before those concepts are
-  implemented.
-- A later Action/write-back ARD must define source effects, acknowledgement,
-  idempotency, reconciliation, and cross-authority behavior.
+- A later package/profile decision must define cross-package semantic imports,
+  version resolution, multi-package deployment locks, and runtime composition.
+- ARD-012 now defines the first source-effect, acknowledgement, idempotency, and
+  reconciliation boundary. Cross-authority Actions remain deferred.

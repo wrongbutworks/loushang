@@ -7,7 +7,9 @@ from uuid import UUID
 
 from loushang.ontology.facts.commit import (
     CommittedFactBatch,
+    PreparedFactCommit,
     prepare_fact_commit,
+    prepare_guarded_fact_commit,
     require_sequence,
     select_facts_as_of,
 )
@@ -74,15 +76,33 @@ class MemoryFactStore:
                 current_facts=self._facts,
                 committed_batches=self._batches,
             )
-            if plan.commit.replayed:
-                return plan.commit
-            self._facts.extend(plan.entries)
-            self._by_id.update((entry.fact.fact_id, entry) for entry in plan.entries)
-            self._batches[batch.batch_id] = CommittedFactBatch(
-                digest=plan.digest,
-                commit=plan.commit,
+            return self._apply_fact_commit(plan)
+
+    def commit_fact_batch_guarded(
+        self,
+        batch: FactBatch,
+        *,
+        expected_watermark: int,
+    ) -> FactCommit:
+        with self._lock:
+            plan = prepare_guarded_fact_commit(
+                batch,
+                expected_watermark=expected_watermark,
+                current_facts=self._facts,
+                committed_batches=self._batches,
             )
+            return self._apply_fact_commit(plan)
+
+    def _apply_fact_commit(self, plan: PreparedFactCommit) -> FactCommit:
+        if plan.commit.replayed:
             return plan.commit
+        self._facts.extend(plan.entries)
+        self._by_id.update((entry.fact.fact_id, entry) for entry in plan.entries)
+        self._batches[plan.batch.batch_id] = CommittedFactBatch(
+            digest=plan.digest,
+            commit=plan.commit,
+        )
+        return plan.commit
 
 
 class MemoryProjectionStore:

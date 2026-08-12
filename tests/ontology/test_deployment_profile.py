@@ -6,13 +6,23 @@ from dataclasses import replace
 import pytest
 
 from loushang.ontology.deployment import (
+    DEPLOYMENT_PROFILE_FORMAT,
     DeploymentProfile,
     DeploymentProfileValidationError,
+    IdentityCrosswalkArtifactLock,
     SchemaArtifactLock,
     SourceAdapterArtifactLock,
+    SourceInstanceSelection,
+    lock_identity_crosswalk,
     lock_schema_artifact,
     lock_source_adapter_artifact,
     validate_deployment_profile,
+)
+from loushang.ontology.identity import (
+    IdentityCrosswalkSnapshot,
+    IdentityResolution,
+    IdentityResolutionStatus,
+    SourceRecordIdentity,
 )
 from loushang.ontology.schema import (
     ObjectTypeDefinition,
@@ -28,6 +38,8 @@ from loushang.ontology.source import (
     SourceAdapterManifest,
     SourceBinding,
 )
+
+_DEFAULT_CROSSWALK = object()
 
 
 def _schema(*, version: str = "1.0.0", code_name: str = "code"):
@@ -109,8 +121,24 @@ def _artifacts():
     return schema, erp, oa
 
 
+def _crosswalk(
+    *,
+    deployment_id: str = "bureau-alpha",
+    identity_namespace: str = "urn:test:identity:bureau-alpha",
+    revision: str = "identity/v1",
+    entries: tuple[IdentityResolution, ...] = (),
+) -> IdentityCrosswalkSnapshot:
+    return IdentityCrosswalkSnapshot(
+        deployment_id=deployment_id,
+        identity_namespace=identity_namespace,
+        revision=revision,
+        entries=entries,
+    )
+
+
 def _profile():
     schema, erp, oa = _artifacts()
+    crosswalk = _crosswalk()
     return DeploymentProfile(
         deployment_id="bureau-alpha",
         schema_lock=lock_schema_artifact(schema),
@@ -118,7 +146,19 @@ def _profile():
             lock_source_adapter_artifact(oa),
             lock_source_adapter_artifact(erp),
         ),
-        enabled_binding_ids=("oa.asset-status", "erp.assets"),
+        source_instances=(
+            SourceInstanceSelection(
+                "oa:alpha",
+                "vendor.oa",
+                ("oa.asset-status",),
+            ),
+            SourceInstanceSelection(
+                "erp:alpha",
+                "vendor.erp",
+                ("erp.assets",),
+            ),
+        ),
+        identity_crosswalk_lock=lock_identity_crosswalk(crosswalk),
         fact_store_ref="store:ontology-facts",
         projection_store_ref="store:ontology-projection",
     )
@@ -133,6 +173,7 @@ def test_profile_round_trip_locks_artifacts_and_resolves_enabled_bindings() -> N
         restored,
         schema=schema,
         adapter_manifests=(oa, erp),
+        identity_crosswalk=_crosswalk(),
     )
 
     assert restored == profile
@@ -140,7 +181,11 @@ def test_profile_round_trip_locks_artifacts_and_resolves_enabled_bindings() -> N
         "vendor.erp",
         "vendor.oa",
     ]
-    assert restored.enabled_binding_ids == ("erp.assets", "oa.asset-status")
+    assert [item.source_instance_id for item in restored.source_instances] == [
+        "erp:alpha",
+        "oa:alpha",
+    ]
+    assert restored.identity_crosswalk_lock == lock_identity_crosswalk(_crosswalk())
     assert [item.binding_id for item in selected] == [
         "erp.assets",
         "oa.asset-status",
@@ -176,16 +221,21 @@ def test_profile_accepts_an_ontology_only_artifact_selection() -> None:
         deployment_id="ontology-only",
         schema_lock=lock_schema_artifact(schema),
         adapter_locks=(),
-        enabled_binding_ids=(),
+        source_instances=(),
+        identity_crosswalk_lock=None,
         fact_store_ref="store:facts",
         projection_store_ref="store:projection",
     )
 
-    assert validate_deployment_profile(
-        profile,
-        schema=schema,
-        adapter_manifests=(),
-    ) == ()
+    assert (
+        validate_deployment_profile(
+            profile,
+            schema=schema,
+            adapter_manifests=(),
+            identity_crosswalk=None,
+        )
+        == ()
+    )
 
 
 def test_schema_identity_and_content_are_independent_lock_coordinates() -> None:
@@ -194,16 +244,22 @@ def test_schema_identity_and_content_are_independent_lock_coordinates() -> None:
     changed_identity = _schema(version="2.0.0")
     changed_content = _schema(code_name="asset_code")
 
-    assert _validation_code(
-        profile,
-        changed_identity,
-        (erp, oa),
-    ) == "schema_identity_mismatch"
-    assert _validation_code(
-        profile,
-        changed_content,
-        (erp, oa),
-    ) == "schema_digest_mismatch"
+    assert (
+        _validation_code(
+            profile,
+            changed_identity,
+            (erp, oa),
+        )
+        == "schema_identity_mismatch"
+    )
+    assert (
+        _validation_code(
+            profile,
+            changed_content,
+            (erp, oa),
+        )
+        == "schema_digest_mismatch"
+    )
     assert lock_schema_artifact(schema) == profile.schema_lock
 
 
@@ -213,51 +269,114 @@ def test_adapter_set_version_and_content_mismatches_fail_explicitly() -> None:
     first_lock = profile.adapter_locks[0]
 
     assert _validation_code(profile, schema, (erp,)) == "adapter_set_mismatch"
-    assert _validation_code(
-        profile,
-        schema,
-        (erp, oa, erp),
-    ) == "duplicate_adapter_manifest"
-    assert _validation_code(
-        replace(
+    assert (
+        _validation_code(
             profile,
-            adapter_locks=(
-                replace(first_lock, adapter_version="2.0.0"),
-                profile.adapter_locks[1],
+            schema,
+            (erp, oa, erp),
+        )
+        == "duplicate_adapter_manifest"
+    )
+    assert (
+        _validation_code(
+            replace(
+                profile,
+                adapter_locks=(
+                    replace(first_lock, adapter_version="2.0.0"),
+                    profile.adapter_locks[1],
+                ),
             ),
-        ),
-        schema,
-        (erp, oa),
-    ) == "adapter_version_mismatch"
-    assert _validation_code(
-        replace(
-            profile,
-            adapter_locks=(
-                replace(first_lock, manifest_digest="0" * 64),
-                profile.adapter_locks[1],
+            schema,
+            (erp, oa),
+        )
+        == "adapter_version_mismatch"
+    )
+    assert (
+        _validation_code(
+            replace(
+                profile,
+                adapter_locks=(
+                    replace(first_lock, manifest_digest="0" * 64),
+                    profile.adapter_locks[1],
+                ),
             ),
-        ),
-        schema,
-        (erp, oa),
-    ) == "adapter_digest_mismatch"
+            schema,
+            (erp, oa),
+        )
+        == "adapter_digest_mismatch"
+    )
 
 
-def test_binding_selection_rejects_missing_duplicate_and_unused_adapters() -> None:
+def test_source_instance_selection_rejects_invalid_bindings_and_adapters() -> None:
     schema, erp, oa = _artifacts()
     profile = _profile()
-    assert _validation_code(
+    erp_instance, oa_instance = profile.source_instances
+    assert (
+        _validation_code(
+            replace(
+                profile,
+                source_instances=(
+                    replace(
+                        erp_instance,
+                        binding_ids=(*erp_instance.binding_ids, "missing.binding"),
+                    ),
+                    oa_instance,
+                ),
+            ),
+            schema,
+            (erp, oa),
+        )
+        == "source_instance_binding_missing"
+    )
+    assert (
+        _validation_code(
+            replace(profile, source_instances=(erp_instance,)),
+            schema,
+            (erp, oa),
+        )
+        == "unused_adapter_lock"
+    )
+    assert (
+        _validation_code(
+            replace(
+                profile,
+                source_instances=(
+                    replace(erp_instance, adapter_id="vendor.missing"),
+                    oa_instance,
+                ),
+            ),
+            schema,
+            (erp, oa),
+        )
+        == "source_instance_adapter_missing"
+    )
+    assert (
+        _validation_code(
+            replace(
+                profile,
+                source_instances=(
+                    replace(erp_instance, adapter_id="vendor.oa"),
+                    oa_instance,
+                ),
+            ),
+            schema,
+            (erp, oa),
+        )
+        == "source_instance_binding_adapter_mismatch"
+    )
+
+    with pytest.raises(ValueError, match="multiple source instances"):
         replace(
             profile,
-            enabled_binding_ids=(*profile.enabled_binding_ids, "missing.binding"),
-        ),
-        schema,
-        (erp, oa),
-    ) == "enabled_binding_missing"
-    assert _validation_code(
-        replace(profile, enabled_binding_ids=("erp.assets",)),
-        schema,
-        (erp, oa),
-    ) == "unused_adapter_lock"
+            source_instances=(
+                erp_instance,
+                SourceInstanceSelection(
+                    "erp:beta",
+                    "vendor.erp",
+                    ("erp.assets",),
+                ),
+            ),
+        )
 
     duplicate = _manifest(
         "vendor.duplicate",
@@ -271,13 +390,16 @@ def test_binding_selection_rejects_missing_duplicate_and_unused_adapters() -> No
             lock_source_adapter_artifact(erp),
             lock_source_adapter_artifact(duplicate),
         ),
-        enabled_binding_ids=("erp.assets",),
+        source_instances=(erp_instance,),
     )
-    assert _validation_code(
-        duplicate_profile,
-        schema,
-        (erp, duplicate),
-    ) == "duplicate_binding_id"
+    assert (
+        _validation_code(
+            duplicate_profile,
+            schema,
+            (erp, duplicate),
+        )
+        == "duplicate_binding_id"
+    )
 
 
 def test_adapter_target_schema_cannot_be_hidden_by_a_valid_manifest_lock() -> None:
@@ -297,16 +419,143 @@ def test_adapter_target_schema_cannot_be_hidden_by_a_valid_manifest_lock() -> No
         deployment_id="foreign",
         schema_lock=lock_schema_artifact(schema),
         adapter_locks=(lock_source_adapter_artifact(foreign),),
-        enabled_binding_ids=("foreign.assets",),
+        source_instances=(
+            SourceInstanceSelection(
+                "foreign:source",
+                "vendor.foreign",
+                ("foreign.assets",),
+            ),
+        ),
+        identity_crosswalk_lock=None,
         fact_store_ref="store:facts",
         projection_store_ref="store:projection",
     )
 
-    assert _validation_code(
-        profile,
-        schema,
-        (foreign,),
-    ) == "adapter_target_schema_mismatch"
+    assert (
+        _validation_code(
+            profile,
+            schema,
+            (foreign,),
+            identity_crosswalk=None,
+        )
+        == "adapter_target_schema_mismatch"
+    )
+
+
+def test_crosswalk_selection_and_coordinates_fail_independently() -> None:
+    schema, erp, oa = _artifacts()
+    profile = _profile()
+    crosswalk = _crosswalk()
+
+    assert (
+        _validation_code(
+            profile,
+            schema,
+            (erp, oa),
+            identity_crosswalk=None,
+        )
+        == "identity_crosswalk_selection_mismatch"
+    )
+    assert (
+        _validation_code(
+            replace(profile, identity_crosswalk_lock=None),
+            schema,
+            (erp, oa),
+            identity_crosswalk=crosswalk,
+        )
+        == "identity_crosswalk_selection_mismatch"
+    )
+    assert (
+        _validation_code(
+            profile,
+            schema,
+            (erp, oa),
+            identity_crosswalk=_crosswalk(deployment_id="bureau-beta"),
+        )
+        == "identity_crosswalk_deployment_mismatch"
+    )
+    assert (
+        _validation_code(
+            profile,
+            schema,
+            (erp, oa),
+            identity_crosswalk=_crosswalk(identity_namespace="urn:test:other"),
+        )
+        == "identity_crosswalk_namespace_mismatch"
+    )
+    assert (
+        _validation_code(
+            profile,
+            schema,
+            (erp, oa),
+            identity_crosswalk=_crosswalk(revision="identity/v2"),
+        )
+        == "identity_crosswalk_revision_mismatch"
+    )
+
+    changed_content = _crosswalk(
+        entries=(
+            IdentityResolution(
+                source_identity=SourceRecordIdentity(
+                    "erp:alpha",
+                    "erp.assets",
+                    "asset",
+                    "A-1",
+                ),
+                status=IdentityResolutionStatus.UNRESOLVED,
+            ),
+        )
+    )
+    assert (
+        _validation_code(
+            profile,
+            schema,
+            (erp, oa),
+            identity_crosswalk=changed_content,
+        )
+        == "identity_crosswalk_digest_mismatch"
+    )
+
+
+def test_crosswalk_cannot_contain_an_unselected_source_scope() -> None:
+    schema, erp, oa = _artifacts()
+    crosswalk = _crosswalk(
+        entries=(
+            IdentityResolution(
+                source_identity=SourceRecordIdentity(
+                    "erp:unselected",
+                    "erp.assets",
+                    "asset",
+                    "A-1",
+                ),
+                status=IdentityResolutionStatus.UNRESOLVED,
+            ),
+        )
+    )
+    profile = replace(
+        _profile(),
+        identity_crosswalk_lock=lock_identity_crosswalk(crosswalk),
+    )
+
+    assert (
+        _validation_code(
+            profile,
+            schema,
+            (erp, oa),
+            identity_crosswalk=crosswalk,
+        )
+        == "identity_source_scope_unselected"
+    )
+
+
+def test_v1_profile_documents_are_rejected_without_a_compatibility_reader() -> None:
+    document = json.loads(_profile().to_json())
+    document["format"] = "loushang.ontology.deployment-profile/v1"
+
+    with pytest.raises(ValueError, match="unsupported deployment profile format"):
+        DeploymentProfile.from_json(json.dumps(document))
+
+    assert DEPLOYMENT_PROFILE_FORMAT.endswith("/v2")
 
 
 def test_artifact_locks_require_lowercase_sha256_digests() -> None:
@@ -321,13 +570,31 @@ def test_artifact_locks_require_lowercase_sha256_digests() -> None:
         )
     with pytest.raises(ValueError, match="lowercase SHA-256"):
         SourceAdapterArtifactLock("adapter", "1.0.0", "A" * 64)
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        IdentityCrosswalkArtifactLock("urn:test", "v1", "A" * 64)
 
 
-def _validation_code(profile, schema, manifests) -> str:
+def _validation_code(
+    profile,
+    schema,
+    manifests,
+    *,
+    identity_crosswalk: IdentityCrosswalkSnapshot | None | object = (
+        _DEFAULT_CROSSWALK
+    ),
+) -> str:
+    selected_crosswalk = (
+        _crosswalk() if identity_crosswalk is _DEFAULT_CROSSWALK else identity_crosswalk
+    )
+    assert selected_crosswalk is None or isinstance(
+        selected_crosswalk,
+        IdentityCrosswalkSnapshot,
+    )
     with pytest.raises(DeploymentProfileValidationError) as exc_info:
         validate_deployment_profile(
             profile,
             schema=schema,
             adapter_manifests=manifests,
+            identity_crosswalk=selected_crosswalk,
         )
     return exc_info.value.code

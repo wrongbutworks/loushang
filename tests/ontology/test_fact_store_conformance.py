@@ -15,6 +15,7 @@ from loushang.ontology.facts import (
     FactRecord,
     FactStore,
     FactValidationError,
+    FactWatermarkConflictError,
     ObjectAssertion,
     PropertyAssertion,
 )
@@ -132,6 +133,49 @@ def test_reusing_batch_id_with_other_content_is_rejected_atomically(
 
     assert fact_store.fact_watermark == 1
     assert len(fact_store.read_facts()) == 1
+
+
+def test_guarded_commit_checks_idempotency_before_the_expected_watermark(
+    fact_store: FactStore,
+) -> None:
+    original = FactBatch(
+        "guarded-request",
+        [_fact(FACT_1, "first", recorded_at=1)],
+    )
+    committed = fact_store.commit_fact_batch_guarded(
+        original,
+        expected_watermark=0,
+    )
+    fact_store.commit_fact_batch_guarded(
+        FactBatch("later", [_fact(FACT_2, "second", recorded_at=2)]),
+        expected_watermark=1,
+    )
+
+    replayed = fact_store.commit_fact_batch_guarded(
+        FactBatch.from_json(original.to_json()),
+        expected_watermark=0,
+    )
+    assert committed.replayed is False
+    assert replayed.replayed is True
+    assert replayed.first_sequence == committed.first_sequence
+
+    with pytest.raises(FactBatchConflictError, match="guarded-request"):
+        fact_store.commit_fact_batch_guarded(
+            FactBatch(
+                "guarded-request",
+                [_fact(FACT_3, "different", recorded_at=3)],
+            ),
+            expected_watermark=0,
+        )
+
+    with pytest.raises(FactWatermarkConflictError) as captured:
+        fact_store.commit_fact_batch_guarded(
+            FactBatch("stale", [_fact(FACT_3, "stale", recorded_at=3)]),
+            expected_watermark=0,
+        )
+    assert captured.value.expected_watermark == 0
+    assert captured.value.actual_watermark == 2
+    assert fact_store.fact_watermark == 2
 
 
 def test_fact_store_rejects_cross_schema_batches_without_changing_the_journal(

@@ -1,6 +1,12 @@
 # ARD-008: Immutable Deployment Profile And Artifact Locks
 
-Status: Accepted, 2026-08-10.
+Status: Superseded by
+[ARD-010](ARD-010-deployment-bound-source-instances-and-identity-lock.md),
+2026-08-10.
+
+This document preserves the rationale for the first immutable artifact locks.
+Its Profile v1 shape, including `enabled_binding_ids`, is no longer implemented
+and has no compatibility reader.
 
 ## Context
 
@@ -130,8 +136,10 @@ storage adapters.
 - artifact signatures, trust policy, distribution, and installation;
 - deployment instance lifecycle, activation, rollback, and atomic switching;
 - secret-provider, identity-provider, policy-provider, and source-instance
-  references;
+  references; ARD-009 defines a separately selected immutable identity
+  crosswalk but does not add it to Deployment Profile v1;
 - cross-deployment isolation and tenant authorization;
 - generated API profiles and compatibility reports;
-- Identity Crosswalk persistence and ambiguity resolution;
+- mutable Identity provider persistence, ambiguity review, and a future
+  crosswalk artifact lock;
 - Action write-back and reconciliation configuration.

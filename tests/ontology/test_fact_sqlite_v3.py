@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from uuid import UUID
 
 import pytest
@@ -9,7 +11,9 @@ import pytest
 from loushang.ontology.facts import (
     AssertionKind,
     FactBatch,
+    FactCommit,
     FactRecord,
+    FactWatermarkConflictError,
     ObjectAssertion,
     PropertyAssertion,
 )
@@ -224,6 +228,42 @@ def test_failed_fact_transaction_leaves_the_journal_unchanged(tmp_path: Path) ->
         connection.execute("DROP TRIGGER reject_fact")
     assert store.commit_fact_batch(_batch()).last_sequence == 1
     store.close()
+
+
+def test_two_sqlite_writers_cannot_both_commit_from_one_watermark(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "guarded.sqlite3"
+    schema = _schema()
+    initializer = SQLiteFactStore(database)
+    initializer.bind_schema(schema)
+    initializer.close()
+    barrier = Barrier(2)
+
+    def commit(batch: FactBatch) -> FactCommit | Exception:
+        store = SQLiteFactStore(database, expected_schema=schema)
+        try:
+            barrier.wait()
+            return store.commit_fact_batch_guarded(batch, expected_watermark=0)
+        except Exception as exc:  # returned for deterministic pair inspection
+            return exc
+        finally:
+            store.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = tuple(executor.map(commit, (_batch(), _classification_batch())))
+
+    assert len([item for item in results if isinstance(item, FactCommit)]) == 1
+    assert (
+        len(
+            [
+                item
+                for item in results
+                if isinstance(item, FactWatermarkConflictError)
+            ]
+        )
+        == 1
+    )
 
 
 @pytest.mark.parametrize(

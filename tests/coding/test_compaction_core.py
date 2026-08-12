@@ -47,6 +47,7 @@ async def test_complete_text_aggregates_root_stream_with_options(monkeypatch) ->
     captured: dict[str, object] = {}
 
     message = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="summary text")],
         api="faux",
@@ -108,6 +109,7 @@ async def test_complete_text_uses_complete_for_non_stream_model(monkeypatch) -> 
 
     captured: dict[str, object] = {}
     message = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="non-stream summary")],
         api="faux",
@@ -177,6 +179,7 @@ def test_calculate_context_tokens_prefers_total_tokens() -> None:
 def test_estimate_context_tokens_adds_trailing_message_estimate() -> None:
     messages = [
         AssistantMessage(
+            endpoint="test-endpoint",
             role="assistant",
             content=[TextPart(type="text", text="done")],
             api="responses",
@@ -237,6 +240,7 @@ def test_prepare_compaction_returns_first_kept_entry_and_messages_to_summarize(
     asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="older assistant context")],
                 api="responses",
@@ -294,6 +298,7 @@ def test_plan_compaction_records_summarized_and_kept_entry_ids(tmp_path) -> None
     older_assistant_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="older assistant " * 20)],
                 api="responses",
@@ -324,6 +329,7 @@ def test_plan_compaction_records_summarized_and_kept_entry_ids(tmp_path) -> None
     recent_assistant_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="ok")],
                 api="responses",
@@ -372,6 +378,7 @@ def test_plan_compaction_records_previous_boundary_and_split_turn_ids(tmp_path) 
     previous_kept_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="kept from previous compaction")],
                 api="responses",
@@ -411,6 +418,7 @@ def test_plan_compaction_records_previous_boundary_and_split_turn_ids(tmp_path) 
     latest_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="latest reply " * 20)],
                 api="responses",
@@ -459,6 +467,7 @@ def test_plan_compaction_never_uses_tool_result_as_cut_point(tmp_path) -> None:
     old_assistant_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="old answer")],
                 api="responses",
@@ -491,6 +500,7 @@ def test_plan_compaction_never_uses_tool_result_as_cut_point(tmp_path) -> None:
     current_assistant_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     ToolCall(
@@ -556,6 +566,7 @@ def test_prepare_compaction_starts_after_previous_compaction_boundary(tmp_path) 
     kept_from_previous_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="kept from previous compaction")],
                 api="responses",
@@ -595,6 +606,7 @@ def test_prepare_compaction_starts_after_previous_compaction_boundary(tmp_path) 
     latest_entry_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="latest reply")],
                 api="responses",
@@ -653,6 +665,7 @@ def test_prepare_compaction_detects_split_turn_cut_point(tmp_path) -> None:
     asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="old reply")],
                 api="responses",
@@ -685,6 +698,7 @@ def test_prepare_compaction_detects_split_turn_cut_point(tmp_path) -> None:
     latest_entry_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="latest reply " * 20)],
                 api="responses",
@@ -734,6 +748,7 @@ def test_plan_compaction_keeps_metadata_attached_to_cut_group(tmp_path) -> None:
     old_assistant_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="old reply")],
                 api="responses",
@@ -754,7 +769,9 @@ def test_plan_compaction_keeps_metadata_attached_to_cut_group(tmp_path) -> None:
             )
         )
     )
-    model_change_id = asyncio.run(session.append_model_change("faux", "beta"))
+    model_change_id = asyncio.run(
+        session.append_model_change("faux", "beta", endpoint_id="responses")
+    )
     recent_user_id = asyncio.run(
         session.append_message(
             UserMessage(role="user", content="new request", timestamp=3.0)
@@ -763,6 +780,7 @@ def test_plan_compaction_keeps_metadata_attached_to_cut_group(tmp_path) -> None:
     recent_assistant_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="new reply")],
                 api="responses",
@@ -805,6 +823,7 @@ def test_plan_compaction_partitions_do_not_overlap_when_all_context_is_kept(
     assistant_id = asyncio.run(
         session.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="short answer")],
                 api="responses",
@@ -1014,6 +1033,7 @@ async def test_generate_branch_summary_uses_serialized_prompt_and_file_details()
                 timestamp=1.0,
             ),
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     ToolCall(
@@ -1275,6 +1295,7 @@ async def test_compact_appends_file_operation_summary_details() -> None:
         first_kept_entry_id="e2",
         messages_to_summarize=[
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     ToolCall(

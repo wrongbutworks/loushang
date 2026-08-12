@@ -50,6 +50,7 @@ def _assistant_text_message(
     text: str, *, stop_reason: str = "stop", error_message: str | None = None
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -65,6 +66,7 @@ def _assistant_text_message(
 
 def _assistant_tool_call_message() -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[ToolCall(type="toolCall", id="tc_1", name="calc", arguments={"x": 1})],
         api="anthropic-messages",
@@ -430,9 +432,7 @@ def test_clear_all_queues_removes_steering_and_follow_up_messages() -> None:
     from loushang.agent import Agent
 
     agent = Agent()
-    agent.enqueue_mailbox(
-        UserMessage(role="user", content="system", timestamp=0.0)
-    )
+    agent.enqueue_mailbox(UserMessage(role="user", content="system", timestamp=0.0))
     agent.steer(UserMessage(role="user", content="steer", timestamp=0.0))
     agent.follow_up(UserMessage(role="user", content="follow", timestamp=0.0))
 

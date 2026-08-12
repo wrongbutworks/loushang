@@ -36,6 +36,7 @@ def _model() -> Model:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -58,6 +59,7 @@ def _assistant_message(
     timestamp: float = 0.0,
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -353,8 +355,7 @@ def test_agent_session_abort_compaction_cancels_public_manual_operation(
     asyncio.run(scenario())
 
     assert all(
-        entry.kind != "context.compaction_checkpoint"
-        for entry in manager.get_entries()
+        entry.kind != "context.compaction_checkpoint" for entry in manager.get_entries()
     )
     assert session.get_compaction_status().is_compacting is False
     compaction_end = next(
@@ -736,6 +737,7 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="recent reply")],
         api="anthropic-messages",
@@ -957,6 +959,7 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="recent reply")],
         api="anthropic-messages",
@@ -1027,6 +1030,7 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     stale_assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="stale usage before compaction")],
         api="test",
@@ -1520,6 +1524,7 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="overflow error")],
         api="anthropic-messages",
@@ -1632,6 +1637,7 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="overflow error")],
         api="anthropic-messages",
