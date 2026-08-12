@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .errors import ExecLaunchError, ExecLaunchErrorKind
 from .service import ExecBackend, ExecService, LocalExecBackend
 from .types import (
     ExecOutputChunk,
@@ -11,6 +12,8 @@ from .types import (
 
 __all__ = [
     "ExecBackend",
+    "ExecLaunchError",
+    "ExecLaunchErrorKind",
     "ExecOutputChunk",
     "ExecRequest",
     "ExecResult",

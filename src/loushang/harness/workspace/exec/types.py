@@ -121,8 +121,11 @@ def materialize_exec_request(
         else os.getcwd()
     )
     if request.effective_environment is None:
-        effective_environment = dict(os.environ if environ is None else environ)
-        effective_environment.update(dict(request.env))
+        effective_environment = _merge_environment(
+            os.environ if environ is None else environ,
+            request.env,
+            case_insensitive=_local_environment_is_case_insensitive(),
+        )
         environment_snapshot = tuple(effective_environment.items())
     else:
         environment_snapshot = request.effective_environment
@@ -133,6 +136,33 @@ def materialize_exec_request(
         cwd=effective_cwd,
         effective_environment=environment_snapshot,
     )
+
+
+def _merge_environment(
+    inherited: Mapping[str, str],
+    overrides: tuple[tuple[str, str], ...],
+    *,
+    case_insensitive: bool,
+) -> dict[str, str]:
+    if not case_insensitive:
+        merged = dict(inherited)
+        merged.update(dict(overrides))
+        return merged
+
+    insensitive_merged: dict[str, str] = {}
+    spellings: dict[str, str] = {}
+    for key, value in (*inherited.items(), *overrides):
+        normalized = key.casefold()
+        previous = spellings.get(normalized)
+        if previous is not None and previous != key:
+            insensitive_merged.pop(previous, None)
+        insensitive_merged[key] = value
+        spellings[normalized] = key
+    return insensitive_merged
+
+
+def _local_environment_is_case_insensitive() -> bool:
+    return os.name == "nt"
 
 
 @dataclass(frozen=True)
