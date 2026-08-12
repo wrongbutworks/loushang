@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import shutil
 from collections.abc import Awaitable, Callable
-from contextlib import AbstractContextManager, suppress
+from contextlib import AbstractContextManager
 from typing import Any, Protocol, TextIO
 
 from loushang.harnesstui.conversation.input import (
@@ -459,12 +459,13 @@ async def abort_active(
     interruption_message: str,
 ) -> None:
     await maybe_await(on_abort())
-    if active_task is not None and not active_task.done():
-        active_task.cancel()
-        with suppress(asyncio.CancelledError):
+    if active_task is not None:
+        try:
             await active_task
-    elif active_task is not None:
-        await active_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as error:
+            app.add_error(str(error) or error.__class__.__name__)
     app.state.abort(
         message=interruption_message,
         elapsed_seconds=app.elapsed_seconds(),
