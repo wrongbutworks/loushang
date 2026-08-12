@@ -93,6 +93,50 @@ _SECRET_ENV_NAME = re.compile(
     re.IGNORECASE,
 )
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
+_POWERSHELL_SAFE_READ_ONLY = re.compile(
+    r"""
+    ^\s*(?:
+        (?:Microsoft\.PowerShell\.Management\\)?Get-Location
+        |
+        (?:Microsoft\.PowerShell\.Utility\\)?Get-Date
+        |
+        (?:Microsoft\.PowerShell\.Management\\)?Get-Process
+            (?:\s+-(?:Id\s+[0-9]+|Name\s+[A-Za-z0-9_.-]+))?
+        |
+        (?:Microsoft\.PowerShell\.Management\\)?Get-ChildItem
+            (?:\s+-(?:Name|File|Directory|Force))*
+    )\s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_POWERSHELL_INVOKE_EXPRESSION = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:Invoke-Expression|iex)(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
+_POWERSHELL_DELETION = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:Remove-Item(?:Property)?|rm|ri|del|erase|rd|rmdir)"
+    r"(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
+_POWERSHELL_NESTED_SHELL = re.compile(
+    r"(?<![A-Za-z0-9_.-])(?:pwsh|powershell|cmd|wsl)(?:\.exe)?"
+    r"(?![A-Za-z0-9_.-])",
+    re.IGNORECASE,
+)
+_POWERSHELL_DOWNLOAD = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:Invoke-WebRequest|Invoke-RestMethod|iwr|irm|curl|wget)"
+    r"(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
+_POWERSHELL_SECURITY_TRANSLATION: dict[int, str] = {
+    ord("\u2013"): "-",
+    ord("\u2014"): "-",
+    ord("\u2015"): "-",
+    ord("\u2018"): "'",
+    ord("\u2019"): "'",
+    ord("\u201c"): '"',
+    ord("\u201d"): '"',
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +165,20 @@ def detect_policy_effects(subject: PolicySubject) -> tuple[DetectedPolicyEffect,
         _detect_secret_environment_effect(tool_subject, effects)
 
     if command is None:
+        return tuple(effects)
+
+    if command.dialect == "powershell":
+        _detect_powershell_effects(command, effects)
+        return tuple(effects)
+    if command.dialect == "cmd":
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "external_effect",
+                "unclassified_cmd_command",
+                "Cmd script requires approval because its effects were not classified",
+            ),
+        )
         return tuple(effects)
 
     invocations, has_pipeline = _command_invocations(command)
@@ -161,6 +219,98 @@ def detect_policy_effects(subject: PolicySubject) -> tuple[DetectedPolicyEffect,
             if isinstance(unresolved_stdin, str):
                 _detect_incomplete_text_effects(unresolved_stdin, effects)
     return tuple(effects)
+
+
+def _detect_powershell_effects(
+    command: CommandPolicySubject,
+    effects: list[DetectedPolicyEffect],
+) -> None:
+    script = command.shell_payload
+    if script is None:
+        _append_unclassified_powershell(effects)
+        return
+    normalized = _normalize_powershell_security_text(
+        script,
+        flavor=command.shell_flavor,
+    )
+    if command.normalization_complete and _POWERSHELL_SAFE_READ_ONLY.fullmatch(
+        normalized
+    ):
+        return
+
+    detected_count = len(effects)
+    if _POWERSHELL_INVOKE_EXPRESSION.search(normalized):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "external_effect",
+                "dynamic_code_execution",
+                "PowerShell would dynamically execute command text",
+            ),
+        )
+    if _POWERSHELL_DELETION.search(normalized):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "destructive",
+                "filesystem_deletion",
+                "PowerShell would delete filesystem or provider content",
+            ),
+        )
+    if re.search(
+        r"(?is)(?<![A-Za-z0-9_-])Start-Process(?![A-Za-z0-9_-]).*?"
+        r"-Verb\s*:?[\s'\"]*RunAs(?![A-Za-z0-9_-])",
+        normalized,
+    ):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "privilege",
+                "privilege_escalation",
+                "PowerShell would launch a process with elevated authority",
+            ),
+        )
+    if _POWERSHELL_NESTED_SHELL.search(normalized):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "external_effect",
+                "nested_shell_execution",
+                "PowerShell would launch a nested command interpreter",
+            ),
+        )
+    if _POWERSHELL_DOWNLOAD.search(normalized):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "external_effect",
+                "network_content_access",
+                "PowerShell would access content from a remote service",
+            ),
+        )
+    if len(effects) == detected_count:
+        _append_unclassified_powershell(effects)
+
+
+def _append_unclassified_powershell(
+    effects: list[DetectedPolicyEffect],
+) -> None:
+    _append_effect(
+        effects,
+        DetectedPolicyEffect(
+            "external_effect",
+            "unclassified_powershell_command",
+            "PowerShell script requires approval because its effects were not classified",
+        ),
+    )
+
+
+def _normalize_powershell_security_text(script: str, *, flavor: str | None) -> str:
+    normalized = script.translate(_POWERSHELL_SECURITY_TRANSLATION)
+    normalized = normalized.replace("`", "")
+    if flavor == "windows-powershell":
+        normalized = re.sub(r"(?<!\S)/(?=[A-Za-z])", "-", normalized)
+    return normalized
 
 
 def _detect_declared_effects(

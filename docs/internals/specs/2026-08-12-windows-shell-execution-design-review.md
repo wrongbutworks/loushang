@@ -12,8 +12,9 @@
 ## 实施进度
 
 - 追踪 Issue：[#444](https://github.com/zhnt/loushang/issues/444)
-- P0：正在 `fix/windows-process-substrate` 实施；已加入跨平台分块输出、增量 UTF-8 解码、有限 idle drain、外层 task cancellation 进程树清理、Windows `CREATE_NO_WINDOW`/`taskkill` 原语、结构化 launch error 和 Windows 环境变量合并。
-- P1/P2/P3：尚未实施；在 P1 的 PowerShell policy 安全门槛完成前，不注册或暴露 PowerShell 模型工具。
+- P0：已完成。跨平台分块输出、增量 UTF-8 解码、有限 idle drain、外层 task cancellation 进程树清理、Windows `CREATE_NO_WINDOW`/`taskkill` 原语、结构化 launch error 和 Windows 环境变量合并均已落地，并通过完整 harness 回归。
+- P1：已完成隐藏实现。新增执行目标感知的 `ShellSpec` 解析/编译、PowerShell UTF-16LE `-EncodedCommand` transport、命令行长度 fail-closed、明文 policy subject、保守的 PowerShell 5.1/7 分类，以及跨 `bash`/`shell` 工具名稳定生效的 `workspace.command` capability 匹配。此阶段没有注册或暴露新模型工具；既有 POSIX Bash 决策与完整 harness 回归通过。
+- P2/P3：尚未实施；P2 将以目标能力门控、产品配置接线、模型工具注册、用户 `!` 命令和兼容层作为同一原子启用边界。
 
 ## 目标
 
