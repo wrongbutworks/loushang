@@ -1,0 +1,41 @@
+name: Windows Shell Compatibility
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  windows-shell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Run native Windows shell compatibility tests
+        run: >-
+          uv run pytest
+          tests/harness/workspace/test_local_process.py
+          tests/harness/workspace/test_exec.py
+          tests/harness/workspace/test_shell.py
+          tests/harness/tools/test_shell_tool.py
+          tests/harness/session/test_bash.py
+          tests/coding/test_tool_registry.py
+          tests/coding/test_agent_session_tools.py
+          -k windows
+          -q
+
+      - name: Run PowerShell policy tests
+        run: >-
+          uv run pytest tests/harness/test_policy_engine.py
+          -k "powershell or cmd_policy"
+          -q

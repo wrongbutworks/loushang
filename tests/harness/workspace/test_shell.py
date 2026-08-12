@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import ntpath
+import os
 
 import pytest
 
-from loushang.harness.environment import HostEnvironment
+from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.policy import shell_command_policy_subject
+from loushang.harness.workspace.exec import ExecRequest, ExecService
 from loushang.harness.workspace.shell import (
     LocalShellResolver,
     ResolvedShell,
@@ -280,3 +283,32 @@ def test_non_login_git_bash_compiler_uses_c_not_lc() -> None:
     launch = compile_shell_launch(shell, "pwd", cwd=r"C:\workspace")
 
     assert launch.argv == (shell.executable, "-c", "pwd")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires a native Windows host")
+def test_native_windows_shell_executes_utf8_and_preserves_failure_exit_code(
+    tmp_path,
+) -> None:
+    resolver = LocalShellResolver(
+        environment=LocalHostEnvironmentProbe().detect(),
+        cwd=str(tmp_path),
+    )
+    shell = resolver.resolve()
+    service = ExecService()
+
+    success = compile_shell_launch(
+        shell,
+        "[Console]::WriteLine('你好')",
+        cwd=str(tmp_path),
+    )
+    success_result = asyncio.run(
+        service.execute(ExecRequest(command=success.argv, cwd=str(tmp_path)))
+    )
+    failure = compile_shell_launch(shell, "throw 'boom'", cwd=str(tmp_path))
+    failure_result = asyncio.run(
+        service.execute(ExecRequest(command=failure.argv, cwd=str(tmp_path)))
+    )
+
+    assert success_result.exit_code == 0
+    assert "你好" in success_result.stdout
+    assert failure_result.exit_code != 0

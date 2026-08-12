@@ -14,7 +14,9 @@
 - 追踪 Issue：[#444](https://github.com/zhnt/loushang/issues/444)
 - P0：已完成。跨平台分块输出、增量 UTF-8 解码、有限 idle drain、外层 task cancellation 进程树清理、Windows `CREATE_NO_WINDOW`/`taskkill` 原语、结构化 launch error 和 Windows 环境变量合并均已落地，并通过完整 harness 回归。
 - P1：已完成隐藏实现。新增执行目标感知的 `ShellSpec` 解析/编译、PowerShell UTF-16LE `-EncodedCommand` transport、命令行长度 fail-closed、明文 policy subject、保守的 PowerShell 5.1/7 分类，以及跨 `bash`/`shell` 工具名稳定生效的 `workspace.command` capability 匹配。此阶段没有注册或暴露新模型工具；既有 POSIX Bash 决策与完整 harness 回归通过。
-- P2/P3：尚未实施；P2 将以目标能力门控、产品配置接线、模型工具注册、用户 `!` 命令和兼容层作为同一原子启用边界。
+- P2：已完成代码接线。Windows 执行目标会以同一原子切片把默认 `bash` 工具替换为 `shell`，注册并默认激活 PowerShell 方言提示，接通 Settings 中的 shell path/prefix、用户 `!`/`execute_bash` 兼容入口、`user_bash` hook、transcript、审计与 `workspace.command` 权限能力；POSIX 默认工具表保持不变。旧 `blocked_tools/ask_tools` 中的 `bash` 会迁移匹配稳定 capability，新的 `blocked_capabilities/ask_capabilities` 也可持久化配置。
+- P2 验证：非 Windows CI 已通过完整 harness 门禁（Ruff、mypy、1791 项测试）及 637 项 Coding 产品回归，并包含模拟 Windows 目标的 registry -> AgentSession -> PowerShell transport 端到端测试。仓库已新增 `windows-shell-compatibility.yml`，在 `windows-latest` 上实际解析系统 PowerShell 并验证 UTF-8、非零退出码、工具注册、策略和 Session 兼容链路；该 workflow 需要随分支发布后取得绿灯，且仍建议用 Windows 10 + PS 5.1 实体环境补充验收。在原生结果返回前不宣称平台验证完成。
+- P3：尚未实施，包括更完整的 PowerShell AST/effect 分类、Windows Job Object、企业 Windows sandbox 和可选 Cmd 深度支持。
 
 ## 目标
 

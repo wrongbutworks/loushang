@@ -420,6 +420,7 @@ def _bash_policy_facts(
         effective_arguments["env"] = exec_request.env
     policy_subject = build_tool_policy_subject(
         tool_name="bash",
+        capability_id="workspace.command",
         arguments=effective_arguments,
         cwd=exec_request.cwd,
         command=command_subject,
