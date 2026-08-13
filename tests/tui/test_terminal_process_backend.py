@@ -100,6 +100,7 @@ def test_terminal_backend_drains_large_no_newline_output_and_exit_status(
         rows=64,
     ) as driver:
         driver.read_until(lambda text: "LARGE_END" in text, timeout=20)
+        driver.write("continue\r")
         assert driver.wait(timeout=10) == 7
         output = driver.raw_output
 

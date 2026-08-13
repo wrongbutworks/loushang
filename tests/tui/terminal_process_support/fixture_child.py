@@ -75,6 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         payload = (("x" * 999 + "界") * full_units) + ("x" * remainder)
         sys.stdout.write("LARGE_BEGIN" + payload + "LARGE_END")
         sys.stdout.flush()
+        # Keep the console process alive until the client has observed the
+        # complete rendered update. ConHost may coalesce/drop outstanding
+        # screen diffs when a producer exits immediately after a huge write;
+        # the separate metadata scenario covers immediate no-newline drain.
+        sys.stdin.readline()
         return args.code
     if args.scenario == "tree":
         child = subprocess.Popen(
