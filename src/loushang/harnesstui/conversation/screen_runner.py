@@ -23,7 +23,10 @@ from loushang.tui.scheduler import RenderRequestKind
 from loushang.tui.terminal import ProcessTerminalPort, TerminalSize
 from loushang.tui.terminal_capabilities import TerminalRuntimeCapabilities
 from loushang.tui.terminal_diagnostics import format_terminal_diagnostics
-from loushang.tui.terminal_input import read_input_chunk_or_render_tick
+from loushang.tui.terminal_input import (
+    InputChunkReader,
+    read_input_chunk_or_render_tick,
+)
 from loushang.tui.terminal_session import TerminalSession
 
 HandlerResult = Awaitable[int | None] | int | None
@@ -152,6 +155,7 @@ async def run_conversation_screen(
     interruption_message: str,
     cancellation_message: str,
     input_router_factory: ConversationInputRouterFactoryPort | None = None,
+    input_chunk_reader: InputChunkReader | None = None,
 ) -> int:
     """Run one product-neutral interactive conversation screen.
 
@@ -243,6 +247,7 @@ async def run_conversation_screen(
                     stdin,
                     runtime=runtime,
                     active_task=active_task,
+                    input_chunk_reader=input_chunk_reader,
                     render_wakeup=render_wakeup,
                     pending_input_idle_ms=10 if reader.has_pending else None,
                     idle_wakeup_ms=_terminal_runtime_wakeup_ms(terminal_context),
