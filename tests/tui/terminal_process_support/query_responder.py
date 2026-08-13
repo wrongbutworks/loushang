@@ -36,6 +36,8 @@ class TerminalQueryResponder:
         return tuple(responses)
 
     def _response_for(self, sequence: str) -> tuple[str, ...]:
+        if sequence in {"\x1b[c", "\x1b[0c"}:
+            return ("\x1b[?1;0c",)
         if sequence == "\x1b[5n":
             return ("\x1b[0n",)
         if sequence == "\x1b[6n":

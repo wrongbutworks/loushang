@@ -182,17 +182,24 @@ def test_read_input_chunk_or_render_tick_wakes_for_deferred_render_request() -> 
     async def run() -> tuple[str | None, int, int]:
         runtime = _DeferredRuntime()
         render_wakeup = asyncio.Event()
+        release_input = asyncio.Event()
+
+        async def read_after_render(_stdin: object) -> str:
+            await release_input.wait()
+            return ""
 
         async def wake_later() -> None:
-            await asyncio.sleep(0.001)
             render_wakeup.set()
+            while runtime.rendered == 0:
+                await asyncio.sleep(0)
+            release_input.set()
 
         wake_task = asyncio.create_task(wake_later())
         result = await read_input_chunk_or_render_tick(
             StringIO(""),
             runtime=runtime,
             active_task=None,
-            input_chunk_reader=_DelayedInputReader(block_seconds=0.01),
+            input_chunk_reader=read_after_render,
             render_wakeup=render_wakeup,
         )
         await wake_task
@@ -230,31 +237,6 @@ def test_drain_input_consumes_buffered_stringio_text() -> None:
 
     assert drained == "leftover"
     assert stdin.read() == ""
-
-
-def test_drain_input_respects_max_duration_for_continuous_tty_input(
-    monkeypatch,
-) -> None:
-    calls: list[int] = []
-
-    def fake_select(
-        read_list: list[int], _write: list[Any], _error: list[Any], _timeout: float
-    ):
-        return read_list, [], []
-
-    def fake_read(_fd: int, size: int) -> bytes:
-        calls.append(size)
-        return b"x"
-
-    clock = _FloatClock(step=0.004)
-    monkeypatch.setattr("select.select", fake_select)
-    monkeypatch.setattr("os.read", fake_read)
-
-    drained = drain_input(
-        _TtyInput(), max_bytes=1_000, idle_timeout=0.01, max_duration=0.01, now=clock
-    )
-
-    assert 1 <= len(drained) < 1_000
 
 
 def test_input_batch_routes_kitty_protocol_response_as_control_event() -> None:
@@ -532,17 +514,6 @@ class _TtyInput:
 
     def isatty(self) -> bool:
         return True
-
-
-class _FloatClock:
-    def __init__(self, *, step: float) -> None:
-        self.value = 0.0
-        self.step = step
-
-    def __call__(self) -> float:
-        current = self.value
-        self.value += self.step
-        return current
 
 
 def _install_fake_msvcrt(

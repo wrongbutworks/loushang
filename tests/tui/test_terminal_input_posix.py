@@ -9,7 +9,7 @@ from loushang.tui.keyboard_protocol import (
     MODIFY_OTHER_KEYS_DISABLE_SEQUENCE,
     MODIFY_OTHER_KEYS_ENABLE_SEQUENCE,
 )
-from loushang.tui.terminal_input import TerminalInputMode
+from loushang.tui.terminal_input import TerminalInputMode, drain_input
 
 
 def test_terminal_input_mode_enables_and_restores_tty_modes(monkeypatch: Any) -> None:
@@ -81,9 +81,45 @@ def test_terminal_input_mode_delivers_control_v() -> None:
         os.close(slave_fd)
 
 
+def test_drain_input_respects_max_duration_for_continuous_tty_input(
+    monkeypatch: Any,
+) -> None:
+    calls: list[int] = []
+
+    def fake_select(
+        read_list: list[int], _write: list[Any], _error: list[Any], _timeout: float
+    ) -> tuple[list[int], list[Any], list[Any]]:
+        return read_list, [], []
+
+    def fake_read(_fd: int, size: int) -> bytes:
+        calls.append(size)
+        return b"x"
+
+    clock = _FloatClock(step=0.004)
+    monkeypatch.setattr("select.select", fake_select)
+    monkeypatch.setattr("os.read", fake_read)
+
+    drained = drain_input(
+        _TtyInput(), max_bytes=1_000, idle_timeout=0.01, max_duration=0.01, now=clock
+    )
+
+    assert 1 <= len(drained) < 1_000
+
+
 class _TtyInput:
     def fileno(self) -> int:
         return 42
 
     def isatty(self) -> bool:
         return True
+
+
+class _FloatClock:
+    def __init__(self, *, step: float) -> None:
+        self.value = 0.0
+        self.step = step
+
+    def __call__(self) -> float:
+        current = self.value
+        self.value += self.step
+        return current

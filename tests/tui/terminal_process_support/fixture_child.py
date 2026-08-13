@@ -58,12 +58,14 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("5n")
         sys.stdout.flush()
         status = _read_characters(4)
+        print(f"STATUS_GOT:{status.encode().hex()}", flush=True)
         sys.stdout.write("\x1b[6")
         sys.stdout.flush()
         time.sleep(0.01)
         sys.stdout.write("n")
         sys.stdout.flush()
         cursor = _read_characters(6)
+        print(f"CURSOR_GOT:{cursor.encode().hex()}", flush=True)
         print(f"QUERY_OK:{status.encode().hex()}:{cursor.encode().hex()}", flush=True)
         return 0 if (status, cursor) == ("\x1b[0n", "\x1b[1;1R") else 9
     if args.scenario == "large":

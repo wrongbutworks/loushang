@@ -15,6 +15,12 @@ def test_responder_handles_split_dsr_and_ignores_ordinary_vt() -> None:
     assert responder.unknown_queries == []
 
 
+def test_responder_answers_conpty_device_attributes_query() -> None:
+    responder = TerminalQueryResponder(rows=24, columns=80)
+
+    assert responder.feed("\x1b[c") == ("\x1b[?1;0c",)
+
+
 def test_responder_does_not_claim_kitty_and_cell_size_has_explicit_profiles() -> None:
     baseline = TerminalQueryResponder(rows=31, columns=103)
     enabled = TerminalQueryResponder(

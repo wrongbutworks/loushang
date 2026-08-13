@@ -193,7 +193,7 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
                     raise
                 if data:
                     self._record_output(data)
-                if pty_object.iseof():
+                if not data and pty_object.iseof():
                     break
                 if not data:
                     time.sleep(0.002)
