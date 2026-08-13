@@ -172,22 +172,11 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             ),
         ),
         ImportBoundary(
-            name="ontology core",
+            name="ontology",
             root=Path("src/loushang/ontology"),
             forbidden_prefixes=(
                 "loushang.harness",
                 "loushang.harnesswork",
-                "loushang.work",
-            ),
-            allowed_paths=frozenset(
-                {"src/loushang/ontology/integrations/harnesswork.py"}
-            ),
-        ),
-        ImportBoundary(
-            name="ontology HarnessWork integration",
-            root=Path("src/loushang/ontology/integrations"),
-            forbidden_prefixes=(
-                "loushang.harness",
                 "loushang.work",
             ),
         ),
@@ -497,7 +486,7 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
         "loushang.harnesstui",
         "loushang.tui",
         "loushang.harness",
-        "loushang.protocol",
+        "loushang.foundation.json",
     )
     offenders = [
         f"{path.as_posix()} imports {imported}"
@@ -2644,11 +2633,19 @@ def test_harness_diagnostics_core_does_not_import_resources_or_observability() -
     paths_and_forbidden_prefixes = (
         (
             Path("src/loushang/harness/diagnostics/types.py"),
-            ("loushang.harness.resources", "loushang.observability"),
+            (
+                "loushang.harness.resources",
+                "loushang.foundation.observability",
+                "loushang.observability",
+            ),
         ),
         (
             Path("src/loushang/harness/diagnostics/service.py"),
-            ("loushang.harness.resources", "loushang.observability"),
+            (
+                "loushang.harness.resources",
+                "loushang.foundation.observability",
+                "loushang.observability",
+            ),
         ),
         (
             Path("src/loushang/harness/diagnostics/observability_bridge.py"),
@@ -5185,7 +5182,8 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
     required_phrases = {
         "Tool Output Projection Core Boundary",
         "implementation complete for integration into `lane/harness`",
-        "`loushang.protocol` owns `JSONValue`",
+        "`loushang.foundation.json` owns `JSONValue`",
+        "all production consumers use canonical `loushang.foundation.json`",
         "`ToolOutputProjector[TDetails]`",
         "Transcript, event, and hook projections are snapshotted independently",
         "`tool_output_projection_failed`",
@@ -5193,9 +5191,10 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
         "live rendering and replay rendering consume the same result semantics",
         "In-memory and JSONL event logs enforce the same strict snapshot contract",
         "Channel envelope encoding validates the complete wire object",
-        "`loushang.observability` remains a documented compatibility exception",
+        "`loushang.foundation.observability` owns the canonical diagnostics runtime",
+        "`ai.structured` validates schemas through strict `foundation.json`",
         "Product adapters still own tool-specific detail vocabulary",
-        "Protocol -> AI -> Agent -> Harness -> Product dependency direction",
+        "Foundation -> AI -> Agent -> Harness -> Product dependency direction",
     }
     assert (
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
@@ -5212,7 +5211,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
     assert "multi-view tool-output projection core live in Agent" in inventory_text
 
     from loushang.agent import AgentToolResult, ToolOutputProjector
-    from loushang.protocol import JSONValue, require_json_value
+    from loushang.foundation.json import JSONValue, require_json_value
 
     assert (
         AgentToolResult.__annotations__["projector"] == "ToolOutputProjector[TDetails]"
@@ -5222,15 +5221,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
     assert JSONValue is not None
 
 
-def test_observability_json_compatibility_exception_does_not_expand() -> None:
-    allowed_consumers = {
-        "src/loushang/ai/errors.py",
-        "src/loushang/ai/auth/support.py",
-        "src/loushang/ai/event_stream/raw_parts.py",
-        "src/loushang/ai/provider/errors.py",
-        "src/loushang/ai/structured.py",
-        "src/loushang/ai/trace.py",
-    }
+def test_legacy_observability_problem_imports_are_retired() -> None:
     actual_consumers: set[str] = set()
     for path in Path("src/loushang").rglob("*.py"):
         if path.is_relative_to("src/loushang/observability"):
@@ -5241,7 +5232,7 @@ def test_observability_json_compatibility_exception_does_not_expand() -> None:
         ):
             actual_consumers.add(path.as_posix())
 
-    assert actual_consumers == allowed_consumers
+    assert actual_consumers == set()
 
 
 def test_coding_internal_run_state_imports_use_harness_owner() -> None:

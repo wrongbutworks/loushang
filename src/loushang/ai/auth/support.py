@@ -10,7 +10,7 @@ from loushang.ai.auth.credentials import ApiKeyAuth, AuthCredential, OAuthBearer
 from loushang.ai.auth.errors import MissingCredentialError
 from loushang.ai.errors import AIAuthenticationError, AIConfigurationError
 from loushang.ai.model import Auth
-from loushang.observability.problem import JSONValue
+from loushang.foundation.json import JSONValue
 
 AuthConfig = Auth
 

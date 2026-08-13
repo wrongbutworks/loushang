@@ -6,6 +6,7 @@ import inspect
 from typing import Any, TextIO, cast
 
 from loushang.ai.types import ImagePart
+from loushang.foundation.observability import get_log
 from loushang.harness.commands import CommandEffectKind
 from loushang.harness.host.types import HostActionResult
 from loushang.harness.session import (
@@ -30,7 +31,6 @@ from loushang.harnesstui.conversation.controller import (
     build_standard_conversation_ui_controller,
 )
 from loushang.harnesstui.conversation.intents import ConversationIntent
-from loushang.observability import get_log
 
 _LOG = get_log(__name__).bind(component="CodingUiController")
 

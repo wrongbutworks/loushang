@@ -528,6 +528,9 @@ def _fake_services(
     disabled_plugins: tuple[str, ...] = (),
     method_settings: object | None = None,
 ):
+    from loushang.ai.model import Endpoint, Model, Provider
+    from loushang.ai.model.registry import ModelRegistry
+
     settings = SimpleNamespace(
         session_dir=session_dir,
         package_roots=package_roots,
@@ -536,8 +539,33 @@ def _fake_services(
         method=method_settings,
     )
     settings_manager = SimpleNamespace(get_settings=lambda: settings)
+    endpoint = Endpoint(
+        id="test-endpoint",
+        provider="faux",
+        api="test",
+        models={
+            model_id: Model(
+                id=model_id,
+                provider="faux",
+                endpoint="test-endpoint",
+            )
+            for model_id in ("beta", "missing")
+        },
+    )
+    model_registry = SimpleNamespace(
+        ai_registry=ModelRegistry.from_providers(
+            {
+                "faux": Provider(
+                    id="faux",
+                    endpoints={endpoint.id: endpoint},
+                )
+            }
+        )
+    )
     return SimpleNamespace(
-        settings_manager=settings_manager, diagnostics_service=object()
+        settings_manager=settings_manager,
+        diagnostics_service=object(),
+        model_registry=model_registry,
     )
 
 
@@ -1392,12 +1420,18 @@ def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(
         fake_register_coding_builtin_tools,
     )
     manager = SettingsManager(
-        ControlConfig(tools=ToolSettings(external_tool_policy="required"))
+        ControlConfig(
+            shell_path=r"C:\tools\pwsh.exe",
+            shell_command_prefix="$ErrorActionPreference = 'Stop'",
+            tools=ToolSettings(external_tool_policy="required"),
+        )
     )
 
     cli_main.build_builtin_tool_registry(settings_manager=manager)
 
     assert captured["external_tool_policy"] == "required"
+    assert captured["shell_path"] == r"C:\tools\pwsh.exe"
+    assert captured["command_prefix"] == "$ErrorActionPreference = 'Stop'"
 
 
 def test_cli_policy_settings_bind_to_an_explicit_execution_scope(
@@ -3029,7 +3063,7 @@ def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
 
     assert runtime.restore_session_calls == ["session-1"]
     assert runtime.get_current_session().set_model_calls == [
-        ModelSelection(provider="faux", model_id="beta")
+        ModelSelection(endpoint_id="test-endpoint", provider="faux", model_id="beta")
     ]
     assert print_runner.calls[0]["user_input"] == "hello world"
     assert print_runner.calls[0]["follow_up_messages"] == ()
@@ -3069,6 +3103,44 @@ def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
 
     assert runtime.get_current_session().set_model_calls == [
         ModelSelection(provider="faux", endpoint_id="responses", model_id="beta")
+    ]
+
+
+def test_run_cli_completes_unique_provider_model_shorthand(tmp_path) -> None:
+    from loushang.ai.model import ModelSelection
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            [
+                "--mode",
+                "json",
+                "--session",
+                "session-1",
+                "--model",
+                "faux:beta",
+                "hello",
+            ],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(str(tmp_path / "sessions")),
+            runtime_builder=lambda **kwargs: runtime,
+            print_runner=FakeRunner(),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert runtime.get_current_session().set_model_calls == [
+        ModelSelection(
+            provider="faux",
+            endpoint_id="test-endpoint",
+            model_id="beta",
+        )
     ]
 
 
@@ -6106,7 +6178,8 @@ def test_run_cli_keeps_list_commands_out_of_default_tui(tmp_path) -> None:
 
 def test_run_cli_configures_observability_for_tui_debug_trace(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.observability import get_log, reset_observability
+    from loushang.foundation.observability import get_log
+    from loushang.foundation.observability._router import reset_observability
 
     reset_observability()
     runtime = FakeRuntime(FakeSession("session-1"))
@@ -6216,17 +6289,29 @@ def test_run_cli_lists_models_and_returns_early(tmp_path) -> None:
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "anthropic", "model_id": "claude-3-opus"},
+                    {
+                        "provider": "anthropic",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "claude-3-opus",
+                    },
                 ),
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "google", "model_id": "gemini-2.0"},
+                    {
+                        "provider": "google",
+                        "endpoint_id": "generate-content",
+                        "model_id": "gemini-2.0",
+                    },
                 ),
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "anthropic", "model_id": "claude-3-haiku"},
+                    {
+                        "provider": "anthropic",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "claude-3-haiku",
+                    },
                 ),
             ]
 
@@ -6254,7 +6339,10 @@ def test_run_cli_lists_models_and_returns_early(tmp_path) -> None:
 
     assert runtime_args[0].no_session is True
     assert runtime.get_current_session().get_available_models_calls == 1
-    assert stdout.getvalue() == "anthropic/claude-3-haiku\nanthropic/claude-3-opus\n"
+    assert stdout.getvalue() == (
+        "anthropic:anthropic-messages:claude-3-haiku\n"
+        "anthropic:anthropic-messages:claude-3-opus\n"
+    )
     assert "prompt is required" not in stderr.getvalue()
 
 
@@ -6268,17 +6356,29 @@ def test_run_cli_lists_models_as_json(tmp_path) -> None:
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "anthropic", "model_id": "claude-3-opus"},
+                    {
+                        "provider": "anthropic",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "claude-3-opus",
+                    },
                 ),
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "google", "model_id": "gemini-2.0"},
+                    {
+                        "provider": "google",
+                        "endpoint_id": "generate-content",
+                        "model_id": "gemini-2.0",
+                    },
                 ),
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "anthropic", "model_id": "claude-3-haiku"},
+                    {
+                        "provider": "anthropic",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "claude-3-haiku",
+                    },
                 ),
             ]
 
@@ -6304,13 +6404,15 @@ def test_run_cli_lists_models_as_json(tmp_path) -> None:
     assert json.loads(stdout.getvalue()) == [
         {
             "provider": "anthropic",
+            "endpoint_id": "anthropic-messages",
             "model_id": "claude-3-haiku",
-            "id": "anthropic/claude-3-haiku",
+            "id": "anthropic:anthropic-messages:claude-3-haiku",
         },
         {
             "provider": "anthropic",
+            "endpoint_id": "anthropic-messages",
             "model_id": "claude-3-opus",
-            "id": "anthropic/claude-3-opus",
+            "id": "anthropic:anthropic-messages:claude-3-opus",
         },
     ]
     assert stderr.getvalue() == ""
@@ -6366,8 +6468,8 @@ def test_run_cli_lists_model_metadata_when_session_exposes_details(tmp_path) -> 
     asyncio.run(scenario())
 
     assert stdout.getvalue() == (
-        "provider   model          context  max-out  thinking  images\n"
-        "anthropic  claude-3-opus  200K     8192     yes       yes\n"
+        "provider   endpoint            model          context  max-out  thinking  images\n"
+        "anthropic  anthropic-messages  claude-3-opus  200K     8192     yes       yes\n"
     )
     assert stderr.getvalue() == ""
 
@@ -6412,8 +6514,9 @@ def test_run_cli_lists_model_metadata_as_json(tmp_path) -> None:
     assert json.loads(stdout.getvalue()) == [
         {
             "provider": "moonshot",
+            "endpoint_id": "anthropic-messages",
             "model_id": "kimi-k2.5",
-            "id": "moonshot/kimi-k2.5",
+            "id": "moonshot:anthropic-messages:kimi-k2.5",
             "context_window": 256000,
             "max_tokens": 16384,
             "supports_thinking": True,
@@ -6432,14 +6535,30 @@ def test_run_cli_lists_models_deduplicates_provider_model_pairs(tmp_path) -> Non
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "moonshot", "model_id": "kimi-k2.5"},
+                    {
+                        "provider": "moonshot",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "kimi-k2.5",
+                    },
                 ),
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "moonshot", "model_id": "kimi-k2.5"},
+                    {
+                        "provider": "moonshot",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "kimi-k2.5",
+                    },
                 ),
-                type("ModelSelection", (), {"provider": "openai", "model_id": "gpt-5"}),
+                type(
+                    "ModelSelection",
+                    (),
+                    {
+                        "provider": "openai",
+                        "endpoint_id": "responses",
+                        "model_id": "gpt-5",
+                    },
+                ),
             ]
 
     runtime = FakeRuntime(ModelSession("session-1"))
@@ -6461,7 +6580,9 @@ def test_run_cli_lists_models_deduplicates_provider_model_pairs(tmp_path) -> Non
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == "moonshot/kimi-k2.5\nopenai/gpt-5\n"
+    assert stdout.getvalue() == (
+        "moonshot:anthropic-messages:kimi-k2.5\nopenai:responses:gpt-5\n"
+    )
     assert stderr.getvalue() == ""
 
 
@@ -6564,7 +6685,9 @@ def test_run_cli_list_models_query_ignores_invalid_model_entries(tmp_path) -> No
         def get_available_models(self):
             return [
                 SimpleNamespace(provider=123, model_id="legacy"),
-                SimpleNamespace(provider="openai", model_id="gpt-5"),
+                SimpleNamespace(
+                    provider="openai", endpoint_id="responses", model_id="gpt-5"
+                ),
                 SimpleNamespace(provider="moonshot", model_id=None),
             ]
 
@@ -6586,7 +6709,7 @@ def test_run_cli_list_models_query_ignores_invalid_model_entries(tmp_path) -> No
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == "openai/gpt-5\n"
+    assert stdout.getvalue() == "openai:responses:gpt-5\n"
     assert stderr.getvalue() == ""
 
 
@@ -6608,7 +6731,9 @@ def test_run_cli_list_models_query_ignores_raising_model_attributes(tmp_path) ->
         def get_available_models(self):
             return [
                 BadProvider(),
-                SimpleNamespace(provider="openai", model_id="gpt-5"),
+                SimpleNamespace(
+                    provider="openai", endpoint_id="responses", model_id="gpt-5"
+                ),
             ]
 
     runtime = FakeRuntime(RaisingModelSession("session-1"))
@@ -6629,7 +6754,7 @@ def test_run_cli_list_models_query_ignores_raising_model_attributes(tmp_path) ->
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == "openai/gpt-5\n"
+    assert stdout.getvalue() == "openai:responses:gpt-5\n"
     assert stderr.getvalue() == ""
 
 
@@ -6653,11 +6778,19 @@ def test_run_cli_list_models_text_mode_uses_normalized_entries(tmp_path) -> None
         def model_id(self) -> str:
             return "gpt-5"
 
+        @property
+        def endpoint_id(self) -> str:
+            return "responses"
+
     class MixedModelSession(FakeSession):
         def get_available_models(self):
             return [
                 FlakyModel(),
-                SimpleNamespace(provider="anthropic", model_id="claude-3-haiku"),
+                SimpleNamespace(
+                    provider="anthropic",
+                    endpoint_id="anthropic-messages",
+                    model_id="claude-3-haiku",
+                ),
             ]
 
     runtime = FakeRuntime(MixedModelSession("session-1"))
@@ -6678,7 +6811,7 @@ def test_run_cli_list_models_text_mode_uses_normalized_entries(tmp_path) -> None
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == "anthropic/claude-3-haiku\n"
+    assert stdout.getvalue() == "anthropic:anthropic-messages:claude-3-haiku\n"
     assert stderr.getvalue() == ""
 
 
@@ -8728,8 +8861,9 @@ def test_run_cli_reports_list_diagnostics_invalid_limit(tmp_path) -> None:
 
 def test_run_cli_bridges_startup_problem_to_diagnostics(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.foundation.observability import get_log
+    from loushang.foundation.observability._router import reset_observability
     from loushang.harness.diagnostics import DiagnosticsService
-    from loushang.observability import get_log, reset_observability
 
     class StartupProblemRuntime(FakeRuntime):
         async def new_session(self, *, cwd: str) -> FakeSession:

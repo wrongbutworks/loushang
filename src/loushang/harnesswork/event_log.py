@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
+from loushang.foundation.json import require_json_mapping
 from loushang.harness.journal import (
     PROCESS_LOCAL_JOURNAL,
     SORTED_UNICODE_JSONL_FORMAT,
@@ -15,7 +16,6 @@ from loushang.harness.journal import (
     JsonlJournal,
     JsonlSnapshot,
 )
-from loushang.protocol import require_json_mapping
 
 _EVENT_LOG_ENTRY_FIELDS = frozenset(
     {

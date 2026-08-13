@@ -74,9 +74,8 @@ Product-neutral playback substrate 验证。详细设计见
 - `loushang.tui`
 - `loushang.harnesswork`
 - `loushang.work`
-- `loushang.observability`
+- `loushang.foundation`
 - `loushang.ontology`
-- `loushang.protocol`
 
 `loushang.channel` 提供承载 `WorkOperation` / `WorkEvent` 以及已投影
 `RuntimeEventView` 的边界协议，及 `rpc_jsonl` 的 JSONL framing、request
@@ -101,9 +100,10 @@ loushang/
       method/
       tui/
       work/
-      observability/
+      foundation/
+        json.py
+        observability/
       ontology/
-      protocol/
   tests/
 ```
 
@@ -124,6 +124,8 @@ loushang/
 [ARD-002: Harness Product Adapter Substrate](./agent/ARD-002-harness-product-adapter-substrate.md)。
 `loushang-work` 的业务工作与方法履约边界请参见
 [Loushang Work Architecture](./work/README.md)。
+`loushang-ontology` 的版本化语义内核、Store/Projection 与 typed query 边界请参见
+[Loushang Ontology Architecture](./ontology/README.md)。
 
 ## Architecture Stack
 
@@ -165,8 +167,10 @@ CLI / TUI
 - `coding` 提供产品化装配；产品语义留在 feature-local adapter，
   `loushang.coding.ui` 只完成最终 UI composition 与 terminal binding
 - `channel` 定义边界通信协议类型，当前已落地最小 envelope / endpoint surface
-- `protocol` 提供不依赖产品、Harness、Agent 或 AI 的严格 JSON wire-value
-  algebra，供上述层共同使用
+- `foundation.json` 提供不依赖产品、Harness、Agent 或 AI 的严格 JSON
+  wire-value algebra；`foundation.observability` 提供同样产品无关的日志上下文、
+  问题记录、trace/debug 事件、sink 路由和运行时身份能力；旧 `protocol` 与
+  `observability` 包暂时只转发 canonical contract，不再拥有独立实现或状态
 
 ## Agent and Channel Documentation
 

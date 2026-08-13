@@ -10,7 +10,7 @@ from loushang.channel.json_codec import (
     channel_envelope_to_json,
 )
 from loushang.channel.types import ChannelEnvelope
-from loushang.protocol import JSONValue, dump_json_value, require_json_mapping
+from loushang.foundation.json import JSONValue, dump_json_value, require_json_mapping
 
 ChannelRpcFrameKind: TypeAlias = Literal[
     "operation_request",

@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from loushang.ai.types import AssistantMessage, ToolResultMessage, UserMessage
+from loushang.foundation.json import require_json_value
 from loushang.harness.conversation import (
     BranchDelta,
     CommandExecutionRecord,
@@ -40,7 +41,6 @@ from loushang.harness.transcript.unit_of_work import (
     AgentTranscriptCommit,
     AgentTranscriptUnitOfWork,
 )
-from loushang.protocol import require_json_value
 
 CommitObserver = Callable[[CommitResult], None]
 ApplicationMessageIdFactory = Callable[[], str]
@@ -223,14 +223,14 @@ class AgentTranscriptSession:
         provider: str,
         model_id: str,
         *,
-        endpoint_id: str | None = None,
+        endpoint_id: str,
     ) -> str:
         return self._complete_commit(
             await self._transcript.append_model_selection(
                 ModelSelectionSnapshot(
                     provider=provider,
-                    model_id=model_id,
                     endpoint_id=endpoint_id,
+                    model_id=model_id,
                 )
             )
         )

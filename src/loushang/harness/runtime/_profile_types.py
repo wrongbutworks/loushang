@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal, TypeVar, cast
 
-from loushang.protocol import JSONValue, require_json_mapping
+from loushang.foundation.json import JSONValue, require_json_mapping
 
 RuntimeProfileSource = Literal["product", "oem", "extension", "session"]
 RuntimeCapabilityShape = Literal["single", "ordered", "exclusive", "append_only"]

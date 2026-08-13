@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 
-from loushang.protocol import JSONValue, require_json_value
+from loushang.foundation.json import JSONValue, require_json_value
 
 
 class HostJsonProjectionError(TypeError):

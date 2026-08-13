@@ -6,10 +6,10 @@ from enum import Enum
 from typing import Self
 
 from loushang.ai.utils.redaction import is_header_container_key, is_sensitive_key
-from loushang.observability.problem import (
-    JSONValue,
-    ensure_json_safe_mapping,
-    ensure_json_safe_value,
+from loushang.foundation.json import JSONValue
+from loushang.foundation.observability.projection import (
+    project_diagnostic_mapping,
+    project_diagnostic_value,
 )
 
 _REDACTED = "[redacted]"
@@ -49,7 +49,7 @@ class AIErrorInfo:
     def __post_init__(self) -> None:
         if not isinstance(self.code, AIErrorCode):
             raise TypeError("AIErrorInfo.code must be AIErrorCode")
-        details = ensure_json_safe_mapping(self.details)
+        details = project_diagnostic_mapping(self.details)
         object.__setattr__(self, "details", details)
 
     def to_dict(self) -> dict[str, JSONValue]:
@@ -235,7 +235,7 @@ def _redact_json_value(value: JSONValue, *, key: str | None = None) -> JSONValue
         }
     if isinstance(value, list):
         return [_redact_json_value(item) for item in value]
-    return ensure_json_safe_value(value)
+    return project_diagnostic_value(value)
 
 
 def _redact_json_mapping(value: Mapping[str, JSONValue]) -> dict[str, JSONValue]:

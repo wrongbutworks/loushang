@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from loushang.foundation.json import JSONValue, dump_json_value
 from loushang.harness.runtime._profile_types import (
     ProductRuntimePlan,
     ResolvedRuntimeCapability,
@@ -15,7 +16,6 @@ from loushang.harness.runtime._profile_types import (
     RuntimeProfileLayer,
     RuntimeProfileResolutionError,
 )
-from loushang.protocol import JSONValue, dump_json_value
 
 _SOURCE_RANK = {
     "product": 0,

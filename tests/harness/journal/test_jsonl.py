@@ -88,8 +88,8 @@ def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
 def test_journal_rejects_values_outside_strict_json_algebra(tmp_path: Path) -> None:
     import pytest
 
+    from loushang.foundation.json import JsonValueError
     from loushang.harness.journal import append_jsonl_record
-    from loushang.protocol import JsonValueError
 
     class UnsafeRecordCodec:
         def encode_record(self, record: _Record):

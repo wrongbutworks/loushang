@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Generic, TypeVar
 from uuid import uuid4
 
+from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import (
     CURRENT_CONVERSATION_FORMAT_VERSION,
     ConversationHeader,
@@ -27,7 +28,6 @@ from loushang.harness.transcript.session_catalog import (
     AgentTranscriptSessionCatalog,
 )
 from loushang.harness.transcript.types import AgentTranscriptRecord
-from loushang.protocol import JSONValue
 
 BindingInputT = TypeVar("BindingInputT")
 ProductBindingT = TypeVar("ProductBindingT")

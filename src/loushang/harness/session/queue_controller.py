@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Protocol, cast
 
 from loushang.ai.types import ImagePart, TextPart, UserMessage
+from loushang.foundation.observability import get_log
 from loushang.harness.events.session import (
     QueuedMessageSnapshot,
     QueueKind,
@@ -13,7 +14,6 @@ from loushang.harness.events.session import (
 from loushang.harness.runtime.input_queue import HostInputQueue
 from loushang.harness.runtime.turn import TurnInputQueue
 from loushang.harness.runtime.types import QueueMode
-from loushang.observability import get_log
 
 PreflightUserInput = Callable[[str], object]
 RejectExtensionCommand = Callable[[str], None]

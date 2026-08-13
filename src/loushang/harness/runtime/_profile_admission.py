@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
+from loushang.foundation.json import JSONValue
 from loushang.harness.runtime._profile_types import (
     _SOURCES,
     ProductRuntimePlan,
@@ -15,7 +16,6 @@ from loushang.harness.runtime._profile_types import (
     _require_choice,
     _require_nonempty_string,
 )
-from loushang.protocol import JSONValue
 
 
 @dataclass(frozen=True)

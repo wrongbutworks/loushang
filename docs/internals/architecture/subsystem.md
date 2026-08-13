@@ -22,9 +22,8 @@
 
 当前已落地的支撑/实验性包包括：
 
-- `loushang.observability`
+- `loushang.foundation`
 - `loushang.ontology`
-- `loushang.protocol`
 
 `loushang.runtime` 不再作为子系统保留。若某个 worktree 中仍存在
 `src/loushang/runtime`，它只是待删除的旧 command/effect 临时路径；迁移目标是
@@ -44,6 +43,58 @@ command substrate 的目标归属是 `loushang.harness`，见
 命令表与 UI payload 不属于长期 Channel core。
 
 ## Subsystem Responsibilities
+
+### loushang-foundation
+
+产品无关、只依赖 Python 标准库的共同底座。当前 canonical implementations 是：
+
+- `loushang.foundation.json`，负责唯一的严格 `JSONValue` algebra、校验、复制
+  与编码；
+- `loushang.foundation.observability`，负责日志上下文、问题记录、trace/debug
+  事件、sink 路由、运行时配置与运行时身份。
+
+旧顶层包 `loushang.protocol` 和 `loushang.observability` 已退出；所有调用方直接
+使用上述 canonical owners。Foundation 不负责 Product 策略、Agent/Harness 编排、
+Work 权威事件、Channel schema，或者为诊断投影之外的新 wire schema 提供任意
+Python 对象到 JSON 的容错转换。
+
+### loushang-ontology
+
+可选的 operational ontology infrastructure。它把 Product / Domain adapter
+提供的版本化 schema 和 immutable FactBatch 转成受约束、可重建的语义对象图，
+并返回稳定对象 ID、typed query、不可变投影构建坐标与独立 freshness diagnostics。
+
+```text
+Product / Domain Adapter
+          | FactBatch
+          v
+     +----------+-------> Memory / SQLite v2 FactStore
+     | Ontology |-------> immutable ProjectionSnapshot
+     +----------+-------> Memory / SQLite ProjectionStore
+          |
+          +-------------> typed QueryResult
+
+Ontology -> Foundation JSON
+```
+
+Ontology core 不依赖 Harness、HarnessWork、Agent、AI、Channel 或 Product。
+当前没有 ontology/HarnessWork Action bridge；未来 Action contract 成立后由
+Product adapter 同时依赖两者，HarnessWork 不反向拥有 ontology 类型。
+
+当前已完成 schema kernel、Wave 2A 和 Phase 2：除 immutable
+Fact/Provenance、双时间选择和 typed query 外，还提供独立的 Fact/Projection
+端口、纯 commit planner、不可变 ProjectionSnapshot、全量原子 replace，以及互不
+委托的 Memory/SQLite adapters。SQLite 当前格式直接为带
+`storage_layout=phase2` 的 v2；不提供 v1 或旧 v2 reader/migrator。
+ARD-003 的首个 correctness slice 还提供原子 `FactSelection`、纯 freshness evaluator
+和 SQLite 单读事务快照；schema v2 进一步为 ObjectType、object Property 和 LinkType
+提供 package-local stable semantic ID，schema v3 又要求这些 operational definition
+显式声明 `source-backed`、`ontology-owned` 或 `derived` StateAuthority。当前 Fact-only
+runtime 仍只从 FactStore 物化；目标架构允许后续 mapped source input 按声明的
+`StateAuthority` 参与物化。
+`ontology.core`、直接对象 mutation 与兼容 facade 已退出源码和公共面。
+它尚不包含 OWL/SHACL、Action/Decision runtime、SDK 生成、分布式 serving 或行业领域包。详见
+[Loushang Ontology Architecture](./ontology/README.md)。
 
 ### loushang-ai
 
@@ -333,7 +384,6 @@ loushang.coding
 loushang.method -> Product adapter -> loushang.harnesswork
 loushang.coding.adapters.harnesswork -> loushang.harnesswork
 loushang.channel.adapters.harnesswork -> loushang.harnesswork
-loushang.ontology.integrations.harnesswork -> loushang.harnesswork
 loushang.coding.ui -> loushang.coding feature-local TUI adapters
 loushang.coding.ui -> loushang.harnesstui -> loushang.tui
 loushang.coding feature-local TUI adapters -> loushang.harnesstui

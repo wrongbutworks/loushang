@@ -25,13 +25,13 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.observability import (
-    TraceJSONLSink,
+from loushang.foundation.observability import log_context
+from loushang.foundation.observability._router import (
     capture_observability,
     configure_observability,
-    log_context,
     restore_observability,
 )
+from loushang.foundation.observability.trace_sink import TraceJSONLSink
 
 DEFAULT_MODEL = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
 DEFAULT_ENDPOINT = "kimi-code-anthropic"

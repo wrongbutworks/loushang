@@ -7,13 +7,13 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal, Protocol, TextIO, cast
 
-from loushang.harness.host._stdio import read_line, stream_supports_fileno
-from loushang.protocol import (
+from loushang.foundation.json import (
     JSONValue,
     JsonValueError,
     require_json_mapping,
     require_json_value,
 )
+from loushang.harness.host._stdio import read_line, stream_supports_fileno
 
 JsonlCommandHostErrorKind = Literal["parse", "invalid", "dispatch"]
 JsonlCommandHostErrorReason = Literal[

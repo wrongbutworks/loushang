@@ -15,9 +15,13 @@ from loushang.ai.types import (
 )
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
+from loushang.foundation.observability import log_context
+from loushang.foundation.observability._router import (
+    get_problem_store,
+    reset_observability,
+)
 from loushang.harness.tools.workspace import create_write_tool_definition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
-from loushang.observability import get_problem_store, log_context, reset_observability
 
 
 def _usage() -> Usage:
@@ -43,6 +47,7 @@ def _model() -> Model:
 
 def _assistant_text(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -58,6 +63,7 @@ def _assistant_text(text: str) -> AssistantMessage:
 
 def _assistant_tool_calls(*tool_calls: ToolCall) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=list(tool_calls),
         api="anthropic-messages",

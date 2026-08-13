@@ -9,6 +9,11 @@ from loushang.agent.json_codec import serialize_tool_result
 from loushang.agent.types import AgentToolResult
 from loushang.ai.json_codec import serialize_assistant_message_event, serialize_message
 from loushang.ai.types import AssistantMessageEvent, Message
+from loushang.foundation.json import (
+    JsonValueError,
+    require_json_mapping,
+    require_json_value,
+)
 from loushang.harness.events import RuntimeEvent, project_session_runtime_event
 from loushang.harness.transcript import create_agent_transcript_message_codec
 from loushang.harnesswork.event_log import EventLogBackend
@@ -18,7 +23,6 @@ from loushang.harnesswork.integrations.session import (
     SessionWorkRuntime,
 )
 from loushang.harnesswork.types import DeliveryHint, WorkEventFact
-from loushang.protocol import JsonValueError, require_json_mapping, require_json_value
 
 AgentMessageSerializer = Callable[[object], Mapping[str, object]]
 

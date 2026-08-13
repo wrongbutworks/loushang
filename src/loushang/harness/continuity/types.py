@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from loushang.protocol import JSONValue, require_json_mapping
+from loushang.foundation.json import JSONValue, require_json_mapping
 
 ContinuitySort = Literal["updated", "created"]
 ContinuityIndexState = Literal["fresh", "stale", "rebuilding", "unavailable", "unknown"]

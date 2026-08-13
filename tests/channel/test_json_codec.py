@@ -212,7 +212,7 @@ def test_channel_envelope_json_rejects_implicit_payload_projection() -> None:
     from pathlib import Path
 
     from loushang.channel import ChannelEnvelope, channel_envelope_to_json
-    from loushang.protocol import JsonValueError
+    from loushang.foundation.json import JsonValueError
     from loushang.work import WorkOperation
 
     envelope = ChannelEnvelope(
@@ -336,7 +336,7 @@ def test_channel_envelope_json_decode_rejects_invalid_datetime(
 
 def test_channel_envelope_json_decode_does_not_coerce_custom_string_values() -> None:
     from loushang.channel import channel_envelope_from_json
-    from loushang.protocol import JsonValueError
+    from loushang.foundation.json import JsonValueError
 
     class StringLike:
         called = False

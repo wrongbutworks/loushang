@@ -5,12 +5,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from loushang.ai.trace import TRACE_SCHEMA, emit_trace
-from loushang.observability import (
+from loushang.foundation.observability import log_context
+from loushang.foundation.observability._router import (
     configure_observability,
-    log_context,
     reset_observability,
 )
-from loushang.observability.trace import TraceJSONLSink
+from loushang.foundation.observability.trace_sink import TraceJSONLSink
 
 
 def setup_function() -> None:

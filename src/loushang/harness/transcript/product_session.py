@@ -13,6 +13,7 @@ import builtins
 from pathlib import Path
 from typing import Generic, Self, TypeVar
 
+from loushang.foundation.json import require_json_value
 from loushang.harness.transcript.lifecycle import (
     AgentTranscriptLifecycleSession,
     delete_agent_transcript_jsonl,
@@ -43,7 +44,6 @@ from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptRecord,
 )
-from loushang.protocol import require_json_value
 
 BindingInputT = TypeVar("BindingInputT")
 ProductBindingT = TypeVar("ProductBindingT")

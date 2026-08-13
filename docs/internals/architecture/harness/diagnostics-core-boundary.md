@@ -106,7 +106,7 @@ The target direction is:
 coding checks / sessions / tools / runtime -> loushang.harness.diagnostics.service
 coding serializers                           -> loushang.harness.diagnostics.types
 coding observability policy                  -> loushang.harness.diagnostics.observability_bridge
-loushang.harness.diagnostics.observability_bridge -> loushang.observability
+loushang.harness.diagnostics.observability_bridge -> loushang.foundation.observability
 loushang.harness.resources.diagnostics     -> loushang.harness.diagnostics.types
 ```
 

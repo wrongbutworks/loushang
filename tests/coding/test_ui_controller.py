@@ -498,12 +498,12 @@ def test_controller_returns_error_result_without_verbose_traceback() -> None:
 
 def test_controller_records_problem_for_dispatch_failure() -> None:
     from loushang.coding.ui.product_binding import build_coding_ui_controller
-    from loushang.harnesstui.conversation.intents import PromptIntent
-    from loushang.observability import (
+    from loushang.foundation.observability import log_context
+    from loushang.foundation.observability._router import (
         get_problem_store,
-        log_context,
         reset_observability,
     )
+    from loushang.harnesstui.conversation.intents import PromptIntent
 
     class FailingSession(_Session):
         async def prompt(self, text: str, **_kwargs: object) -> None:
@@ -532,8 +532,11 @@ def test_controller_records_problem_for_dispatch_failure() -> None:
 
 def test_controller_records_problem_for_cancelled_prompt() -> None:
     from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.foundation.observability._router import (
+        get_problem_store,
+        reset_observability,
+    )
     from loushang.harnesstui.conversation.intents import PromptIntent
-    from loushang.observability import get_problem_store, reset_observability
 
     class CancelledSession(_Session):
         async def prompt(self, text: str, **_kwargs: object) -> None:

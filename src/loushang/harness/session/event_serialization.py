@@ -5,8 +5,8 @@ from typing import Any, cast
 
 from loushang.agent.types import AgentMessage, AgentToolResult
 from loushang.ai.types import AssistantMessageEvent
+from loushang.foundation.json import require_json_value
 from loushang.harness.events.json import snake_case_json_keys
-from loushang.protocol import require_json_value
 
 
 def serialize_agent_message(message: object) -> object:

@@ -77,6 +77,7 @@ def test_project_messages_with_existing_ai_codecs() -> None:
     )
 
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="hello")],
         api="responses",
@@ -125,6 +126,7 @@ def test_project_messages_with_existing_ai_codecs() -> None:
         ],
         "api": "responses",
         "provider": "example",
+        "endpoint": "test-endpoint",
         "model": "example-1",
         "responseId": "response-1",
         "usage": {
@@ -425,10 +427,10 @@ def test_work_event_bridge_rejects_non_json_payloads() -> None:
 
     import pytest
 
+    from loushang.foundation.json import JsonValueError
     from loushang.harnesswork.integrations.agent_events import (
         project_agent_event_to_work_events,
     )
-    from loushang.protocol import JsonValueError
 
     cases = (
         (

@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, TextIO
 
+from loushang.foundation.json import require_json_value
 from loushang.harness.conversation import ConversationJsonlHeaderCodec
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.events.projection import RuntimeEventView
@@ -15,7 +16,6 @@ from loushang.harnesstui.conversation.plain_prompt_host import (
     last_assistant_failure_message,
     session_identity,
 )
-from loushang.protocol import require_json_value
 
 _HEADER_CODEC = ConversationJsonlHeaderCodec()
 

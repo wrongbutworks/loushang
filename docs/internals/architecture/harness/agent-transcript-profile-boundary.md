@@ -68,9 +68,8 @@ integer for this contract. Mixed payload versions may occur in one
 conversation. An ordinary load, rewrite, or fork never upgrades payload
 versions implicitly; migration is an explicit operation.
 
-Envelope metadata and JSON-backed payloads use the existing strict
-`loushang.protocol.JSONValue` algebra. This wave reuses that package and does
-not rename it.
+Envelope metadata and JSON-backed payloads use the strict
+`loushang.foundation.json.JSONValue` algebra.
 
 ## Standard Record Kinds
 
@@ -202,17 +201,17 @@ in the Conversation JSONL reader.
 
 ## Dependency Boundary
 
-The neutral conversation core may depend on `loushang.protocol`, but not AI or
-Agent. The optional Agent transcript profile may depend only on these AI/Agent
-data and wire-codec modules:
+The neutral conversation core may depend on `loushang.foundation.json`, but not
+AI or Agent. The optional Agent transcript profile may depend only on these
+AI/Agent data and wire-codec modules:
 
 - `loushang.ai.types`
 - `loushang.ai.json_codec`
 - `loushang.agent.types`
 - `loushang.agent.json_codec`
 
-It may also depend on `loushang.protocol` and neutral Harness packages. It must
-not import AI API, auth, provider/providers, model registry or selection
+It may also depend on `loushang.foundation.json` and neutral Harness packages.
+It must not import AI API, auth, provider/providers, model registry or selection
 package, event stream, model invocation, or any Product. A local pure-value
 `ModelSelectionSnapshot` avoids importing `loushang.ai.model`, whose package
 initialization loads broader model infrastructure.

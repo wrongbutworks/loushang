@@ -13,6 +13,7 @@ from typing import Protocol
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import AssistantMessage
+from loushang.foundation.json import require_json_value
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticDraft,
@@ -25,7 +26,6 @@ from loushang.harness.diagnostics.types import (
     ErrorReport,
 )
 from loushang.harness.extensions.types import ResolvedCommand
-from loushang.protocol import require_json_value
 
 _EXTENSION_ERROR_DIAGNOSTIC_CODES: frozenset[str] = frozenset(
     {

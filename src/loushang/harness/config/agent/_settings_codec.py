@@ -114,10 +114,11 @@ def _serialize_model_selection(
 ) -> dict[str, str] | None:
     if selection is None:
         return None
-    payload = {"provider": selection.provider, "model_id": selection.model_id}
-    if selection.endpoint_id:
-        payload["endpoint_id"] = selection.endpoint_id
-    return payload
+    return {
+        "provider": selection.provider,
+        "endpoint_id": selection.endpoint_id,
+        "model_id": selection.model_id,
+    }
 
 
 def _deserialize_model_selection(value: object) -> ModelSelection | None:
@@ -126,16 +127,20 @@ def _deserialize_model_selection(value: object) -> ModelSelection | None:
     if not isinstance(value, Mapping):
         raise TypeError("default_model must be a JSON object or null")
     provider = value.get("provider")
-    model_id = value.get("model_id")
-    if not isinstance(provider, str) or not isinstance(model_id, str):
-        raise TypeError(
-            "default_model must include string provider and model_id values"
-        )
     endpoint_id = value.get("endpoint_id") or value.get("endpointId")
+    model_id = value.get("model_id")
+    if (
+        not isinstance(provider, str)
+        or not isinstance(endpoint_id, str)
+        or not isinstance(model_id, str)
+    ):
+        raise TypeError(
+            "default_model must include string provider, endpoint_id, and model_id values"
+        )
     return ModelSelection(
         provider=provider,
+        endpoint_id=endpoint_id,
         model_id=model_id,
-        endpoint_id=endpoint_id if isinstance(endpoint_id, str) else None,
     )
 
 
@@ -329,6 +334,8 @@ def _serialize_tool_settings(value: object) -> dict[str, Any]:
             ),
             "blocked_tools": list(value.blocked_tools),
             "ask_tools": list(value.ask_tools),
+            "blocked_capabilities": list(value.blocked_capabilities),
+            "ask_capabilities": list(value.ask_capabilities),
             "blocked_substrings": list(value.blocked_substrings),
             "ask_substrings": list(value.ask_substrings),
             "blocked_path_substrings": list(value.blocked_path_substrings),
@@ -346,6 +353,8 @@ def _serialize_tool_settings(value: object) -> dict[str, Any]:
     for key in (
         "blocked_tools",
         "ask_tools",
+        "blocked_capabilities",
+        "ask_capabilities",
         "blocked_substrings",
         "ask_substrings",
         "blocked_path_substrings",
@@ -433,6 +442,8 @@ def _apply_tool_settings_patch(
     for key in (
         "blocked_tools",
         "ask_tools",
+        "blocked_capabilities",
+        "ask_capabilities",
         "blocked_substrings",
         "ask_substrings",
         "blocked_path_substrings",
@@ -444,6 +455,16 @@ def _apply_tool_settings_patch(
                 next_settings = replace(next_settings, blocked_tools=normalized)
             elif key == "ask_tools":
                 next_settings = replace(next_settings, ask_tools=normalized)
+            elif key == "blocked_capabilities":
+                next_settings = replace(
+                    next_settings,
+                    blocked_capabilities=normalized,
+                )
+            elif key == "ask_capabilities":
+                next_settings = replace(
+                    next_settings,
+                    ask_capabilities=normalized,
+                )
             elif key == "blocked_substrings":
                 next_settings = replace(next_settings, blocked_substrings=normalized)
             elif key == "ask_substrings":

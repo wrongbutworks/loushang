@@ -2,9 +2,12 @@
 
 ## Status
 
-Proposed draft. This document defines a refactor plan; it does not make
-`loushang.foundation` accepted architecture and does not authorize removing the
-current compatibility packages.
+Completed. Phases 0 through 6 are implemented. `loushang.foundation.json` is
+the sole strict JSON owner; `records`, `projection`, and `_router` own the
+canonical Observability internals; every production consumer uses Foundation;
+and the former top-level Protocol and Observability compatibility packages are
+retired. `ai.structured` uses strict schema validation, while diagnostic
+projection remains an explicitly separate policy.
 
 The refactor is intentionally limited to package ownership, dependency
 direction, API clarity, and compatibility. It does not add new logging,
@@ -12,8 +15,8 @@ telemetry, serialization, or runtime features.
 
 ## Decision Summary
 
-Consolidate the two product-neutral, standard-library-only substrate packages
-under one level-two package:
+The two former product-neutral, standard-library-only substrate packages were
+consolidated under one level-two package:
 
 ```text
 loushang.protocol       --\
@@ -51,21 +54,21 @@ packages already need these contracts independently.
 
 ## Why Consolidate
 
-The current packages have the same architectural position but expose that
+The former packages had the same architectural position but exposed that
 position inconsistently:
 
-- `loushang.protocol` currently owns only the strict JSON value algebra; the
+- `loushang.protocol` owned only the strict JSON value algebra; the
   package name is broader than its implemented responsibility.
-- `loushang.observability` is also a standard-library-only substrate consumed
+- `loushang.observability` was also a standard-library-only substrate consumed
   by AI, Agent, Harness, Coding, and TUI.
 - both packages are valid dependencies of several level-two subsystems and
   therefore belong below, rather than inside, any one of them.
-- Observability currently declares a second structural `JSONValue` alias,
+- Observability declared a second structural `JSONValue` alias,
   which makes ownership unclear even though callers should see one JSON value
   type.
 
-At the Phase 0 baseline, 60 production files directly import one or both
-current packages: 43 import `loushang.protocol` and 18 import
+At the Phase 0 baseline, 60 production files directly imported one or both
+former packages: 43 imported `loushang.protocol` and 18 imported
 `loushang.observability`, with one file importing both. This breadth requires
 a compatibility-first migration rather than a repository-wide rename in one
 change.
@@ -87,9 +90,9 @@ format or nominal runtime type that does not exist.
 
 ### More Than One Ingress Policy
 
-The current code contains three different behaviors:
+The Phase 0 code contained three different behaviors:
 
-| Policy | Current owner | Purpose | Tuple | Unknown object | Non-finite float |
+| Policy | Phase 0 owner | Purpose | Tuple | Unknown object | Non-finite float |
 |---|---|---|---|---|---|
 | strict JSON validation | `protocol.json_value` | wire, schema, event, journal, persistence | reject | reject | reject |
 | diagnostic projection | `observability.problem` | Problem, log, and debug details | convert to list | reject | reject |
@@ -256,10 +259,10 @@ boundary. Normal callers must use `logger`; runtime integration uses selected
 configuration functions. This refactor does not declare a new public custom
 sink extension API.
 
-Existing public compatibility symbols such as `InMemoryProblemStore` and
-`get_problem_store()` may continue to be re-exported through the compatibility
-facade while their long-term public owner is evaluated. The canonical router
-must remain the only owner of the lock, configuration, scopes, and store.
+Explicit integration code may import `InMemoryProblemStore` and
+`get_problem_store()` from `_router`. The canonical router is the only owner of
+the lock, configuration, scopes, and store; the root API stays deliberately
+small.
 
 ### `observability.debug_sink`
 
@@ -293,7 +296,7 @@ Harness/Product adapter that consumes Foundation.
 ### `observability.identity`
 
 Owns diagnostic runtime-environment identity collection and formatting. It is
-the target of the current `runtime_identity.py`; the enclosing Observability
+the target of the former `runtime_identity.py`; the enclosing Observability
 package makes the shorter name unambiguous.
 
 `identity.py` depends only on the standard library and must not depend on
@@ -389,9 +392,8 @@ It must not export `JSONValue`; callers obtain that type from
 `foundation.json`. Runtime setup, identity, text formatting, and concrete sinks
 remain explicit leaf-module imports.
 
-The old `loushang.observability.__init__` may continue to expose its current
-wide surface during compatibility, but that surface must not be copied into the
-new canonical package.
+The retired compatibility root's former wide surface was not copied into the
+canonical package.
 
 ## Foundation Admission Rule
 
@@ -435,61 +437,20 @@ records. Moving the sink does not move provider trace policy into Foundation.
 These are authoritative or boundary-facing data paths. They use strict
 `foundation.json`, never diagnostic projection or trace fallback.
 
-## Compatibility Contract
+## Compatibility Retirement Outcome
 
-The migration keeps temporary forwarding packages for both root and directly
-imported submodule paths:
-
-```text
-loushang.protocol
-loushang.protocol.json_value
-
-loushang.observability
-loushang.observability.context
-loushang.observability.problem
-loushang.observability.logger
-loushang.observability.sinks
-loushang.observability.debug_log
-loushang.observability.trace
-loushang.observability.runtime
-loushang.observability.runtime_identity
-loushang.observability.problem_text
-```
-
-Compatibility modules contain only imports and aliases to canonical Foundation
-objects. They must not define a second class, TypeAlias, ContextVar, lock,
-configuration object, scope set, or ProblemStore.
-
-Required compatibility guarantees:
-
-```python
-old.ProblemRecord is new.ProblemRecord
-old.DebugEventRecord is new.DebugEventRecord
-old.LogContext is new.LogContext
-old.JsonValueError is new.JsonValueError
-```
-
-Cross-entry behavior must also work:
-
-```text
-configure through old path -> emit through new path
-configure through new path -> emit through old path
-set context through old path -> read through new path
-set context through new path -> read through old path
-```
-
-The compatibility promise covers symbol identity, exception identity, runtime
-state, and existing JSON/log/trace wire shapes. It does not automatically
-promise old `__module__` values or pickle paths. If downstream evidence shows
-that pickle compatibility is required, it needs a separate explicit design.
-
-Do not emit deprecation warnings in the first mechanical migration. Add a
-no-new-import gate first, then decide the removal window from real downstream
-usage.
+Temporary forwarding packages preserved symbol identity, exception identity,
+the single ContextVar/router state, and existing JSON/log/trace wire shapes
+during the ownership migration. After all repository consumers adopted the
+canonical paths, the forwarding packages and their compatibility-only tests
+were removed. Architecture tests now reject any import that reintroduces
+`loushang.protocol` or `loushang.observability`.
 
 ## Migration Plan
 
 ### Phase 0: Freeze Behavior and Inventory
+
+Status: complete.
 
 Before moving files:
 
@@ -507,6 +468,8 @@ every accidental edge behavior a permanent architectural promise.
 
 ### Phase 1: Establish `foundation.json`
 
+Status: complete.
+
 1. create a minimal `loushang.foundation` root;
 2. move the strict JSON implementation to `foundation/json.py` without changing
    behavior;
@@ -519,6 +482,8 @@ every accidental edge behavior a permanent architectural promise.
 Do not migrate all consumers in this phase.
 
 ### Phase 2: Establish Canonical Observability Without Restructuring
+
+Status: complete.
 
 Move the current implementation under `foundation/observability` using its
 existing internal file structure first:
@@ -548,6 +513,11 @@ splitting.
 
 ### Phase 3: Restructure Canonical Observability
 
+Implementation status: complete. `records.py`, `projection.py`, and `_router.py`
+own their focused responsibilities; compatibility-only `problem.py` and
+`sinks.py` are removed; and the concrete modules use the canonical
+`debug_sink.py`, `trace_sink.py`, and `identity.py` names.
+
 With callers still protected by compatibility facades, split and rename only
 inside the canonical package:
 
@@ -563,11 +533,14 @@ Keep `context.py`, `logger.py`, `runtime.py`, `problem_text.py`, and `_time.py`.
 Update relative imports and repeat state-identity and output-format tests after
 each small move.
 
-Rename `ensure_json_safe_value()` and `ensure_json_safe_mapping()` only through
-canonical diagnostic projection APIs. Compatibility modules retain the old
-names as aliases while old callers exist.
+The public diagnostic APIs are `project_diagnostic_value()` and
+`project_diagnostic_mapping()`; the migration-only names are retired.
 
 ### Phase 4: Migrate Consumers by Semantics
+
+Implementation status: complete. All production imports use canonical
+Foundation paths, including the dedicated strict `ai.structured` schema
+change.
 
 Migrate production callers in narrow batches:
 
@@ -584,14 +557,17 @@ be independently revertible.
 
 ### Phase 5: Update Live Architecture and Gates
 
+Status: complete. Live architecture names Foundation as the owner, enforces its
+standard-library-only dependency direction, and rejects retired imports.
+
 After canonical imports are adopted:
 
 1. replace the two level-two package entries with `loushang.foundation` in the
    architecture overview and subsystem documentation;
 2. update documents that currently state that `loushang.protocol` owns
    `JSONValue`;
-3. remove the documented Observability JSON compatibility exception after its
-   consumers are migrated;
+3. document diagnostic projection as a canonical policy rather than a JSON
+   ownership compatibility exception;
 4. add Foundation standard-library-only and no-upward-dependency tests;
 5. prohibit new production imports from old packages; and
 6. require explicit allowlisting only for the forwarding modules themselves.
@@ -600,6 +576,9 @@ Do not weaken existing architecture gates by adding broad transitional
 allowlists. Use a ratchet that can only reduce old imports.
 
 ### Phase 6: Retire Compatibility Separately
+
+Status: complete. Retirement was performed after canonical ownership and
+consumer migrations had landed, as a separately tracked final phase.
 
 Compatibility deletion is not part of the ownership migration. Remove the old
 packages only after:
@@ -621,7 +600,8 @@ Delete the compatibility facades in a separate, reviewable change.
 - `_router` does not import concrete sinks, logger, or runtime.
 - concrete sinks import record types from `records`, not `_router`.
 - no production caller imports old paths after its migration phase.
-- compatibility modules contain forwarding imports only.
+- retired namespaces have no Python modules and no source, test, example, or
+  script imports.
 
 ### Behavior Gates
 
@@ -633,13 +613,13 @@ Delete the compatibility facades in a separate, reviewable change.
 - debug text and trace JSONL formats do not change;
 - sink failures remain isolated from application behavior;
 - capture/restore/reset and scope filtering preserve behavior; and
-- old/new imports share one ContextVar, router configuration, and ProblemStore.
+- one canonical ContextVar, router configuration, and ProblemStore exist.
 
 ### Test Sequence
 
 For each phase:
 
-1. run Foundation/Protocol/Observability focused tests;
+1. run Foundation JSON and Observability focused tests;
 2. run affected AI, Agent, Channel, Harness, HarnessWork, Coding, TUI, and
    Ontology tests;
 3. run architecture import-boundary tests;
@@ -648,7 +628,7 @@ For each phase:
 
 ## Commit Decomposition
 
-Prefer independently reviewable commits:
+The migration was decomposed into independently reviewable phases:
 
 1. characterization tests only;
 2. `foundation.json` plus Protocol forwarding facades;
@@ -657,22 +637,22 @@ Prefer independently reviewable commits:
 5. concrete sink and identity renames;
 6. consumer migrations in dependency-oriented batches;
 7. live documentation and architecture gates; and
-8. eventual compatibility removal in a later change.
+8. compatibility removal in the final change.
 
-Do not combine a broad consumer rewrite, a semantic JSON-policy change, and
-compatibility deletion in one commit.
+Broad consumer migration, the semantic JSON-policy correction, and
+compatibility deletion were kept as distinct phases.
 
 ## Risks and Mitigations
 
 | Risk | Mitigation |
 |---|---|
-| duplicate router state during compatibility | forwarding modules only; cross-entry configuration tests |
-| duplicate ContextVar | canonical context module; old/new context identity tests |
+| duplicate router state during migration | forwarding modules only; cross-entry configuration tests |
+| duplicate ContextVar during migration | canonical context module; cross-entry identity tests |
 | strict and diagnostic JSON behavior accidentally merged | one type owner, separately named policies, characterization tests |
 | import cycles from a broad root facade | minimal Foundation root; direct leaf imports; router inversion |
 | trace output silently changes | preserve private fallback initially; exact output tests |
 | large 60-file consumer churn hides regressions | compatibility-first migration in small subsystem batches |
-| old direct submodule imports break | provide forwarding modules for the complete observed path inventory |
+| retired direct submodule imports return | AST import gates reject both former namespaces |
 | Foundation becomes a dumping ground | admission rule and standard-library-only/import-direction gates |
 | `runtime.py` absorbs Product policy | retain only Observability lifecycle; audit helpers after mechanical move |
 | `problem_text.py` is promoted prematurely | keep explicit and provisional; do not root-export initially |
@@ -690,7 +670,8 @@ This refactor does not:
   transcripts, or Channel contracts into Foundation;
 - rename JSON aliases with a Loushang brand prefix;
 - create a generic `utils`, `common`, `types`, or runtime subsystem; or
-- remove old packages in the same change that establishes canonical ownership.
+- remove old packages before canonical ownership and consumer migration are
+  independently established.
 
 ## Completion Criteria
 
@@ -700,12 +681,11 @@ The ownership migration is complete when:
 2. all canonical Observability records use that alias;
 3. strict and diagnostic policies have distinct, documented APIs;
 4. Foundation imports only the standard library and itself;
-5. Observability has one ContextVar and one router state regardless of old/new
-   import path;
+5. Observability has one ContextVar and one router state;
 6. all production callers use canonical paths;
 7. live architecture documents and gates identify Foundation as owner;
 8. focused and non-live regression suites pass; and
-9. compatibility removal remains a separately authorized change.
+9. compatibility packages are removed and retired imports are gated.
 
 ## Bounded Follow-Ups
 
@@ -719,6 +699,5 @@ available:
   Foundation;
 - whether the trace sink's permissive fallback can be removed or safely
   narrowed; and
-- the release boundary for deleting compatibility packages.
 
 These follow-ups do not block establishing Foundation ownership.

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import (
     CommandExecutionRecord,
     ConversationHeader,
@@ -20,7 +21,6 @@ from loushang.harness.journal import (
     JournalLoadPolicy,
     JsonlJournal,
 )
-from loushang.protocol import JSONValue
 
 
 def _decode_text(value: JSONValue) -> str:

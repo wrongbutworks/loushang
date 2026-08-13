@@ -12,13 +12,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, TypeAlias
 
+from loushang.foundation.json import JSONValue, require_json_mapping
 from loushang.harness.events.json import snake_case_json_keys
 from loushang.harness.events.types import (
     RuntimeEvent,
     _require_optional_text,
     _require_text,
 )
-from loushang.protocol import JSONValue, require_json_mapping
 
 RuntimeEventDeliveryHint: TypeAlias = Literal["immediate", "coalesce", "final_only"]
 

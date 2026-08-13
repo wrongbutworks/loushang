@@ -194,12 +194,24 @@ def build_builtin_tool_registry(
     get_external_tool_policy = getattr(
         settings_manager, "get_external_tool_policy", None
     )
+    get_shell_path = getattr(settings_manager, "get_shell_path", None)
+    get_shell_command_prefix = getattr(
+        settings_manager,
+        "get_shell_command_prefix",
+        None,
+    )
     register_coding_builtin_tools(
         registry,
         diagnostics_service=diagnostics_service,
         external_tool_policy=get_external_tool_policy()
         if callable(get_external_tool_policy)
         else None,
+        shell_path=get_shell_path() if callable(get_shell_path) else None,
+        command_prefix=(
+            get_shell_command_prefix()
+            if callable(get_shell_command_prefix)
+            else None
+        ),
     )
     register_coding_arch_tools(
         registry,
@@ -604,6 +616,11 @@ async def _configure_coding_cli_session(
         resolve_model_selection=lambda: parse_model_selection_reference(
             args.model,
             provider=args.provider,
+            registry=getattr(
+                getattr(context.state.services, "model_registry", None),
+                "ai_registry",
+                None,
+            ),
         ),
         thinking_level=args.thinking,
         apply_model_selection=lambda session, selection: apply_model_selection(

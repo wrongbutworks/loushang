@@ -5,8 +5,8 @@ from collections.abc import Mapping
 from contextlib import suppress
 from typing import Any, cast
 
-from loushang.observability import get_log
-from loushang.observability.problem import JSONValue
+from loushang.foundation.json import JSONValue
+from loushang.foundation.observability import get_log
 
 _log = get_log(__name__).bind(component="AITrace")
 TRACE_SCHEMA = "loushang.ai.trace.v1"
@@ -41,10 +41,12 @@ _SAFE_SCALAR_KEYS = frozenset(
         "remaining",
         "event_type",
         "exceptionType",
+        "providerResponseSummary",
         "args_source",
         "valid_json",
         "repair_valid",
         "kind",
+        "mode",
         "present",
         "empty",
         "error_position",
