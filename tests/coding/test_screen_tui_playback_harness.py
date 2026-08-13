@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import json
 
 import pytest
 
 from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
+)
+from loushang.harnesstui.testing.screen_loop_playback import (
+    BlockingPromptController,
 )
 from loushang.tui import (
     PLAYBACK_ARTIFACTS_ENV,
@@ -343,7 +345,7 @@ def test_screen_tui_loop_playback_drives_running_steer_then_escape() -> None:
     scenario = ScreenTuiLoopScenario()
     prompts: list[str] = []
     steers: list[tuple[str, str]] = []
-    abort_settled = asyncio.Event()
+    blocking_prompt = BlockingPromptController()
 
     async def handle_prompt(text: str) -> None:
         prompts.append(text)
@@ -353,27 +355,28 @@ def test_screen_tui_loop_playback_drives_running_steer_then_escape() -> None:
             return
         scenario.app.begin_assistant()
         scenario.app.append_assistant_chunk("working")
-        await abort_settled.wait()
+        await blocking_prompt.wait_until_settled()
 
     async def handle_steer(text: str) -> None:
         steers.append(("queue" if scenario.app.state.running else "execute", text))
 
-    result = (
-        scenario.type_text("go")
-        .enter()
-        .wait(0.01)
-        .type_text("change")
-        .enter()
-        .wait(0.01)
-        .escape()
-        .wait(0.04)
-        .end_input()
-        .run(
-            handle_prompt=handle_prompt,
-            handle_steer=handle_steer,
-            on_abort=abort_settled.set,
+    with blocking_prompt:
+        result = (
+            scenario.type_text("go")
+            .enter()
+            .wait(0.01)
+            .type_text("change")
+            .enter()
+            .wait(0.01)
+            .escape()
+            .wait(0.04)
+            .end_input()
+            .run(
+                handle_prompt=handle_prompt,
+                handle_steer=handle_steer,
+                on_abort=blocking_prompt.settle_on_abort,
+            )
         )
-    )
 
     with result.write_artifacts_on_failure_from_env(
         basename="screen-loop-running-steer-escape"
@@ -490,7 +493,7 @@ def test_screen_tui_loop_scenario_drives_escape_pending_steer_flow() -> None:
     scenario = ScreenTuiLoopScenario()
     prompts: list[str] = []
     steers: list[str] = []
-    abort_settled = asyncio.Event()
+    blocking_prompt = BlockingPromptController()
 
     async def handle_prompt(text: str) -> None:
         prompts.append(text)
@@ -500,27 +503,28 @@ def test_screen_tui_loop_scenario_drives_escape_pending_steer_flow() -> None:
             return
         scenario.app.begin_assistant()
         scenario.app.append_assistant_chunk("old response")
-        await abort_settled.wait()
+        await blocking_prompt.wait_until_settled()
 
     async def handle_steer(text: str) -> None:
         steers.append(text)
 
-    result = (
-        scenario.type_text("old")
-        .enter()
-        .wait(0.01)
-        .type_text("fresh")
-        .enter()
-        .wait(0.01)
-        .escape()
-        .wait(0.04)
-        .end_input()
-        .run(
-            handle_prompt=handle_prompt,
-            handle_steer=handle_steer,
-            on_abort=abort_settled.set,
+    with blocking_prompt:
+        result = (
+            scenario.type_text("old")
+            .enter()
+            .wait(0.01)
+            .type_text("fresh")
+            .enter()
+            .wait(0.01)
+            .escape()
+            .wait(0.04)
+            .end_input()
+            .run(
+                handle_prompt=handle_prompt,
+                handle_steer=handle_steer,
+                on_abort=blocking_prompt.settle_on_abort,
+            )
         )
-    )
 
     with result.write_artifacts_on_failure_from_env(
         basename="screen-loop-escape-pending-steer"
@@ -542,7 +546,7 @@ def test_screen_tui_loop_scenario_keeps_pending_steer_fifo_on_escape() -> None:
     scenario = ScreenTuiLoopScenario().with_pending_steers("prequeued")
     prompts: list[str] = []
     steers: list[str] = []
-    abort_settled = asyncio.Event()
+    blocking_prompt = BlockingPromptController()
 
     async def handle_prompt(text: str) -> None:
         if text == "prequeued":
@@ -550,27 +554,28 @@ def test_screen_tui_loop_scenario_keeps_pending_steer_fifo_on_escape() -> None:
             return
         scenario.app.begin_assistant()
         scenario.app.append_assistant_chunk("working")
-        await abort_settled.wait()
+        await blocking_prompt.wait_until_settled()
 
     async def handle_steer(text: str) -> None:
         steers.append(text)
 
-    result = (
-        scenario.type_text("start")
-        .enter()
-        .wait(0.01)
-        .type_text("running steer")
-        .enter()
-        .wait(0.01)
-        .escape()
-        .wait(0.04)
-        .end_input()
-        .run(
-            handle_prompt=handle_prompt,
-            handle_steer=handle_steer,
-            on_abort=abort_settled.set,
+    with blocking_prompt:
+        result = (
+            scenario.type_text("start")
+            .enter()
+            .wait(0.01)
+            .type_text("running steer")
+            .enter()
+            .wait(0.01)
+            .escape()
+            .wait(0.04)
+            .end_input()
+            .run(
+                handle_prompt=handle_prompt,
+                handle_steer=handle_steer,
+                on_abort=blocking_prompt.settle_on_abort,
+            )
         )
-    )
 
     with result.write_artifacts_on_failure_from_env(
         basename="screen-loop-escape-pending-fifo"
@@ -586,25 +591,29 @@ def test_screen_tui_loop_scenario_preserves_composer_draft_when_escape_runs_pend
 ):
     scenario = ScreenTuiLoopScenario().with_pending_steers("queued")
     prompts: list[str] = []
-    abort_settled = asyncio.Event()
+    blocking_prompt = BlockingPromptController()
 
     async def handle_prompt(text: str) -> None:
         if text == "queued":
             prompts.append(text)
             return
-        await abort_settled.wait()
+        await blocking_prompt.wait_until_settled()
 
-    result = (
-        scenario.type_text("start")
-        .enter()
-        .wait(0.01)
-        .type_text("draft")
-        .wait(0.01)
-        .escape()
-        .wait(0.04)
-        .end_input()
-        .run(handle_prompt=handle_prompt, on_abort=abort_settled.set)
-    )
+    with blocking_prompt:
+        result = (
+            scenario.type_text("start")
+            .enter()
+            .wait(0.01)
+            .type_text("draft")
+            .wait(0.01)
+            .escape()
+            .wait(0.04)
+            .end_input()
+            .run(
+                handle_prompt=handle_prompt,
+                on_abort=blocking_prompt.settle_on_abort,
+            )
+        )
 
     with result.write_artifacts_on_failure_from_env(
         basename="screen-loop-escape-preserves-draft"

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
 
@@ -13,6 +12,7 @@ from loushang.harnesstui.testing.scenarios.factory import (
     ScenarioFrameContracts,
 )
 from loushang.harnesstui.testing.screen_loop_playback import (
+    BlockingPromptController,
     ConversationScreenLoopPlaybackResult,
 )
 from loushang.tui.playback_suite import PlaybackScenarioSpec
@@ -163,7 +163,7 @@ class _LifecycleRecipes(Generic[AppT]):
         scenario = self.factory.loop_scenario()
         prompts: list[str] = []
         steers: list[str] = []
-        abort_settled = asyncio.Event()
+        blocking_prompt = BlockingPromptController()
 
         async def handle_prompt(text: str) -> None:
             prompts.append(text)
@@ -172,27 +172,28 @@ class _LifecycleRecipes(Generic[AppT]):
                 scenario.app.append_assistant_chunk("fresh response")
                 return
             scenario.app.append_assistant_chunk("old response")
-            await abort_settled.wait()
+            await blocking_prompt.wait_until_settled()
 
         async def handle_steer(text: str) -> None:
             steers.append(text)
 
-        result = (
-            scenario.type_text("old")
-            .enter()
-            .wait(0.01)
-            .type_text("fresh")
-            .enter()
-            .wait(0.01)
-            .escape()
-            .wait(0.04)
-            .end_input()
-            .run(
-                handle_prompt=handle_prompt,
-                handle_steer=handle_steer,
-                on_abort=abort_settled.set,
+        with blocking_prompt:
+            result = (
+                scenario.type_text("old")
+                .enter()
+                .wait(0.01)
+                .type_text("fresh")
+                .enter()
+                .wait(0.01)
+                .escape()
+                .wait(0.04)
+                .end_input()
+                .run(
+                    handle_prompt=handle_prompt,
+                    handle_steer=handle_steer,
+                    on_abort=blocking_prompt.settle_on_abort,
+                )
             )
-        )
         result.assert_exit_code(0)
         result.assert_text_contains("old")
         result.assert_text_contains("fresh")
@@ -211,7 +212,7 @@ class _LifecycleRecipes(Generic[AppT]):
         scenario = self.factory.loop_scenario().with_pending_steers("prequeued")
         prompts: list[str] = []
         steers: list[str] = []
-        abort_settled = asyncio.Event()
+        blocking_prompt = BlockingPromptController()
 
         async def handle_prompt(text: str) -> None:
             if text == "prequeued":
@@ -219,27 +220,28 @@ class _LifecycleRecipes(Generic[AppT]):
                 return
             scenario.app.begin_assistant()
             scenario.app.append_assistant_chunk("working")
-            await abort_settled.wait()
+            await blocking_prompt.wait_until_settled()
 
         async def handle_steer(text: str) -> None:
             steers.append(text)
 
-        result = (
-            scenario.type_text("start")
-            .enter()
-            .wait(0.01)
-            .type_text("running steer")
-            .enter()
-            .wait(0.01)
-            .escape()
-            .wait(0.04)
-            .end_input()
-            .run(
-                handle_prompt=handle_prompt,
-                handle_steer=handle_steer,
-                on_abort=abort_settled.set,
+        with blocking_prompt:
+            result = (
+                scenario.type_text("start")
+                .enter()
+                .wait(0.01)
+                .type_text("running steer")
+                .enter()
+                .wait(0.01)
+                .escape()
+                .wait(0.04)
+                .end_input()
+                .run(
+                    handle_prompt=handle_prompt,
+                    handle_steer=handle_steer,
+                    on_abort=blocking_prompt.settle_on_abort,
+                )
             )
-        )
         result.assert_exit_code(0)
         assert steers == ["running steer"]
         assert prompts == ["prequeued"]
@@ -252,25 +254,29 @@ class _LifecycleRecipes(Generic[AppT]):
     ) -> ConversationScreenLoopPlaybackResult[AppT]:
         scenario = self.factory.loop_scenario().with_pending_steers("queued")
         prompts: list[str] = []
-        abort_settled = asyncio.Event()
+        blocking_prompt = BlockingPromptController()
 
         async def handle_prompt(text: str) -> None:
             if text == "queued":
                 prompts.append(text)
                 return
-            await abort_settled.wait()
+            await blocking_prompt.wait_until_settled()
 
-        result = (
-            scenario.type_text("start")
-            .enter()
-            .wait(0.01)
-            .type_text("draft")
-            .wait(0.01)
-            .escape()
-            .wait(0.04)
-            .end_input()
-            .run(handle_prompt=handle_prompt, on_abort=abort_settled.set)
-        )
+        with blocking_prompt:
+            result = (
+                scenario.type_text("start")
+                .enter()
+                .wait(0.01)
+                .type_text("draft")
+                .wait(0.01)
+                .escape()
+                .wait(0.04)
+                .end_input()
+                .run(
+                    handle_prompt=handle_prompt,
+                    on_abort=blocking_prompt.settle_on_abort,
+                )
+            )
         result.assert_exit_code(0)
         assert prompts == ["queued"]
         result.assert_composer_text("draft")
@@ -284,27 +290,28 @@ class _LifecycleRecipes(Generic[AppT]):
         scenario = self.factory.loop_scenario()
         prompts: list[str] = []
         aborts: list[str] = []
-        abort_settled = asyncio.Event()
+        blocking_prompt = BlockingPromptController()
 
         async def handle_prompt(text: str) -> None:
             prompts.append(text)
             scenario.app.begin_assistant()
             scenario.app.append_assistant_chunk("working before ctrl-c")
-            await abort_settled.wait()
+            await blocking_prompt.wait_until_settled()
 
         async def on_abort() -> None:
             aborts.append("abort")
-            abort_settled.set()
+            blocking_prompt.settle_on_abort()
 
-        result = (
-            scenario.type_text("long running")
-            .enter()
-            .wait(0.01)
-            .ctrl_c()
-            .wait(0.04)
-            .end_input()
-            .run(handle_prompt=handle_prompt, on_abort=on_abort)
-        )
+        with blocking_prompt:
+            result = (
+                scenario.type_text("long running")
+                .enter()
+                .wait(0.01)
+                .ctrl_c()
+                .wait(0.04)
+                .end_input()
+                .run(handle_prompt=handle_prompt, on_abort=on_abort)
+            )
         result.assert_exit_code(0)
         assert prompts == ["long running"]
         assert aborts == ["abort"]
@@ -357,5 +364,6 @@ class _LifecycleRecipes(Generic[AppT]):
         result.assert_no_clear_screen()
         result.assert_cursor_matches_diagnostics()
         self.contracts.assert_interaction(result)
+
 
 __all__ = ["LifecycleScenarioAppPort", "lifecycle_scenarios"]
