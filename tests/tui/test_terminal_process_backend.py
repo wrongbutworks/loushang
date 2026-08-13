@@ -92,8 +92,11 @@ def test_terminal_backend_drains_large_no_newline_output_and_exit_status(
         _fixture_args("large", "--size", "100000", "--code", "7"),
         cwd=tmp_path,
         env=_environment(),
-        columns=80,
-        rows=24,
+        # ConHost interprets and re-emits VT output. A narrow viewport turns a
+        # large double-width line into thousands of scroll/repaint operations,
+        # obscuring the transport/drain behavior this contract is testing.
+        columns=4096,
+        rows=64,
     ) as driver:
         driver.read_until(lambda text: "LARGE_END" in text, timeout=20)
         assert driver.wait(timeout=10) == 7
@@ -113,8 +116,9 @@ def test_terminal_backend_answers_split_dsr_queries(tmp_path: Path) -> None:
         rows=24,
     ) as driver:
         output = driver.read_until(lambda text: "QUERY_OK:" in text, timeout=10)
-        assert driver.wait(timeout=10) == 0
+        status = driver.wait(timeout=10)
 
+    assert status == 0, output
     assert "QUERY_OK:1b5b306e:1b5b313b3152" in output
 
 

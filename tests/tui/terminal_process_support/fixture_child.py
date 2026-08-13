@@ -91,6 +91,21 @@ def main(argv: list[str] | None = None) -> int:
 
 def _enable_immediate_input() -> None:
     if os.name == "nt":
+        import ctypes
+        import msvcrt
+
+        # ConPTY delivers terminal responses as VT input only when the child
+        # console requests that mode. Disable cooked line/echo handling so a
+        # split DSR response is observable character-for-character.
+        handle = ctypes.c_void_p(msvcrt.get_osfhandle(sys.stdin.fileno()))
+        mode = ctypes.c_uint32()
+        if not ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            raise ctypes.WinError()
+        requested = (mode.value | 0x0080 | 0x0200) & ~(0x0002 | 0x0004 | 0x0040)
+        if not ctypes.windll.kernel32.SetConsoleMode(
+            handle, ctypes.c_uint32(requested)
+        ):
+            raise ctypes.WinError()
         return
     import termios
     import tty

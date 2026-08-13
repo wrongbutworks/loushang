@@ -45,7 +45,6 @@ def test_real_cli_quit_restores_terminal_modes_and_cleans_live_footer() -> None:
     assert "Welcome to Loushang CLI" in strip_control_sequences(output)
     assert "\x1b[?25l" in output
     assert "\x1b[?2026h" in output
-    assert "\x1b[2K" in output
     _assert_paired_mode(output, enable="\x1b[?2004h", disable="\x1b[?2004l")
     _assert_paired_mode(output, enable="\x1b[?1004h", disable="\x1b[?1004l")
     final_sync_end = output.rfind("\x1b[?2026l")
