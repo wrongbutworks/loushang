@@ -30,6 +30,8 @@ from loushang.harness.policy.subjects import (
     ToolPolicySubject,
 )
 
+from ._powershell import parse_simple_powershell_command
+
 PolicyEffectKind = Literal[
     "destructive",
     "publication",
@@ -93,6 +95,88 @@ _SECRET_ENV_NAME = re.compile(
     re.IGNORECASE,
 )
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
+_POWERSHELL_SAFE_READ_ONLY = re.compile(
+    r"""
+    ^\s*(?:
+        (?:Microsoft\.PowerShell\.Management\\)?Get-Location
+        |
+        (?:Microsoft\.PowerShell\.Utility\\)?Get-Date
+        |
+        (?:Microsoft\.PowerShell\.Management\\)?Get-Process
+            (?:\s+-(?:Id\s+[0-9]+|Name\s+[A-Za-z0-9_.-]+))?
+        |
+        (?:Microsoft\.PowerShell\.Management\\)?Get-ChildItem
+            (?:\s+-(?:Name|File|Directory|Force))*
+    )\s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_POWERSHELL_INVOKE_EXPRESSION = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:Invoke-Expression|iex)(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
+_POWERSHELL_DELETION = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:Remove-Item(?:Property)?|rm|ri|del|erase|rd|rmdir)"
+    r"(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
+_POWERSHELL_NESTED_SHELL = re.compile(
+    r"(?<![A-Za-z0-9_.-])(?:pwsh|powershell|cmd|wsl)(?:\.exe)?"
+    r"(?![A-Za-z0-9_.-])",
+    re.IGNORECASE,
+)
+_POWERSHELL_DOWNLOAD = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:Invoke-WebRequest|Invoke-RestMethod|iwr|irm|curl|wget)"
+    r"(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
+_POWERSHELL_SECURITY_TRANSLATION: dict[int, str] = {
+    ord("\u2013"): "-",
+    ord("\u2014"): "-",
+    ord("\u2015"): "-",
+    ord("\u2018"): "'",
+    ord("\u2019"): "'",
+    ord("\u201c"): '"',
+    ord("\u201d"): '"',
+}
+_POWERSHELL_CLASSIFIED_GIT_OPERATIONS = frozenset(
+    {
+        "add",
+        "blame",
+        "cat-file",
+        "clean",
+        "commit",
+        "describe",
+        "diff",
+        "fetch",
+        "for-each-ref",
+        "grep",
+        "log",
+        "ls-files",
+        "ls-tree",
+        "merge",
+        "merge-base",
+        "name-rev",
+        "pull",
+        "push",
+        "reset",
+        "rev-parse",
+        "shortlog",
+        "show",
+        "show-ref",
+        "status",
+        "switch",
+        "version",
+        "whatchanged",
+    }
+)
+_POWERSHELL_GIT_SAFE_GLOBAL_OPTIONS = frozenset(
+    {"--literal-pathspecs", "--no-optional-locks", "--no-pager"}
+)
+_POWERSHELL_GIT_UNSAFE_SWITCH_OPTIONS = frozenset(
+    {"--discard-changes", "--force", "-f"}
+)
+_POWERSHELL_GIT_EXTERNAL_DIFF_OPTIONS = frozenset({"--ext-diff", "--textconv"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +205,20 @@ def detect_policy_effects(subject: PolicySubject) -> tuple[DetectedPolicyEffect,
         _detect_secret_environment_effect(tool_subject, effects)
 
     if command is None:
+        return tuple(effects)
+
+    if command.dialect == "powershell":
+        _detect_powershell_effects(command, effects)
+        return tuple(effects)
+    if command.dialect == "cmd":
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "external_effect",
+                "unclassified_cmd_command",
+                "Cmd script requires approval because its effects were not classified",
+            ),
+        )
         return tuple(effects)
 
     invocations, has_pipeline = _command_invocations(command)
@@ -161,6 +259,198 @@ def detect_policy_effects(subject: PolicySubject) -> tuple[DetectedPolicyEffect,
             if isinstance(unresolved_stdin, str):
                 _detect_incomplete_text_effects(unresolved_stdin, effects)
     return tuple(effects)
+
+
+def _detect_powershell_effects(
+    command: CommandPolicySubject,
+    effects: list[DetectedPolicyEffect],
+) -> None:
+    script = command.shell_payload
+    if script is None:
+        _append_unclassified_powershell(effects)
+        return
+    normalized = _normalize_powershell_security_text(
+        script,
+        flavor=command.shell_flavor,
+    )
+    if command.normalization_complete and _POWERSHELL_SAFE_READ_ONLY.fullmatch(
+        normalized
+    ):
+        return
+
+    detected_count = len(effects)
+    if _POWERSHELL_INVOKE_EXPRESSION.search(normalized):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "external_effect",
+                "dynamic_code_execution",
+                "PowerShell would dynamically execute command text",
+            ),
+        )
+    if _POWERSHELL_DELETION.search(normalized):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "destructive",
+                "filesystem_deletion",
+                "PowerShell would delete filesystem or provider content",
+            ),
+        )
+    if re.search(
+        r"(?is)(?<![A-Za-z0-9_-])Start-Process(?![A-Za-z0-9_-]).*?"
+        r"-Verb\s*:?[\s'\"]*RunAs(?![A-Za-z0-9_-])",
+        normalized,
+    ):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "privilege",
+                "privilege_escalation",
+                "PowerShell would launch a process with elevated authority",
+            ),
+        )
+    if _POWERSHELL_NESTED_SHELL.search(normalized):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "external_effect",
+                "nested_shell_execution",
+                "PowerShell would launch a nested command interpreter",
+            ),
+        )
+    if _POWERSHELL_DOWNLOAD.search(normalized):
+        _append_effect(
+            effects,
+            DetectedPolicyEffect(
+                "external_effect",
+                "network_content_access",
+                "PowerShell would access content from a remote service",
+            ),
+        )
+    if len(effects) != detected_count:
+        return
+
+    tokens = parse_simple_powershell_command(script)
+    invocation = _powershell_invocation(tokens)
+    if invocation is not None:
+        invocation_effect_count = len(effects)
+        _detect_invocation_effects(invocation, effects)
+        if len(effects) != invocation_effect_count:
+            return
+        if _is_classified_powershell_invocation(invocation):
+            return
+    _append_unclassified_powershell(effects)
+
+
+def _powershell_invocation(tokens: tuple[str, ...] | None) -> _Invocation | None:
+    if not tokens:
+        return None
+    executable = tokens[0].casefold()
+    if executable == "git.exe":
+        executable = "git"
+    return _Invocation(executable, tuple(tokens[1:]))
+
+
+def _is_classified_powershell_invocation(invocation: _Invocation) -> bool:
+    if invocation.executable != "git":
+        return False
+    operation_and_arguments = _powershell_git_operation(invocation.arguments)
+    if operation_and_arguments is None:
+        return False
+    operation, arguments = operation_and_arguments
+    if operation not in _POWERSHELL_CLASSIFIED_GIT_OPERATIONS:
+        return _is_classified_git_inspection(operation, arguments)
+    if operation == "switch" and any(
+        argument in _POWERSHELL_GIT_UNSAFE_SWITCH_OPTIONS for argument in arguments
+    ):
+        return False
+    if operation == "clean" and not any(
+        argument == "--dry-run" or (argument.startswith("-") and "n" in argument[1:])
+        for argument in arguments
+    ):
+        return False
+    if operation in {"diff", "log", "show", "whatchanged"} and any(
+        argument in _POWERSHELL_GIT_EXTERNAL_DIFF_OPTIONS for argument in arguments
+    ):
+        return False
+    return True
+
+
+def _powershell_git_operation(
+    arguments: tuple[str, ...],
+) -> tuple[str, tuple[str, ...]] | None:
+    values = list(arguments)
+    while values and values[0] in _POWERSHELL_GIT_SAFE_GLOBAL_OPTIONS:
+        values.pop(0)
+    if len(values) == 1 and values[0] in {"--version", "-v"}:
+        return "version", ()
+    if not values or values[0].startswith("-"):
+        return None
+    # Git subcommands and aliases are case-sensitive even on Windows.  Folding
+    # here could misclassify a user-defined ``STATUS`` shell alias as builtin
+    # ``status`` and execute it without approval.
+    return values[0], tuple(values[1:])
+
+
+def _is_classified_git_inspection(
+    operation: str,
+    arguments: tuple[str, ...],
+) -> bool:
+    if operation == "branch":
+        return not any(
+            argument
+            in {
+                "--copy",
+                "--delete",
+                "--edit-description",
+                "--force",
+                "--move",
+                "--set-upstream-to",
+                "--unset-upstream",
+                "-C",
+                "-D",
+                "-M",
+                "-c",
+                "-d",
+                "-f",
+                "-m",
+                "-u",
+            }
+            for argument in arguments
+        )
+    if operation == "tag":
+        return not any(
+            argument in {"--delete", "--force", "-d", "-f"} for argument in arguments
+        )
+    if operation == "remote":
+        return not arguments or arguments[0] in {"-v", "get-url", "show"}
+    if operation == "worktree":
+        return bool(arguments) and arguments[0] == "list"
+    if operation == "stash":
+        return bool(arguments) and arguments[0] in {"list", "show"}
+    return False
+
+
+def _append_unclassified_powershell(
+    effects: list[DetectedPolicyEffect],
+) -> None:
+    _append_effect(
+        effects,
+        DetectedPolicyEffect(
+            "external_effect",
+            "unclassified_powershell_command",
+            "PowerShell script requires approval because its effects were not classified",
+        ),
+    )
+
+
+def _normalize_powershell_security_text(script: str, *, flavor: str | None) -> str:
+    normalized = script.translate(_POWERSHELL_SECURITY_TRANSLATION)
+    normalized = normalized.replace("`", "")
+    if flavor == "windows-powershell":
+        normalized = re.sub(r"(?<!\S)/(?=[A-Za-z])", "-", normalized)
+    return normalized
 
 
 def _detect_declared_effects(
