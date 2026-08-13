@@ -225,7 +225,7 @@ ConPTY driver 使用自己拥有的同步匿名管道，必须：
 - 自己实现有 deadline 的 `read_until()` 与 `wait()`，不直接暴露 Win32 同步 I/O 的无界阻塞面。
 - Windows 超时清理使用从可信 `%SystemRoot%\System32` 解析的绝对路径 `taskkill.exe /PID <pid> /T /F` 作为同步进程树兜底，记录 stdout、stderr 和退出码；随后轮询 fixture 暴露的根/孙 PID 直到消失或 deadline。`taskkill` 非零但进程已不存在可记录为竞态成功，仍有残留则 required CI 失败。后续若产品引入 Job Object，可复用更强的树生命周期能力。
 - 关闭采用有总 deadline 的状态机，而不是固定的“先 join reader、再 close PTY”：reader 从 spawn 起持续运行；请求正常退出或同步树终止；在 reader 仍持续排空时启动经过 spike 验证的 PTY teardown（后端若支持则显式管理 output endpoint）；等待 teardown/EOF；必要时调用 `cancel_io()` 解除阻塞；最后有限 join reader 并确认 thread/handle 零残留。
-- 所有输入/输出 pipe、HPCON、process/thread handle 都有唯一所有者；正常退出、timeout 和异常路径都必须关闭。`ClosePseudoConsole` 在独立受 deadline 约束的线程执行，同时 reader 持续 drain；未通过零残留断言前不得以 Python 外层进程退出推定 ConPTY 已安全关闭。
+- 所有输入/输出 pipe、HPCON、process/thread handle 都有唯一所有者；传给 `CreatePseudoConsole` 的 server-side pipe handles 是借用关系，必须存活到 `ClosePseudoConsole` 返回后才能关闭。正常退出、timeout 和异常路径都必须关闭。`ClosePseudoConsole` 在独立受 deadline 约束的线程执行，同时 reader 持续 drain；未通过零残留断言前不得以 Python 外层进程退出推定 ConPTY 已安全关闭。
 
 ### Terminal query responder
 

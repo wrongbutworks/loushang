@@ -20,7 +20,9 @@ from .protocol import TerminalProcessDiagnostics
 _CREATE_UNICODE_ENVIRONMENT = 0x00000400
 _EXTENDED_STARTUPINFO_PRESENT = 0x00080000
 _HANDLE_FLAG_INHERIT = 0x00000001
+_STARTF_USESTDHANDLES = 0x00000100
 _PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = 0x00020016
+_INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 _STATUS_PENDING = 259
 _WAIT_OBJECT_0 = 0
 _WAIT_TIMEOUT = 258
@@ -87,6 +89,8 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
         rows: int,
         api: _WindowsApi,
         pseudoconsole: wintypes.HANDLE,
+        conpty_input_read: wintypes.HANDLE,
+        conpty_output_write: wintypes.HANDLE,
         input_write: wintypes.HANDLE,
         output_read: wintypes.HANDLE,
         process_handle: wintypes.HANDLE,
@@ -97,6 +101,10 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
         )
         self._api = api
         self._pseudoconsole: wintypes.HANDLE | None = pseudoconsole
+        # CreatePseudoConsole borrows its pipe handles until ClosePseudoConsole.
+        # They are distinct from the client-side handles used by write/read.
+        self._conpty_input_read: wintypes.HANDLE | None = conpty_input_read
+        self._conpty_output_write: wintypes.HANDLE | None = conpty_output_write
         self._input_write: wintypes.HANDLE | None = input_write
         self._output_read: wintypes.HANDLE | None = output_read
         self._process_handle: wintypes.HANDLE | None = process_handle
@@ -161,6 +169,14 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
             environment = ctypes.create_unicode_buffer(_environment_block(env))
             startup = _StartupInfoEx()
             startup.StartupInfo.cb = ctypes.sizeof(_StartupInfoEx)
+            # Windows 7+ may inherit the parent's standard handles even when
+            # bInheritHandles is false. Hosted CI redirects those handles to its
+            # own pipes, so explicitly invalidate them and let ConPTY supply the
+            # console endpoints to the child.
+            startup.StartupInfo.dwFlags = _STARTF_USESTDHANDLES
+            startup.StartupInfo.hStdInput = _INVALID_HANDLE_VALUE
+            startup.StartupInfo.hStdOutput = _INVALID_HANDLE_VALUE
+            startup.StartupInfo.hStdError = _INVALID_HANDLE_VALUE
             startup.lpAttributeList = attribute_list
             api.create_process(
                 executable=executable,
@@ -175,8 +191,6 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
             if attribute_list is not None:
                 api.delete_attribute_list(attribute_list)
             del attribute_buffer
-            api.close_handle(input_read)
-            api.close_handle(output_write)
             if process_info.hThread:
                 api.close_handle(process_info.hThread)
             if not process_created:
@@ -184,6 +198,8 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
                 api.close_handle(output_read)
                 if pseudoconsole:
                     api.close_pseudoconsole(pseudoconsole)
+                api.close_handle(input_read)
+                api.close_handle(output_write)
                 if process_info.hProcess:
                     api.close_handle(process_info.hProcess)
 
@@ -195,6 +211,8 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
             rows=rows,
             api=api,
             pseudoconsole=pseudoconsole,
+            conpty_input_read=input_read,
+            conpty_output_write=output_write,
             input_write=input_write,
             output_read=output_read,
             process_handle=process_info.hProcess,
@@ -384,6 +402,11 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
                 self._pseudoconsole_close_error = error
             finally:
                 self._pseudoconsole = None
+                try:
+                    self._close_conpty_pipe_handles()
+                except BaseException as error:
+                    if self._pseudoconsole_close_error is None:
+                        self._pseudoconsole_close_error = error
 
         self._pseudoconsole_close_thread = threading.Thread(
             target=close_pseudoconsole,
@@ -391,6 +414,24 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
             daemon=True,
         )
         self._pseudoconsole_close_thread.start()
+
+    def _close_conpty_pipe_handles(self) -> None:
+        first_error: BaseException | None = None
+        if self._conpty_input_read is not None:
+            try:
+                self._api.close_handle(self._conpty_input_read)
+            except BaseException as error:
+                first_error = error
+            self._conpty_input_read = None
+        if self._conpty_output_write is not None:
+            try:
+                self._api.close_handle(self._conpty_output_write)
+            except BaseException as error:
+                if first_error is None:
+                    first_error = error
+            self._conpty_output_write = None
+        if first_error is not None:
+            raise first_error
 
     def _close_input_handle(self) -> None:
         with self._writer_lock:
@@ -485,7 +526,7 @@ class _WindowsApi:
             wintypes.DWORD,
             wintypes.LPVOID,
             wintypes.LPCWSTR,
-            ctypes.POINTER(_StartupInfoEx),
+            ctypes.POINTER(_StartupInfo),
             ctypes.POINTER(_ProcessInformation),
         ]
         self.CreateProcessW.restype = wintypes.BOOL
@@ -605,7 +646,7 @@ class _WindowsApi:
             _EXTENDED_STARTUPINFO_PRESENT | _CREATE_UNICODE_ENVIRONMENT,
             ctypes.cast(environment, wintypes.LPVOID),
             str(cwd),
-            ctypes.byref(startup),
+            ctypes.byref(startup.StartupInfo),
             ctypes.byref(process_info),
         ):
             raise ctypes.WinError(ctypes.get_last_error())
