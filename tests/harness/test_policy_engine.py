@@ -180,6 +180,82 @@ def test_powershell_policy_asks_for_unclassified_script() -> None:
 
 
 @pytest.mark.parametrize(
+    "script",
+    (
+        "git status --short --branch",
+        "git diff --stat",
+        "git log --oneline -3",
+        "git show --stat HEAD",
+        "git rev-parse --show-toplevel",
+        "git branch --show-current",
+        "git tag --list",
+        "git remote -v",
+        "git add README.md",
+        "git commit -m 'windows policy'",
+        'git commit -m "windows policy"',
+        "git switch feature/windows-policy",
+        "git merge topic",
+        "git fetch origin",
+        "git pull --ff-only",
+        "git reset HEAD README.md",
+        "git clean -ndx",
+        "GIT.EXE status --short",
+    ),
+)
+def test_powershell_policy_allows_classified_simple_git_commands(
+    script: str,
+) -> None:
+    assert _evaluate_powershell(PolicyEngine(), script).disposition == "allow"
+
+
+@pytest.mark.parametrize(
+    ("script", "expected_code"),
+    (
+        ("git push origin main", "external_publication"),
+        ("git reset --hard HEAD", "repository_history_rewrite"),
+        ("git clean -fdx", "repository_clean"),
+        ("git custom-alias", "unclassified_powershell_command"),
+        ("git STATUS --short", "unclassified_powershell_command"),
+        (
+            "git -c alias.inspect='!Write-Output compromised' inspect",
+            "unclassified_powershell_command",
+        ),
+        ("git status; Write-Output 'extra'", "unclassified_powershell_command"),
+        ("git $operation", "unclassified_powershell_command"),
+        (
+            "git switch --discard-changes topic",
+            "unclassified_powershell_command",
+        ),
+        ("git checkout -- README.md", "unclassified_powershell_command"),
+        ("git diff --ext-diff", "unclassified_powershell_command"),
+        ("git branch --edit-description", "unclassified_powershell_command"),
+        ("git tag --delete old", "repository_deletion"),
+        (
+            "git remote add upstream https://example.com/repo",
+            "unclassified_powershell_command",
+        ),
+        ("git stash pop", "unclassified_powershell_command"),
+        ("git worktree add ../review topic", "unclassified_powershell_command"),
+        ("& git status", "unclassified_powershell_command"),
+        ('"git" status', "unclassified_powershell_command"),
+        ("g'it' status", "unclassified_powershell_command"),
+        ("git sta$(Write-Output tus)", "unclassified_powershell_command"),
+        ("git status | Write-Output", "unclassified_powershell_command"),
+        ("git status > report.txt", "unclassified_powershell_command"),
+        ("git status # inspect", "unclassified_powershell_command"),
+    ),
+)
+def test_powershell_git_classification_fail_closes_unsafe_or_dynamic_forms(
+    script: str,
+    expected_code: str,
+) -> None:
+    decision = _evaluate_powershell(PolicyEngine(), script)
+
+    assert decision.disposition == "ask"
+    assert decision.code == expected_code
+
+
+@pytest.mark.parametrize(
     ("script", "expected_code"),
     [
         ("Remove-Item target -Recurse -Force", "filesystem_deletion"),

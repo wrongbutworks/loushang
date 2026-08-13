@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.approval import ApprovalDecision
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.tools.workspace import ToolContext
@@ -59,6 +60,15 @@ class _RecordingPolicy:
     def evaluate(self, subject):
         self.subjects.append(subject)
         return self._engine.evaluate(subject)
+
+
+class _RecordingApprovalResolver:
+    def __init__(self) -> None:
+        self.requests: list[object] = []
+
+    def resolve(self, request):
+        self.requests.append(request)
+        return ApprovalDecision.allow()
 
 
 def _resolver_factory(environment, environ, cwd):
@@ -147,6 +157,62 @@ def test_windows_shell_tool_fails_closed_before_execution_for_unknown_script(
     assert operations.requests == []
 
 
+def test_windows_shell_tool_runs_classified_git_status_without_approval(
+    tmp_path: Path,
+) -> None:
+    operations = _RecordingOperations()
+    tool = wrap_tool_definition(
+        create_shell_tool_definition(
+            operations=operations,
+            environment=_windows(),
+            resolver_factory=_resolver_factory,
+        ),
+        context_provider=_context(tmp_path),
+        policy_evaluator=PolicyEngine(),
+    )
+
+    result = asyncio.run(
+        tool.execute("shell-git-status", {"command": "git status --short"})
+    )
+
+    assert result.content[0].text == "ok\n"
+    assert len(operations.requests) == 1
+
+
+def test_windows_shell_git_push_offers_capability_scoped_approval_grants(
+    tmp_path: Path,
+) -> None:
+    operations = _RecordingOperations()
+    approvals = _RecordingApprovalResolver()
+    tool = wrap_tool_definition(
+        create_shell_tool_definition(
+            operations=operations,
+            environment=_windows(),
+            resolver_factory=_resolver_factory,
+        ),
+        context_provider=_context(tmp_path),
+        policy_evaluator=PolicyEngine(),
+        approval_resolver=approvals,
+    )
+
+    result = asyncio.run(
+        tool.execute(
+            "shell-git-push",
+            {"command": "git push origin main"},
+        )
+    )
+
+    assert result.content[0].text == "ok\n"
+    assert len(approvals.requests) == 1
+    request = approvals.requests[0]
+    assert request.policy_code == "external_publication"
+    assert request.session_grant is not None
+    assert request.session_grant.capability == "git.publish_refs"
+    assert tuple(amendment.scope for amendment in request.policy_amendments) == (
+        "project",
+    )
+
+
 def test_windows_shell_tool_schema_and_runtime_reject_argv_input() -> None:
     definition = create_shell_tool_definition(
         environment=_windows(),
@@ -209,3 +275,21 @@ def test_native_windows_shell_tool_runs_without_bash_installation(
 
     assert result.details["exit_code"] == 0
     assert result.content[0].text.strip()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires a native Windows host")
+def test_native_windows_shell_tool_runs_git_version_without_approval(
+    tmp_path: Path,
+) -> None:
+    tool = wrap_tool_definition(
+        create_shell_tool_definition(
+            environment=LocalHostEnvironmentProbe().detect(),
+        ),
+        context_provider=_context(tmp_path),
+        policy_evaluator=PolicyEngine(),
+    )
+
+    result = asyncio.run(tool.execute("shell-native-git", {"command": "git --version"}))
+
+    assert result.details["exit_code"] == 0
+    assert result.content[0].text.lower().startswith("git version")

@@ -30,6 +30,8 @@ from loushang.harness.policy.subjects import (
     ToolPolicySubject,
 )
 
+from ._powershell import parse_simple_powershell_command
+
 PolicyEffectKind = Literal[
     "destructive",
     "publication",
@@ -137,6 +139,44 @@ _POWERSHELL_SECURITY_TRANSLATION: dict[int, str] = {
     ord("\u201c"): '"',
     ord("\u201d"): '"',
 }
+_POWERSHELL_CLASSIFIED_GIT_OPERATIONS = frozenset(
+    {
+        "add",
+        "blame",
+        "cat-file",
+        "clean",
+        "commit",
+        "describe",
+        "diff",
+        "fetch",
+        "for-each-ref",
+        "grep",
+        "log",
+        "ls-files",
+        "ls-tree",
+        "merge",
+        "merge-base",
+        "name-rev",
+        "pull",
+        "push",
+        "reset",
+        "rev-parse",
+        "shortlog",
+        "show",
+        "show-ref",
+        "status",
+        "switch",
+        "version",
+        "whatchanged",
+    }
+)
+_POWERSHELL_GIT_SAFE_GLOBAL_OPTIONS = frozenset(
+    {"--literal-pathspecs", "--no-optional-locks", "--no-pager"}
+)
+_POWERSHELL_GIT_UNSAFE_SWITCH_OPTIONS = frozenset(
+    {"--discard-changes", "--force", "-f"}
+)
+_POWERSHELL_GIT_EXTERNAL_DIFF_OPTIONS = frozenset({"--ext-diff", "--textconv"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,8 +328,108 @@ def _detect_powershell_effects(
                 "PowerShell would access content from a remote service",
             ),
         )
-    if len(effects) == detected_count:
-        _append_unclassified_powershell(effects)
+    if len(effects) != detected_count:
+        return
+
+    tokens = parse_simple_powershell_command(script)
+    invocation = _powershell_invocation(tokens)
+    if invocation is not None:
+        invocation_effect_count = len(effects)
+        _detect_invocation_effects(invocation, effects)
+        if len(effects) != invocation_effect_count:
+            return
+        if _is_classified_powershell_invocation(invocation):
+            return
+    _append_unclassified_powershell(effects)
+
+
+def _powershell_invocation(tokens: tuple[str, ...] | None) -> _Invocation | None:
+    if not tokens:
+        return None
+    executable = tokens[0].casefold()
+    if executable == "git.exe":
+        executable = "git"
+    return _Invocation(executable, tuple(tokens[1:]))
+
+
+def _is_classified_powershell_invocation(invocation: _Invocation) -> bool:
+    if invocation.executable != "git":
+        return False
+    operation_and_arguments = _powershell_git_operation(invocation.arguments)
+    if operation_and_arguments is None:
+        return False
+    operation, arguments = operation_and_arguments
+    if operation not in _POWERSHELL_CLASSIFIED_GIT_OPERATIONS:
+        return _is_classified_git_inspection(operation, arguments)
+    if operation == "switch" and any(
+        argument in _POWERSHELL_GIT_UNSAFE_SWITCH_OPTIONS for argument in arguments
+    ):
+        return False
+    if operation == "clean" and not any(
+        argument == "--dry-run" or (argument.startswith("-") and "n" in argument[1:])
+        for argument in arguments
+    ):
+        return False
+    if operation in {"diff", "log", "show", "whatchanged"} and any(
+        argument in _POWERSHELL_GIT_EXTERNAL_DIFF_OPTIONS for argument in arguments
+    ):
+        return False
+    return True
+
+
+def _powershell_git_operation(
+    arguments: tuple[str, ...],
+) -> tuple[str, tuple[str, ...]] | None:
+    values = list(arguments)
+    while values and values[0] in _POWERSHELL_GIT_SAFE_GLOBAL_OPTIONS:
+        values.pop(0)
+    if len(values) == 1 and values[0] in {"--version", "-v"}:
+        return "version", ()
+    if not values or values[0].startswith("-"):
+        return None
+    # Git subcommands and aliases are case-sensitive even on Windows.  Folding
+    # here could misclassify a user-defined ``STATUS`` shell alias as builtin
+    # ``status`` and execute it without approval.
+    return values[0], tuple(values[1:])
+
+
+def _is_classified_git_inspection(
+    operation: str,
+    arguments: tuple[str, ...],
+) -> bool:
+    if operation == "branch":
+        return not any(
+            argument
+            in {
+                "--copy",
+                "--delete",
+                "--edit-description",
+                "--force",
+                "--move",
+                "--set-upstream-to",
+                "--unset-upstream",
+                "-C",
+                "-D",
+                "-M",
+                "-c",
+                "-d",
+                "-f",
+                "-m",
+                "-u",
+            }
+            for argument in arguments
+        )
+    if operation == "tag":
+        return not any(
+            argument in {"--delete", "--force", "-d", "-f"} for argument in arguments
+        )
+    if operation == "remote":
+        return not arguments or arguments[0] in {"-v", "get-url", "show"}
+    if operation == "worktree":
+        return bool(arguments) and arguments[0] == "list"
+    if operation == "stash":
+        return bool(arguments) and arguments[0] in {"list", "show"}
+    return False
 
 
 def _append_unclassified_powershell(

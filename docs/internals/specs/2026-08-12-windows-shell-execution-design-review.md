@@ -16,6 +16,8 @@
 - P1：已完成隐藏实现。新增执行目标感知的 `ShellSpec` 解析/编译、PowerShell UTF-16LE `-EncodedCommand` transport、命令行长度 fail-closed、明文 policy subject、保守的 PowerShell 5.1/7 分类，以及跨 `bash`/`shell` 工具名稳定生效的 `workspace.command` capability 匹配。此阶段没有注册或暴露新模型工具；既有 POSIX Bash 决策与完整 harness 回归通过。
 - P2：已完成代码接线。Windows 执行目标会以同一原子切片把默认 `bash` 工具替换为 `shell`，注册并默认激活 PowerShell 方言提示，接通 Settings 中的 shell path/prefix、用户 `!`/`execute_bash` 兼容入口、`user_bash` hook、transcript、审计与 `workspace.command` 权限能力；POSIX 默认工具表保持不变。旧 `blocked_tools/ask_tools` 中的 `bash` 会迁移匹配稳定 capability，新的 `blocked_capabilities/ask_capabilities` 也可持久化配置。
 - P2 验证：非 Windows CI 已通过完整 harness 门禁（Ruff、mypy、1791 项测试）及 637 项 Coding 产品回归，并包含模拟 Windows 目标的 registry -> AgentSession -> PowerShell transport 端到端测试。仓库已新增 `windows-shell-compatibility.yml`，在 `windows-latest` 上实际解析系统 PowerShell 并验证 UTF-8、非零退出码、工具注册、策略和 Session 兼容链路；该 workflow 需要随分支发布后取得绿灯，且仍建议用 Windows 10 + PS 5.1 实体环境补充验收。在原生结果返回前不宣称平台验证完成。
+- P2.1：已完成首轮审批降噪。PowerShell policy 现在仅对“单条、字面量、无展开/管道/重定向/调用运算符”的 Git 命令做保守解析，普通 `status/diff/log/show/rev-parse/add/commit/switch/merge/fetch/pull` 等复用既有 Git effect detector 并在无风险 effect 时直接放行；`push`、`reset --hard`、`clean -f` 继续产生原有审批风险码，未知 alias、大小写伪装、动态参数、外部 diff 和未分类 mutation 继续 fail-closed。Git 发布的 session/project 授权已从旧 `bash` 工具名迁移到 `workspace.command` capability，因此 Windows `shell` 可以复用按 repository/remote/非 force 约束的窄授权。同期修复了受限 Linux host 中短命 `fd/rg` 进程退出回调已排队但 selector 未唤醒造成的挂起，并保持取消与提前停止的亚秒级收尾。
+- P2.1 验证：完整 Harness 门禁通过 Ruff、mypy 与 1836 项测试（另 3 项按环境跳过）；Coding 的策略、工具策略集成、AgentSession 工具、工具注册和权限行为共 207 项回归通过。另已加入原生 Windows `git --version` 免审批测试，该项在非 Windows 主机跳过，等待 Windows CI/实体环境继续验收。
 - P3：尚未实施，包括更完整的 PowerShell AST/effect 分类、Windows Job Object、企业 Windows sandbox 和可选 Cmd 深度支持。
 
 ## 目标
