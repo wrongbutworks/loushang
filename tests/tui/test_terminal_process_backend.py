@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -104,7 +105,8 @@ def test_terminal_backend_drains_large_no_newline_output_and_exit_status(
 
     assert "LARGE_BEGIN" in output
     assert "LARGE_END" in output
-    assert output.count("界") == 100_000
+    assert output.count("界") == 100
+    assert output.count("x") == 99_900
 
 
 def test_terminal_backend_answers_split_dsr_queries(tmp_path: Path) -> None:
@@ -119,7 +121,11 @@ def test_terminal_backend_answers_split_dsr_queries(tmp_path: Path) -> None:
         status = driver.wait(timeout=10)
 
     assert status == 0, output
-    assert "QUERY_OK:1b5b306e:1b5b313b3152" in output
+    query = re.search(r"QUERY_OK:([0-9a-f]+):([0-9a-f]+)", output)
+    assert query is not None
+    assert bytes.fromhex(query.group(1)) == b"\x1b[0n"
+    cursor = bytes.fromhex(query.group(2)).decode("ascii")
+    assert re.fullmatch(r"\x1b\[[1-9]\d*;[1-9]\d*R", cursor)
 
 
 def test_terminal_backend_timeout_terminates_root_and_descendant(

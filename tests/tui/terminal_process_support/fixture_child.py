@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -67,9 +68,12 @@ def main(argv: list[str] | None = None) -> int:
         cursor = _read_characters(6)
         print(f"CURSOR_GOT:{cursor.encode().hex()}", flush=True)
         print(f"QUERY_OK:{status.encode().hex()}:{cursor.encode().hex()}", flush=True)
-        return 0 if (status, cursor) == ("\x1b[0n", "\x1b[1;1R") else 9
+        cursor_is_valid = re.fullmatch(r"\x1b\[[1-9]\d*;[1-9]\d*R", cursor)
+        return 0 if status == "\x1b[0n" and cursor_is_valid else 9
     if args.scenario == "large":
-        sys.stdout.write("LARGE_BEGIN" + ("界" * args.size) + "LARGE_END")
+        full_units, remainder = divmod(args.size, 1000)
+        payload = (("x" * 999 + "界") * full_units) + ("x" * remainder)
+        sys.stdout.write("LARGE_BEGIN" + payload + "LARGE_END")
         sys.stdout.flush()
         return args.code
     if args.scenario == "tree":
