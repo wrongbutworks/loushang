@@ -90,9 +90,9 @@ def test_terminal_backend_drains_large_no_newline_output_and_exit_status(
     tmp_path: Path,
 ) -> None:
     with spawn_terminal_process(
-        # 40,000 two-byte UTF-8 code points keep the unbroken payload above
-        # 64 KiB while avoiding a ConHost font/render throughput benchmark.
-        _fixture_args("large", "--size", "40000", "--code", "7"),
+        # 22,000 three-byte UTF-8 code points keep the unbroken payload above
+        # 64 KiB while bounding the ConHost screen-render workload.
+        _fixture_args("large", "--size", "22000", "--code", "7"),
         cwd=tmp_path,
         env=_environment(),
         # ConHost interprets and re-emits VT output. A narrow viewport turns a
@@ -108,7 +108,7 @@ def test_terminal_backend_drains_large_no_newline_output_and_exit_status(
 
     assert "LARGE_BEGIN" in output
     assert "LARGE_END" in output
-    assert output.count("é") == 40_000
+    assert output.count("界") == 22_000
 
 
 def test_terminal_backend_answers_split_dsr_queries(tmp_path: Path) -> None:

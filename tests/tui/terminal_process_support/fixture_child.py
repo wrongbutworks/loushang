@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         cursor_is_valid = re.fullmatch(r"\x1b\[[1-9]\d*;[1-9]\d*R", cursor)
         return 0 if status == "\x1b[0n" and cursor_is_valid else 9
     if args.scenario == "large":
-        payload = "é" * args.size
+        payload = "界" * args.size
         sys.stdout.write("LARGE_BEGIN" + payload + "LARGE_END")
         sys.stdout.flush()
         # Keep the console process alive until the client has observed the
