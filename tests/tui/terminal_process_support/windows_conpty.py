@@ -63,7 +63,7 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
             from winpty.enums import Backend
         except ImportError as error:
             raise RuntimeError(
-                "required pywinpty==3.0.5 dependency is unavailable"
+                "required pywinpty==2.0.15 dependency is unavailable"
             ) from error
         if Backend.ConPTY != 0:
             raise RuntimeError(f"unexpected pywinpty ConPTY backend id: {Backend.ConPTY}")
@@ -186,7 +186,7 @@ class WindowsConPtyDriver(BufferedTerminalDriver):
                 if pty_object is None:
                     break
                 try:
-                    data = pty_object.read(blocking=False)
+                    data = pty_object.read(32768, blocking=False)
                 except BaseException:
                     if pty_object.iseof() or not pty_object.isalive():
                         break

@@ -117,9 +117,13 @@ query response, bounded timeout, process-tree termination, and idempotent
 cleanup. They do not claim exact final screen state; FakeTerminal/playback owns
 that evidence.
 
-The Windows backend uses `pywinpty==3.0.5` through its low-level `winpty.PTY`
+The Windows backend uses `pywinpty==2.0.15` through its low-level `winpty.PTY`
 API and explicitly selects ConPTY. It does not permit an automatic WinPTY
-fallback. Both backends execute the shared real CLI `/quit` contract in
+fallback. Version 3.0.5 was rejected by the Windows lifecycle spike because its
+asynchronous backend could leave the final query response pending and lose the
+tail of large output at process exit. The selected version is x64-only; ARM64
+is not a supported native-test target until a candidate wheel passes the same
+contracts. Both backends execute the shared real CLI `/quit` contract in
 `tests/coding/test_cli_terminal_contract.py`.
 
 tmux is a separate terminal-implementation integration. Its marker only proves

@@ -206,15 +206,15 @@ class TerminalProcessDriver(Protocol):
 
 ### 支持边界与依赖
 
-ConPTY API 最低可用边界为 Windows 10 1809/build 17763 和 Windows Server 2019；这不等于每个最低版本都已有持续验证。首版自动化验证平台为 Windows Server 2022 x64/Python 3.11，正式桌面验收平台为 Windows 10 22H2 x64。pywinpty 同时提供 ARM64 wheel，但 ARM64 在本仓库增加独立证据前仅为预期兼容。
+ConPTY API 最低可用边界为 Windows 10 1809/build 17763 和 Windows Server 2019；这不等于每个最低版本都已有持续验证。首版自动化验证平台为 Windows Server 2022 x64/Python 3.11，正式桌面验收平台为 Windows 10 22H2 x64。锁定的 pywinpty 版本没有 Windows ARM64 wheel，因此首版明确只支持 x64；ARM64 必须等依赖候选通过同一套原生合同并增加独立 CI 证据后再声明支持，不能从 ConPTY API 可用性推导兼容。
 
 `pywinpty` 仅加入开发依赖并锁定原生版本：
 
 ```toml
-"pywinpty==3.0.5; sys_platform == 'win32'"
+"pywinpty==2.0.15; sys_platform == 'win32'"
 ```
 
-分发名为 `pywinpty`、导入名为 `winpty`。锁文件必须包含 Windows wheel；CI 使用 `uv sync --locked --extra dev`。版本升级通过独立依赖 PR 和 Windows 合同验证完成。
+分发名为 `pywinpty`、导入名为 `winpty`。锁文件必须包含 Windows x64 wheel；CI 使用 `uv sync --locked --extra dev`。P1 在 Windows Server 2022 上实测拒绝了 `pywinpty==3.0.5`：其 `winpty-rs==1.0.6` 异步 ConPTY 写入可能把最后一次 terminal response 留在 pending 状态，异步 reader 也会在进程退出边界丢失大输出尾块。`2.0.15` 使用同步写入和独立读缓存，仍须通过本规范的 query、无换行大输出、退出码与零残留合同。版本升级通过独立依赖 PR 和 Windows 合同验证完成，不能只按版本号前进。
 
 ### 强制 ConPTY
 
@@ -342,7 +342,7 @@ P0 风险清单必须点名 `src/loushang/harnesstui/testing/screen_loop_playbac
 
 ### P1：Windows ConPTY 生命周期技术选型 spike（不独立合并）
 
-在正式抽象前，用 `pywinpty==3.0.5`、强制 ConPTY 验证五个场景：
+在正式抽象前，用锁定版本、强制 ConPTY 验证五个场景：
 
 1. 大输出并立即退出；
 2. 产品/依赖/fixture query 全集盘点，为每一类定义响应、无响应 fallback 与 deadline，并覆盖 DSR、Kitty 和 cell-size profile；
@@ -427,6 +427,6 @@ P2b 不允许合并“Windows job 存在但全部 skip”“ConPTY backend 尚�
 - Microsoft 创建 pseudoconsole session：<https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session>
 - Microsoft `ClosePseudoConsole`：<https://learn.microsoft.com/en-us/windows/console/closepseudoconsole>
 - pywinpty：<https://pypi.org/project/pywinpty/>
-- pywinpty `PtyProcess`：<https://github.com/andfoy/pywinpty/blob/v3.0.5/winpty/ptyprocess.py>
+- pywinpty `PtyProcess`：<https://github.com/andfoy/pywinpty/blob/v2.0.15/winpty/ptyprocess.py>
 - winpty-rs terminal query 注意事项：<https://github.com/andfoy/winpty-rs#important-notes>
 - GitHub Actions runner image labels：<https://github.com/actions/runner-images>
