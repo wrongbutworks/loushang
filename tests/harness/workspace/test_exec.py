@@ -378,12 +378,12 @@ def test_exec_service_hard_limits_active_descendant_stdio(tmp_path: Path) -> Non
         "for _ in range(100)]"
     )
     root_script = (
-        "import subprocess, sys; "
+        "import subprocess, sys; sys.stdout.write('r'); sys.stdout.flush(); "
         f"subprocess.Popen([sys.executable, '-c', {child_script!r}])"
     )
     service = ExecService(
         backend=LocalExecBackend(
-            post_exit_stdio_grace_seconds=0.05,
+            post_exit_stdio_grace_seconds=0.25,
             post_exit_stdio_hard_timeout_seconds=0.25,
         )
     )
@@ -401,7 +401,7 @@ def test_exec_service_hard_limits_active_descendant_stdio(tmp_path: Path) -> Non
         )
 
         assert asyncio.get_running_loop().time() - started_at < 1
-        assert 0 < len(result.stdout) < 100
+        assert 0 < len(result.stdout) < 101
         assert result.stdio_complete is False
         assert result.stdio_drain_reason == "hard_timeout"
 
@@ -455,7 +455,7 @@ def test_exec_service_accepts_a_process_that_exits_without_reading_stdin(
     async def scenario() -> None:
         result = await ExecService().execute(
             ExecRequest(
-                command=["/bin/true"],
+                command=[sys.executable, "-c", "raise SystemExit(0)"],
                 cwd=str(tmp_path),
                 stdin="ignored\n" * 131_072,
             )
