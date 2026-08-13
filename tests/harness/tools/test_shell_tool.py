@@ -132,11 +132,9 @@ def test_windows_shell_tool_authorizes_plaintext_and_executes_encoded_transport(
     }
 
 
-def test_windows_shell_tool_fails_closed_before_execution_for_unknown_script(
+def test_windows_shell_tool_runs_literal_output_without_approval(
     tmp_path: Path,
 ) -> None:
-    from loushang.harness.tools.workspace import PolicyEnforcementError
-
     operations = _RecordingOperations()
     tool = wrap_tool_definition(
         create_shell_tool_definition(
@@ -148,13 +146,12 @@ def test_windows_shell_tool_fails_closed_before_execution_for_unknown_script(
         policy_evaluator=PolicyEngine(),
     )
 
-    with pytest.raises(PolicyEnforcementError) as raised:
-        asyncio.run(tool.execute("shell-2", {"command": "Write-Output hello"}))
-
-    assert raised.value.tool_result_details["policy_code"] == (
-        "unclassified_powershell_command"
+    result = asyncio.run(
+        tool.execute("shell-2", {"command": "Write-Output hello"})
     )
-    assert operations.requests == []
+
+    assert result.content[0].text == "ok\n"
+    assert len(operations.requests) == 1
 
 
 def test_windows_shell_tool_runs_classified_git_status_without_approval(
@@ -225,6 +222,20 @@ def test_windows_shell_tool_schema_and_runtime_reject_argv_input() -> None:
         asyncio.run(tool.execute("shell-3", {"command": ["cmd.exe", "/c", "dir"]}))
 
 
+def test_windows_shell_tool_guides_routine_commands_away_from_compound_scripts() -> (
+    None
+):
+    definition = create_shell_tool_definition(
+        environment=_windows(),
+        resolver_factory=_resolver_factory,
+    )
+
+    assert any(
+        "one literal command per tool call" in guideline
+        for guideline in definition.prompt_guidelines
+    )
+
+
 def test_windows_shell_tool_audit_records_safe_resolution_metadata(
     tmp_path: Path,
 ) -> None:
@@ -283,14 +294,12 @@ def test_native_windows_shell_tool_runs_without_bash_installation(
 
 @pytest.mark.skipif(os.name != "nt", reason="requires a native Windows host")
 def test_native_windows_shell_tool_preserves_echo_output(tmp_path: Path) -> None:
-    approvals = _RecordingApprovalResolver()
     tool = wrap_tool_definition(
         create_shell_tool_definition(
             environment=LocalHostEnvironmentProbe().detect(),
         ),
         context_provider=_context(tmp_path),
         policy_evaluator=PolicyEngine(),
-        approval_resolver=approvals,
     )
 
     result = asyncio.run(tool.execute("shell-native-echo", {"command": "echo hello"}))
@@ -301,7 +310,6 @@ def test_native_windows_shell_tool_preserves_echo_output(tmp_path: Path) -> None
     assert result.details["stdio_drain_reason"] is None
     assert result.content[0].text.strip() == "hello"
     assert transcript_result.content[0].text == result.content[0].text
-    assert len(approvals.requests) == 1
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires a native Windows host")

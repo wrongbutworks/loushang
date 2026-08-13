@@ -325,6 +325,7 @@ def create_shell_tool_definition(
             (
                 "Use PowerShell cmdlets and PowerShell pipelines; do not emit Bash syntax such as export, test -f, or $(...).",
                 "Keep scripts compatible with Windows PowerShell 5.1 unless PowerShell 7-only syntax is required and known to be available.",
+                "Prefer one literal command per tool call for routine inspection and checks; compound scripts, pipelines, redirects, and dynamic expressions may require approval.",
                 "Prefer read, grep, find, ls, write, and edit for file operations when those tools are more precise.",
             )
             if is_windows

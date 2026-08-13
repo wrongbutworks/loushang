@@ -159,24 +159,82 @@ def _evaluate_powershell(engine: PolicyEngine, script: str):
     )
 
 
-def test_powershell_policy_allows_only_constrained_read_only_forms() -> None:
+@pytest.mark.parametrize(
+    "script",
+    (
+        "Get-Location",
+        "Get-Process -Id 42",
+        "Get-ChildItem -Force -Name",
+        "Get-ChildItem src -Recurse -File",
+        "dir src",
+        "ls -Force",
+        "Get-Content README.md -TotalCount 80",
+        "Get-Content -Path:README.md",
+        "cat README.md",
+        "Select-String TODO README.md",
+        "Test-Path pyproject.toml",
+        "Resolve-Path .",
+        "Get-Command git",
+        "Write-Output 'hello'",
+        "echo hello",
+        "rg TODO src tests",
+        "where.exe git",
+        r".venv\Scripts\python.exe -m pytest tests -q",
+        "uv run pytest tests -q",
+        "uv run --extra dev pytest tests -q",
+        "uv --cache-dir .uv-cache run --extra=dev ruff check src tests",
+        "ruff check src tests",
+        "mypy src/loushang/ai",
+    ),
+)
+def test_powershell_policy_allows_routine_literal_commands(script: str) -> None:
     engine = PolicyEngine()
 
-    assert _evaluate_powershell(engine, "Get-Location").disposition == "allow"
-    assert (
-        _evaluate_powershell(engine, "Get-Process -Id 42").disposition == "allow"
-    )
-    assert (
-        _evaluate_powershell(engine, "Get-ChildItem -Force -Name").disposition
-        == "allow"
-    )
+    assert _evaluate_powershell(engine, script).disposition == "allow"
 
 
-def test_powershell_policy_asks_for_unclassified_script() -> None:
-    decision = _evaluate_powershell(PolicyEngine(), "Write-Output 'hello'")
+@pytest.mark.parametrize(
+    "script",
+    (
+        "Write-Output $env:API_TOKEN",
+        "Get-Content *",
+        "Get-ItemProperty HKCU:\\Software\\Example",
+        "Set-Content output.txt hello",
+        "python -c \"open('output.txt', 'w').write('hello')\"",
+        "uv tool install example-package",
+        "uv run --with example-package pytest tests -q",
+        "rg --pre 'python helper.py' TODO .",
+        "where git",
+        "rg TODO src > report.txt",
+        "Get-ChildItem src | Select-Object -First 1",
+    ),
+)
+def test_powershell_policy_asks_for_unclassified_script(script: str) -> None:
+    decision = _evaluate_powershell(PolicyEngine(), script)
 
     assert decision.disposition == "ask"
     assert decision.code == "unclassified_powershell_command"
+
+
+@pytest.mark.parametrize(
+    ("script", "expected_code"),
+    (
+        ("Get-Content .env", "secret_access"),
+        ("Get-Content -Path:.env", "secret_access"),
+        ("cat .env", "secret_access"),
+        ("Select-String TOKEN .env", "secret_access"),
+        ("Get-Content Env:API_TOKEN", "secret_environment"),
+        ("Get-Content -LiteralPath:Env:API_TOKEN", "secret_environment"),
+    ),
+)
+def test_powershell_routine_reads_still_protect_secrets(
+    script: str,
+    expected_code: str,
+) -> None:
+    decision = _evaluate_powershell(PolicyEngine(), script)
+
+    assert decision.disposition == "ask"
+    assert decision.code == expected_code
 
 
 @pytest.mark.parametrize(
