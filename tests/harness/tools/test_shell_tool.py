@@ -272,9 +272,11 @@ def test_native_windows_shell_tool_runs_without_bash_installation(
     )
 
     result = asyncio.run(tool.execute("shell-native", {"command": "Get-Location"}))
+    transcript_result = result.for_presentation()
 
     assert result.details["exit_code"] == 0
     assert result.content[0].text.strip()
+    assert transcript_result.content[0].text == result.content[0].text
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires a native Windows host")
