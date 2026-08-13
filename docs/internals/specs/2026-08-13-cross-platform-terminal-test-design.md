@@ -338,7 +338,7 @@ P0 风险清单必须点名 `src/loushang/harnesstui/testing/screen_loop_playbac
 
 在正式抽象前，用锁定版本、强制 ConPTY 验证五个场景：
 
-1. 大输出并立即退出；
+1. 大于 64 KiB 的无换行输出与 backpressure，以及独立的立即退出尾部 drain；
 2. 产品/依赖/fixture query 全集盘点，为每一类定义响应、无响应 fallback 与 deadline，并覆盖 DSR、Kitty 和 cell-size profile；
 3. 正常退出与尾部 drain；
 4. timeout 后孙进程清理；
@@ -358,7 +358,7 @@ P2a 不宣称 Windows 原生 terminal contract 已完成，也不得关闭 P0 �
 
 ### P2b：ConPTY 与 Windows native gate 原子启用
 
-- 落地强制 ConPTY backend，加入条件 dev dependency 和锁文件。
+- 落地基于 Win32 API 的强制 ConPTY backend；保持测试栈零 Windows 条件依赖，Linux 与 Windows 均不安装 pywinpty。
 - 增加 Windows native-terminal required job；显式选择 test support、backend conformance 和同一 `/quit` 产品合同路径。
 - 把 P1 的大输出、query matrix、Unicode、resize、退出码、timeout 子孙进程、输出 EOF/drain 和幂等 close 固化为双 backend conformance。
 
