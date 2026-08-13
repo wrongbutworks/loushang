@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
+import pytest
 
 from loushang.ai import OAuthBearerAuth
 from loushang.ai.auth import FileCredentialStore, get_auth, login
@@ -121,6 +122,7 @@ def _fake_oauth_server() -> Iterator[tuple[str, _OAuthServerState]]:
         thread.join(timeout=5)
 
 
+@pytest.mark.requires_host_runtime
 def test_real_authlib_login_store_resolve_refresh_lifecycle(tmp_path: Path) -> None:
     async def scenario(base_url: str, state: _OAuthServerState):
         model = Model(

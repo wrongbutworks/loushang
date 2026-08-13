@@ -87,6 +87,7 @@ def test_get_auth_missing_oauth_is_structured_and_never_starts_login() -> None:
     assert exc_info.value.info.details["available_actions"] == ["login"]
 
 
+@pytest.mark.requires_host_runtime
 def test_login_returns_session_without_opening_browser(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
