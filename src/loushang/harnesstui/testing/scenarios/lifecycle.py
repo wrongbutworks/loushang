@@ -163,6 +163,7 @@ class _LifecycleRecipes(Generic[AppT]):
         scenario = self.factory.loop_scenario()
         prompts: list[str] = []
         steers: list[str] = []
+        abort_settled = asyncio.Event()
 
         async def handle_prompt(text: str) -> None:
             prompts.append(text)
@@ -171,7 +172,7 @@ class _LifecycleRecipes(Generic[AppT]):
                 scenario.app.append_assistant_chunk("fresh response")
                 return
             scenario.app.append_assistant_chunk("old response")
-            await _never()
+            await abort_settled.wait()
 
         async def handle_steer(text: str) -> None:
             steers.append(text)
@@ -186,7 +187,11 @@ class _LifecycleRecipes(Generic[AppT]):
             .escape()
             .wait(0.04)
             .end_input()
-            .run(handle_prompt=handle_prompt, handle_steer=handle_steer)
+            .run(
+                handle_prompt=handle_prompt,
+                handle_steer=handle_steer,
+                on_abort=abort_settled.set,
+            )
         )
         result.assert_exit_code(0)
         result.assert_text_contains("old")
@@ -206,6 +211,7 @@ class _LifecycleRecipes(Generic[AppT]):
         scenario = self.factory.loop_scenario().with_pending_steers("prequeued")
         prompts: list[str] = []
         steers: list[str] = []
+        abort_settled = asyncio.Event()
 
         async def handle_prompt(text: str) -> None:
             if text == "prequeued":
@@ -213,7 +219,7 @@ class _LifecycleRecipes(Generic[AppT]):
                 return
             scenario.app.begin_assistant()
             scenario.app.append_assistant_chunk("working")
-            await _never()
+            await abort_settled.wait()
 
         async def handle_steer(text: str) -> None:
             steers.append(text)
@@ -228,7 +234,11 @@ class _LifecycleRecipes(Generic[AppT]):
             .escape()
             .wait(0.04)
             .end_input()
-            .run(handle_prompt=handle_prompt, handle_steer=handle_steer)
+            .run(
+                handle_prompt=handle_prompt,
+                handle_steer=handle_steer,
+                on_abort=abort_settled.set,
+            )
         )
         result.assert_exit_code(0)
         assert steers == ["running steer"]
@@ -242,12 +252,13 @@ class _LifecycleRecipes(Generic[AppT]):
     ) -> ConversationScreenLoopPlaybackResult[AppT]:
         scenario = self.factory.loop_scenario().with_pending_steers("queued")
         prompts: list[str] = []
+        abort_settled = asyncio.Event()
 
         async def handle_prompt(text: str) -> None:
             if text == "queued":
                 prompts.append(text)
                 return
-            await _never()
+            await abort_settled.wait()
 
         result = (
             scenario.type_text("start")
@@ -258,7 +269,7 @@ class _LifecycleRecipes(Generic[AppT]):
             .escape()
             .wait(0.04)
             .end_input()
-            .run(handle_prompt=handle_prompt)
+            .run(handle_prompt=handle_prompt, on_abort=abort_settled.set)
         )
         result.assert_exit_code(0)
         assert prompts == ["queued"]
@@ -273,15 +284,17 @@ class _LifecycleRecipes(Generic[AppT]):
         scenario = self.factory.loop_scenario()
         prompts: list[str] = []
         aborts: list[str] = []
+        abort_settled = asyncio.Event()
 
         async def handle_prompt(text: str) -> None:
             prompts.append(text)
             scenario.app.begin_assistant()
             scenario.app.append_assistant_chunk("working before ctrl-c")
-            await _never()
+            await abort_settled.wait()
 
         async def on_abort() -> None:
             aborts.append("abort")
+            abort_settled.set()
 
         result = (
             scenario.type_text("long running")
@@ -344,10 +357,5 @@ class _LifecycleRecipes(Generic[AppT]):
         result.assert_no_clear_screen()
         result.assert_cursor_matches_diagnostics()
         self.contracts.assert_interaction(result)
-
-
-async def _never() -> None:
-    await asyncio.Event().wait()
-
 
 __all__ = ["LifecycleScenarioAppPort", "lifecycle_scenarios"]
