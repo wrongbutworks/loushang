@@ -425,7 +425,11 @@ def compile_shell_launch(
 
 
 def _powershell_script(script: str) -> str:
-    return f"{_POWERSHELL_UTF8_PREFIX}& {{\n{script}\n}}\n{_POWERSHELL_EXIT_SUFFIX}"
+    return (
+        f"{_POWERSHELL_UTF8_PREFIX}& {{\n{script}\n}} "
+        "| Microsoft.PowerShell.Core\\Out-Default\n"
+        f"{_POWERSHELL_EXIT_SUFFIX}"
+    )
 
 
 def _infer_shell_kind(path: str) -> ShellKind | None:

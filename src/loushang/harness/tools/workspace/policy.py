@@ -380,7 +380,10 @@ def _resolved_shell_subject_matches_execution(
             decoded = base64.b64decode(encoded, validate=True).decode("utf-16le")
         except (ValueError, IndexError, UnicodeDecodeError, binascii.Error):
             return False
-        return f"& {{\n{script}\n}}\n" in decoded
+        return (
+            f"& {{\n{script}\n}} "
+            "| Microsoft.PowerShell.Core\\Out-Default\n"
+        ) in decoded
     if kind == "cmd":
         return (
             command.dialect == "cmd"

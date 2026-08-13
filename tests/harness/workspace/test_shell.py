@@ -241,6 +241,7 @@ def test_powershell_compiler_uses_plaintext_policy_and_encoded_transport() -> No
     assert launch.transport == "encoded-command"
     assert "UTF8Encoding" in decoded
     assert "Write-Output '你好'" in decoded
+    assert "| Microsoft.PowerShell.Core\\Out-Default" in decoded
     assert "$LASTEXITCODE" in decoded
     assert policy_subject.shell_payload == "Write-Output '你好'"
     assert policy_subject.command[-1] != policy_subject.shell_payload

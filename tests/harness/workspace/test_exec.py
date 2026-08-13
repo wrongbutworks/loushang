@@ -364,7 +364,7 @@ def test_exec_service_waits_for_delayed_stdio_after_root_exit(tmp_path: Path) ->
             timeout=2,
         )
 
-        assert result.stdout == "\nformatted\n"
+        assert result.stdout.splitlines() == ["", "formatted"]
         assert result.stdio_complete is True
         assert result.stdio_drain_reason is None
 
