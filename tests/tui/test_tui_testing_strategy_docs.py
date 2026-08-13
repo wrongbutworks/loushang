@@ -93,7 +93,7 @@ def test_testing_strategy_separates_native_terminal_and_tmux_evidence() -> None:
     ).read_text(encoding="utf-8")
 
     assert "Native Terminal Transport Tests" in strategy
-    assert "pywinpty==2.0.15" in strategy
+    assert "test-only `ctypes`" in strategy
     assert "explicitly selects ConPTY" in strategy
     assert "test_cli_terminal_contract.py" in strategy
     assert "tmux is a separate terminal-implementation integration" in strategy

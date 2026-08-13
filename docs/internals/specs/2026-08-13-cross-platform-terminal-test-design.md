@@ -30,7 +30,7 @@ Windows 不能因为缺少 Unix `pty` 或 `tmux` 而跳过 TUI 产品能力。�
 - 首版不把 pywinpty 加入产品运行依赖。
 - 首版不实现完整 VT emulator，也不声称 ConPTY 原始 VT 流等价于最终 Windows Terminal 屏幕。
 - 不要求 Windows 运行 tmux 专属功能；能力不适用不等于跳过 Windows 产品合同。
-- 首版正式验证范围收敛为 Windows x64、Python 3.11+；Windows ARM64 仅标记为依赖可安装/预期兼容，进入独立 runner 或发布验收矩阵后才升级为正式支持。
+- 首版正式验证范围收敛为 Windows x64、Python 3.11+；Windows ARM64 仅标记为 API 层预期兼容，进入独立 runner 或发布验收矩阵后才升级为正式支持。
 - 不扩展到 Windows x86、早于 Windows 10 1809 的系统或所有 Python 版本组合。
 
 ## 当前事实与缺口
@@ -206,15 +206,9 @@ class TerminalProcessDriver(Protocol):
 
 ### 支持边界与依赖
 
-ConPTY API 最低可用边界为 Windows 10 1809/build 17763 和 Windows Server 2019；这不等于每个最低版本都已有持续验证。首版自动化验证平台为 Windows Server 2022 x64/Python 3.11，正式桌面验收平台为 Windows 10 22H2 x64。锁定的 pywinpty 版本没有 Windows ARM64 wheel，因此首版明确只支持 x64；ARM64 必须等依赖候选通过同一套原生合同并增加独立 CI 证据后再声明支持，不能从 ConPTY API 可用性推导兼容。
+ConPTY API 最低可用边界为 Windows 10 1809/build 17763 和 Windows Server 2019；这不等于每个最低版本都已有持续验证。首版自动化验证平台为 Windows Server 2022 x64/Python 3.11，正式桌面验收平台为 Windows 10 22H2 x64。测试后端通过 Python 标准库 `ctypes` 直接调用系统 ConPTY API，不下载 Windows 原生 wheel。ARM64 在 API 层预期兼容，但必须增加独立 CI 证据后才声明支持，不能从 API 可用性推导已验证兼容。
 
-`pywinpty` 仅加入开发依赖并锁定原生版本：
-
-```toml
-"pywinpty==2.0.15; sys_platform == 'win32'"
-```
-
-分发名为 `pywinpty`、导入名为 `winpty`。锁文件必须包含 Windows x64 wheel；CI 使用 `uv sync --locked --extra dev`。P1 在 Windows Server 2022 上实测拒绝了 `pywinpty==3.0.5`：其 `winpty-rs==1.0.6` 异步 ConPTY 写入可能把最后一次 terminal response 留在 pending 状态，异步 reader 也会在进程退出边界丢失大输出尾块。`2.0.15` 使用同步写入和独立读缓存，仍须通过本规范的 query、无换行大输出、退出码与零残留合同。版本升级通过独立依赖 PR 和 Windows 合同验证完成，不能只按版本号前进。
+P1 在 Windows Server 2022 上实测拒绝了两个 pywinpty 候选：`3.0.5`/`winpty-rs 1.0.6` 的异步写入可能把最后一次 terminal response 留在 pending 状态，异步 reader 也会在进程退出边界丢失大输出尾块；`2.0.15` 会在跨块 UTF-8 输出中产生替换字符，且真实 CLI 正常退出后 reader 不能在总 deadline 内关闭。首版因此不引入 pywinpty 开发依赖，而以测试专用薄封装显式拥有 pipe、HPCON、process handle 和线程生命周期。任何未来依赖替换都必须通过 query、无换行大输出、退出码、进程树与零残留合同，不能只按版本号前进。
 
 ### 强制 ConPTY
 
@@ -224,14 +218,14 @@ ConPTY API 最低可用边界为 Windows 10 1809/build 17763 和 Windows Server 
 
 ### 同步 I/O、drain 与关闭
 
-ConPTY 使用同步管道，driver 必须：
+ConPTY driver 使用自己拥有的同步匿名管道，必须：
 
 - 用独立 reader thread 持续排空输出；测试主线程不得直接阻塞在 `PtyProcess.read()`。
 - writer 串行化，测试输入和 terminal responder 不并发写底层 PTY。
-- 自己实现有 deadline 的 `read_until()` 与 `wait()`，不直接暴露 pywinpty 的无界阻塞 API。
+- 自己实现有 deadline 的 `read_until()` 与 `wait()`，不直接暴露 Win32 同步 I/O 的无界阻塞面。
 - Windows 超时清理使用从可信 `%SystemRoot%\System32` 解析的绝对路径 `taskkill.exe /PID <pid> /T /F` 作为同步进程树兜底，记录 stdout、stderr 和退出码；随后轮询 fixture 暴露的根/孙 PID 直到消失或 deadline。`taskkill` 非零但进程已不存在可记录为竞态成功，仍有残留则 required CI 失败。后续若产品引入 Job Object，可复用更强的树生命周期能力。
 - 关闭采用有总 deadline 的状态机，而不是固定的“先 join reader、再 close PTY”：reader 从 spawn 起持续运行；请求正常退出或同步树终止；在 reader 仍持续排空时启动经过 spike 验证的 PTY teardown（后端若支持则显式管理 output endpoint）；等待 teardown/EOF；必要时调用 `cancel_io()` 解除阻塞；最后有限 join reader 并确认 thread/handle 零残留。
-- pywinpty `PtyProcess` 自身可能持有 native/daemon reader。P1 必须证明 `PtyProcess + cancel_io` 在目标 Windows 上可以完整退出；否则改用可显式控制 handle/pipe 生命周期的低层 `winpty.PTY` 或其他库层。未通过 spike 前不得以 Python 外层 reader 已退出推定 ConPTY 已安全关闭。
+- 所有输入/输出 pipe、HPCON、process/thread handle 都有唯一所有者；正常退出、timeout 和异常路径都必须关闭。`ClosePseudoConsole` 在独立受 deadline 约束的线程执行，同时 reader 持续 drain；未通过零残留断言前不得以 Python 外层进程退出推定 ConPTY 已安全关闭。
 
 ### Terminal query responder
 
@@ -352,7 +346,7 @@ P0 风险清单必须点名 `src/loushang/harnesstui/testing/screen_loop_playbac
 
 Spike 结果必须固化为 backend conformance tests，不能只留下实验脚本。
 
-P1 是探索分支上的合并前门槛，不是可单独发布的切片。它同时比较 `PtyProcess`、必要时的低层 `winpty.PTY` 或替代封装，证明 teardown 能收掉 library 内部和外部 reader；选型证据通过后再进入 P2a/P2b。不得把临时依赖、无 required CI 的 spike 或无法验证 thread 零残留的实现合入主线。
+P1 是探索分支上的合并前门槛，不是可单独发布的切片。它比较 `PtyProcess`、低层 `winpty.PTY` 与显式所有权的测试薄封装，最终淘汰两个 pywinpty 候选并选择直接 Win32 ConPTY 路径；选型证据通过后再进入 P2a/P2b。不得把临时依赖、无 required CI 的 spike 或无法验证 thread/handle 零残留的实现合入主线。
 
 ### P2a：中立协议、POSIX backend 与既有 smoke 迁移
 
@@ -368,7 +362,7 @@ P2a 不宣称 Windows 原生 terminal contract 已完成，也不得关闭 P0 �
 - 增加 Windows native-terminal required job；显式选择 test support、backend conformance 和同一 `/quit` 产品合同路径。
 - 把 P1 的大输出、query matrix、Unicode、resize、退出码、timeout 子孙进程、输出 EOF/drain 和幂等 close 固化为双 backend conformance。
 
-P2b 不允许合并“Windows job 存在但全部 skip”“ConPTY backend 尚未受进程树清理保护”或“pywinpty teardown 尚未证明 reader/handle 零残留”的中间状态。P2a 与 P2b 可以分成小步提交，但 P2b 是 Windows 原生支持声明和本轮跨平台目标的发布阻断项，不能停在 P2a 宣称完成。
+P2b 不允许合并“Windows job 存在但全部 skip”“ConPTY backend 尚未受进程树清理保护”或“ConPTY teardown 尚未证明 reader/handle 零残留”的中间状态。P2a 与 P2b 可以分成小步提交，但 P2b 是 Windows 原生支持声明和本轮跨平台目标的发布阻断项，不能停在 P2a 宣称完成。
 
 ### P3：tmux 与 auto-compaction 职责收敛
 
@@ -408,7 +402,7 @@ P2b 不允许合并“Windows job 存在但全部 skip”“ConPTY backend 尚�
 - 新增独立 terminal/tmux marker，补齐现有 CI 覆盖空洞；
 - 区分 ConPTY API 最低边界、x64 正式验证范围和 ARM64 预期兼容，避免无证据的支持声明；
 - reader thread、可配置 terminal query responder、有限 drain、同步树终止和幂等 close；
-- 删除不可移植的统一输入 EOF 语义，并将 pywinpty teardown 能否零残留设为 P1 技术选型门槛；
+- 删除不可移植的统一输入 EOF 语义，并将 ConPTY teardown 能否零残留设为 P1 技术选型门槛；
 - 平台单元测试拆成共享/POSIX/Windows 精确集合，避免“零 skip”与现有 runtime skip 冲突；
 - auto-compaction 状态合同与 tmux pane 合同拆分；
 - tmux marker 与最小 required job 在 P0 原子落地，readiness 后续改为 capture polling，CI 中依赖缺失不允许 skip。
@@ -427,6 +421,6 @@ P2b 不允许合并“Windows job 存在但全部 skip”“ConPTY backend 尚�
 - Microsoft 创建 pseudoconsole session：<https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session>
 - Microsoft `ClosePseudoConsole`：<https://learn.microsoft.com/en-us/windows/console/closepseudoconsole>
 - pywinpty：<https://pypi.org/project/pywinpty/>
-- pywinpty `PtyProcess`：<https://github.com/andfoy/pywinpty/blob/v2.0.15/winpty/ptyprocess.py>
+- pywinpty（被 P1 spike 淘汰的候选）：<https://github.com/andfoy/pywinpty/>
 - winpty-rs terminal query 注意事项：<https://github.com/andfoy/winpty-rs#important-notes>
 - GitHub Actions runner image labels：<https://github.com/actions/runner-images>
