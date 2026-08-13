@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import threading
-import time
+import math
 from collections.abc import Coroutine, Iterator, Mapping, Sequence
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Generic, Literal, Protocol, Self, TextIO, TypeVar, cast
+from typing import Generic, Literal, Protocol, Self, TextIO, TypeVar
 
 from loushang.harnesstui.conversation.screen_runner import (
     AbortHandler,
@@ -36,6 +34,7 @@ from loushang.harnesstui.testing.ports import (
 from loushang.tui.cell_width import strip_control_sequences
 from loushang.tui.playback import playback_artifacts_directory_from_env
 from loushang.tui.terminal import TerminalOperation, TerminalSize
+from loushang.tui.terminal_input import InputChunkReader
 
 ScreenAppT = TypeVar("ScreenAppT", bound=ConversationScreenPort)
 
@@ -62,6 +61,7 @@ class ConversationScreenLoopRunnerPort(Protocol):
         interruption_message: str,
         cancellation_message: str,
         input_router_factory: ConversationInputRouterFactoryPort | None,
+        input_chunk_reader: InputChunkReader | None,
     ) -> Coroutine[object, object, int]: ...
 
 
@@ -87,67 +87,110 @@ class NoTerminalMode:
         return False
 
 
-class TimedTtyChunkInput:
-    """TTY-like pipe that emits scripted chunks from a background writer."""
+class TimedInputChunkReader:
+    """Async test input source that emits chunks relative to its first read."""
 
     def __init__(
         self,
         chunks: Sequence[ScriptedInputChunk],
-        *,
-        block_seconds: float = 0.002,
     ) -> None:
-        self._start = time.perf_counter()
-        self._block_seconds = max(0.0001, block_seconds)
-        self._read_fd, self._write_fd = os.pipe()
-        self._closed = threading.Event()
-        self._writer = threading.Thread(
-            target=self._write_chunks,
-            args=(tuple(chunks),),
-            daemon=True,
-        )
-        self._writer.start()
+        self._chunks = tuple(chunks)
+        self._index = 0
+        self._started_at: float | None = None
 
-    def fileno(self) -> int:
-        return self._read_fd
+    async def __call__(self, _stdin: TextIO) -> str:
+        if self._index >= len(self._chunks):
+            return ""
+        loop = asyncio.get_running_loop()
+        if self._started_at is None:
+            self._started_at = loop.time()
+        chunk = self._chunks[self._index]
+        delay = chunk.at_seconds - (loop.time() - self._started_at)
+        if delay > 0:
+            await asyncio.sleep(delay)
+        self._index += 1
+        return chunk.data
 
-    def isatty(self) -> bool:
-        return True
 
-    def read(self, _size: int = -1) -> str:
-        return ""
+class BlockingPromptController:
+    """Bound one abort-settled prompt used by deterministic lifecycle tests.
 
-    def close(self) -> None:
-        if self._closed.is_set():
-            return
-        self._closed.set()
-        with suppress(OSError):
-            os.close(self._read_fd)
-        self._writer.join(timeout=0.1)
+    The prompt handler awaits :meth:`wait_until_settled`, while the simulated
+    abort callback invokes :meth:`settle_on_abort`.  The context manager fails
+    closed unless the prompt started, the abort released it, and its task
+    finished before the scenario returned.
+    """
 
-    def __enter__(self) -> Self:
+    def __init__(self, *, timeout_seconds: float = 1.0) -> None:
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("blocking prompt timeout must be finite and greater than zero")
+        self._timeout_seconds = timeout_seconds
+        self._started = False
+        self._settle_requested = False
+        self._finished = False
+        self._settled_event: asyncio.Event | None = None
+        self._waiter: asyncio.Task[object] | None = None
+
+    @property
+    def started(self) -> bool:
+        return self._started
+
+    @property
+    def settled(self) -> bool:
+        return self._settle_requested and self._finished
+
+    async def wait_until_settled(self) -> None:
+        if self._started:
+            raise RuntimeError("blocking prompt controller supports one prompt")
+        waiter = asyncio.current_task()
+        if waiter is None:
+            raise RuntimeError("blocking prompt must run inside an asyncio task")
+        self._started = True
+        self._waiter = waiter
+        settled_event = asyncio.Event()
+        self._settled_event = settled_event
+        if self._settle_requested:
+            settled_event.set()
+        try:
+            await asyncio.wait_for(
+                settled_event.wait(),
+                timeout=self._timeout_seconds,
+            )
+        except TimeoutError as error:
+            raise AssertionError(
+                "blocking prompt was not settled by abort within "
+                f"{self._timeout_seconds:.3f}s"
+            ) from error
+        finally:
+            self._finished = True
+
+    def settle_on_abort(self) -> None:
+        self._settle_requested = True
+        if self._settled_event is not None:
+            self._settled_event.set()
+
+    def assert_finished(self) -> None:
+        if not self._started:
+            raise AssertionError("blocking prompt never started")
+        if not self._settle_requested:
+            raise AssertionError("blocking prompt abort never requested settlement")
+        if not self._finished:
+            raise AssertionError("blocking prompt did not finish")
+        if self._waiter is None or not self._waiter.done():
+            raise AssertionError("blocking prompt left a residual asyncio task")
+
+    def __enter__(self) -> BlockingPromptController:
         return self
 
-    def __exit__(self, *_args: object) -> Literal[False]:
-        self.close()
+    def __exit__(
+        self,
+        exc_type: object,
+        _exc: object,
+        _traceback: object,
+    ) -> Literal[False]:
+        if exc_type is None:
+            self.assert_finished()
         return False
-
-    def _write_chunks(self, chunks: tuple[ScriptedInputChunk, ...]) -> None:
-        try:
-            for chunk in chunks:
-                while (
-                    remaining := chunk.at_seconds - (time.perf_counter() - self._start)
-                ) > 0:
-                    if self._closed.wait(min(self._block_seconds, remaining)):
-                        return
-                if self._closed.is_set():
-                    return
-                try:
-                    os.write(self._write_fd, chunk.data.encode())
-                except OSError:
-                    return
-        finally:
-            with suppress(OSError):
-                os.close(self._write_fd)
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,41 +347,35 @@ class ConversationScreenLoopPlayback(Generic[ScreenAppT]):
     ) -> ConversationScreenLoopPlaybackResult[ScreenAppT]:
         scripted_chunks = tuple(_coerce_chunk(chunk) for chunk in chunks)
         stdout = StringIO()
-        stdin: TextIO
-        timed_input: TimedTtyChunkInput | None = None
-        if scripted_chunks:
-            timed_input = TimedTtyChunkInput(scripted_chunks)
-            stdin = cast(TextIO, timed_input)
-        else:
-            stdin = StringIO("")
-        try:
-            exit_code: int = asyncio.run(
-                self._runner(
-                    app=self.app,
-                    stdin=stdin,
-                    stdout=stdout,
-                    handle_prompt=handle_prompt or _ignore_text,
-                    handle_local=handle_local,
-                    handle_steer=handle_steer,
-                    handle_followup=handle_followup,
-                    handle_surface_intent=handle_surface_intent,
-                    on_abort=on_abort or _ignore_abort,
-                    should_exit=should_exit or (lambda _text: False),
-                    is_local_command=is_local_command,
-                    terminal_mode_factory=terminal_mode_factory
-                    or (lambda _stdin, _stdout: NoTerminalMode()),
-                    terminal_size_provider=lambda: TerminalSize(
-                        columns=self.width,
-                        rows=self.height,
-                    ),
-                    interruption_message=self.interruption_message,
-                    cancellation_message=self.cancellation_message,
-                    input_router_factory=self._input_router_factory,
-                )
+        stdin = StringIO("")
+        input_chunk_reader = (
+            TimedInputChunkReader(scripted_chunks) if scripted_chunks else None
+        )
+        exit_code: int = asyncio.run(
+            self._runner(
+                app=self.app,
+                stdin=stdin,
+                stdout=stdout,
+                handle_prompt=handle_prompt or _ignore_text,
+                handle_local=handle_local,
+                handle_steer=handle_steer,
+                handle_followup=handle_followup,
+                handle_surface_intent=handle_surface_intent,
+                on_abort=on_abort or _ignore_abort,
+                should_exit=should_exit or (lambda _text: False),
+                is_local_command=is_local_command,
+                terminal_mode_factory=terminal_mode_factory
+                or (lambda _stdin, _stdout: NoTerminalMode()),
+                terminal_size_provider=lambda: TerminalSize(
+                    columns=self.width,
+                    rows=self.height,
+                ),
+                interruption_message=self.interruption_message,
+                cancellation_message=self.cancellation_message,
+                input_router_factory=self._input_router_factory,
+                input_chunk_reader=input_chunk_reader,
             )
-        finally:
-            if timed_input is not None:
-                timed_input.close()
+        )
         state = dict(self._state_snapshot(self.app))
         payload = (
             dict(self._result_payload(exit_code, self.app))
@@ -455,6 +492,7 @@ def _ignore_abort() -> None:
 
 
 __all__ = [
+    "BlockingPromptController",
     "ConversationScreenLoopArtifacts",
     "ConversationScreenLoopPlayback",
     "ConversationScreenLoopPlaybackResult",
@@ -462,5 +500,5 @@ __all__ = [
     "ConversationScreenLoopScenario",
     "NoTerminalMode",
     "ScriptedInputChunk",
-    "TimedTtyChunkInput",
+    "TimedInputChunkReader",
 ]

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import threading
 import time
 from collections.abc import Awaitable, Callable
 from io import StringIO
@@ -14,6 +12,10 @@ from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.harnesstui.conversation.control import ConversationTextAction
 from loushang.harnesstui.testing.action_host import (
     CallbackConversationActionHost,
+)
+from loushang.harnesstui.testing.screen_loop_playback import (
+    ScriptedInputChunk,
+    TimedInputChunkReader,
 )
 from loushang.tui import strip_control_sequences
 from tests.coding.tui_support.scenario_binding import run_coding_test_screen
@@ -453,7 +455,10 @@ def test_screen_loop_escape_closes_model_surface_and_restores_prompt() -> None:
     result = asyncio.run(
         run_coding_test_screen(
             app=app,
-            stdin=_TimedTtyChunkInput((0.0, "/model\r"), (0.01, "\x1b")),
+            stdin=StringIO(""),
+            input_chunk_reader=_timed_input_reader(
+                (0.0, "/model\r"), (0.01, "\x1b")
+            ),
             stdout=stdout,
             action_host=_action_host(),
             handle_local=manager.handle_text,
@@ -574,6 +579,7 @@ def test_screen_loop_dispatches_steer_and_followup_handlers() -> None:
     steers: list[tuple[str, str]] = []
     followups: list[str] = []
     prompts: list[str] = []
+    abort_settled = asyncio.Event()
 
     async def handle_prompt(text: str) -> int | None:
         if text != "start":
@@ -581,7 +587,7 @@ def test_screen_loop_dispatches_steer_and_followup_handlers() -> None:
             return None
         app.begin_assistant()
         app.append_assistant_chunk("still running")
-        await asyncio.Event().wait()
+        await abort_settled.wait()
         return None
 
     async def handle_steer(text: str) -> int | None:
@@ -601,6 +607,7 @@ def test_screen_loop_dispatches_steer_and_followup_handlers() -> None:
                 submit=handle_prompt,
                 steer=handle_steer,
                 follow_up=handle_followup,
+                abort=abort_settled.set,
             ),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
@@ -659,12 +666,13 @@ def test_screen_loop_executes_queued_steer_after_running_escape() -> None:
     )
     app.state.pending_steers.append("follow")
     prompts: list[str] = []
+    abort_settled = asyncio.Event()
 
     async def handle_prompt(text: str) -> int | None:
         if text == "follow":
             prompts.append(text)
             return None
-        await asyncio.Event().wait()
+        await abort_settled.wait()
         return None
 
     result = asyncio.run(
@@ -672,7 +680,10 @@ def test_screen_loop_executes_queued_steer_after_running_escape() -> None:
             app=app,
             stdin=StringIO("开始\r\x1b"),
             stdout=stdout,
-            action_host=_action_host(submit=handle_prompt),
+            action_host=_action_host(
+                submit=handle_prompt,
+                abort=abort_settled.set,
+            ),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -695,6 +706,7 @@ def test_screen_loop_executes_queued_steer_after_running_escape_with_delay() -> 
     app.state.pending_steers.append("follow-up")
     prompts: list[str] = []
     steers: list[str] = []
+    abort_settled = asyncio.Event()
 
     async def handle_prompt(text: str) -> int | None:
         if text == "follow-up":
@@ -702,7 +714,7 @@ def test_screen_loop_executes_queued_steer_after_running_escape_with_delay() -> 
             app.begin_assistant()
             app.append_assistant_chunk(f"handled {text}")
             return None
-        await asyncio.Event().wait()
+        await abort_settled.wait()
         return None
 
     async def handle_steer(text: str) -> int | None:
@@ -712,13 +724,18 @@ def test_screen_loop_executes_queued_steer_after_running_escape_with_delay() -> 
     result = asyncio.run(
         run_coding_test_screen(
             app=app,
-            stdin=_TimedTtyChunkInput(
+            stdin=StringIO(""),
+            input_chunk_reader=_timed_input_reader(
                 (0.0, "start\r"),
                 (0.01, "follow\r"),
                 (0.02, "\x1b"),
             ),
             stdout=stdout,
-            action_host=_action_host(submit=handle_prompt, steer=handle_steer),
+            action_host=_action_host(
+                submit=handle_prompt,
+                steer=handle_steer,
+                abort=abort_settled.set,
+            ),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
@@ -744,24 +761,29 @@ def test_screen_loop_escape_runs_pending_steer_before_unsubmitted_composer_text(
     )
     app.state.pending_steers.append("queued")
     prompts: list[str] = []
+    abort_settled = asyncio.Event()
 
     async def handle_prompt(text: str) -> int | None:
         if text == "queued":
             prompts.append(text)
             return None
-        await asyncio.Event().wait()
+        await abort_settled.wait()
         return None
 
     result = asyncio.run(
         run_coding_test_screen(
             app=app,
-            stdin=_TimedTtyChunkInput(
+            stdin=StringIO(""),
+            input_chunk_reader=_timed_input_reader(
                 (0.0, "start\r"),
                 (0.01, "draft"),
                 (0.02, "\x1b"),
             ),
             stdout=stdout,
-            action_host=_action_host(submit=handle_prompt),
+            action_host=_action_host(
+                submit=handle_prompt,
+                abort=abort_settled.set,
+            ),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
@@ -784,6 +806,7 @@ def test_screen_loop_renders_pending_steer_stream_after_escape_interrupt() -> No
         now=_Clock([10.0, 10.5, 11.0, 11.2]),
     )
     app.state.pending_steers.append("queued")
+    abort_settled = asyncio.Event()
 
     async def handle_prompt(text: str) -> int | None:
         if text == "queued":
@@ -796,15 +819,21 @@ def test_screen_loop_renders_pending_steer_stream_after_escape_interrupt() -> No
             )
             app.append_assistant_chunk(" done")
             return None
-        await asyncio.Event().wait()
+        await abort_settled.wait()
         return None
 
     result = asyncio.run(
         run_coding_test_screen(
             app=app,
-            stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "\x1b"), (0.2, "")),
+            stdin=StringIO(""),
+            input_chunk_reader=_timed_input_reader(
+                (0.0, "start\r"), (0.01, "\x1b"), (0.2, "")
+            ),
             stdout=stdout,
-            action_host=_action_host(submit=handle_prompt),
+            action_host=_action_host(
+                submit=handle_prompt,
+                abort=abort_settled.set,
+            ),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
@@ -829,12 +858,13 @@ def test_screen_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
     )
     prompts: list[str] = []
     steers: list[str] = []
+    abort_settled = asyncio.Event()
 
     async def handle_prompt(text: str) -> int | None:
         if text == "follow":
             prompts.append(text)
             return None
-        await asyncio.Event().wait()
+        await abort_settled.wait()
         return None
 
     async def handle_steer(text: str) -> int | None:
@@ -844,11 +874,16 @@ def test_screen_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
     result = asyncio.run(
         run_coding_test_screen(
             app=app,
-            stdin=_TimedTtyChunkInput(
+            stdin=StringIO(""),
+            input_chunk_reader=_timed_input_reader(
                 (0.0, "start\r"), (0.01, "follow\r"), (0.02, "\x1b")
             ),
             stdout=stdout,
-            action_host=_action_host(submit=handle_prompt, steer=handle_steer),
+            action_host=_action_host(
+                submit=handle_prompt,
+                steer=handle_steer,
+                abort=abort_settled.set,
+            ),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
@@ -873,12 +908,13 @@ def test_screen_loop_abort_uses_first_pending_steer_before_running_steer() -> No
     app.state.pending_steers.append("预先排队")
     prompts: list[str] = []
     steers: list[str] = []
+    abort_settled = asyncio.Event()
 
     async def handle_prompt(text: str) -> int | None:
         if text == "预先排队":
             prompts.append(text)
             return None
-        await asyncio.Event().wait()
+        await abort_settled.wait()
         return None
 
     async def handle_steer(text: str) -> int | None:
@@ -888,11 +924,16 @@ def test_screen_loop_abort_uses_first_pending_steer_before_running_steer() -> No
     result = asyncio.run(
         run_coding_test_screen(
             app=app,
-            stdin=_TimedTtyChunkInput(
+            stdin=StringIO(""),
+            input_chunk_reader=_timed_input_reader(
                 (0.0, "start\r"), (0.01, "follow\r"), (0.02, "\x1b")
             ),
             stdout=stdout,
-            action_host=_action_host(submit=handle_prompt, steer=handle_steer),
+            action_host=_action_host(
+                submit=handle_prompt,
+                steer=handle_steer,
+                abort=abort_settled.set,
+            ),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
@@ -976,7 +1017,7 @@ def test_screen_loop_renders_streaming_updates_without_waiting_for_keyboard() ->
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     stdout = StringIO()
-    stdin = _TimedTtyChunkInput((0.0, "go\r"), (0.2, ""))
+    input_chunk_reader = _timed_input_reader((0.0, "go\r"), (0.2, ""))
     app = ScreenCodingTuiApp(
         model_label="kimi", cwd="/repo", branch="main", session_label="abcd"
     )
@@ -991,7 +1032,8 @@ def test_screen_loop_renders_streaming_updates_without_waiting_for_keyboard() ->
     result = asyncio.run(
         run_coding_test_screen(
             app=app,
-            stdin=stdin,
+            stdin=StringIO(""),
+            input_chunk_reader=input_chunk_reader,
             stdout=stdout,
             action_host=_action_host(submit=handle_prompt),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
@@ -1009,7 +1051,7 @@ def test_screen_loop_wakes_stream_render_before_active_interval() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     stdout = StringIO()
-    stdin = _TimedTtyChunkInput((0.0, "go\r"), (0.1, ""))
+    input_chunk_reader = _timed_input_reader((0.0, "go\r"), (0.1, ""))
     app = ScreenCodingTuiApp(
         model_label="kimi", cwd="/repo", branch="main", session_label="abcd"
     )
@@ -1028,7 +1070,8 @@ def test_screen_loop_wakes_stream_render_before_active_interval() -> None:
     result = asyncio.run(
         run_coding_test_screen(
             app=app,
-            stdin=stdin,
+            stdin=StringIO(""),
+            input_chunk_reader=input_chunk_reader,
             stdout=stdout,
             action_host=_action_host(submit=handle_prompt),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
@@ -1213,38 +1256,9 @@ class _OrderingTerminalMode:
         return False
 
 
-class _TimedTtyChunkInput:
-    def __init__(
-        self, *chunks: tuple[float, str], block_seconds: float = 0.002
-    ) -> None:
-        self._start = time.perf_counter()
-        self._chunks = list(chunks)
-        self._block_seconds = block_seconds
-        self._read_fd, write_fd = os.pipe()
-        self._closed = threading.Event()
-
-        def writer() -> None:
-            try:
-                for emit_at, chunk in self._chunks:
-                    while (
-                        remaining := emit_at - (time.perf_counter() - self._start)
-                    ) > 0:
-                        time.sleep(min(self._block_seconds, remaining))
-                    if self._closed.is_set():
-                        break
-                    os.write(write_fd, chunk.encode())
-            finally:
-                os.close(write_fd)
-
-        self._writer = threading.Thread(target=writer, daemon=True)
-        self._writer.start()
-
-    def fileno(self) -> int:
-        return self._read_fd
-
-    def isatty(self) -> bool:
-        return True
-
-    def read(self, _size: int) -> str:
-        # This stream is tty-like and read through the terminal reader path.
-        return ""
+def _timed_input_reader(
+    *chunks: tuple[float, str],
+) -> TimedInputChunkReader:
+    return TimedInputChunkReader(
+        tuple(ScriptedInputChunk(at_seconds=at, data=data) for at, data in chunks)
+    )

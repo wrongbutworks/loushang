@@ -395,6 +395,139 @@ def test_agent_session_abort_mid_stream_cleans_run_state_and_keeps_queued_messag
     assert event_types[-1] == "agent_end"
 
 
+def test_persisted_session_abort_tool_then_prompt_and_resume_keeps_revision_chain(
+    tmp_path,
+) -> None:
+    from loushang.agent import Agent
+    from loushang.agent.types import AgentToolResult
+    from loushang.ai.types import ToolResultMessage
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.tools.core import ToolDefinition
+    from loushang.harness.tools.execution import direct_execution
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    tool_started = asyncio.Event()
+    release_tool = asyncio.Event()
+
+    async def execute_blocking(tool_call_id, params, signal=None, on_update=None):
+        del tool_call_id, params, signal, on_update
+        tool_started.set()
+        await release_tool.wait()
+        return AgentToolResult(content=[TextPart(type="text", text="unreachable")])
+
+    registry = WorkspaceToolRegistry()
+    registry.register_tool(
+        ToolDefinition(
+            name="blocking",
+            description="Block until the run is aborted",
+            parameters={"type": "object", "properties": {}},
+            label="Blocking",
+            execution=direct_execution(execute_blocking),
+            execution_mode="sequential",
+        )
+    )
+
+    async def stream_fn(model, context, options=None):
+        del model, options
+        last = context.messages[-1]
+        text = last.content[0].text if isinstance(last, UserMessage) else ""
+        if text == "use tool":
+            return _stream_with_assistant_message(
+                AssistantMessage(
+                    endpoint="test-endpoint",
+                    role="assistant",
+                    content=[
+                        ToolCall(
+                            type="toolCall",
+                            id="tool-1",
+                            name="blocking",
+                            arguments={},
+                        )
+                    ],
+                    api="anthropic-messages",
+                    provider="faux",
+                    model="faux-model",
+                    response_id=None,
+                    usage=_usage(),
+                    stop_reason="toolUse",
+                    error_message=None,
+                    timestamp=0.0,
+                )
+            )
+        return _stream_with_final_message(_assistant_text_message(f"ok:{text}"))
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=True,
+        )
+        session = AgentSession(
+            agent=Agent(
+                stream_fn=stream_fn,
+                initial_state={"model": _model()},
+                tool_execution="sequential",
+            ),
+            session_manager=manager,
+            tool_registry=registry,
+            active_tool_names=["blocking"],
+        )
+
+        prompt_task = asyncio.create_task(session.prompt("use tool"))
+        await asyncio.wait_for(tool_started.wait(), timeout=2)
+        session.abort()
+        _done, pending = await asyncio.wait({prompt_task}, timeout=2)
+        if pending:
+            stacks = [frame.f_code.co_name for frame in prompt_task.get_stack()]
+            release_tool.set()
+            await prompt_task
+            raise AssertionError(f"abort did not settle prompt; stack={stacks}")
+        await prompt_task
+        await asyncio.wait_for(session.prompt("next"), timeout=2)
+
+        first_messages = session.get_session_context().messages
+        tool_results = [
+            message
+            for message in first_messages
+            if isinstance(message, ToolResultMessage)
+        ]
+        assert len(tool_results) == 1
+        assert tool_results[0].tool_call_id == "tool-1"
+        assert tool_results[0].details == {"code": "tool_call_aborted"}
+        assert (
+            sum(
+                isinstance(message, AssistantMessage)
+                and message.stop_reason == "aborted"
+                for message in first_messages
+            )
+            == 1
+        )
+        first_revision = len(manager.get_entries())
+        assert first_revision == len(first_messages)
+        assert manager.session_file is not None
+
+        resumed_manager = await asyncio.wait_for(
+            SessionManager.load(manager.session_file, persist=True),
+            timeout=2,
+        )
+        resumed = AgentSession(
+            agent=Agent(
+                stream_fn=stream_fn,
+                initial_state={"model": _model()},
+            ),
+            session_manager=resumed_manager,
+        )
+        await asyncio.wait_for(resumed.prompt("after resume"), timeout=2)
+
+        assert len(resumed_manager.get_entries()) == first_revision + 2
+        assert resumed.get_session_context().messages[-1].content[0].text == (
+            "ok:after resume"
+        )
+
+    asyncio.run(scenario())
+
+
 def test_agent_session_prompt_reports_preflight_before_stream_finishes(
     tmp_path,
 ) -> None:

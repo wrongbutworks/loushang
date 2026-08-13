@@ -28,7 +28,7 @@ def _model(*, supports_stream: bool) -> Model:
 
 def _message(text: str) -> AssistantMessage:
     return AssistantMessage(
-        endpoint="test-endpoint",
+        endpoint="anthropic-messages",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
