@@ -83,6 +83,49 @@ jobs:
         if: runner.os == 'Linux'
         run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-posix.xml
 
+  native-terminal:
+    name: native-terminal (${{ matrix.backend }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            backend: posix-pty
+          - os: windows-2022
+            backend: conpty
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Native backend conformance and shared CLI contract
+        env:
+          LOUSHANG_REQUIRED_TERMINAL_BACKEND: ${{ matrix.backend }}
+        run: >-
+          uv run pytest tests/tui/test_terminal_query_responder.py
+          tests/tui/test_terminal_process_backend.py
+          tests/coding/test_cli_terminal_contract.py
+          --strict-markers --strict-config
+          --junitxml=.artifacts/native-terminal.xml -q
+
+      - name: Reject empty, skipped, failing, or wrong-backend report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/native-terminal.xml
+          --require-property terminal_backend=${{ matrix.backend }}
+
   tmux-scrollback:
     name: tmux-scrollback (ubuntu-24.04)
     runs-on: ubuntu-24.04
