@@ -71,14 +71,18 @@ def main(argv: list[str] | None = None) -> int:
         cursor_is_valid = re.fullmatch(r"\x1b\[[1-9]\d*;[1-9]\d*R", cursor)
         return 0 if status == "\x1b[0n" and cursor_is_valid else 9
     if args.scenario == "large":
-        payload = "界" * args.size
-        sys.stdout.write("LARGE_BEGIN" + payload + "LARGE_END")
+        _enable_immediate_input()
+        sys.stdout.write("LARGE_BEGIN")
+        for index, offset in enumerate(range(0, args.size, 1000)):
+            chunk_size = min(1000, args.size - offset)
+            sys.stdout.write(("界" * chunk_size) + f"LARGE_CHUNK:{index}:")
+            sys.stdout.flush()
+            if _read_characters(1) != "c":
+                return 10
+        sys.stdout.write("LARGE_END")
         sys.stdout.flush()
-        # Keep the console process alive until the client has observed the
-        # complete rendered update. ConHost may coalesce/drop outstanding
-        # screen diffs when a producer exits immediately after a huge write;
-        # the separate metadata scenario covers immediate no-newline drain.
-        sys.stdin.readline()
+        if _read_characters(1) != "c":
+            return 10
         return args.code
     if args.scenario == "tree":
         child = subprocess.Popen(
