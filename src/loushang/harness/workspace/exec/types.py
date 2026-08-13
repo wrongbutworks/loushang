@@ -172,6 +172,7 @@ class ExecOutputChunk:
 
 
 ExecUpdateCallback = Callable[[ExecOutputChunk], Awaitable[None] | None]
+StdioDrainReason = Literal["idle_timeout", "hard_timeout"]
 
 
 @dataclass(frozen=True)
@@ -196,6 +197,8 @@ class ExecResult:
     stdout_total_bytes: int | None = None
     stderr_total_lines: int | None = None
     stderr_total_bytes: int | None = None
+    stdio_complete: bool = True
+    stdio_drain_reason: StdioDrainReason | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -213,6 +216,10 @@ class ExecResult:
             "output_chunks",
             _as_tuple_of_output_chunks(self.output_chunks, "output_chunks"),
         )
+        if self.stdio_complete and self.stdio_drain_reason is not None:
+            raise ValueError("complete stdio cannot have a drain reason")
+        if not self.stdio_complete and self.stdio_drain_reason is None:
+            raise ValueError("incomplete stdio requires a drain reason")
 
 
 __all__ = [
@@ -220,5 +227,6 @@ __all__ = [
     "ExecRequest",
     "ExecResult",
     "ExecUpdateCallback",
+    "StdioDrainReason",
     "materialize_exec_request",
 ]

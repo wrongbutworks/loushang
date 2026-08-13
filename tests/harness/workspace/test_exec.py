@@ -15,6 +15,7 @@ from loushang.harness.workspace.exec import (
     ExecRequest,
     ExecResult,
     ExecService,
+    LocalExecBackend,
     materialize_exec_request,
 )
 
@@ -34,9 +35,15 @@ def test_exec_records_normalize_sequences_and_validate_rolling_limit() -> None:
     assert request.env == (("A", "1"), ("B", "2"))
     assert result.stdout_chunks == ("out\n",)
     assert result.output_chunks == (ExecOutputChunk(stream="stdout", text="out\n"),)
+    assert result.stdio_complete is True
+    assert result.stdio_drain_reason is None
 
     with pytest.raises(ValueError, match="rolling_max_bytes must be >= 1"):
         ExecRequest(command=["true"], rolling_max_bytes=0)
+    with pytest.raises(ValueError, match="complete stdio cannot have a drain reason"):
+        ExecResult(exit_code=0, stdio_drain_reason="idle_timeout")
+    with pytest.raises(ValueError, match="incomplete stdio requires a drain reason"):
+        ExecResult(exit_code=0, stdio_complete=False)
 
 
 def test_exec_request_materialization_preserves_abi_and_freezes_process_state(
@@ -334,6 +341,73 @@ def test_exec_service_incrementally_decodes_split_utf8_sequence(tmp_path: Path) 
     asyncio.run(scenario())
 
 
+def test_exec_service_waits_for_delayed_stdio_after_root_exit(tmp_path: Path) -> None:
+    child_script = (
+        "import sys, time; "
+        "sys.stdout.write('\\n'); sys.stdout.flush(); "
+        "time.sleep(0.2); "
+        "sys.stdout.write('formatted\\n'); sys.stdout.flush()"
+    )
+    root_script = (
+        "import subprocess, sys; "
+        f"subprocess.Popen([sys.executable, '-c', {child_script!r}])"
+    )
+
+    async def scenario() -> None:
+        result = await asyncio.wait_for(
+            ExecService().execute(
+                ExecRequest(
+                    command=(sys.executable, "-c", root_script),
+                    cwd=str(tmp_path),
+                )
+            ),
+            timeout=2,
+        )
+
+        assert result.stdout == "\nformatted\n"
+        assert result.stdio_complete is True
+        assert result.stdio_drain_reason is None
+
+    asyncio.run(scenario())
+
+
+def test_exec_service_hard_limits_active_descendant_stdio(tmp_path: Path) -> None:
+    child_script = (
+        "import sys, time; "
+        "[(sys.stdout.write('x'), sys.stdout.flush(), time.sleep(0.02)) "
+        "for _ in range(100)]"
+    )
+    root_script = (
+        "import subprocess, sys; "
+        f"subprocess.Popen([sys.executable, '-c', {child_script!r}])"
+    )
+    service = ExecService(
+        backend=LocalExecBackend(
+            post_exit_stdio_grace_seconds=0.05,
+            post_exit_stdio_hard_timeout_seconds=0.25,
+        )
+    )
+
+    async def scenario() -> None:
+        started_at = asyncio.get_running_loop().time()
+        result = await asyncio.wait_for(
+            service.execute(
+                ExecRequest(
+                    command=(sys.executable, "-c", root_script),
+                    cwd=str(tmp_path),
+                )
+            ),
+            timeout=2,
+        )
+
+        assert asyncio.get_running_loop().time() - started_at < 1
+        assert 0 < len(result.stdout) < 100
+        assert result.stdio_complete is False
+        assert result.stdio_drain_reason == "hard_timeout"
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX process-group regression")
 def test_exec_service_returns_when_descendant_holds_pipe_after_parent_exit(
     tmp_path: Path,
@@ -343,7 +417,12 @@ def test_exec_service_returns_when_descendant_holds_pipe_after_parent_exit(
     async def scenario() -> None:
         started_at = asyncio.get_running_loop().time()
         result = await asyncio.wait_for(
-            ExecService().execute(
+            ExecService(
+                backend=LocalExecBackend(
+                    post_exit_stdio_grace_seconds=0.1,
+                    post_exit_stdio_hard_timeout_seconds=0.5,
+                )
+            ).execute(
                 ExecRequest(
                     command=[
                         "/bin/sh",
@@ -361,6 +440,8 @@ def test_exec_service_returns_when_descendant_holds_pipe_after_parent_exit(
 
         assert result.exit_code == 0
         assert result.stdout == "done"
+        assert result.stdio_complete is False
+        assert result.stdio_drain_reason == "idle_timeout"
         assert asyncio.get_running_loop().time() - started_at < 0.5
         await asyncio.sleep(0.9)
         assert marker.read_text(encoding="utf-8") == "late"

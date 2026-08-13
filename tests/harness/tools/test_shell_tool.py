@@ -275,7 +275,29 @@ def test_native_windows_shell_tool_runs_without_bash_installation(
     transcript_result = result.for_presentation()
 
     assert result.details["exit_code"] == 0
+    assert result.details["stdio_complete"] is True
+    assert result.details["stdio_drain_reason"] is None
     assert result.content[0].text.strip()
+    assert transcript_result.content[0].text == result.content[0].text
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires a native Windows host")
+def test_native_windows_shell_tool_preserves_echo_output(tmp_path: Path) -> None:
+    tool = wrap_tool_definition(
+        create_shell_tool_definition(
+            environment=LocalHostEnvironmentProbe().detect(),
+        ),
+        context_provider=_context(tmp_path),
+        policy_evaluator=PolicyEngine(),
+    )
+
+    result = asyncio.run(tool.execute("shell-native-echo", {"command": "echo hello"}))
+    transcript_result = result.for_presentation()
+
+    assert result.details["exit_code"] == 0
+    assert result.details["stdio_complete"] is True
+    assert result.details["stdio_drain_reason"] is None
+    assert result.content[0].text.strip() == "hello"
     assert transcript_result.content[0].text == result.content[0].text
 
 

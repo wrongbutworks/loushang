@@ -7,6 +7,7 @@ from .types import (
     ExecRequest,
     ExecResult,
     ExecUpdateCallback,
+    StdioDrainReason,
     materialize_exec_request,
 )
 
@@ -20,5 +21,6 @@ __all__ = [
     "ExecService",
     "ExecUpdateCallback",
     "LocalExecBackend",
+    "StdioDrainReason",
     "materialize_exec_request",
 ]

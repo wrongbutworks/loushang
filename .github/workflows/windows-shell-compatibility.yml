@@ -43,7 +43,7 @@ jobs:
           tests/harness/session/test_bash.py
           tests/coding/test_tool_registry.py
           tests/coding/test_agent_session_tools.py
-          -k windows
+          -k "windows or stdio"
           -q
 
       - name: Reject empty, skipped, or failing native report

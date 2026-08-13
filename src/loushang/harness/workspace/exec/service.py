@@ -23,6 +23,7 @@ from .types import (
     ExecRequest,
     ExecResult,
     ExecUpdateCallback,
+    StdioDrainReason,
     materialize_exec_request,
 )
 
@@ -72,14 +73,25 @@ class LocalExecBackend:
         self,
         *,
         read_chunk_bytes: int = 64 * 1024,
-        post_exit_stdio_grace_seconds: float = 0.1,
+        post_exit_stdio_grace_seconds: float = 0.5,
+        post_exit_stdio_hard_timeout_seconds: float = 2.0,
     ) -> None:
         if read_chunk_bytes < 1:
             raise ValueError("read_chunk_bytes must be >= 1")
         if post_exit_stdio_grace_seconds <= 0:
             raise ValueError("post_exit_stdio_grace_seconds must be > 0")
+        if post_exit_stdio_hard_timeout_seconds <= 0:
+            raise ValueError("post_exit_stdio_hard_timeout_seconds must be > 0")
+        if post_exit_stdio_hard_timeout_seconds < post_exit_stdio_grace_seconds:
+            raise ValueError(
+                "post_exit_stdio_hard_timeout_seconds must be >= "
+                "post_exit_stdio_grace_seconds"
+            )
         self._read_chunk_bytes = read_chunk_bytes
-        self._post_exit_stdio_grace_seconds = post_exit_stdio_grace_seconds
+        self._normal_output_drain_policy = _OutputDrainPolicy(
+            idle_timeout_seconds=post_exit_stdio_grace_seconds,
+            hard_timeout_seconds=post_exit_stdio_hard_timeout_seconds,
+        )
 
     async def __call__(
         self,
@@ -182,11 +194,13 @@ class LocalExecBackend:
         )
         timed_out = False
         cancelled = False
+        force_terminated = False
+        drain_outcome = _OutputDrainOutcome.complete()
 
         try:
             await _write_process_stdin(process, request.stdin)
             if request.timeout_seconds is None and abort_task is None:
-                await root_exit_task
+                await asyncio.shield(root_exit_task)
             else:
                 waiters: set[asyncio.Task[int] | asyncio.Task[None]] = {root_exit_task}
                 if abort_task is not None:
@@ -200,34 +214,42 @@ class LocalExecBackend:
                     pass
                 elif abort_task is not None and abort_task in done:
                     cancelled = True
+                    force_terminated = True
                     await _kill_process(process)
-                    await root_exit_task
+                    await asyncio.shield(root_exit_task)
                 else:
                     timed_out = True
+                    force_terminated = True
                     await _kill_process(process)
-                    await root_exit_task
+                    await asyncio.shield(root_exit_task)
                 for task in pending:
                     task.cancel()
                     await asyncio.gather(task, return_exceptions=True)
         except asyncio.CancelledError:
+            force_terminated = True
             await _kill_process(process)
             if not root_exit_task.done():
-                await root_exit_task
+                await asyncio.shield(root_exit_task)
             raise
         finally:
             if abort_task is not None and not abort_task.done():
                 abort_task.cancel()
                 await asyncio.gather(abort_task, return_exceptions=True)
             if not root_exit_task.done():
+                force_terminated = True
                 await _kill_process(process)
-                await root_exit_task
+                await asyncio.shield(root_exit_task)
             activity.mark()
             try:
-                await _drain_output_tasks(
+                drain_outcome = await _drain_output_tasks(
                     process,
                     (stdout_task, stderr_task),
                     activity=activity,
-                    grace_seconds=self._post_exit_stdio_grace_seconds,
+                    policy=(
+                        _FORCED_OUTPUT_DRAIN_POLICY
+                        if force_terminated
+                        else self._normal_output_drain_policy
+                    ),
                 )
             finally:
                 _close_reader_transport(process.stdout)
@@ -273,6 +295,8 @@ class LocalExecBackend:
             stdout_total_bytes=stdout_capture.total_bytes,
             stderr_total_lines=stderr_capture.total_lines,
             stderr_total_bytes=stderr_capture.total_bytes,
+            stdio_complete=drain_outcome.is_complete,
+            stdio_drain_reason=drain_outcome.reason,
         )
 
 
@@ -282,6 +306,31 @@ class _OutputActivity:
 
     def mark(self) -> None:
         self.last_at = asyncio.get_running_loop().time()
+
+
+@dataclass(frozen=True)
+class _OutputDrainPolicy:
+    idle_timeout_seconds: float
+    hard_timeout_seconds: float
+
+
+@dataclass(frozen=True)
+class _OutputDrainOutcome:
+    reason: StdioDrainReason | None
+
+    @property
+    def is_complete(self) -> bool:
+        return self.reason is None
+
+    @classmethod
+    def complete(cls) -> _OutputDrainOutcome:
+        return cls(reason=None)
+
+
+_FORCED_OUTPUT_DRAIN_POLICY = _OutputDrainPolicy(
+    idle_timeout_seconds=0.1,
+    hard_timeout_seconds=0.5,
+)
 
 
 class _IncrementalTextChunks:
@@ -379,13 +428,16 @@ async def _drain_output_tasks(
     tasks: tuple[asyncio.Task[None], asyncio.Task[None]],
     *,
     activity: _OutputActivity,
-    grace_seconds: float,
-) -> None:
+    policy: _OutputDrainPolicy,
+) -> _OutputDrainOutcome:
+    loop = asyncio.get_running_loop()
+    hard_deadline = loop.time() + policy.hard_timeout_seconds
     pending = set(tasks)
     while pending:
+        idle_deadline = activity.last_at + policy.idle_timeout_seconds
         remaining = max(
             0.0,
-            activity.last_at + grace_seconds - asyncio.get_running_loop().time(),
+            min(idle_deadline, hard_deadline) - loop.time(),
         )
         done, pending = await asyncio.wait(
             pending,
@@ -400,13 +452,19 @@ async def _drain_output_tasks(
                 await _cancel_tasks(pending)
                 raise
             continue
-        if asyncio.get_running_loop().time() < activity.last_at + grace_seconds:
+        now = loop.time()
+        if now >= hard_deadline:
+            reason: StdioDrainReason = "hard_timeout"
+        elif now >= activity.last_at + policy.idle_timeout_seconds:
+            reason = "idle_timeout"
+        else:
             continue
 
         _close_reader_transport(process.stdout)
         _close_reader_transport(process.stderr)
         await _cancel_tasks(pending)
-        return
+        return _OutputDrainOutcome(reason=reason)
+    return _OutputDrainOutcome.complete()
 
 
 async def _cancel_tasks(tasks: set[asyncio.Task[None]]) -> None:
