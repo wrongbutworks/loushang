@@ -5,6 +5,7 @@ from pathlib import Path
 from loushang.ai.model.domain import Model, Provider
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.harness.model_catalog import ModelCatalog
+from loushang.harness.runtime import RegistrationOwner, RegistrationScope
 
 
 def test_model_catalog_reloads_only_when_project_layer_exists(
@@ -74,3 +75,46 @@ def test_model_catalog_registration_compatibility_baseline() -> None:
     assert catalog.unregister_provider("missing") is None
     assert catalog.unregister_provider("provider") is None
     assert catalog.ai_registry.get_provider("provider") is None
+
+
+def test_model_catalog_bound_provider_removal_preserves_the_current_winner() -> None:
+    import asyncio
+
+    baseline = Provider(id="shared", name="Baseline")
+    catalog = ModelCatalog(AiModelRegistry.from_providers({"shared": baseline}))
+    old_owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="models",
+        runtime_id="session-1",
+        generation=1,
+    )
+    new_owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="models",
+        runtime_id="session-1",
+        generation=2,
+    )
+    old_lease = catalog.bind_provider(
+        Provider(id="shared", name="Old generation"),
+        owner=old_owner,
+    )
+    new_lease = catalog.stage_provider(
+        Provider(id="shared", name="New generation"),
+        owner=new_owner,
+    )
+
+    current = catalog.ai_registry.get_provider("shared")
+    assert current is not None
+    assert current.name == "Old generation"
+    scope = RegistrationScope(new_owner)
+    scope.add(new_lease)
+    scope.commit()
+    current = catalog.ai_registry.get_provider("shared")
+    assert current is not None
+    assert current.name == "New generation"
+    assert asyncio.run(old_lease.dispose()).state == "removed"
+    current = catalog.ai_registry.get_provider("shared")
+    assert current is not None
+    assert current.name == "New generation"
+    assert asyncio.run(new_lease.dispose()).state == "removed"
+    assert catalog.ai_registry.get_provider("shared") == baseline

@@ -70,10 +70,26 @@ class ToolRegistryPort(Protocol):
         source_info: object | None = None,
     ) -> RegistrationLease: ...
 
+    def stage_tool(
+        self,
+        tool: ToolDefinition,
+        *,
+        owner: RegistrationOwner,
+        enabled: bool = True,
+        source_info: object | None = None,
+    ) -> RegistrationLease: ...
+
     def _rollback_tool_binding(
         self,
         lease: RegistrationLease,
     ) -> RegistrationDisposalResult: ...
+
+    def adopt_compatibility_tool(
+        self,
+        name: str,
+        *,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease | None: ...
 
 
 class ToolContributionResolver(Protocol):
@@ -222,17 +238,39 @@ class SessionToolRuntime:
                 bind_error.add_note("tool binding view rollback failed")
             raise
 
-        async def dispose_runtime_binding() -> RegistrationDisposalResult:
-            result = await registry_lease.dispose()
-            if result.state in {"removed", "already_removed"}:
-                self._sync_available(activate_new=False, rebind=True)
-            return result
+        return self._runtime_view_lease(registry_lease)
 
-        return RegistrationLease(
-            owner=registry_lease.owner,
-            identity=registry_lease.identity,
-            dispose=dispose_runtime_binding,
+    def stage_runtime_tool(
+        self,
+        tool: object,
+        *,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        registration = self._resolve_runtime_tool_registration(
+            tool,
+            source_info=source_info,
         )
+        registry_lease = self.tool_registry.stage_tool(
+            registration.definition,
+            owner=owner,
+            source_info=registration.source_info,
+        )
+        return self._runtime_view_lease(registry_lease, staged=True)
+
+    def adopt_runtime_tool(
+        self,
+        name: str,
+        *,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease | None:
+        registry_lease = self.tool_registry.adopt_compatibility_tool(
+            name,
+            owner=owner,
+        )
+        if registry_lease is None:
+            return None
+        return self._runtime_view_lease(registry_lease)
 
     def rebuild_prompt_and_tools_view(self) -> None:
         self._sync_available(activate_new=False, rebind=False)
@@ -240,6 +278,34 @@ class SessionToolRuntime:
 
     def _available_definitions(self) -> list[ToolDefinition]:
         return self.tool_registry.list_definitions()
+
+    def _runtime_view_lease(
+        self,
+        registry_lease: RegistrationLease,
+        *,
+        staged: bool = False,
+    ) -> RegistrationLease:
+        async def dispose_runtime_binding() -> RegistrationDisposalResult:
+            result = await registry_lease.dispose()
+            if result.state in {"removed", "already_removed"}:
+                self._sync_available(activate_new=False, rebind=True)
+            return result
+
+        def activate_runtime_binding() -> None:
+            registry_lease.activate()
+            self._sync_available(activate_new=True, rebind=True)
+
+        def deactivate_runtime_binding() -> None:
+            registry_lease.deactivate()
+            self._sync_available(activate_new=False, rebind=True)
+
+        return RegistrationLease(
+            owner=registry_lease.owner,
+            identity=registry_lease.identity,
+            dispose=dispose_runtime_binding,
+            activate=activate_runtime_binding if staged else None,
+            deactivate=deactivate_runtime_binding if staged else None,
+        )
 
     def _sync_available(self, *, activate_new: bool, rebind: bool) -> None:
         self._activation.refresh(

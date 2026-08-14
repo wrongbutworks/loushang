@@ -94,6 +94,66 @@ def test_extension_runtime_controller_awaits_async_resource_refresh_on_reload() 
     assert runner.start_reasons == ["reload"]
 
 
+def test_extension_runtime_controller_uses_staged_reload_without_preinvalidating() -> (
+    None
+):
+    runner = Runner()
+    staged_bindings: list[object] = []
+    legacy_refreshes: list[str] = []
+
+    async def reload_generation(bindings: object) -> None:
+        await asyncio.sleep(0)
+        staged_bindings.append(bindings)
+
+    controller = ExtensionSessionRuntime(
+        extension_runtime=runner,
+        build_bindings=lambda: {"binding": "candidate"},
+        session_start_event=SessionStartEvent(reason="startup"),
+        refresh_resources=lambda: legacy_refreshes.append("legacy"),
+        reload_generation=reload_generation,
+        record_runtime_diagnostic=lambda diagnostic: None,
+        sync_extension_diagnostics=lambda *, phase: None,
+    )
+
+    asyncio.run(controller.bind(reason="reload"))
+
+    assert staged_bindings == [{"binding": "candidate"}]
+    assert runner.bindings == []
+    assert runner.invalidations == []
+    assert legacy_refreshes == []
+    assert runner.start_reasons == ["reload"]
+
+
+def test_extension_runtime_controller_keeps_old_generation_on_staged_failure() -> (
+    None
+):
+    runner = Runner()
+    diagnostics: list[str] = []
+
+    async def reload_generation(bindings: object) -> None:
+        del bindings
+        raise RuntimeError("candidate failed")
+
+    controller = ExtensionSessionRuntime(
+        extension_runtime=runner,
+        build_bindings=lambda: object(),
+        session_start_event=SessionStartEvent(reason="startup"),
+        refresh_resources=lambda: None,
+        reload_generation=reload_generation,
+        record_runtime_diagnostic=lambda diagnostic: diagnostics.append(
+            diagnostic.code
+        ),
+        sync_extension_diagnostics=lambda *, phase: None,
+    )
+
+    asyncio.run(controller.bind(reason="reload"))
+
+    assert runner.bindings == []
+    assert runner.invalidations == []
+    assert runner.start_reasons == []
+    assert diagnostics == ["extension_resource_refresh_failed"]
+
+
 def test_extension_runtime_controller_records_bind_failures() -> None:
     class BrokenRunner(Runner):
         def bind_runtime(self, bindings: object) -> None:

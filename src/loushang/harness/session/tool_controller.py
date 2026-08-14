@@ -326,6 +326,29 @@ class SessionToolController:
             source_info=source_info,
         )
 
+    def stage_runtime_tool(
+        self,
+        tool: object,
+        *,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        self.ensure_tool_registry()
+        return self._runtime.stage_runtime_tool(
+            tool,
+            owner=owner,
+            source_info=source_info,
+        )
+
+    def adopt_runtime_tool(
+        self,
+        name: str,
+        *,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease | None:
+        self.ensure_tool_registry()
+        return self._runtime.adopt_runtime_tool(name, owner=owner)
+
     def rebuild_prompt_and_tools_view(self) -> None:
         self._runtime.rebuild_prompt_and_tools_view()
 

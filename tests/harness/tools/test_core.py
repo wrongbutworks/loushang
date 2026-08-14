@@ -295,6 +295,60 @@ def test_tool_registry_live_bindings_restore_the_previous_exact_winner() -> None
     assert asyncio.run(first_lease.dispose()).state == "already_removed"
 
 
+def test_tool_registry_adopts_bootstrap_tool_into_exact_generation_ownership() -> (
+    None
+):
+    import asyncio
+
+    from loushang.agent.types import AgentToolResult
+    from loushang.harness.runtime import RegistrationOwner, RegistrationScope
+    from loushang.harness.tools.core import ToolDefinition, ToolRegistry
+
+    async def execute(tool_call_id, params, signal=None, on_update=None):
+        del tool_call_id, params, signal, on_update
+        return AgentToolResult(content=[], details={})
+
+    def definition(label: str) -> ToolDefinition:
+        return ToolDefinition(
+            name="shared",
+            label=label,
+            description=label,
+            parameters={"type": "object"},
+            execution=direct_execution(execute),
+        )
+
+    registry = ToolRegistry()
+    registry.register_tool(definition("Bootstrap"))
+    old_owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="tools",
+        runtime_id="session-1",
+        generation=1,
+    )
+    new_owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="tools",
+        runtime_id="session-1",
+        generation=2,
+    )
+
+    old_lease = registry.adopt_compatibility_tool("shared", owner=old_owner)
+    assert old_lease is not None
+    new_definition = definition("New generation")
+    new_lease = registry.stage_tool(new_definition, owner=new_owner)
+
+    assert new_lease.state == "staged"
+    assert registry.list_definitions()[0].label == "Bootstrap"
+    scope = RegistrationScope(new_owner)
+    scope.add(new_lease)
+    scope.commit()
+    assert new_lease.state == "active"
+    assert asyncio.run(old_lease.dispose()).state == "removed"
+    assert registry.list_definitions() == [new_definition]
+    assert asyncio.run(new_lease.dispose()).state == "removed"
+    assert registry.list_definitions() == []
+
+
 def test_registry_rejects_decorated_plain_return_tools() -> None:
     from loushang.harness.tools.core import ToolRegistry, tool
 

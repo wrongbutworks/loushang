@@ -6,7 +6,7 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Literal, TypeVar
+from typing import Literal, Protocol, TypeVar
 from uuid import uuid4
 
 RegistrationOwnerKind = Literal[
@@ -24,6 +24,7 @@ RegistrationDisposalState = Literal[
     "failed_terminal",
 ]
 RegistrationLeaseState = Literal[
+    "staged",
     "active",
     "disposing",
     "disposed",
@@ -122,6 +123,7 @@ RegistrationDisposer = Callable[
     [],
     None | RegistrationDisposalResult | Awaitable[None | RegistrationDisposalResult],
 ]
+RegistrationActivation = Callable[[], None]
 
 
 class RegistrationLease:
@@ -133,6 +135,8 @@ class RegistrationLease:
         owner: RegistrationOwner,
         identity: RegistrationIdentity,
         dispose: RegistrationDisposer,
+        activate: RegistrationActivation | None = None,
+        deactivate: RegistrationActivation | None = None,
     ) -> None:
         if not isinstance(owner, RegistrationOwner):
             raise TypeError("registration owner must be a RegistrationOwner")
@@ -140,10 +144,22 @@ class RegistrationLease:
             raise TypeError("registration identity must be a RegistrationIdentity")
         if not callable(dispose):
             raise TypeError("registration disposer must be callable")
+        if (activate is None) != (deactivate is None):
+            raise ValueError(
+                "staged registration requires both activate and deactivate"
+            )
+        if activate is not None and not callable(activate):
+            raise TypeError("registration activator must be callable")
+        if deactivate is not None and not callable(deactivate):
+            raise TypeError("registration deactivator must be callable")
         self._owner = owner
         self._identity = identity
         self._dispose: RegistrationDisposer | None = dispose
-        self._state: RegistrationLeaseState = "active"
+        self._activate = activate
+        self._deactivate = deactivate
+        self._state: RegistrationLeaseState = (
+            "staged" if activate is not None else "active"
+        )
         self._last_result: RegistrationDisposalResult | None = None
         self._dispose_task: asyncio.Task[RegistrationDisposalResult] | None = None
 
@@ -162,6 +178,40 @@ class RegistrationLease:
     @property
     def last_result(self) -> RegistrationDisposalResult | None:
         return self._last_result
+
+    @property
+    def can_deactivate(self) -> bool:
+        return self._deactivate is not None
+
+    def activate(self) -> None:
+        """Make a staged registration effective at a synchronous commit point."""
+
+        if self._state == "active":
+            return
+        if self._state != "staged" or self._activate is None:
+            raise RuntimeError("registration lease cannot be activated")
+        try:
+            self._activate()
+        except BaseException as activation_error:
+            if self._deactivate is not None:
+                try:
+                    self._deactivate()
+                except BaseException:
+                    activation_error.add_note(
+                        "staged registration activation rollback failed"
+                    )
+            raise
+        self._state = "active"
+
+    def deactivate(self) -> None:
+        """Undo activation while rolling back a failed scope commit."""
+
+        if self._state == "staged":
+            return
+        if self._state != "active" or self._deactivate is None:
+            raise RuntimeError("registration lease cannot be deactivated")
+        self._deactivate()
+        self._state = "staged"
 
     async def dispose(self) -> RegistrationDisposalResult:
         """Remove the exact entry once and join cleanup before cancellation wins."""
@@ -211,13 +261,26 @@ class RegistrationLease:
         if result.state in {"removed", "already_removed"}:
             self._state = "disposed"
             self._dispose = None
+            self._activate = None
+            self._deactivate = None
         elif result.state == "failed_retryable":
             self._state = "failed_retryable"
             self._dispose_task = None
         else:
             self._state = "failed_terminal"
             self._dispose = None
+            self._activate = None
+            self._deactivate = None
         return result
+
+
+class RegistrationLeaseCollector(Protocol):
+    """Capture exact leases under one already-selected runtime owner."""
+
+    @property
+    def owner(self) -> RegistrationOwner: ...
+
+    def capture(self, lease: RegistrationLease) -> RegistrationLease: ...
 
 
 @dataclass(frozen=True)
@@ -285,8 +348,8 @@ class RegistrationScope:
             raise TypeError("registration scope accepts RegistrationLease values")
         if lease.owner != self._owner:
             raise ValueError("registration lease owner does not match scope owner")
-        if lease.state != "active":
-            raise ValueError("registration scope accepts only active leases")
+        if lease.state not in {"active", "staged"}:
+            raise ValueError("registration scope accepts only live leases")
         if any(
             existing.identity.surface == lease.identity.surface
             and existing.identity.registration_id == lease.identity.registration_id
@@ -299,7 +362,29 @@ class RegistrationScope:
     def commit(self) -> None:
         if self._state != "open":
             raise RuntimeError("registration scope cannot be committed in this state")
+        activated: list[RegistrationLease] = []
+        try:
+            for lease in self._leases:
+                if lease.state == "staged":
+                    lease.activate()
+                    activated.append(lease)
+        except BaseException:
+            for lease in reversed(activated):
+                lease.deactivate()
+            raise
         self._state = "committed"
+
+    def rollback_commit(self) -> None:
+        """Synchronously hide staged leases after failed publication."""
+
+        if self._state == "open":
+            return
+        if self._state != "committed":
+            raise RuntimeError("registration scope commit cannot be rolled back")
+        for lease in reversed(self._leases):
+            if lease.state == "active" and lease.can_deactivate:
+                lease.deactivate()
+        self._state = "open"
 
     async def dispose(self) -> RegistrationScopeDisposalResult:
         if self._state in {"disposed", "failed_terminal"}:
@@ -375,6 +460,7 @@ __all__ = [
     "RegistrationDisposalResult",
     "RegistrationIdentity",
     "RegistrationLease",
+    "RegistrationLeaseCollector",
     "RegistrationOwner",
     "RegistrationScope",
     "RegistrationScopeDisposalResult",

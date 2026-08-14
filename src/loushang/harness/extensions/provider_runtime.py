@@ -7,6 +7,10 @@ from dataclasses import dataclass
 
 from loushang.ai.api_registry import APIRegistry
 from loushang.ai.model import Provider
+from loushang.harness.runtime.registration import (
+    RegistrationLease,
+    RegistrationOwner,
+)
 
 ProviderFactory = Callable[..., Provider]
 
@@ -36,6 +40,44 @@ class ExtensionProviderRuntime:
         if callable(remover):
             remover(name)
         self.api_registry.unregister_api_adapters(f"provider:{name}")
+
+    def bind_provider(
+        self,
+        name: str,
+        config: object,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        registrar = getattr(self.model_registry, "bind_provider", None)
+        if not callable(registrar):
+            raise RuntimeError("Model registry does not support live Provider binding")
+        provider = self.provider_factory(
+            name,
+            config,
+            existing_provider=self.get_registered_provider(name),
+        )
+        lease = registrar(provider, owner=owner)
+        if not isinstance(lease, RegistrationLease):
+            raise TypeError("live Provider binding must return a RegistrationLease")
+        return lease
+
+    def stage_provider(
+        self,
+        name: str,
+        config: object,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        registrar = getattr(self.model_registry, "stage_provider", None)
+        if not callable(registrar):
+            raise RuntimeError("Model registry does not support staged Provider binding")
+        provider = self.provider_factory(
+            name,
+            config,
+            existing_provider=self.get_registered_provider(name),
+        )
+        lease = registrar(provider, owner=owner)
+        if not isinstance(lease, RegistrationLease):
+            raise TypeError("staged Provider binding must return a RegistrationLease")
+        return lease
 
     def get_registered_provider(self, name: str) -> Provider | None:
         ai_registry = getattr(self.model_registry, "ai_registry", None)

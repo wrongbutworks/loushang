@@ -8,7 +8,10 @@ from typing import Any
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.runtime.bindings import RuntimeBindingLease
-from loushang.harness.runtime.registration import RegistrationLease
+from loushang.harness.runtime.registration import (
+    RegistrationLease,
+    RegistrationLeaseCollector,
+)
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 
@@ -251,11 +254,13 @@ class BoundProductRuntimeContext:
         tool_source_info: SourceInfo[Path] | None = None,
         *,
         tool_owner_id: str | None = None,
+        registrations: RegistrationLeaseCollector | None = None,
         get_flag_value: Callable[[str], bool | str | None] | None = None,
     ) -> None:
         self._runtime_bindings = runtime_bindings
         self._tool_source_info = tool_source_info
         self._tool_owner_id = tool_owner_id
+        self._registrations = registrations
         self._get_flag_value = get_flag_value or (lambda name: None)
 
     @property
@@ -331,12 +336,16 @@ class BoundProductRuntimeContext:
     def register_tool(self, tool: object) -> None:
         bindings = self._require_bindings()
         binder = bindings.bind_tool
-        if binder is None or self._tool_owner_id is None:
+        registrations = self._registrations
+        owner = registrations.owner if registrations is not None else self._tool_owner_id
+        if binder is None or owner is None:
             bindings.register_tool(tool, self._tool_source_info)
             return
-        lease = binder(tool, self._tool_owner_id, self._tool_source_info)
+        lease = binder(tool, owner, self._tool_source_info)
         if not isinstance(lease, RegistrationLease):
             raise TypeError("live tool binding must return a RegistrationLease")
+        if registrations is not None:
+            registrations.capture(lease)
 
     def get_flag(self, name: str) -> bool | str | None:
         return self._get_flag_value(name)

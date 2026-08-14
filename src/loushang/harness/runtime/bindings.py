@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
-from loushang.harness.runtime.registration import RegistrationLease
+from loushang.harness.runtime.registration import RegistrationLease, RegistrationOwner
 from loushang.harness.workspace.exec import ExecResult
 
 B = TypeVar("B")
@@ -81,7 +81,22 @@ class ProductRuntimeBindings:
     exec_command: Callable[..., Awaitable[ExecResult]] | None = None
     ui_context: object | None = None
     on_error: Callable[[dict[str, object]], None] | None = None
-    bind_tool: Callable[[object, str, object | None], RegistrationLease] | None = None
+    bind_tool: (
+        Callable[[object, RegistrationOwner | str, object | None], RegistrationLease]
+        | None
+    ) = None
+    adopt_tool: (
+        Callable[[str, RegistrationOwner], RegistrationLease | None] | None
+    ) = None
+    bind_provider: (
+        Callable[[str, object, RegistrationOwner], RegistrationLease] | None
+    ) = None
+    stage_tool: (
+        Callable[[object, RegistrationOwner, object | None], RegistrationLease] | None
+    ) = None
+    stage_provider: (
+        Callable[[str, object, RegistrationOwner], RegistrationLease] | None
+    ) = None
 
 
 class RuntimeBindingState(Generic[B]):

@@ -104,6 +104,49 @@ def test_registration_scope_rejects_a_duplicate_exact_identity() -> None:
         )
 
 
+def test_registration_scope_activates_staged_leases_and_rolls_back_partial_commit() -> (
+    None
+):
+    owner = _owner()
+    events: list[str] = []
+
+    first = RegistrationLease(
+        owner=owner,
+        identity=RegistrationIdentity.create(surface="tool", public_key="first"),
+        dispose=lambda: None,
+        activate=lambda: events.append("activate:first"),
+        deactivate=lambda: events.append("deactivate:first"),
+    )
+
+    def fail_second_activation() -> None:
+        events.append("activate:second")
+        raise RuntimeError("activation failed")
+
+    second = RegistrationLease(
+        owner=owner,
+        identity=RegistrationIdentity.create(surface="tool", public_key="second"),
+        dispose=lambda: None,
+        activate=fail_second_activation,
+        deactivate=lambda: events.append("deactivate:second"),
+    )
+    scope = RegistrationScope(owner)
+    scope.add(first)
+    scope.add(second)
+
+    with pytest.raises(RuntimeError, match="activation failed"):
+        scope.commit()
+
+    assert scope.state == "open"
+    assert first.state == "staged"
+    assert second.state == "staged"
+    assert events == [
+        "activate:first",
+        "activate:second",
+        "deactivate:second",
+        "deactivate:first",
+    ]
+
+
 def test_dispose_linearizes_lease_and_scope_state_before_cleanup_task_runs() -> None:
     owner = _owner()
 

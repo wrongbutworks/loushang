@@ -573,6 +573,7 @@ class _RegisteredTool:
     definition: ToolDefinition
     enabled: bool = True
     source_info: object | None = None
+    published: bool = True
 
 
 class ToolRegistry:
@@ -643,6 +644,41 @@ class ToolRegistry:
     ) -> RegistrationLease:
         """Bind one owner-scoped Tool layer and return its exact disposer."""
 
+        return self._bind_tool(
+            tool,
+            owner=owner,
+            enabled=enabled,
+            source_info=source_info,
+            published=True,
+        )
+
+    def stage_tool(
+        self,
+        tool: ToolDefinition,
+        *,
+        owner: RegistrationOwner,
+        enabled: bool = True,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        """Add one invisible Tool layer that becomes effective on lease activation."""
+
+        return self._bind_tool(
+            tool,
+            owner=owner,
+            enabled=enabled,
+            source_info=source_info,
+            published=False,
+        )
+
+    def _bind_tool(
+        self,
+        tool: ToolDefinition,
+        *,
+        owner: RegistrationOwner,
+        enabled: bool,
+        source_info: object | None,
+        published: bool,
+    ) -> RegistrationLease:
         definition = self._require_definition(tool, operation="bind_tool")
         if not isinstance(owner, RegistrationOwner):
             raise TypeError("ToolRegistry.bind_tool owner must be a RegistrationOwner")
@@ -662,6 +698,7 @@ class ToolRegistry:
                 definition=definition,
                 enabled=enabled,
                 source_info=source_info,
+                published=published,
             )
         )
         return RegistrationLease(
@@ -671,7 +708,67 @@ class ToolRegistry:
                 owner=owner,
                 identity=identity,
             ),
+            activate=(
+                lambda: self._set_bound_tool_published(
+                    owner=owner,
+                    identity=identity,
+                    published=True,
+                )
+                if not published
+                else None
+            ),
+            deactivate=(
+                lambda: self._set_bound_tool_published(
+                    owner=owner,
+                    identity=identity,
+                    published=False,
+                )
+                if not published
+                else None
+            ),
         )
+
+    def adopt_compatibility_tool(
+        self,
+        name: str,
+        *,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease | None:
+        """Move one bootstrap compatibility entry under an exact live owner."""
+
+        if not isinstance(owner, RegistrationOwner):
+            raise TypeError("ToolRegistry adoption owner must be a RegistrationOwner")
+        registration_id = self._legacy_registration_ids.get(name)
+        layers = self._tools.get(name)
+        if registration_id is None or layers is None:
+            return None
+        for index, registered in enumerate(layers):
+            if registered.identity.registration_id != registration_id:
+                continue
+            identity = RegistrationIdentity.create(surface="tool", public_key=name)
+            layers[index] = _RegisteredTool(
+                owner=owner,
+                identity=identity,
+                definition=registered.definition,
+                enabled=registered.enabled,
+                source_info=registered.source_info,
+            )
+            del self._legacy_registration_ids[name]
+
+            def dispose_adopted(
+                resolved_identity: RegistrationIdentity = identity,
+            ) -> RegistrationDisposalResult:
+                return self._remove_bound_tool(
+                    owner=owner,
+                    identity=resolved_identity,
+                )
+
+            return RegistrationLease(
+                owner=owner,
+                identity=identity,
+                dispose=dispose_adopted,
+            )
+        return None
 
     def get_tool(self, name: str) -> AgentTool[Any]:
         return self.materialize_tool(name)
@@ -689,33 +786,40 @@ class ToolRegistry:
         return self.materialize_definitions(self.list_enabled_definitions())
 
     def list_definitions(self) -> list[ToolDefinition]:
-        return [self._effective_tool(name).definition for name in self._order]
+        return [
+            registered.definition
+            for name in self._order
+            if (registered := self._effective_tool_or_none(name)) is not None
+        ]
 
     def list_enabled_definitions(self) -> list[ToolDefinition]:
         return [
             registered.definition
             for name in self._order
-            if (registered := self._effective_tool(name)).enabled
+            if (registered := self._effective_tool_or_none(name)) is not None
+            and registered.enabled
         ]
 
     def enable_tool(self, name: str) -> None:
-        registered = self._effective_tool(name)
-        self._tools[name][-1] = _RegisteredTool(
+        index, registered = self._effective_tool_entry(name)
+        self._tools[name][index] = _RegisteredTool(
             owner=registered.owner,
             identity=registered.identity,
             definition=registered.definition,
             enabled=True,
             source_info=registered.source_info,
+            published=registered.published,
         )
 
     def disable_tool(self, name: str) -> None:
-        registered = self._effective_tool(name)
-        self._tools[name][-1] = _RegisteredTool(
+        index, registered = self._effective_tool_entry(name)
+        self._tools[name][index] = _RegisteredTool(
             owner=registered.owner,
             identity=registered.identity,
             definition=registered.definition,
             enabled=False,
             source_info=registered.source_info,
+            published=registered.published,
         )
 
     def materialize_tool(self, name: str) -> AgentTool[Any]:
@@ -749,7 +853,54 @@ class ToolRegistry:
         return tool
 
     def _effective_tool(self, name: str) -> _RegisteredTool:
-        return self._tools[name][-1]
+        registered = self._effective_tool_or_none(name)
+        if registered is None:
+            raise KeyError(name)
+        return registered
+
+    def _effective_tool_or_none(self, name: str) -> _RegisteredTool | None:
+        return next(
+            (
+                registered
+                for registered in reversed(self._tools.get(name, ()))
+                if registered.published
+            ),
+            None,
+        )
+
+    def _effective_tool_entry(self, name: str) -> tuple[int, _RegisteredTool]:
+        layers = self._tools.get(name, ())
+        for index in range(len(layers) - 1, -1, -1):
+            if layers[index].published:
+                return index, layers[index]
+        raise KeyError(name)
+
+    def _set_bound_tool_published(
+        self,
+        *,
+        owner: RegistrationOwner,
+        identity: RegistrationIdentity,
+        published: bool,
+    ) -> None:
+        name = identity.public_key
+        layers = self._tools.get(name or "")
+        if identity.surface != "tool" or name is None or layers is None:
+            raise RuntimeError("staged Tool registration is unavailable")
+        for index, registered in enumerate(layers):
+            if registered.identity.registration_id != identity.registration_id:
+                continue
+            if registered.owner != owner:
+                raise RuntimeError("staged Tool registration owner changed")
+            layers[index] = _RegisteredTool(
+                owner=registered.owner,
+                identity=registered.identity,
+                definition=registered.definition,
+                enabled=registered.enabled,
+                source_info=registered.source_info,
+                published=published,
+            )
+            return
+        raise RuntimeError("staged Tool registration was removed")
 
     def _remove_bound_tool(
         self,

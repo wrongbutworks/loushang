@@ -29,7 +29,7 @@ depend on `loushang.coding`, `loushang.harnesswork`, `loushang.work`, `loushang.
 | `transcript` | optional Agent/AI transcript profile, codecs, file/session lifecycle, context rebuild, compaction/retry/navigation mechanisms, and hidden reconstructable Model Input facts | Product compaction prompts, semantic summary policy, Product store selection, or provider transport outcomes |
 | `context` | context items, packing, deterministic budget/accounting records, summary evaluation foundations | Product salience policy or model-specific estimation decisions |
 | `tools` / `approval` / `policy` / `sandbox` | tool authoring and hosted execution mechanics, action policy evaluation, approval lifecycle, effects, execution-scope process-start authorization, and optional containment binding | Product risk defaults, executable/catalog admission, Product approval wording, arbitrary Product commands |
-| `resources` / `extensions` / `capabilities` | resource discovery and precedence, package materialization mechanics, extension runtime, capability composition, and coarse Capability graph contracts, planning, transactional Mount binding, live state, and read-only projection | Product-owned built-in content, trust decisions, activation policy, or Product-specific Provider behavior |
+| `resources` / `extensions` / `capabilities` | resource discovery and precedence, package materialization mechanics, staged Extension/resource generations with exact live-registration retirement, capability composition, and coarse Capability graph contracts, planning, transactional Mount binding, live state, and read-only projection | Product-owned built-in content, trust decisions, activation policy, or Product-specific Provider behavior |
 | `host` / `cli` / `events` / `presentation` | Product-neutral host lifecycle, RPC/JSON projection, runtime event contracts and reusable presentation | AppService tenancy, Channel protocol, Product grammar or final UI composition |
 | `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, one-shot execution, and bounded session-owned process primitives | Product-specific recovery UX, business audit retention, protocol/server selection, Product artifact semantics |
 
@@ -61,6 +61,14 @@ The Mount snapshot references the existing Runtime Profile fingerprint rather
 than copying its selections or changing the persisted Session-header contract.
 No global mutable registry, second graph projector, or effective-runtime
 selection authority is introduced.
+
+Extension reload has its own narrower generation clock. One stable
+`ExtensionRunner` stages declaration/resource discovery and owner-scoped live
+bindings, synchronously publishes the selected Extension composition with the
+resource bundle, then reverse-retires the replaced generation. It reuses
+`RegistrationLease` and `RegistrationScope`; it is not a second Capability
+graph or runtime projector. Historical model-visible Tool schemas remain owned
+by committed Model Input facts rather than the current Extension generation.
 
 The initial live Binder supports direct dependency facets. A planned
 `stable_reference` edge fails closed before Provider construction until a

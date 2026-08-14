@@ -12,7 +12,7 @@ from loushang.harness.commands import SessionCommandDescriptor
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.context import ExtensionRuntimeBindings
-from loushang.harness.runtime.registration import RegistrationLease
+from loushang.harness.runtime.registration import RegistrationLease, RegistrationOwner
 from loushang.harness.workspace.exec import ExecResult
 
 
@@ -60,7 +60,22 @@ class ExtensionRuntimeBindingFactory:
     switch_session: Callable[[str, object | None], Awaitable[dict[str, object]]]
     get_ui_context: Callable[[], object | None]
     exec_command: Callable[..., Awaitable[ExecResult]] | None = None
-    bind_tool: Callable[[object, str, object | None], RegistrationLease] | None = None
+    bind_tool: (
+        Callable[[object, RegistrationOwner | str, object | None], RegistrationLease]
+        | None
+    ) = None
+    adopt_tool: (
+        Callable[[str, RegistrationOwner], RegistrationLease | None] | None
+    ) = None
+    bind_provider: (
+        Callable[[str, object, RegistrationOwner], RegistrationLease] | None
+    ) = None
+    stage_tool: (
+        Callable[[object, RegistrationOwner, object | None], RegistrationLease] | None
+    ) = None
+    stage_provider: (
+        Callable[[str, object, RegistrationOwner], RegistrationLease] | None
+    ) = None
 
     def build(self) -> ExtensionRuntimeBindings:
         async def set_model(selection: object) -> None:
@@ -93,6 +108,7 @@ class ExtensionRuntimeBindingFactory:
             set_model=set_model,
             register_tool=self.register_tool,
             bind_tool=self.bind_tool,
+            adopt_tool=self.adopt_tool,
             append_entry=self.append_entry,
             send_message=self.send_message,
             send_user_message=self.send_user_message,
@@ -114,6 +130,9 @@ class ExtensionRuntimeBindingFactory:
             set_thinking_level=set_thinking_level,
             register_provider=self.register_provider,
             unregister_provider=self.unregister_provider,
+            bind_provider=self.bind_provider,
+            stage_tool=self.stage_tool,
+            stage_provider=self.stage_provider,
             set_extension_status=self.set_extension_status,
             footer_data_provider=self.get_footer_data_provider(),
             compact=self.compact,

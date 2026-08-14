@@ -19,7 +19,10 @@ from loushang.harness.extensions.types import (
     RegisteredShortcut,
 )
 from loushang.harness.resources.source import SourceInfo
-from loushang.harness.runtime.registration import RegistrationLease
+from loushang.harness.runtime.registration import (
+    RegistrationLease,
+    RegistrationLeaseCollector,
+)
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
@@ -52,6 +55,7 @@ class ExtensionContributionAPI:
         ] = {}
         self._diagnostics: list[DiagnosticDraft] = []
         self._runtime_state: object | None = None
+        self._registrations: RegistrationLeaseCollector | None = None
 
     def on(
         self,
@@ -197,8 +201,13 @@ class ExtensionContributionAPI:
     ) -> None:
         self._message_renderers[custom_type] = renderer
 
-    def bind_runtime_state(self, runtime_state: object) -> None:
+    def bind_runtime_state(
+        self,
+        runtime_state: object,
+        registrations: RegistrationLeaseCollector | None = None,
+    ) -> None:
         self._runtime_state = runtime_state
+        self._registrations = registrations
 
     def get_active_tools(self) -> list[str]:
         bindings = self._runtime_bindings()
@@ -301,9 +310,13 @@ class ExtensionContributionAPI:
         binder = getattr(bindings, "bind_tool", None)
         source_info = SourceInfo(path=self._entry_path or self._source_path)
         if callable(binder):
-            lease = binder(definition, self._name, source_info)
+            registrations = self._registrations
+            owner = registrations.owner if registrations is not None else self._name
+            lease = binder(definition, owner, source_info)
             if not isinstance(lease, RegistrationLease):
                 raise TypeError("live tool binding must return a RegistrationLease")
+            if registrations is not None:
+                registrations.capture(lease)
             return
         callback = getattr(bindings, "register_tool", None)
         if callable(callback):

@@ -45,6 +45,11 @@ from loushang.harness.runtime import (
     SideQuestionCoordinator,
     SideQuestionUpdate,
 )
+from loushang.harness.runtime.registration import (
+    RegistrationDisposalResult,
+    RegistrationLease,
+    RegistrationOwner,
+)
 from loushang.harness.session.agent_adapter import (
     AgentSessionAdapterMixin,
     initialize_composed_session,
@@ -227,6 +232,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
             set_model=self._set_model_from_extension,
             register_tool=self._register_extension_runtime_tool,
             bind_tool=self._bind_extension_runtime_tool,
+            adopt_tool=self._adopt_extension_runtime_tool,
+            stage_tool=self._stage_extension_runtime_tool,
             append_entry=self._append_extension_entry,
             send_message=self._send_message_from_extension,
             send_user_message=self._send_user_message_from_extension_async,
@@ -246,6 +253,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
             set_thinking_level=self.set_thinking_level,
             register_provider=self._register_provider_from_extension,
             unregister_provider=self._unregister_provider_from_extension,
+            bind_provider=self._bind_provider_from_extension,
+            stage_provider=self._stage_provider_from_extension,
             set_extension_status=self._set_extension_status_from_extension,
             get_footer_data_provider=lambda: self.footer_data_provider,
             compact=self._compact_from_extension,
@@ -466,6 +475,59 @@ class AgentProductSession(AgentSessionAdapterMixin):
     def _register_provider_from_extension(self, name: str, config: object) -> None:
         self._extension_provider_controller.register_provider(name, config)
         self._sync_footer_available_provider_count()
+
+    def _bind_provider_from_extension(
+        self,
+        name: str,
+        config: object,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        lease = self._extension_provider_controller.bind_provider(name, config, owner)
+
+        async def dispose_provider() -> RegistrationDisposalResult:
+            result = await lease.dispose()
+            self._sync_footer_available_provider_count()
+            return result
+
+        self._sync_footer_available_provider_count()
+        return RegistrationLease(
+            owner=lease.owner,
+            identity=lease.identity,
+            dispose=dispose_provider,
+        )
+
+    def _stage_provider_from_extension(
+        self,
+        name: str,
+        config: object,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        lease = self._extension_provider_controller.stage_provider(
+            name,
+            config,
+            owner,
+        )
+
+        async def dispose_provider() -> RegistrationDisposalResult:
+            result = await lease.dispose()
+            self._sync_footer_available_provider_count()
+            return result
+
+        def activate_provider() -> None:
+            lease.activate()
+            self._sync_footer_available_provider_count()
+
+        def deactivate_provider() -> None:
+            lease.deactivate()
+            self._sync_footer_available_provider_count()
+
+        return RegistrationLease(
+            owner=lease.owner,
+            identity=lease.identity,
+            dispose=dispose_provider,
+            activate=activate_provider,
+            deactivate=deactivate_provider,
+        )
 
     def _get_extension_model_selection(self) -> ModelSelection | None:
         return cast(ModelSelection | None, self.get_model_selection())

@@ -209,12 +209,24 @@ class SessionOperations:
             await self.composition.session_runtime.dispose()
         finally:
             try:
-                result = self.ports.dispose_runtime_profile()
-                if asyncio.iscoroutine(result):
-                    await result
+                extension_runtime = self.ports.extension_runner
+                dispose_generation = getattr(
+                    extension_runtime,
+                    "dispose_runtime_generation",
+                    None,
+                )
+                if callable(dispose_generation):
+                    generation_result = dispose_generation()
+                    if asyncio.iscoroutine(generation_result):
+                        await generation_result
             finally:
-                self.composition.capability_runtime.dispose()
-                self.ports.finalize_shutdown()
+                try:
+                    result = self.ports.dispose_runtime_profile()
+                    if asyncio.iscoroutine(result):
+                        await result
+                finally:
+                    self.composition.capability_runtime.dispose()
+                    self.ports.finalize_shutdown()
 
     async def _apply_before_tree_hook(
         self,

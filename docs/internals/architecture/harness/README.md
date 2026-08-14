@@ -120,6 +120,9 @@ description.
 - [Extension Context Runtime Boundary](extension-context-runtime-boundary.md)
   defines the standard extension context, lifecycle records, generation-bound
   capability injection, and snake_case-only extension UI contract.
+- [Extension And Resource Generation Lifecycle](extension-generation-lifecycle-boundary.md)
+  defines candidate admission, exact owner/generation registrations,
+  synchronous runtime/resource publication, rollback, and reverse unload.
 - [Control Plane Runtime Boundary](control-plane-runtime-boundary.md) defines
   deterministic extension routing, neutral policy subjects and evaluator
   composition, pending approval lifecycle, and the Product adapters that retain

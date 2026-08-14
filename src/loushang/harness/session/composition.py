@@ -220,7 +220,7 @@ class SessionFoundationInputs:
     get_resource_watch_paths: Callable[[], list[Path]]
     prepare_resource_refresh: Callable[[], None]
     rebuild_prompt_and_tools_view: Callable[[], None]
-    set_resource_bundle: Callable[[ResourceBundle], None]
+    set_resource_bundle: Callable[[ResourceBundle | None], None]
     record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
 
 
@@ -664,7 +664,7 @@ def _build_foundation_runtimes(
         on_change=lambda: _reload_resources_from_watch(
             resource_refresh_runtime,
             product.extension_runner,
-            lambda: resource_refresh_runtime.refresh_async(reason="reload"),
+            lambda: product.extension_bridge.bind(reason="reload"),
         ),
     )
     navigation_runtime = AgentTranscriptNavigationRuntime(
@@ -1135,11 +1135,12 @@ async def _set_session_name(
 async def _reload_resources_from_watch(
     refresh_runtime: SessionResourceRefreshRuntime,
     extension_runner: SessionExtensionCompositionPort | None,
-    refresh_async: Callable[[], Awaitable[None]],
+    reload_extensions: Callable[[], Awaitable[None]],
 ) -> None:
-    await refresh_runtime.refresh_async(reason="watch")
     if extension_runner is not None:
-        await refresh_async()
+        await reload_extensions()
+        return
+    await refresh_runtime.refresh_async(reason="watch")
 
 
 def _last_assistant_message(

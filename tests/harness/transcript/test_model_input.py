@@ -249,6 +249,43 @@ def test_model_input_records_are_hidden_deduplicated_and_hash_verified() -> None
     asyncio.run(scenario())
 
 
+def test_model_input_retains_extension_tool_schema_after_source_removal(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        extension_source = tmp_path / "review_extension.py"
+        extension_source.write_text("# removed extension\n", encoding="utf-8")
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+
+        await committer.commit_prepared_request(_prepared())
+        snapshot_id = committer.commits[-1].snapshot_id
+        extension_source.unlink()
+        rebuilt = rebuild_model_input(transcript, snapshot_id)
+
+        assert extension_source.exists() is False
+        assert rebuilt.logical_input["tools"] == [
+            {
+                "name": "lookup",
+                "description": "Look up a value",
+                "parameters": {"type": "object", "properties": {}},
+            }
+        ]
+        assert rebuilt.prepared_payload["tools"] == [
+            {
+                "name": "lookup",
+                "input_schema": {"type": "object", "properties": {}},
+            }
+        ]
+        assert verify_model_input(transcript, snapshot_id).verified
+
+    asyncio.run(scenario())
+
+
 def test_model_input_components_remain_reachable_and_reusable_after_fork() -> None:
     async def scenario() -> None:
         transcript = await _memory_transcript()

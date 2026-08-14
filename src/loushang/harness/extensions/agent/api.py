@@ -7,6 +7,10 @@ from loushang.agent.types import ThinkingLevel
 from loushang.harness.extensions.api import ExtensionContributionAPI
 from loushang.harness.extensions.types import RegisteredRuntimeCapabilityReplacement
 from loushang.harness.runtime import SIDE_QUESTION_PROVIDER_SLOT
+from loushang.harness.runtime.registration import (
+    RegistrationLease,
+    RegistrationLeaseCollector,
+)
 
 
 class ExtensionAPI(ExtensionContributionAPI):
@@ -26,8 +30,12 @@ class ExtensionAPI(ExtensionContributionAPI):
         )
         self._pending_provider_actions: list[tuple[str, str, object | None]] = []
 
-    def bind_runtime_state(self, runtime_state: object) -> None:
-        super().bind_runtime_state(runtime_state)
+    def bind_runtime_state(
+        self,
+        runtime_state: object,
+        registrations: RegistrationLeaseCollector | None = None,
+    ) -> None:
+        super().bind_runtime_state(runtime_state, registrations)
         self._flush_pending_provider_actions()
 
     async def append_entry(self, custom_type: str, data: object | None = None) -> None:
@@ -132,6 +140,16 @@ class ExtensionAPI(ExtensionContributionAPI):
         if bindings is None:
             return False
         if action == "register":
+            binder = getattr(bindings, "bind_provider", None)
+            registrations = self._registrations
+            if callable(binder) and registrations is not None:
+                lease = binder(name, config, registrations.owner)
+                if not isinstance(lease, RegistrationLease):
+                    raise TypeError(
+                        "live provider binding must return a RegistrationLease"
+                    )
+                registrations.capture(lease)
+                return True
             callback = getattr(bindings, "register_provider", None)
             if not callable(callback):
                 return False
