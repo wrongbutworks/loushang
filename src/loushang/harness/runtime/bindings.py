@@ -45,7 +45,6 @@ class ProductRuntimeBindings:
     shutdown: Callable[[], None]
     record_diagnostic: Callable[[DiagnosticDraft], None]
     register_tool: Callable[[object, object | None], None] = _unbound_tool
-    bind_tool: Callable[[object, str, object | None], RegistrationLease] | None = None
     get_all_tools: Callable[[], list[object]] = lambda: []
     session_manager: object | None = None
     model_registry: object | None = None
@@ -82,6 +81,7 @@ class ProductRuntimeBindings:
     exec_command: Callable[..., Awaitable[ExecResult]] | None = None
     ui_context: object | None = None
     on_error: Callable[[dict[str, object]], None] | None = None
+    bind_tool: Callable[[object, str, object | None], RegistrationLease] | None = None
 
 
 class RuntimeBindingState(Generic[B]):

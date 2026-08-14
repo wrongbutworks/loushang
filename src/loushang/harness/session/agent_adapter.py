@@ -474,6 +474,8 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
             ),
             source_info=source_info,
         )
+        if self._tool_registry is None:
+            self._tool_registry = self._composition.tool_controller.tool_registry
         self._extension_tool_registration_leases.append(lease)
         if lease.identity.public_key in self.get_active_tool_names():
             self._extension_bridge.refresh_bindings()

@@ -70,6 +70,11 @@ class ToolRegistryPort(Protocol):
         source_info: object | None = None,
     ) -> RegistrationLease: ...
 
+    def _rollback_tool_binding(
+        self,
+        lease: RegistrationLease,
+    ) -> RegistrationDisposalResult: ...
+
 
 class ToolContributionResolver(Protocol):
     """The contribution-resolution operation used for runtime tool admission."""
@@ -195,19 +200,31 @@ class SessionToolRuntime:
             tool,
             source_info=source_info,
         )
+        previous_requested_names = self._activation.snapshot().requested_names
         registry_lease = self.tool_registry.bind_tool(
             registration.definition,
             owner=owner,
             source_info=registration.source_info,
         )
-        if not self.is_tool_allowed(registration.definition.name):
-            self.rebuild_prompt_and_tools_view()
-        else:
-            self._sync_available(activate_new=True, rebind=True)
+        try:
+            if not self.is_tool_allowed(registration.definition.name):
+                self.rebuild_prompt_and_tools_view()
+            else:
+                self._sync_available(activate_new=True, rebind=True)
+        except BaseException as bind_error:
+            rollback = self.tool_registry._rollback_tool_binding(registry_lease)
+            if rollback.state not in {"removed", "already_removed"}:
+                bind_error.add_note("tool registry binding rollback failed")
+            try:
+                self._sync_available(activate_new=False, rebind=False)
+                self._activation.request(previous_requested_names, rebind=True)
+            except BaseException:
+                bind_error.add_note("tool binding view rollback failed")
+            raise
 
         async def dispose_runtime_binding() -> RegistrationDisposalResult:
             result = await registry_lease.dispose()
-            if result.state == "removed":
+            if result.state in {"removed", "already_removed"}:
                 self._sync_available(activate_new=False, rebind=True)
             return result
 

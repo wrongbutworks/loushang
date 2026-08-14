@@ -757,6 +757,11 @@ class ToolRegistry:
         owner: RegistrationOwner,
         identity: RegistrationIdentity,
     ) -> RegistrationDisposalResult:
+        if identity.surface != "tool":
+            return RegistrationDisposalResult(
+                state="failed_terminal",
+                diagnostic_code="tool_registration_surface_mismatch",
+            )
         name = identity.public_key
         if name is None:
             return RegistrationDisposalResult(
@@ -780,3 +785,16 @@ class ToolRegistry:
                 self._order.remove(name)
             return RegistrationDisposalResult(state="removed")
         return RegistrationDisposalResult(state="already_removed")
+
+    def _rollback_tool_binding(
+        self,
+        lease: RegistrationLease,
+    ) -> RegistrationDisposalResult:
+        """Remove an unpublished binding after Session admission fails."""
+
+        if not isinstance(lease, RegistrationLease):
+            raise TypeError("tool binding rollback requires a RegistrationLease")
+        return self._remove_bound_tool(
+            owner=lease.owner,
+            identity=lease.identity,
+        )

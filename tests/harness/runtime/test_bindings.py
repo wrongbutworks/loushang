@@ -28,6 +28,30 @@ def test_product_runtime_bindings_default_tool_registration_fails_closed() -> No
     assert bindings.get_all_tools() == []
 
 
+def test_product_runtime_bindings_preserves_existing_optional_positionals() -> None:
+    async def set_active_tools(names: list[str]) -> None:
+        del names
+
+    async def set_model(model: object) -> None:
+        del model
+
+    bindings = ProductRuntimeBindings(
+        "/workspace",
+        lambda: [],
+        lambda: None,
+        set_active_tools,
+        set_model,
+        lambda: None,
+        lambda: None,
+        lambda _diagnostic: None,
+        lambda _tool, _source_info: None,
+        lambda: ["existing-tool"],
+    )
+
+    assert bindings.get_all_tools() == ["existing-tool"]
+    assert bindings.bind_tool is None
+
+
 def test_binding_lease_reads_refreshed_bindings_until_invalidated() -> None:
     state = RuntimeBindingState[dict[str, int]](
         unbound_message="not bound",

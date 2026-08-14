@@ -781,9 +781,6 @@ def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_se
     from loushang.coding.session import AgentSession
     from loushang.harness.extensions.agent import ExtensionAPI, ExtensionRunner
     from loushang.harness.tools.workspace import ToolDefinition
-    from loushang.harness.tools.workspace.registry import (
-        WorkspaceToolRegistry as ToolRegistry,
-    )
 
     async def execute_dynamic(
         tool_call_id: str, params: dict[str, object], signal=None, on_update=None
@@ -819,7 +816,6 @@ def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_se
         session_manager=asyncio.run(
             SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
-        tool_registry=ToolRegistry(),
         extension_runner=ExtensionRunner([api.build_loaded_extension()]),
         base_prompt="Base prompt.",
     )
@@ -832,6 +828,7 @@ def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_se
     assert session.get_active_tool_names() == ["api_dynamic_tool"]
     assert "- api_dynamic_tool: Run api dynamic behavior" in session.agent.system_prompt
     assert len(session._extension_tool_registration_leases) == 1
+    assert session._tool_registry is session._composition.tool_controller.tool_registry
     lease = session._extension_tool_registration_leases[0]
     assert lease.owner.owner_kind == "extension"
     assert lease.owner.owner_id == "demo"

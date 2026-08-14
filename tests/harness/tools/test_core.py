@@ -208,7 +208,7 @@ def test_tool_registry_live_bindings_restore_the_previous_exact_winner() -> None
     import asyncio
 
     from loushang.agent.types import AgentToolResult
-    from loushang.harness.runtime import RegistrationOwner
+    from loushang.harness.runtime import RegistrationIdentity, RegistrationOwner
     from loushang.harness.tools.core import ToolDefinition, ToolRegistry
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
@@ -258,6 +258,17 @@ def test_tool_registry_live_bindings_restore_the_previous_exact_winner() -> None
     assert registry.list_definitions() == [second]
     assert registry.get_source_info("shared") == {"owner": "second"}
 
+    wrong_surface = RegistrationIdentity(
+        surface="command",
+        registration_id=second_lease.identity.registration_id,
+        public_key="shared",
+    )
+    assert registry._remove_bound_tool(
+        owner=second_owner,
+        identity=wrong_surface,
+    ).state == "failed_terminal"
+    assert registry.list_definitions() == [second]
+
     assert (
         registry.register_tool(updated_base, source_info={"owner": "updated-base"})
         is updated_base
@@ -265,11 +276,20 @@ def test_tool_registry_live_bindings_restore_the_previous_exact_winner() -> None
     assert registry.list_definitions() == [second]
     assert registry.get_source_info("shared") == {"owner": "second"}
 
+    assert asyncio.run(second_lease.dispose()).state == "removed"
+    assert registry.list_definitions() == [first]
+    assert registry.get_source_info("shared") == {"owner": "first"}
+
+    replacement_lease = registry.bind_tool(
+        second,
+        owner=second_owner,
+        source_info={"owner": "second"},
+    )
     assert asyncio.run(first_lease.dispose()).state == "removed"
     assert registry.list_definitions() == [second]
     assert registry.get_source_info("shared") == {"owner": "second"}
 
-    assert asyncio.run(second_lease.dispose()).state == "removed"
+    assert asyncio.run(replacement_lease.dispose()).state == "removed"
     assert registry.list_definitions() == [updated_base]
     assert registry.get_source_info("shared") == {"owner": "updated-base"}
     assert asyncio.run(first_lease.dispose()).state == "already_removed"
