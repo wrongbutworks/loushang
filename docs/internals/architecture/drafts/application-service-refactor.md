@@ -95,18 +95,20 @@ Once extracted, the target package is top-level because it coordinates several
 lower layers:
 
 ```text
-Product composition root
-  -> Product Session/Work/Method bindings
-  -> loushang.appserver.service
-       |-> Harness
-       |-> Work -> Harness
-       `-> Channel -> Work -> Harness
-                    `-------> Harness
+embedded Product composition root
+  -> Harnesstui prepared ports
+  -> Product Session binding -> Harness
 
-Harnesstui
+hosted Platform Host composition root
+  -> admitted Product Router / Factory
+  -> loushang.appserver.service
+       |-> injected Product Session port -> Harness
+       |-> injected Product Work port -> Work -> Harness
+       `-> injected Channel port -> Work / Harness
+
+hosted clients, including an optional AppClient-backed Harnesstui profile
   -> appserver.client
   -> appserver.protocol
-  -> Harness presentation values where still required
 
 appserver transports
   -> appserver.protocol
@@ -232,9 +234,10 @@ It does not own:
 
 ### AppClient
 
-`AppClient` is a narrow asynchronous client contract. Harnesstui and supported
-SDK adapters consume it without knowing whether the service is embedded or
-remote.
+`AppClient` is a narrow asynchronous client contract. Hosted SDK/UI adapters
+and a Product that explicitly elects an AppClient-backed Harnesstui profile
+consume it without knowing whether the service connection is in-process or
+remote. The default embedded Harnesstui profile does not consume it.
 
 Conceptually:
 
@@ -488,12 +491,13 @@ No client response is inserted into the model input queue. Approval and UI
 interaction remain separate from prompt, steer, follow-up, and multi-agent
 mailboxes.
 
-## Harnesstui Migration
+## Optional AppClient-Backed Harnesstui Profile
 
 Harnesstui is not rewritten. Terminal rendering, surfaces, composer, history,
 status, Markdown, playback, and screen-loop mechanics stay unchanged.
 
-The migration replaces only the product/runtime binding:
+When a Product explicitly elects this hosted profile, the migration replaces
+only that Product/runtime binding:
 
 ```text
 before
@@ -507,12 +511,12 @@ Presentation-ready events continue through the existing projection boundary.
 Local-only UI operations, such as opening a help surface or changing focus,
 remain inside Harnesstui and are not round-tripped through AppService.
 
-Until an extraction trigger is real, Harnesstui continues to consume prepared
-ports and existing session operations directly.
+The default embedded Harnesstui profile continues to consume prepared ports and
+existing Session operations directly regardless of whether AppService exists.
 
-Before full AppClient cutover, the migration keeps a checked capability
-inventory. Every current Agent screen binding dependency is classified as
-exactly one of:
+Before an elected Product binding cuts over to AppClient, the migration keeps a
+checked capability inventory. Every current Agent screen binding dependency is
+classified as exactly one of:
 
 | Capability | Target |
 |---|---|
