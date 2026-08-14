@@ -88,12 +88,17 @@ def test_registration_scope_rejects_a_duplicate_exact_identity() -> None:
     identity = RegistrationIdentity.create(surface="tool", public_key="search")
     scope = RegistrationScope(owner)
     scope.add(RegistrationLease(owner=owner, identity=identity, dispose=lambda: None))
+    duplicate = RegistrationIdentity(
+        surface=identity.surface,
+        registration_id=identity.registration_id,
+        public_key="renamed-search",
+    )
 
     with pytest.raises(ValueError, match="identity"):
         scope.add(
             RegistrationLease(
                 owner=owner,
-                identity=identity,
+                identity=duplicate,
                 dispose=lambda: None,
             )
         )

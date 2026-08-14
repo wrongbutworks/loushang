@@ -275,7 +275,11 @@ class RegistrationScope:
             raise ValueError("registration lease owner does not match scope owner")
         if lease.state != "active":
             raise ValueError("registration scope accepts only active leases")
-        if any(existing.identity == lease.identity for existing in self._leases):
+        if any(
+            existing.identity.surface == lease.identity.surface
+            and existing.identity.registration_id == lease.identity.registration_id
+            for existing in self._leases
+        ):
             raise ValueError("registration identity is already owned by this scope")
         self._leases.append(lease)
         return lease

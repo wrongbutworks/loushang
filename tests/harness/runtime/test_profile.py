@@ -1124,6 +1124,8 @@ def test_concurrent_binder_dispose_joins_once_and_invalidates_reads_immediately(
         assert calls == ["start:value"]
         release.set()
         await asyncio.gather(first, second)
+        await binder.dispose(binding)
+        binder.dispose_sync(binding)
 
     asyncio.run(scenario())
 
@@ -1178,6 +1180,8 @@ def test_binder_cancellation_preserves_concurrent_cleanup_failure_diagnostics() 
         disposing = asyncio.create_task(binder.dispose(binding))
         await started.wait()
         disposing.cancel("shutdown cancelled")
+        await asyncio.sleep(0)
+        disposing.cancel("shutdown cancelled again")
         release.set()
 
         with pytest.raises(asyncio.CancelledError) as exc_info:
@@ -1432,6 +1436,78 @@ def test_sync_binder_rollback_continues_after_disposer_failure() -> None:
         "dispose:second",
         "dispose:first",
     ]
+
+
+def test_binder_attributes_synchronous_disposer_self_cancellation_to_its_entry() -> (
+    None
+):
+    slots = tuple(
+        RuntimeCapabilitySlot(
+            key=key,
+            shape="single",
+            scope="session",
+            refresh_boundary="sealed",
+            allowed_sources=frozenset({"product"}),
+        )
+        for key in ("async-first", "cancel-second")
+    )
+    profile = RuntimeProfileResolver().resolve(
+        ProductRuntimePlan(
+            product_id="research",
+            slots=slots,
+            defaults=tuple(
+                RuntimeCapabilitySelection(
+                    slot=slot.key,
+                    implementation=slot.key,
+                    implementation_version=1,
+                )
+                for slot in slots
+            ),
+        )
+    )
+    calls: list[str] = []
+
+    async def dispose_async(_value: object, _context: object) -> None:
+        calls.append("async:start")
+        await asyncio.sleep(0)
+        calls.append("async:end")
+
+    def dispose_cancelling(_value: object, _context: object) -> None:
+        calls.append("cancel")
+        task = asyncio.current_task()
+        assert task is not None
+        task.cancel("disposer self-cancelled")
+
+    binder = RuntimeProfileBinder(
+        RuntimeCapabilityRegistry(
+            (
+                RuntimeCapabilityImplementation(
+                    slot="async-first",
+                    implementation="async-first",
+                    implementation_version=1,
+                    create=lambda selection, _context: selection.slot,
+                    dispose=dispose_async,
+                ),
+                RuntimeCapabilityImplementation(
+                    slot="cancel-second",
+                    implementation="cancel-second",
+                    implementation_version=1,
+                    create=lambda selection, _context: selection.slot,
+                    dispose=dispose_cancelling,
+                ),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        binding = await binder.bind(profile)
+        with pytest.raises(RuntimeCapabilityBindingError) as exc_info:
+            await binder.dispose(binding)
+        assert exc_info.value.slot == "cancel-second"
+
+    asyncio.run(scenario())
+
+    assert calls == ["cancel", "async:start", "async:end"]
 
 
 def test_snapshot_rejects_boolean_versions_instead_of_treating_them_as_integers() -> (

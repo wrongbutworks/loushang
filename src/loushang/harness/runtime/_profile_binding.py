@@ -348,6 +348,8 @@ class RuntimeProfileBinder:
 
     async def dispose(self, binding: RuntimeProfileBinding) -> None:
         task = binding._dispose_task
+        if task is not None and task.done():
+            return
         if task is None:
             if binding._closed:
                 return
@@ -369,7 +371,10 @@ class RuntimeProfileBinder:
     def dispose_sync(self, binding: RuntimeProfileBinding) -> None:
         """Dispose a binding created from synchronous factories."""
 
-        if binding._dispose_task is not None:
+        task = binding._dispose_task
+        if task is not None and task.done():
+            return
+        if task is not None:
             raise RuntimeError(
                 "runtime profile binding disposal is already asynchronous"
             )
@@ -558,6 +563,9 @@ class RuntimeProfileBinder:
                 continue
             try:
                 await _await_result(entry.implementation.dispose(entry.value, context))
+                # Attribute cancellation requested synchronously by this
+                # disposer to this entry before advancing to the next one.
+                await asyncio.sleep(0)
             except asyncio.CancelledError as exc:
                 errors.append(_disposal_error(entry, cause=exc))
             except Exception as exc:
