@@ -405,6 +405,8 @@ def test_provider_request_contains_only_runtime_facts() -> None:
         "reasoning_effort",
         "reasoning_enabled",
         "temperature",
+        "invocation_id",
+        "attempt",
     }
 
 

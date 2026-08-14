@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from uuid import uuid4
 
 from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.auth.credentials import AuthCredential
@@ -282,6 +283,8 @@ async def _start_stream(
         context=normalized,
         options=options,
         mode=mode,
+        invocation_id=uuid4().hex,
+        attempt=1,
     )
     _validate_capability(
         resolved_model,

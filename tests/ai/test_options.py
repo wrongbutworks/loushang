@@ -78,6 +78,7 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "idle_timeout_seconds",
         "retry",
         "trace",
+        "prepared_request_committer",
         "pairing_mode",
         "reasoning",
         "tool_choice",

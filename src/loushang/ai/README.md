@@ -17,6 +17,10 @@ Model
 -> ProviderRegistry(provider, api)
    -> vendor-specific APIAdapter（精确命中）
    -> APIRegistry(api) 通用 APIAdapter（未命中时回退）
+-> adapter.prepare_request
+-> PreparedModelRequest（freeze/hash）
+-> optional pre-transport commit
+-> adapter.invoke_prepared_raw（同一冻结 payload）
 -> raw parts
 -> runtime / assembler
 -> AssistantMessageEventStream
@@ -26,6 +30,8 @@ Model
 
 - `model/`：领域对象、严格 catalog loader、只读 registry 和 `models.json`。
 - `provider/`：请求解析、adapter 调用边界、deadline、retry、取消和错误映射。
+- `prepared_request.py`：最终模型可见 payload、invocation/attempt 身份和可选
+  pre-transport commit port。
 - `api_registry.py`：按 API 标识选择通用协议 adapter。
 - `provider_registry.py`：按 `(provider, api)` 精确选择必要的厂商特殊 adapter，
   未命中时回退 `APIRegistry`。
@@ -144,6 +150,7 @@ register_api_adapter(custom_adapter)
 - `idle_timeout_seconds`
 - `retry`
 - `trace`
+- `prepared_request_committer`
 - `pairing_mode`
 - `reasoning`
 - `tool_choice`
@@ -151,6 +158,17 @@ register_api_adapter(custom_adapter)
 
 `timeout_seconds` 是一次 attempt 的完整 deadline，覆盖请求创建、首包和完整消费。
 `idle_timeout_seconds` 只约束流式 raw part 之间的空闲时间。
+
+`prepared_request_committer` 是高级组合端口。配置后，每次 transport attempt
+都会先完成 provider-specific payload 映射，将结果冻结为
+`PreparedModelRequest`，再等待 committer 成功；失败时不会调用 provider
+transport。同一次逻辑调用共享 `invocation_id`，重试递增 `attempt`。没有配置该端口
+时，AI 与 Agent 仍可独立运行；配置端口时，不实现 prepared-request seam 的自定义
+adapter 会 fail closed。
+
+高级组合方从 `loushang.ai.prepared_request` 导入
+`PreparedModelRequest` 与 `PreparedRequestCommitter`；它们不扩大根包的稳定应用
+调用 facade。
 
 `pairing_mode` 默认是 `repair`。默认修复历史 tool-call/tool-result transcript 中
 缺失的结果（例如一次运行在工具调用后、结果写回前被中断），补入 synthetic
@@ -176,12 +194,30 @@ ProviderRequest(
     reasoning_effort,
     reasoning_enabled,
     temperature,
+    invocation_id,
+    attempt,
 )
 ```
 
 静态 provider、endpoint、api、capabilities、defaults、adapter 和 upstream model facts
 均从 `request.model` 读取，不在请求对象中复制。headers 是只读 mapping，base URL
 必须已经完整解析。
+
+## Prepared Request Barrier
+
+生产 adapter 将调用明确拆成两个阶段：
+
+1. `prepare_request(request)` 完成消息、工具、reasoning、structured output、cache
+   和 provider-specific 字段映射，返回不可变且带 SHA-256 指纹的
+   `PreparedModelRequest`；
+2. commit 成功后，`invoke_prepared_raw(request, prepared)` 只从冻结的 canonical
+   payload 重建 transport 参数并发送，不再添加模型可见字段。
+
+`PreparedModelRequest` 不包含认证 header、SDK client、回调或其他 transport metadata。
+adapter 生成、会改变模型行为的协议 header（当前为 Anthropic beta feature header）
+则作为 `model_visible_headers` 一并冻结和计算指纹。纯 transport 值可以在发送阶段
+附加，但不能进入模型可见 payload。每次 retry 都重新 prepare 并 commit；相同
+payload 和 model-visible headers 可以得到相同 `payload_hash`，但 attempt 身份始终不同。
 
 ## Auth
 
