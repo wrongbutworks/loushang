@@ -99,7 +99,11 @@ class RegistrationIdentity:
 
 @dataclass(frozen=True)
 class RegistrationDisposalResult:
-    """Redacted outcome of attempting to remove one exact registration."""
+    """Redacted outcome of attempting to remove one exact registration.
+
+    ``diagnostic_code`` is a pre-redacted stable machine identifier, never a
+    raw exception message or registered value.
+    """
 
     state: RegistrationDisposalState
     diagnostic_code: str | None = None
@@ -138,7 +142,7 @@ class RegistrationLease:
             raise TypeError("registration disposer must be callable")
         self._owner = owner
         self._identity = identity
-        self._dispose = dispose
+        self._dispose: RegistrationDisposer | None = dispose
         self._state: RegistrationLeaseState = "active"
         self._last_result: RegistrationDisposalResult | None = None
         self._dispose_task: asyncio.Task[RegistrationDisposalResult] | None = None
@@ -170,16 +174,22 @@ class RegistrationLease:
 
         task = self._dispose_task
         if task is None:
+            self._state = "disposing"
             task = asyncio.create_task(self._dispose_once())
             self._dispose_task = task
         return await _await_cancellation_atomic(task)
 
     async def _dispose_once(self) -> RegistrationDisposalResult:
-        self._state = "disposing"
         try:
-            result = self._dispose()
+            disposer = self._dispose
+            if disposer is None:
+                raise RuntimeError("terminal registration lease has no disposer")
+            result = disposer()
             if inspect.isawaitable(result):
                 result = await result
+            # Deliver cancellation requested synchronously by a disposer before
+            # publishing a successful terminal result.
+            await asyncio.sleep(0)
             if result is None:
                 result = RegistrationDisposalResult(state="removed")
             elif not isinstance(result, RegistrationDisposalResult):
@@ -200,11 +210,13 @@ class RegistrationLease:
         self._last_result = result
         if result.state in {"removed", "already_removed"}:
             self._state = "disposed"
+            self._dispose = None
         elif result.state == "failed_retryable":
             self._state = "failed_retryable"
             self._dispose_task = None
         else:
             self._state = "failed_terminal"
+            self._dispose = None
         return result
 
 
@@ -263,6 +275,8 @@ class RegistrationScope:
             raise ValueError("registration lease owner does not match scope owner")
         if lease.state != "active":
             raise ValueError("registration scope accepts only active leases")
+        if any(existing.identity == lease.identity for existing in self._leases):
+            raise ValueError("registration identity is already owned by this scope")
         self._leases.append(lease)
         return lease
 
@@ -278,12 +292,12 @@ class RegistrationScope:
 
         task = self._dispose_task
         if task is None:
+            self._state = "disposing"
             task = asyncio.create_task(self._dispose_all())
             self._dispose_task = task
         return await _await_cancellation_atomic(task)
 
     async def _dispose_all(self) -> RegistrationScopeDisposalResult:
-        self._state = "disposing"
         outcomes: list[RegistrationDisposalOutcome] = []
         for lease in reversed(self._leases):
             result = await lease.dispose()

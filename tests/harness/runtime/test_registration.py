@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import gc
+import weakref
 
 import pytest
 
@@ -79,6 +81,58 @@ def test_registration_scope_rejects_a_lease_owned_by_another_owner() -> None:
         scope.add(foreign)
 
     assert foreign.state == "active"
+
+
+def test_registration_scope_rejects_a_duplicate_exact_identity() -> None:
+    owner = _owner()
+    identity = RegistrationIdentity.create(surface="tool", public_key="search")
+    scope = RegistrationScope(owner)
+    scope.add(RegistrationLease(owner=owner, identity=identity, dispose=lambda: None))
+
+    with pytest.raises(ValueError, match="identity"):
+        scope.add(
+            RegistrationLease(
+                owner=owner,
+                identity=identity,
+                dispose=lambda: None,
+            )
+        )
+
+
+def test_dispose_linearizes_lease_and_scope_state_before_cleanup_task_runs() -> None:
+    owner = _owner()
+
+    async def scenario() -> None:
+        release = asyncio.Event()
+
+        async def remove() -> None:
+            await release.wait()
+
+        lease = RegistrationLease(
+            owner=owner,
+            identity=RegistrationIdentity.create(
+                surface="test",
+                public_key="entry",
+            ),
+            dispose=remove,
+        )
+        scope = RegistrationScope(owner)
+        scope.add(lease)
+
+        disposing = asyncio.create_task(scope.dispose())
+        await asyncio.sleep(0)
+
+        assert scope.state == "disposing"
+        assert lease.state == "active"
+        with pytest.raises(RuntimeError, match="committed"):
+            scope.commit()
+
+        await asyncio.sleep(0)
+        assert lease.state == "disposing"
+        release.set()
+        await disposing
+
+    asyncio.run(scenario())
 
 
 def test_registration_scope_disposes_in_reverse_and_continues_after_failure() -> None:
@@ -192,6 +246,185 @@ def test_registration_lease_retries_only_a_retryable_failure() -> None:
     asyncio.run(scenario())
 
     assert attempts == 2
+
+
+def test_concurrent_lease_waiters_share_cleanup_when_one_is_cancelled() -> None:
+    calls = 0
+
+    async def scenario() -> None:
+        nonlocal calls
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def remove() -> None:
+            nonlocal calls
+            calls += 1
+            started.set()
+            await release.wait()
+
+        lease = RegistrationLease(
+            owner=_owner(),
+            identity=RegistrationIdentity.create(
+                surface="test",
+                public_key="entry",
+            ),
+            dispose=remove,
+        )
+        first = asyncio.create_task(lease.dispose())
+        second = asyncio.create_task(lease.dispose())
+        await started.wait()
+        first.cancel("first waiter cancelled")
+        release.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        assert await second == RegistrationDisposalResult(state="removed")
+
+    asyncio.run(scenario())
+
+    assert calls == 1
+
+
+def test_scope_retry_reexecutes_only_retryable_disposer() -> None:
+    owner = _owner()
+    calls: list[str] = []
+    retry_attempts = 0
+
+    def remove_retryable() -> None:
+        nonlocal retry_attempts
+        retry_attempts += 1
+        calls.append("retryable")
+        if retry_attempts == 1:
+            raise RuntimeError("retry later")
+
+    def remove_terminal() -> RegistrationDisposalResult:
+        calls.append("terminal")
+        return RegistrationDisposalResult(
+            state="failed_terminal",
+            diagnostic_code="permanent_failure",
+        )
+
+    scope = RegistrationScope(owner)
+    scope.add(
+        RegistrationLease(
+            owner=owner,
+            identity=RegistrationIdentity.create(
+                surface="test",
+                public_key="success",
+            ),
+            dispose=lambda: calls.append("success"),
+        )
+    )
+    scope.add(
+        RegistrationLease(
+            owner=owner,
+            identity=RegistrationIdentity.create(
+                surface="test",
+                public_key="terminal",
+            ),
+            dispose=remove_terminal,
+        )
+    )
+    scope.add(
+        RegistrationLease(
+            owner=owner,
+            identity=RegistrationIdentity.create(
+                surface="test",
+                public_key="retryable",
+            ),
+            dispose=remove_retryable,
+        )
+    )
+    scope.commit()
+
+    async def scenario() -> None:
+        first = await scope.dispose()
+        assert [outcome.result.state for outcome in first.outcomes] == [
+            "failed_retryable",
+            "failed_terminal",
+            "removed",
+        ]
+        second = await scope.dispose()
+        assert [outcome.result.state for outcome in second.outcomes] == [
+            "removed",
+            "failed_terminal",
+            "already_removed",
+        ]
+        assert scope.state == "failed_terminal"
+        assert await scope.dispose() is second
+
+    asyncio.run(scenario())
+
+    assert calls == ["retryable", "terminal", "success", "retryable"]
+
+
+def test_registration_lease_releases_terminal_disposer_capture() -> None:
+    class Registry:
+        def remove(self) -> None:
+            return None
+
+    registry = Registry()
+    retained = weakref.ref(registry)
+    lease = RegistrationLease(
+        owner=_owner(),
+        identity=RegistrationIdentity.create(
+            surface="test",
+            public_key="entry",
+        ),
+        dispose=registry.remove,
+    )
+
+    asyncio.run(lease.dispose())
+    del registry
+    gc.collect()
+
+    assert retained() is None
+
+
+def test_synchronous_disposer_self_cancellation_is_retryable_and_scope_continues() -> (
+    None
+):
+    owner = _owner()
+    calls: list[str] = []
+    scope = RegistrationScope(owner)
+    scope.add(
+        RegistrationLease(
+            owner=owner,
+            identity=RegistrationIdentity.create(
+                surface="test",
+                public_key="first",
+            ),
+            dispose=lambda: calls.append("first"),
+        )
+    )
+
+    def cancel_current_disposer() -> None:
+        calls.append("cancel")
+        task = asyncio.current_task()
+        assert task is not None
+        task.cancel("disposer self-cancelled")
+
+    cancelling = scope.add(
+        RegistrationLease(
+            owner=owner,
+            identity=RegistrationIdentity.create(
+                surface="test",
+                public_key="cancelling",
+            ),
+            dispose=cancel_current_disposer,
+        )
+    )
+    scope.commit()
+
+    report = asyncio.run(scope.dispose())
+
+    assert calls == ["cancel", "first"]
+    assert [outcome.result.state for outcome in report.outcomes] == [
+        "failed_retryable",
+        "removed",
+    ]
+    assert cancelling.state == "failed_retryable"
+    assert scope.state == "failed_retryable"
 
 
 def test_registration_scope_finishes_cleanup_before_propagating_cancellation() -> None:

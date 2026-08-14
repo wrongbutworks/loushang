@@ -161,6 +161,9 @@ class RuntimeProfileBinding:
         self._state = state
         self._bound = dict(bound)
         self._closed = False
+        self._dispose_task: (
+            asyncio.Task[tuple[RuntimeCapabilityBindingError, ...]] | None
+        ) = None
 
     @property
     def profile(self) -> ResolvedRuntimeProfile:
@@ -315,12 +318,24 @@ class RuntimeProfileBinder:
             raise
 
         retired = tuple(
-            entry for key in changed_keys for entry in binding._bound.get(key, ())
+            entry
+            for key, entries in binding._bound.items()
+            if key in changed_keys
+            for entry in entries
         )
         updated = dict(binding._bound)
         for key in changed_keys:
             updated.pop(key, None)
         updated.update(replacements)
+        try:
+            binding._require_open()
+        except RuntimeError as exc:
+            errors = await self._dispose_entries_cancellation_atomic(
+                created,
+                context=binding._context,
+            )
+            _annotate_cleanup_errors(exc, errors)
+            raise
         binding._replace(profile=profile, bound=updated)
         errors = await self._dispose_entries_cancellation_atomic(
             retired,
@@ -332,39 +347,41 @@ class RuntimeProfileBinder:
         )
 
     async def dispose(self, binding: RuntimeProfileBinding) -> None:
-        if binding._closed:
-            return
-        entries = tuple(
-            entry
-            for capability in binding.profile.capabilities
-            for entry in binding._bound.get(capability.slot.key, ())
-        )
-        try:
-            errors = await self._dispose_entries_cancellation_atomic(
-                entries,
-                context=binding._context,
+        task = binding._dispose_task
+        if task is None:
+            if binding._closed:
+                return
+            entries = tuple(
+                entry for bound in binding._bound.values() for entry in bound
             )
-        finally:
             binding._closed = True
             binding._state.invalidate("runtime profile binding was disposed")
+            task = asyncio.create_task(
+                self._dispose_entries_collecting(
+                    entries,
+                    context=binding._context,
+                )
+            )
+            binding._dispose_task = task
+        errors = await self._await_disposal_task(task)
         _raise_disposal_errors(errors)
 
     def dispose_sync(self, binding: RuntimeProfileBinding) -> None:
         """Dispose a binding created from synchronous factories."""
 
+        if binding._dispose_task is not None:
+            raise RuntimeError(
+                "runtime profile binding disposal is already asynchronous"
+            )
         if binding._closed:
             return
-        entries = tuple(
-            entry
-            for capability in binding.profile.capabilities
-            for entry in binding._bound.get(capability.slot.key, ())
-        )
+        entries = tuple(entry for bound in binding._bound.values() for entry in bound)
+        binding._closed = True
+        binding._state.invalidate("runtime profile binding was disposed")
         errors = self._dispose_entries_collecting_sync(
             entries,
             context=binding._context,
         )
-        binding._closed = True
-        binding._state.invalidate("runtime profile binding was disposed")
         _raise_disposal_errors(errors)
 
     def _create_profile_sync(
@@ -517,7 +534,17 @@ class RuntimeProfileBinder:
         task = asyncio.create_task(
             self._dispose_entries_collecting(entries, context=context)
         )
-        return await _await_cancellation_atomic(task)
+        return await self._await_disposal_task(task)
+
+    async def _await_disposal_task(
+        self,
+        task: asyncio.Task[tuple[RuntimeCapabilityBindingError, ...]],
+    ) -> tuple[RuntimeCapabilityBindingError, ...]:
+        try:
+            return await _await_cancellation_atomic(task)
+        except asyncio.CancelledError as exc:
+            _annotate_cleanup_errors(exc, task.result())
+            raise
 
     async def _dispose_entries_collecting(
         self,
