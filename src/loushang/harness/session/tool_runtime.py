@@ -11,6 +11,11 @@ from loushang.harness.capabilities.tools import (
     ToolActivationChange,
     ToolActivationCoordinator,
 )
+from loushang.harness.runtime.registration import (
+    RegistrationDisposalResult,
+    RegistrationLease,
+    RegistrationOwner,
+)
 from loushang.harness.tools.authoring import ToolContextProvider
 from loushang.harness.tools.contribution import (
     ToolContribution,
@@ -55,6 +60,15 @@ class ToolRegistryPort(Protocol):
         enabled: bool = True,
         source_info: object | None = None,
     ) -> ToolDefinition: ...
+
+    def bind_tool(
+        self,
+        tool: ToolDefinition,
+        *,
+        owner: RegistrationOwner,
+        enabled: bool = True,
+        source_info: object | None = None,
+    ) -> RegistrationLease: ...
 
 
 class ToolContributionResolver(Protocol):
@@ -154,14 +168,11 @@ class SessionToolRuntime:
         *,
         source_info: object | None = None,
     ) -> ToolDefinition:
-        contribution = _runtime_tool_contribution(tool, source_info=source_info)
-        resolution = self.resolve_contributions(
-            (*self.tool_registry.list_contributions(), contribution),
-            fail_on_errors=False,
-        )
-        registration = _runtime_tool_registration_contribution(
-            resolution,
-            fallback=contribution,
+        """Compatibility path for callers that cannot yet retain a lease."""
+
+        registration = self._resolve_runtime_tool_registration(
+            tool,
+            source_info=source_info,
         )
         definition = self.tool_registry.register_tool(
             registration.definition,
@@ -172,6 +183,39 @@ class SessionToolRuntime:
             return definition
         self._sync_available(activate_new=True, rebind=True)
         return definition
+
+    def bind_runtime_tool(
+        self,
+        tool: object,
+        *,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        registration = self._resolve_runtime_tool_registration(
+            tool,
+            source_info=source_info,
+        )
+        registry_lease = self.tool_registry.bind_tool(
+            registration.definition,
+            owner=owner,
+            source_info=registration.source_info,
+        )
+        if not self.is_tool_allowed(registration.definition.name):
+            self.rebuild_prompt_and_tools_view()
+        else:
+            self._sync_available(activate_new=True, rebind=True)
+
+        async def dispose_runtime_binding() -> RegistrationDisposalResult:
+            result = await registry_lease.dispose()
+            if result.state == "removed":
+                self._sync_available(activate_new=False, rebind=True)
+            return result
+
+        return RegistrationLease(
+            owner=registry_lease.owner,
+            identity=registry_lease.identity,
+            dispose=dispose_runtime_binding,
+        )
 
     def rebuild_prompt_and_tools_view(self) -> None:
         self._sync_available(activate_new=False, rebind=False)
@@ -196,6 +240,22 @@ class SessionToolRuntime:
             context_provider=self.build_tool_context,
         )
         self.rebuild_prompt(list(change.active_items))
+
+    def _resolve_runtime_tool_registration(
+        self,
+        tool: object,
+        *,
+        source_info: object | None,
+    ) -> ToolContribution:
+        contribution = _runtime_tool_contribution(tool, source_info=source_info)
+        resolution = self.resolve_contributions(
+            (*self.tool_registry.list_contributions(), contribution),
+            fail_on_errors=False,
+        )
+        return _runtime_tool_registration_contribution(
+            resolution,
+            fallback=contribution,
+        )
 
 
 def _runtime_tool_contribution(

@@ -8,6 +8,7 @@ from typing import Any
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.runtime.bindings import RuntimeBindingLease
+from loushang.harness.runtime.registration import RegistrationLease
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 
@@ -249,10 +250,12 @@ class BoundProductRuntimeContext:
         runtime_bindings: RuntimeBindingLease[Any],
         tool_source_info: SourceInfo[Path] | None = None,
         *,
+        tool_owner_id: str | None = None,
         get_flag_value: Callable[[str], bool | str | None] | None = None,
     ) -> None:
         self._runtime_bindings = runtime_bindings
         self._tool_source_info = tool_source_info
+        self._tool_owner_id = tool_owner_id
         self._get_flag_value = get_flag_value or (lambda name: None)
 
     @property
@@ -326,7 +329,14 @@ class BoundProductRuntimeContext:
         return list(self._require_bindings().get_all_tools())
 
     def register_tool(self, tool: object) -> None:
-        self._require_bindings().register_tool(tool, self._tool_source_info)
+        bindings = self._require_bindings()
+        binder = bindings.bind_tool
+        if binder is None or self._tool_owner_id is None:
+            bindings.register_tool(tool, self._tool_source_info)
+            return
+        lease = binder(tool, self._tool_owner_id, self._tool_source_info)
+        if not isinstance(lease, RegistrationLease):
+            raise TypeError("live tool binding must return a RegistrationLease")
 
     def get_flag(self, name: str) -> bool | str | None:
         return self._get_flag_value(name)

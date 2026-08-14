@@ -5,13 +5,15 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.runtime.registration import RegistrationLease
 from loushang.harness.workspace.exec import ExecResult
 
 B = TypeVar("B")
 
 
-def _ignore_tool(tool: object, source_info: object | None = None) -> None:
+def _unbound_tool(tool: object, source_info: object | None = None) -> None:
     del tool, source_info
+    raise RuntimeError("live tool registration is not bound")
 
 
 async def _ignore_entry(custom_type: str, data: object | None = None) -> None:
@@ -42,7 +44,8 @@ class ProductRuntimeBindings:
     request_resource_refresh: Callable[[], None]
     shutdown: Callable[[], None]
     record_diagnostic: Callable[[DiagnosticDraft], None]
-    register_tool: Callable[[object, object | None], None] = _ignore_tool
+    register_tool: Callable[[object, object | None], None] = _unbound_tool
+    bind_tool: Callable[[object, str, object | None], RegistrationLease] | None = None
     get_all_tools: Callable[[], list[object]] = lambda: []
     session_manager: object | None = None
     model_registry: object | None = None

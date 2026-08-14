@@ -157,6 +157,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
         self._extension_bridge = AgentSessionExtensionBridge()
+        self._extension_tool_registration_leases = []
         self._tool_registry = tool_registry
         self.diagnostics_service = diagnostics_service
         self._package_materializer = package_materializer
@@ -225,6 +226,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             set_active_tools=self._set_active_tools_from_extension,
             set_model=self._set_model_from_extension,
             register_tool=self._register_extension_runtime_tool,
+            bind_tool=self._bind_extension_runtime_tool,
             append_entry=self._append_extension_entry,
             send_message=self._send_message_from_extension,
             send_user_message=self._send_user_message_from_extension_async,

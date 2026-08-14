@@ -831,6 +831,23 @@ def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_se
     ]
     assert session.get_active_tool_names() == ["api_dynamic_tool"]
     assert "- api_dynamic_tool: Run api dynamic behavior" in session.agent.system_prompt
+    assert len(session._extension_tool_registration_leases) == 1
+    lease = session._extension_tool_registration_leases[0]
+    assert lease.owner.owner_kind == "extension"
+    assert lease.owner.owner_id == "demo"
+    assert (
+        lease.owner.runtime_id
+        == session.session_manager.get_session_record().session_id
+    )
+    assert lease.identity.public_key == "api_dynamic_tool"
+
+    assert asyncio.run(lease.dispose()).state == "removed"
+    assert session.get_all_tools() == []
+    assert session.get_active_tool_names() == []
+    assert [tool.name for tool in session.agent.tools] == []
+    assert "- api_dynamic_tool: Run api dynamic behavior" not in (
+        session.agent.system_prompt
+    )
 
 
 def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(

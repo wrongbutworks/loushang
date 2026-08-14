@@ -18,10 +18,17 @@ from typing import (
     is_typeddict,
     runtime_checkable,
 )
+from uuid import uuid4
 
 from loushang.agent.types import AgentTool, AgentToolResult, ToolExecutionMode
 from loushang.ai.types import ToolCall
 from loushang.harness.presentation import ToolRenderContext, ToolRenderResultOptions
+from loushang.harness.runtime.registration import (
+    RegistrationDisposalResult,
+    RegistrationIdentity,
+    RegistrationLease,
+    RegistrationOwner,
+)
 from loushang.harness.tools.execution import (
     AuthorizedExecution,
     DirectExecution,
@@ -561,6 +568,8 @@ def wrap_tool_definitions(
 
 @dataclass(frozen=True)
 class _RegisteredTool:
+    owner: RegistrationOwner
+    identity: RegistrationIdentity
     definition: ToolDefinition
     enabled: bool = True
     source_info: object | None = None
@@ -568,8 +577,15 @@ class _RegisteredTool:
 
 class ToolRegistry:
     def __init__(self, *, execution_host: ToolExecutionHost | None = None) -> None:
-        self._tools: dict[str, _RegisteredTool] = {}
+        self._tools: dict[str, list[_RegisteredTool]] = {}
         self._order: list[str] = []
+        self._legacy_registration_ids: dict[str, str] = {}
+        self._legacy_owner = RegistrationOwner(
+            owner_kind="runtime",
+            owner_id="tool-registry-compatibility",
+            runtime_id=uuid4().hex,
+            generation=0,
+        )
         self._execution_host = execution_host
 
     def bind_execution_host(self, host: ToolExecutionHost) -> None:
@@ -582,25 +598,89 @@ class ToolRegistry:
         enabled: bool = True,
         source_info: object | None = None,
     ) -> ToolDefinition:
-        if not isinstance(tool, ToolDefinition):
-            raise TypeError(
-                "ToolRegistry.register_tool expects an explicitly bound "
-                "ToolDefinition"
-            )
-        definition = tool
-        if definition.name not in self._tools:
+        """Compatibility facade; live owners should use :meth:`bind_tool`."""
+
+        definition = self._require_definition(tool, operation="register_tool")
+        layers = self._tools.get(definition.name)
+        if layers is None:
+            layers = []
+            self._tools[definition.name] = layers
             self._order.append(definition.name)
-        self._tools[definition.name] = _RegisteredTool(definition=definition, enabled=enabled, source_info=source_info)
-        return definition
+        previous_id = self._legacy_registration_ids.get(definition.name)
+        identity = RegistrationIdentity.create(
+            surface="tool",
+            public_key=definition.name,
+        )
+        registered = _RegisteredTool(
+            owner=self._legacy_owner,
+            identity=identity,
+            definition=definition,
+            enabled=enabled,
+            source_info=source_info,
+        )
+        previous_index = next(
+            (
+                index
+                for index, existing in enumerate(layers)
+                if existing.identity.registration_id == previous_id
+            ),
+            None,
+        )
+        if previous_index is None:
+            layers.append(registered)
+        else:
+            layers[previous_index] = registered
+        self._legacy_registration_ids[definition.name] = identity.registration_id
+        return tool
+
+    def bind_tool(
+        self,
+        tool: ToolDefinition,
+        *,
+        owner: RegistrationOwner,
+        enabled: bool = True,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        """Bind one owner-scoped Tool layer and return its exact disposer."""
+
+        definition = self._require_definition(tool, operation="bind_tool")
+        if not isinstance(owner, RegistrationOwner):
+            raise TypeError("ToolRegistry.bind_tool owner must be a RegistrationOwner")
+        identity = RegistrationIdentity.create(
+            surface="tool",
+            public_key=definition.name,
+        )
+        layers = self._tools.get(definition.name)
+        if layers is None:
+            layers = []
+            self._tools[definition.name] = layers
+            self._order.append(definition.name)
+        layers.append(
+            _RegisteredTool(
+                owner=owner,
+                identity=identity,
+                definition=definition,
+                enabled=enabled,
+                source_info=source_info,
+            )
+        )
+        return RegistrationLease(
+            owner=owner,
+            identity=identity,
+            dispose=lambda: self._remove_bound_tool(
+                owner=owner,
+                identity=identity,
+            ),
+        )
 
     def get_tool(self, name: str) -> AgentTool[Any]:
         return self.materialize_tool(name)
 
     def get_definition(self, name: str) -> ToolDefinition:
-        return self._tools[name].definition
+        return self._effective_tool(name).definition
 
     def get_source_info(self, name: str) -> object | None:
-        return self._tools[name].source_info
+        return self._effective_tool(name).source_info
 
     def list_tools(self) -> list[AgentTool[Any]]:
         return self.materialize_definitions(self.list_definitions())
@@ -609,22 +689,30 @@ class ToolRegistry:
         return self.materialize_definitions(self.list_enabled_definitions())
 
     def list_definitions(self) -> list[ToolDefinition]:
-        return [self._tools[name].definition for name in self._order]
+        return [self._effective_tool(name).definition for name in self._order]
 
     def list_enabled_definitions(self) -> list[ToolDefinition]:
-        return [self._tools[name].definition for name in self._order if self._tools[name].enabled]
+        return [
+            registered.definition
+            for name in self._order
+            if (registered := self._effective_tool(name)).enabled
+        ]
 
     def enable_tool(self, name: str) -> None:
-        registered = self._tools[name]
-        self._tools[name] = _RegisteredTool(
+        registered = self._effective_tool(name)
+        self._tools[name][-1] = _RegisteredTool(
+            owner=registered.owner,
+            identity=registered.identity,
             definition=registered.definition,
             enabled=True,
             source_info=registered.source_info,
         )
 
     def disable_tool(self, name: str) -> None:
-        registered = self._tools[name]
-        self._tools[name] = _RegisteredTool(
+        registered = self._effective_tool(name)
+        self._tools[name][-1] = _RegisteredTool(
+            owner=registered.owner,
+            identity=registered.identity,
             definition=registered.definition,
             enabled=False,
             source_info=registered.source_info,
@@ -647,3 +735,48 @@ class ToolRegistry:
             execution_host=self._execution_host,
             context_provider=context_provider,
         )
+
+    @staticmethod
+    def _require_definition(
+        tool: ToolDefinition,
+        *,
+        operation: str,
+    ) -> ToolDefinition:
+        if not isinstance(tool, ToolDefinition):
+            raise TypeError(
+                f"ToolRegistry.{operation} expects an explicitly bound ToolDefinition"
+            )
+        return tool
+
+    def _effective_tool(self, name: str) -> _RegisteredTool:
+        return self._tools[name][-1]
+
+    def _remove_bound_tool(
+        self,
+        *,
+        owner: RegistrationOwner,
+        identity: RegistrationIdentity,
+    ) -> RegistrationDisposalResult:
+        name = identity.public_key
+        if name is None:
+            return RegistrationDisposalResult(
+                state="failed_terminal",
+                diagnostic_code="tool_registration_public_key_missing",
+            )
+        layers = self._tools.get(name)
+        if layers is None:
+            return RegistrationDisposalResult(state="already_removed")
+        for index, registered in enumerate(layers):
+            if registered.identity.registration_id != identity.registration_id:
+                continue
+            if registered.owner != owner:
+                return RegistrationDisposalResult(
+                    state="failed_terminal",
+                    diagnostic_code="tool_registration_owner_mismatch",
+                )
+            layers.pop(index)
+            if not layers:
+                del self._tools[name]
+                self._order.remove(name)
+            return RegistrationDisposalResult(state="removed")
+        return RegistrationDisposalResult(state="already_removed")

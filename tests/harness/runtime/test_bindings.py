@@ -5,7 +5,7 @@ import pytest
 from loushang.harness.runtime import ProductRuntimeBindings, RuntimeBindingState
 
 
-def test_product_runtime_bindings_default_tool_registration_is_noop() -> None:
+def test_product_runtime_bindings_default_tool_registration_fails_closed() -> None:
     async def set_active_tools(names: list[str]) -> None:
         del names
 
@@ -23,7 +23,8 @@ def test_product_runtime_bindings_default_tool_registration_is_noop() -> None:
         record_diagnostic=lambda diagnostic: None,
     )
 
-    assert bindings.register_tool(object(), {"owner": "extension"}) is None
+    with pytest.raises(RuntimeError, match="live tool registration is not bound"):
+        bindings.register_tool(object(), {"owner": "extension"})
     assert bindings.get_all_tools() == []
 
 

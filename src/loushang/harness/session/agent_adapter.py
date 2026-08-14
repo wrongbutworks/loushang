@@ -44,6 +44,10 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.packages.session import SessionPackageController
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.runtime.registration import (
+    RegistrationLease,
+    RegistrationOwner,
+)
 from loushang.harness.session.agent_product_runtime import (
     AgentProductSessionRuntime as AgentProductSessionRuntime,
 )
@@ -115,6 +119,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     _extension_provider_controller: ExtensionProviderRuntime
     _extension_replacement_controller: ExtensionReplacementRuntime
     _extension_runner: SessionExtensionCompositionPort | None
+    _extension_tool_registration_leases: list[RegistrationLease]
     _extension_bridge: AgentSessionExtensionBridge
     _operations: SessionOperations
     _package_controller: SessionPackageController
@@ -451,6 +456,28 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
             self._tool_registry = self._composition.tool_controller.tool_registry
         if definition.name in self.get_active_tool_names():
             self._extension_bridge.refresh_bindings()
+
+    def _bind_extension_runtime_tool(
+        self,
+        tool: object,
+        owner_id: str,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        session_id = str(self.session_manager.get_session_record().session_id)
+        lease = self._composition.tool_controller.bind_runtime_tool(
+            tool,
+            owner=RegistrationOwner(
+                owner_kind="extension",
+                owner_id=owner_id,
+                runtime_id=session_id,
+                generation=0,
+            ),
+            source_info=source_info,
+        )
+        self._extension_tool_registration_leases.append(lease)
+        if lease.identity.public_key in self.get_active_tool_names():
+            self._extension_bridge.refresh_bindings()
+        return lease
 
     def _rebuild_prompt_and_tools_view(self) -> None:
         self._composition.tool_controller.rebuild_prompt_and_tools_view()

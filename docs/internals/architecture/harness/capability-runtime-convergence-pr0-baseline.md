@@ -91,7 +91,7 @@ Names such as `register_*` and `add_*` do not determine the classification.
 | --- | --- | --- | --- |
 | COMP-01 | Tool registration returns the exact input `ToolDefinition`. | SUR-01 test | PR2 adds `bind_tool`; legacy facade retains return value during migration. |
 | COMP-02 | Same-name Tool registration replaces content without adding another order entry. | SUR-01 and SUR-03 tests | PR2 must characterize explicit Tool layering/conflict policy before changing it. |
-| COMP-03 | `ProductRuntimeBindings.register_tool` defaults to a silent no-op. | `tests/harness/runtime/test_bindings.py::test_product_runtime_bindings_default_tool_registration_is_noop` | PR2 must fail closed only where a live contribution is required; unrelated unbound contexts remain compatible. |
+| COMP-03 | At PR0, `ProductRuntimeBindings.register_tool` defaulted to a silent no-op. PR2 keeps default binding construction compatible but makes an attempted live Tool registration fail closed. | `tests/harness/runtime/test_bindings.py::test_product_runtime_bindings_default_tool_registration_fails_closed` | PR2 changes only the attempted live mutation; unrelated unbound contexts remain compatible. |
 | COMP-04 | Runtime Capability and codec declaration registries fail closed on duplicate exact identities. | SUR-08 and SUR-09 tests | No migration may loosen these registries to replacement semantics. |
 | COMP-05 | AI API/provider adapter registries fail closed but remove in bulk by `source_id`. | SUR-10 and SUR-11 tests | AI-local token evolution preserves `AI -X-> Harness`. |
 | COMP-06 | Session switch disposes the previous Session before publishing and activating/rebinding the candidate. | SUR-15 tests | PR1 does not alter this; PR8 requires an explicit nested-commit decision. |

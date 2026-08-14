@@ -19,6 +19,7 @@ from loushang.harness.extensions.types import (
     RegisteredShortcut,
 )
 from loushang.harness.resources.source import SourceInfo
+from loushang.harness.runtime.registration import RegistrationLease
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
@@ -296,9 +297,17 @@ class ExtensionContributionAPI:
         return getattr(self._runtime_state, "bindings", None)
 
     def _register_runtime_tool(self, definition: ToolDefinition) -> None:
-        callback = getattr(self._runtime_bindings(), "register_tool", None)
+        bindings = self._runtime_bindings()
+        binder = getattr(bindings, "bind_tool", None)
+        source_info = SourceInfo(path=self._entry_path or self._source_path)
+        if callable(binder):
+            lease = binder(definition, self._name, source_info)
+            if not isinstance(lease, RegistrationLease):
+                raise TypeError("live tool binding must return a RegistrationLease")
+            return
+        callback = getattr(bindings, "register_tool", None)
         if callable(callback):
-            callback(definition, SourceInfo(path=self._entry_path or self._source_path))
+            callback(definition, source_info)
 
     def _register_control_contribution(
         self,

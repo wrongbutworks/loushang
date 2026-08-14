@@ -12,6 +12,7 @@ from loushang.harness.commands import SessionCommandDescriptor
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.context import ExtensionRuntimeBindings
+from loushang.harness.runtime.registration import RegistrationLease
 from loushang.harness.workspace.exec import ExecResult
 
 
@@ -59,6 +60,7 @@ class ExtensionRuntimeBindingFactory:
     switch_session: Callable[[str, object | None], Awaitable[dict[str, object]]]
     get_ui_context: Callable[[], object | None]
     exec_command: Callable[..., Awaitable[ExecResult]] | None = None
+    bind_tool: Callable[[object, str, object | None], RegistrationLease] | None = None
 
     def build(self) -> ExtensionRuntimeBindings:
         async def set_model(selection: object) -> None:
@@ -90,6 +92,7 @@ class ExtensionRuntimeBindingFactory:
             set_active_tools=self.set_active_tools,
             set_model=set_model,
             register_tool=self.register_tool,
+            bind_tool=self.bind_tool,
             append_entry=self.append_entry,
             send_message=self.send_message,
             send_user_message=self.send_user_message,

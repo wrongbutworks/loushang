@@ -204,6 +204,77 @@ def test_tool_registry_duplicate_registration_compatibility_baseline() -> None:
     assert not hasattr(registry, "unregister_tool")
 
 
+def test_tool_registry_live_bindings_restore_the_previous_exact_winner() -> None:
+    import asyncio
+
+    from loushang.agent.types import AgentToolResult
+    from loushang.harness.runtime import RegistrationOwner
+    from loushang.harness.tools.core import ToolDefinition, ToolRegistry
+
+    async def execute(tool_call_id, params, signal=None, on_update=None):
+        del tool_call_id, params, signal, on_update
+        return AgentToolResult(content=[], details={})
+
+    def definition(label: str) -> ToolDefinition:
+        return ToolDefinition(
+            name="shared",
+            label=label,
+            description=label,
+            parameters={"type": "object"},
+            execution=direct_execution(execute),
+        )
+
+    registry = ToolRegistry()
+    base = definition("Base")
+    updated_base = definition("Updated base")
+    first = definition("First owner")
+    second = definition("Second owner")
+    registry.register_tool(base, source_info={"owner": "base"})
+    first_owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="first",
+        runtime_id="session-1",
+        generation=0,
+    )
+    second_owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="second",
+        runtime_id="session-1",
+        generation=0,
+    )
+
+    first_lease = registry.bind_tool(
+        first,
+        owner=first_owner,
+        source_info={"owner": "first"},
+    )
+    second_lease = registry.bind_tool(
+        second,
+        owner=second_owner,
+        source_info={"owner": "second"},
+    )
+
+    assert first_lease.identity != second_lease.identity
+    assert registry.list_definitions() == [second]
+    assert registry.get_source_info("shared") == {"owner": "second"}
+
+    assert (
+        registry.register_tool(updated_base, source_info={"owner": "updated-base"})
+        is updated_base
+    )
+    assert registry.list_definitions() == [second]
+    assert registry.get_source_info("shared") == {"owner": "second"}
+
+    assert asyncio.run(first_lease.dispose()).state == "removed"
+    assert registry.list_definitions() == [second]
+    assert registry.get_source_info("shared") == {"owner": "second"}
+
+    assert asyncio.run(second_lease.dispose()).state == "removed"
+    assert registry.list_definitions() == [updated_base]
+    assert registry.get_source_info("shared") == {"owner": "updated-base"}
+    assert asyncio.run(first_lease.dispose()).state == "already_removed"
+
+
 def test_registry_rejects_decorated_plain_return_tools() -> None:
     from loushang.harness.tools.core import ToolRegistry, tool
 

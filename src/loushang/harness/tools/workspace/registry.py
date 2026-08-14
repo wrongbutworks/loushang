@@ -40,6 +40,8 @@ class WorkspaceToolRegistry(CoreToolRegistry):
         enabled: bool = True,
         source_info: object | None = None,
     ) -> ToolDefinition:
+        """Compatibility facade; live owners should use inherited ``bind_tool``."""
+
         return super().register_tool(
             tool,
             enabled=enabled,

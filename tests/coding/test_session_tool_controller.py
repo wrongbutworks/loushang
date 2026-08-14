@@ -9,6 +9,7 @@ from loushang.agent import Agent
 from loushang.agent.types import AgentToolResult
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.runtime import RegistrationOwner
 from loushang.harness.session.tool_controller import ToolController
 from loushang.harness.tools.core import tool
 from loushang.harness.tools.execution import direct_execution
@@ -142,6 +143,7 @@ def test_tool_controller_rejects_raw_runtime_tools_when_registry_is_absent(
     tmp_path,
 ) -> None:
     del tmp_path
+
     class RuntimeTool:
         name = "runtime_tool"
         label = "Runtime Tool"
@@ -382,6 +384,55 @@ def test_tool_controller_rebinds_active_same_name_runtime_replacement(tmp_path) 
     assert [tool.description for tool in agent.tools] == ["Replacement runtime tool"]
     assert "- runtime_tool: replacement behavior" in agent.system_prompt
     assert "- runtime_tool: original behavior" not in agent.system_prompt
+
+
+def test_tool_controller_live_binding_restores_active_tool_and_prompt(
+    tmp_path,
+) -> None:
+    registry = ToolRegistry()
+    original = _tool_definition(
+        "runtime_tool",
+        description="Original runtime tool",
+        prompt_snippet="- runtime_tool: original behavior",
+    )
+    replacement = _tool_definition(
+        "runtime_tool",
+        description="Replacement runtime tool",
+        prompt_snippet="- runtime_tool: replacement behavior",
+    )
+    registry.register_tool(original)
+    agent = Agent(initial_state={"system_prompt": "stale", "tools": []})
+    controller = ToolController(
+        agent=agent,
+        get_cwd=lambda: "/tmp/project",
+        tool_registry=registry,
+        allowed_tool_names=None,
+        initial_active_tool_names=["runtime_tool"],
+        base_prompt="Base prompt.",
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+    )
+    controller.apply_active_tools(["runtime_tool"])
+
+    lease = controller.bind_runtime_tool(
+        replacement,
+        owner=RegistrationOwner(
+            owner_kind="extension",
+            owner_id="demo",
+            runtime_id="session-1",
+            generation=0,
+        ),
+        source_info={"source": "runtime"},
+    )
+
+    assert [tool.description for tool in agent.tools] == ["Replacement runtime tool"]
+    assert "- runtime_tool: replacement behavior" in agent.system_prompt
+
+    assert asyncio.run(lease.dispose()).state == "removed"
+    assert controller.get_active_tool_names() == ["runtime_tool"]
+    assert [tool.description for tool in agent.tools] == ["Original runtime tool"]
+    assert "- runtime_tool: original behavior" in agent.system_prompt
+    assert "- runtime_tool: replacement behavior" not in agent.system_prompt
 
 
 def test_tool_controller_runtime_registration_preserves_default_activation(

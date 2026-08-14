@@ -376,6 +376,7 @@ class ExtensionRunner(ExtensionRuntime):
                     if extension is not None
                     else None
                 ),
+                tool_owner_id=(extension.name if extension is not None else None),
                 get_flag_value=self.get_flag_value,
             ),
         )
