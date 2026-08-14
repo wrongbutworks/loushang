@@ -41,6 +41,7 @@ from loushang.harness.transcript.kinds import (
     THINKING_SELECTION_KIND,
 )
 from loushang.harness.transcript.model_input_types import (
+    MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
     ModelInputComponent,
     ModelInputIntegrityError,
     ModelInputRecordSizeError,
@@ -314,7 +315,6 @@ class AgentTranscriptUnitOfWork:
         *,
         payload_version: int = STANDARD_PAYLOAD_VERSION,
         metadata: Mapping[str, JSONValue] | None = None,
-        max_encoded_record_bytes: int | None = None,
     ) -> AgentTranscriptCommit:
         async with self._commit_lock:
             record = self._record_factory.create(
@@ -324,8 +324,6 @@ class AgentTranscriptUnitOfWork:
                 payload_version=payload_version,
                 metadata=metadata,
             )
-            if max_encoded_record_bytes is not None:
-                self._require_record_size(record, max_encoded_record_bytes)
             return await self._finish_commit_atomically(record)
 
     async def append_agent_message(
@@ -569,6 +567,11 @@ class AgentTranscriptUnitOfWork:
         not continue with a stale ``Task.cancelling()`` count.
         """
 
+        if record.kind in {MODEL_INPUT_COMPONENT_KIND, MODEL_INPUT_PREPARED_KIND}:
+            self._require_record_size(
+                record,
+                MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
+            )
         operation = asyncio.create_task(self._commit_locked(record))
         caller = asyncio.current_task()
         cancellation_requested = False

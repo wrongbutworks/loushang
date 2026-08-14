@@ -13,6 +13,8 @@ from loushang.harness.transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_INPUT_COMPONENT_KIND,
+    MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     STANDARD_AGENT_TRANSCRIPT_KINDS,
@@ -23,15 +25,33 @@ from loushang.harness.transcript import (
     ContextCompactionCheckpoint,
     ConversationMetadataPatch,
     ExtensionData,
+    ModelInputComponent,
+    ModelInputComponentReference,
+    ModelInputSnapshot,
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
     ThinkingSelectionSnapshot,
     create_agent_transcript_message_codec,
     create_agent_transcript_payload_registry,
 )
+from loushang.harness.transcript.model_input_types import hash_model_input_json
 
 
 def _payloads():
+    component_content = {"role": "user", "content": "question"}
+    component_hash = hash_model_input_json(
+        component_content,
+        name="codec Model Input component",
+    )
+    component = ModelInputComponent(
+        content_hash=component_hash,
+        content=component_content,
+    )
+    reference = ModelInputComponentReference(
+        name="messages",
+        record_id="component-record",
+        content_hash=component_hash,
+    )
     return {
         AGENT_MESSAGE_KIND: UserMessage(
             role="user",
@@ -87,6 +107,31 @@ def _payloads():
         CONVERSATION_METADATA_PATCH_KIND: ConversationMetadataPatch(
             values={"title": "Investigation", "count": 2},
             removed_keys=("oldTitle",),
+        ),
+        MODEL_INPUT_COMPONENT_KIND: component,
+        MODEL_INPUT_PREPARED_KIND: ModelInputSnapshot(
+            snapshot_id="snapshot-1",
+            invocation_id="invocation-1",
+            attempt=1,
+            purpose="main_turn",
+            product_id="coding",
+            runtime_id="runtime-1",
+            mount_generation=3,
+            profile_fingerprint="a" * 64,
+            registration_revision="b" * 64,
+            conversation_id="conversation-1",
+            source_leaf_id="source-record",
+            source_revision=4,
+            commit_revision=9,
+            provider_id="provider-1",
+            model_id="model-1",
+            api_id="api-1",
+            endpoint_id="endpoint-1",
+            logical_components=(reference,),
+            prepared_payload_components=(reference,),
+            model_visible_headers_component=reference,
+            logical_input_hash="c" * 64,
+            prepared_payload_hash="d" * 64,
         ),
     }
 

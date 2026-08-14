@@ -6,9 +6,13 @@ import asyncio
 import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Protocol, cast
+from typing import cast
 from uuid import uuid4
 
+from loushang.ai.prepared_request import (
+    PreparedModelRequest,
+    PreparedRequestCommitter,
+)
 from loushang.foundation.json import JSONValue
 from loushang.harness.capabilities import (
     MountGraphSnapshot,
@@ -33,19 +37,6 @@ from loushang.harness.transcript.model_input_types import (
 from loushang.harness.transcript.unit_of_work import AgentTranscriptUnitOfWork
 
 
-class PreparedModelRequestFact(Protocol):
-    invocation_id: str
-    attempt: int
-    provider_id: str
-    endpoint_id: str
-    api: str
-    model_id: str
-    payload: Mapping[str, object]
-    model_visible_headers: Mapping[str, str]
-    canonical_payload: str
-    payload_hash: str
-
-
 @dataclass(frozen=True)
 class ModelInputCommitContext:
     """Provider-neutral logical materialization captured for one main turn."""
@@ -53,7 +44,7 @@ class ModelInputCommitContext:
     purpose: str
     source_leaf_id: str
     source_revision: int
-    logical_input: Mapping[str, FrozenModelInputValue] = field(repr=False)
+    logical_input: Mapping[str, object] = field(repr=False)
 
     def __post_init__(self) -> None:
         _require_text(self.purpose, name="Model Input purpose")
@@ -167,7 +158,7 @@ class ModelInputReconstructionVerification:
         return self.logical_input_matches and self.prepared_payload_matches
 
 
-class ModelInputTranscriptCommitter:
+class ModelInputTranscriptCommitter(PreparedRequestCommitter):
     """AI commit-port implementation over one authoritative transcript."""
 
     def __init__(
@@ -190,6 +181,11 @@ class ModelInputTranscriptCommitter:
             max_encoded_record_bytes,
             name="maximum encoded Model Input record bytes",
         )
+        if max_encoded_record_bytes > MODEL_INPUT_MAX_ENCODED_RECORD_BYTES:
+            raise ValueError(
+                "maximum encoded Model Input record bytes must not exceed "
+                f"{MODEL_INPUT_MAX_ENCODED_RECORD_BYTES}"
+            )
         if transcript.revision != context.source_revision:
             raise ModelInputIntegrityError(
                 "Model Input source revision does not match the transcript"
@@ -214,7 +210,7 @@ class ModelInputTranscriptCommitter:
 
     async def commit_prepared_request(
         self,
-        request: PreparedModelRequestFact,
+        request: PreparedModelRequest,
     ) -> None:
         async with self._lock:
             self._require_current_transcript()
@@ -244,6 +240,7 @@ class ModelInputTranscriptCommitter:
                 conversation_id=self._transcript.header.conversation_id,
                 source_leaf_id=self._context.source_leaf_id,
                 source_revision=self._context.source_revision,
+                commit_revision=self._expected_revision + 1,
                 provider_id=_prepared_text(request, "provider_id"),
                 model_id=_prepared_text(request, "model_id"),
                 api_id=_prepared_text(request, "api"),
@@ -274,6 +271,10 @@ class ModelInputTranscriptCommitter:
             if receipt is None:
                 raise ModelInputIntegrityError(
                     "Model Input snapshot did not reach the authoritative Store"
+                )
+            if receipt.revision != snapshot.commit_revision:
+                raise ModelInputIntegrityError(
+                    "Model Input snapshot commit revision changed"
                 )
             self._advance(commit.record.record_id, receipt.revision)
             self._commits.append(
@@ -405,16 +406,18 @@ def _rebuild_model_input(
         raise ModelInputIntegrityError(
             "Model Input source leaf is outside snapshot ancestry"
         )
-    commit_revision = transcript.records.index(snapshot_record) + 1
-    source_record_revision = next(
-        index
-        for index, record in enumerate(transcript.records, start=1)
-        if record.record_id == snapshot.source_leaf_id
-    )
-    if not (
-        source_record_revision <= snapshot.source_revision < commit_revision
-    ):
-        raise ModelInputIntegrityError("Model Input source revision is invalid")
+    if snapshot.conversation_id == transcript.header.conversation_id:
+        local_commit_revision = transcript.records.index(snapshot_record) + 1
+        source_record_revision = next(
+            index
+            for index, record in enumerate(transcript.records, start=1)
+            if record.record_id == snapshot.source_leaf_id
+        )
+        if (
+            local_commit_revision != snapshot.commit_revision
+            or source_record_revision > snapshot.source_revision
+        ):
+            raise ModelInputIntegrityError("Model Input origin revision is invalid")
     logical_input = _rebuild_mapping(snapshot.logical_components, ancestors)
     prepared_payload = _rebuild_mapping(
         snapshot.prepared_payload_components,
@@ -439,7 +442,7 @@ def _rebuild_model_input(
     )
     return RebuiltModelInput(
         snapshot=snapshot,
-        commit_revision=commit_revision,
+        commit_revision=snapshot.commit_revision,
         logical_input=logical_input,
         prepared_payload=prepared_payload,
         model_visible_headers=model_visible_headers,
@@ -530,7 +533,7 @@ def _index_components(
 
 
 def _validate_prepared_request(
-    request: PreparedModelRequestFact,
+    request: PreparedModelRequest,
 ) -> tuple[dict[str, JSONValue], dict[str, str], str]:
     payload = _prepared_json_mapping(request, "payload")
     raw_headers = getattr(request, "model_visible_headers", None)
@@ -557,7 +560,7 @@ def _validate_prepared_request(
 
 
 def _prepared_json_mapping(
-    request: PreparedModelRequestFact,
+    request: PreparedModelRequest,
     attribute: str,
 ) -> dict[str, JSONValue]:
     value = getattr(request, attribute, None)
@@ -624,7 +627,6 @@ __all__ = [
     "ModelInputReconstructionVerification",
     "ModelInputRuntimeReferences",
     "ModelInputTranscriptCommitter",
-    "PreparedModelRequestFact",
     "RebuiltModelInput",
     "rebuild_model_input",
     "verify_model_input",

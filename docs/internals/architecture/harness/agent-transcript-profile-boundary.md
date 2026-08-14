@@ -118,17 +118,24 @@ prepare-before-send closure:
   final prepared-payload fingerprints, invocation identity, source and commit
   clocks, and the committed Profile/Mount/registration references.
 
-These records have codecs but no model-context or presentation projection.
+These records have codecs but no model-context or rendered transcript-body
+projection. Portable export data retains the authoritative facts, and an entry
+tree may retain their kind and record identity without rendering their payload.
 Repeated content is referenced by ancestor record ID and content hash instead
 of being copied into every snapshot. A selected-path fork preserves historical
 facts unchanged: their `conversation_id` remains creation provenance, while
-the parent-linked record ancestry proves reachability in the fork. New facts
+their source and commit revisions remain clocks from that creation
+conversation. The parent-linked record ancestry proves reachability in the
+fork; fork-local record positions do not rebase those origin clocks. New facts
 in the fork use the fork conversation identity and may reuse reachable
 components.
 
 The v1 writer applies an exact 1 MiB ceiling to each encoded default JSONL
 record, including its envelope and newline. Oversized content fails before
 that record is appended and before provider transport; it is never truncated.
+The ceiling applies at the common unit-of-work commit boundary for both
+reserved Model Input kinds. A composition may select a lower limit but cannot
+raise the v1 ceiling.
 Because the Store is append-only rather than a multi-record transaction,
 components committed before a later component or snapshot failure may remain
 as harmless reusable facts. Only a committed `model.input.prepared` record is
@@ -240,10 +247,12 @@ in the Conversation JSONL reader.
 
 The neutral conversation core may depend on `loushang.foundation.json`, but not
 AI or Agent. The optional Agent transcript profile may depend only on these
-AI/Agent data and wire-codec modules:
+AI/Agent data, wire-codec, and prepared-request contract modules:
 
 - `loushang.ai.types`
 - `loushang.ai.json_codec`
+- `loushang.ai.prepared_request` (the pure prepared-request value and commit
+  protocol)
 - `loushang.agent.types`
 - `loushang.agent.json_codec`
 

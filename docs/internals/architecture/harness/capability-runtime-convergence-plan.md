@@ -674,7 +674,8 @@ class ModelInputSnapshot:
     registration_revision: str
     conversation_id: str
     source_leaf_id: str
-    source_revision: str
+    source_revision: int
+    commit_revision: int
     provider_id: str
     model_id: str
     api_id: str

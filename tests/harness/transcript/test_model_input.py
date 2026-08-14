@@ -31,10 +31,13 @@ from loushang.harness.conversation import (
 )
 from loushang.harness.transcript import (
     MODEL_INPUT_COMPONENT_KIND,
+    MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
     MODEL_INPUT_PREPARED_KIND,
     AgentTranscriptFileLayout,
+    AgentTranscriptRecordFactory,
     AgentTranscriptUnitOfWork,
     ModelInputCommitContext,
+    ModelInputComponent,
     ModelInputIntegrityError,
     ModelInputRecordSizeError,
     ModelInputRuntimeReferences,
@@ -43,6 +46,7 @@ from loushang.harness.transcript import (
     rebuild_model_input,
     verify_model_input,
 )
+from loushang.harness.transcript.model_input_types import hash_model_input_json
 
 
 class _BlockingModelInputStore(MemoryConversationStore):
@@ -237,6 +241,7 @@ def test_model_input_records_are_hidden_deduplicated_and_hash_verified() -> None
         assert commit.source_revision == 1
         assert commit.commit_revision == transcript.revision
         assert rebuilt.commit_revision == commit.commit_revision
+        assert rebuilt.snapshot.commit_revision == commit.commit_revision
 
     asyncio.run(scenario())
 
@@ -244,6 +249,20 @@ def test_model_input_records_are_hidden_deduplicated_and_hash_verified() -> None
 def test_model_input_components_remain_reachable_and_reusable_after_fork() -> None:
     async def scenario() -> None:
         transcript = await _memory_transcript()
+        selected_root_id = transcript.leaf_id
+        assert selected_root_id is not None
+        for index in range(20):
+            await transcript.append_agent_message(
+                UserMessage(
+                    role="user",
+                    content=f"discarded sibling {index}",
+                    timestamp=2.0 + index,
+                )
+            )
+        transcript.branch(selected_root_id)
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="selected branch", timestamp=30.0)
+        )
         committer = ModelInputTranscriptCommitter(
             transcript=transcript,
             context=_context(transcript),
@@ -251,6 +270,7 @@ def test_model_input_components_remain_reachable_and_reusable_after_fork() -> No
         )
         await committer.commit_prepared_request(_prepared())
         original_snapshot_id = committer.commits[-1].snapshot_id
+        original_commit_revision = committer.commits[-1].commit_revision
         original_component_ids = {
             record.record_id
             for record in transcript.records
@@ -269,6 +289,7 @@ def test_model_input_components_remain_reachable_and_reusable_after_fork() -> No
         rebuilt = rebuild_model_input(fork, original_snapshot_id)
         assert rebuilt.snapshot.conversation_id == transcript.header.conversation_id
         assert rebuilt.logical_input["system_prompt"] == "system prompt"
+        assert rebuilt.commit_revision == original_commit_revision
 
         fork_record_count = len(fork.records)
         fork_committer = ModelInputTranscriptCommitter(
@@ -291,6 +312,10 @@ def test_model_input_components_remain_reachable_and_reusable_after_fork() -> No
             fork_committer.commits[-1].snapshot_id,
         ).snapshot
         assert fork_snapshot.conversation_id == "model-input-fork"
+        assert (
+            fork_snapshot.commit_revision
+            == fork_committer.commits[-1].commit_revision
+        )
 
     asyncio.run(scenario())
 
@@ -384,6 +409,41 @@ def test_record_limit_and_revision_conflict_fail_before_transport() -> None:
 
     asyncio.run(oversized())
     asyncio.run(conflicted())
+
+
+def test_model_input_hard_record_ceiling_cannot_be_bypassed() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        with pytest.raises(ValueError, match="must not exceed"):
+            ModelInputTranscriptCommitter(
+                transcript=transcript,
+                context=_context(transcript),
+                runtime_references=_runtime_references(),
+                max_encoded_record_bytes=(
+                    MODEL_INPUT_MAX_ENCODED_RECORD_BYTES + 1
+                ),
+            )
+
+        content = "x" * MODEL_INPUT_MAX_ENCODED_RECORD_BYTES
+        component = ModelInputComponent(
+            content_hash=hash_model_input_json(
+                content,
+                name="oversized Model Input component",
+            ),
+            content=content,
+        )
+        with pytest.raises(ModelInputRecordSizeError):
+            await transcript.append(MODEL_INPUT_COMPONENT_KIND, component)
+
+        record = AgentTranscriptRecordFactory().create(
+            MODEL_INPUT_COMPONENT_KIND,
+            component,
+            parent_id=transcript.leaf_id,
+        )
+        with pytest.raises(ModelInputRecordSizeError):
+            await transcript.commit(record)
+
+    asyncio.run(scenario())
 
 
 def test_model_input_commit_propagates_cancellation_after_safe_append() -> None:

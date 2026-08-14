@@ -114,6 +114,7 @@ class ModelInputSnapshot:
     conversation_id: str
     source_leaf_id: str
     source_revision: int
+    commit_revision: int
     provider_id: str
     model_id: str
     api_id: str
@@ -155,10 +156,18 @@ class ModelInputSnapshot:
             self.mount_generation,
             name="ModelInputSnapshot.mount_generation",
         )
-        _require_non_negative_int(
+        _require_positive_int(
             self.source_revision,
             name="ModelInputSnapshot.source_revision",
         )
+        _require_positive_int(
+            self.commit_revision,
+            name="ModelInputSnapshot.commit_revision",
+        )
+        if self.source_revision >= self.commit_revision:
+            raise ValueError(
+                "ModelInputSnapshot source revision must precede commit revision"
+            )
         _require_sha256(
             self.profile_fingerprint,
             name="ModelInputSnapshot.profile_fingerprint",
