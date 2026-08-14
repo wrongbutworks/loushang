@@ -258,7 +258,11 @@ The implementation extends and hardens existing lifecycle patterns:
   object-capturing registrations are exact, so keyed handles must not be copied
   as registration identity;
 - AI adapter `source_id` removal supplies an owner-scoped but non-exact
-  precedent and remains AI-owned; and
+  precedent and remains AI-owned;
+- the Session approval presentation lease prevents a superseded generation
+  from closing its replacement, while the continuity activation lease keeps an
+  unpublished candidate private until consume and settles abort/close once;
+  both remain specialized precedents rather than a shared base class; and
 - data-only side-question Provider contribution supplies the declaration/bind
   split to generalize.
 
@@ -422,6 +426,10 @@ selection authority used by Session resume.
 `EffectiveRuntimeView` is a versioned, immutable, JSON-only composition of
 references to those committed facts. It is a read model, not an atomically
 published fourth authority:
+
+The following value is an illustrative minimum shape. PR4 may refine field
+names or split representation details while preserving the references and
+authority boundaries above.
 
 ```python
 @dataclass(frozen=True)
@@ -645,6 +653,10 @@ hash. Runtime execution still requires a currently admitted implementation,
 but historical model-input reconstruction does not.
 
 ### Minimum Model Input Snapshot
+
+The following value is an illustrative minimum shape rather than a frozen
+wire schema. PR6 owns the smallest field set that proves one-turn
+reconstruction without introducing another storage authority.
 
 ```python
 @dataclass(frozen=True)

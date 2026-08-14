@@ -28,9 +28,11 @@ precedents. Ordinary domain collection methods such as a data grid's
 
 The machine gate is
 `tests/architecture/test_capability_runtime_convergence_pr0.py`. It prevents a
-second graph runtime/projector, pins target contract owners, rejects broad
-service-locator parameters on target graph contracts, and checks that the
-inventory retains its required rows.
+second graph runtime/projector, pins the four accepted Graph contract owners,
+rejects broad service-locator parameters on those target contracts, and checks
+that the inventory retains its required rows. Package decisions for later
+Registration and Model Input contracts remain documentary until their owning
+implementation PR can gate the real symbols and imports.
 
 ## Surface Classification
 
@@ -62,7 +64,7 @@ Names such as `register_*` and `add_*` do not determine the classification.
 | SUR-06 | `ExtensionContributionAPI.register_command/register_flag/register_shortcut/register_message_renderer` | declaration builder | dictionaries silently replace the same public key and return `None`; loaded Extension owns the frozen copy; no unload token exists | `tests/harness/extensions/test_runtime.py::test_extension_runtime_validates_and_applies_flag_values`; `tests/harness/extensions/test_commands.py::test_extension_command_descriptors_preserve_conflict_and_provenance` | PR7 |
 | SUR-07 | `extensions.agent.ExtensionAgentAPI.register_side_question_provider` | declaration | appends a `RegisteredRuntimeCapabilityReplacement`; factory is not invoked until final profile binding | `tests/harness/extensions/test_agent_profile.py::test_agent_extension_api_declares_side_question_replacement_as_data` | PR3/PR7 adapter |
 | SUR-08 | `harness.runtime.RuntimeCapabilityRegistry.register` | binder-local declaration | exact `(slot, implementation, version)` duplicates fail closed; returns `None`; not a live side effect | `tests/harness/runtime/test_profile.py::test_runtime_capability_registry_duplicate_compatibility_baseline` | retain; PR3 consumes |
-| SUR-09 | Conversation/transcript codec and profile registration | build-time declaration | duplicate codec/profile identities fail closed; builders return no live disposer | `tests/harness/conversation/test_jsonl_codec.py::test_payload_registry_rejects_duplicate_keys_and_unregistered_known_values`; transcript profile tests | retain |
+| SUR-09 | Conversation/transcript codec and profile registration | build-time declaration | duplicate codec/profile identities fail closed; builders return no live disposer | `tests/harness/conversation/test_jsonl_codec.py::test_payload_registry_rejects_duplicate_keys_and_unregistered_known_values`; `tests/harness/transcript/test_profile.py::test_profile_rejects_duplicate_record_profile_registration` | retain |
 | SUR-10 | `ai.APIRegistry.register_api_adapter` | lower-layer live registry | exact API duplicates fail closed; optional `source_id` supports bulk removal; returns `None`; AI owns the token vocabulary | `tests/ai/test_bootstrap.py::test_api_registry_duplicate_and_source_scope_compatibility_baseline` | PR5-compatible AI follow-up, not Harness-owned |
 | SUR-11 | `ai.ProviderRegistry.register_provider_adapter` | lower-layer live registry | exact provider/API route duplicates fail closed; optional `source_id` bulk removal; returns `None` | `tests/ai/test_bootstrap.py::test_provider_registry_duplicate_and_source_scope_compatibility_baseline` | PR5-compatible AI follow-up, not Harness-owned |
 | SUR-12 | `harness.model_catalog.ModelCatalog.register_model/register_provider/unregister_provider` | live Product-neutral catalog facade | model/provider IDs replace existing values; unregister removes the entire provider by public ID and returns `None` | `tests/harness/test_model_catalog.py::test_model_catalog_registration_compatibility_baseline` | PR7; surface-specific policy |
@@ -76,10 +78,10 @@ Names such as `register_*` and `add_*` do not determine the classification.
 | SUR-20 | `WorkspaceToolRegistry.register_profile` | build-time declaration | profile ID maps to an immutable selection description; profile construction copies Tool definitions without changing source registry order | `tests/harness/tools/test_workspace_profile.py::test_profile_builds_product_copy_without_changing_tool_order` | retain |
 | SUR-21 | CLI/parser `register_*` functions and bootstrap `register_extension_tools` helpers | orchestration/build helper | mutate an argparse/build object or call SUR-01; they are not independent runtime registries | current source inspection | classify through the surface they invoke |
 | SUR-22 | `BuiltInResourceRegistry` and `resources.plugins.PluginRegistry` | live resource/package catalog | the public package/plugin name silently replaces an earlier value; exact public-name unregister returns the removed value or `None`; register returns the input value; no owner/token exists | `tests/harness/resources/test_runtime.py::test_resource_registries_public_key_compatibility_baseline` | PR7; surface-specific policy |
-| SUR-23 | `ai.auth.AuthRegistry` and OAuth Provider registration | lower-layer live registry | duplicates fail closed by default; callers may request explicit replacement; no owner token or unregister exists, and replacement can retain an unreferenced credential source | `tests/ai/test_auth_api.py::test_auth_registry_explicit_replace_compatibility_baseline`; `tests/ai/test_auth_oauth.py::test_oauth_registry_and_status_cover_lifecycle_states` | AI-owned follow-up; no Harness token vocabulary |
+| SUR-23 | `ai.auth.AuthRegistry` and OAuth Provider registration | lower-layer live registry | process-global default registries exist; duplicates fail closed by default, callers may request explicit replacement, and no owner token or unregister exists; tests must isolate global replacement | `tests/ai/test_auth_api.py::test_auth_registry_explicit_replace_compatibility_baseline`; `tests/ai/test_auth_oauth.py::test_oauth_registry_and_status_cover_lifecycle_states` | AI-owned follow-up; no Harness token vocabulary |
 | SUR-24 | Agent custom-message codec, `AgentTypeRegistry`, and `SandboxBackendRegistry` | build-time declaration/catalog | duplicate identities fail closed during construction/registration; values are fixed before the consuming runtime is created and expose no live mutation/removal | `tests/agent/test_json_codec.py::test_agent_message_codec_rejects_conflicting_registrations`; `tests/harness/sandbox/test_registry.py::test_registry_rejects_duplicate_ids` | retain |
 | SUR-25 | `harness.multiagent.AgentRegistry` | authoritative entity-state registry | reserve/commit/rollback owns Agent path and incarnation state; open-name conflict fails closed and close permits a later incarnation; this is not a plugin contribution registry | `tests/harness/multiagent/test_registry.py::test_pending_reservation_is_hidden_and_rollback_releases_the_name`; `tests/harness/multiagent/test_registry.py::test_open_name_conflicts_but_close_allows_a_new_incarnation` | outside Rule 1; retain transaction authority |
-| SUR-26 | `OrderedEventBus.subscribe` and Session/runtime/RPC subscription facades | subscription | returns an idempotent callback removal closure; the base bus currently finds/removes the first equal listener rather than using an opaque subscription identity; facades preserve the returned hook | `tests/harness/events/test_bus.py::test_ordered_event_bus_subscribes_and_unsubscribes` | retain compatibility; adopt exact token only when ownership requires it |
+| SUR-26 | `OrderedEventBus.subscribe` and Session/runtime/RPC subscription facades | subscription | the callback removal closure is idempotent only while no equal listener remains; repeated equal subscriptions let a stale closure remove another registration because the base bus removes the first equal listener rather than an opaque identity; facades preserve the returned hook | `tests/harness/events/test_bus.py::test_ordered_event_bus_subscribes_and_unsubscribes` | retain compatibility; adopt exact token only when ownership requires it |
 | SUR-27 | Remote/Extension UI `set_status/set_widget` state and context facades | keyed live presentation contribution | public key overwrites the value, `None` removes it, and the remote UI returns no handle; Extension/TUI adapters may add their own handle semantics | `tests/harness/host/test_remote_ui.py::test_remote_ui_context_records_state_and_emits_requests` | PR7/presentation; do not infer Tool winner restoration |
 | SUR-28 | multi-agent/delegate Tool pack `register`, runtime-context `register_tool`, and other forwarding facades | orchestration helper | returns/delegates according to SUR-01 or SUR-04 and owns no independent registry identity | current source inspection | migrate with the underlying Tool surface |
 
@@ -128,7 +130,7 @@ pre-transport port; Harness supplies an implementation without creating an
 | OWN-05 | graph projector, `MountGraphSnapshot`, and composed `EffectiveRuntimeView` | `loushang.harness.capabilities` | read-only; references Profile/registration/Model Input authorities rather than copying selection |
 | OWN-06 | Tool live bind and compatibility facade | `loushang.harness.tools` | no Product conflict policy in shared primitive |
 | OWN-07 | `PreparedModelRequest` and async pre-transport commit port | `loushang.ai` | no `AI -> Harness`; standalone calls remain valid without a committer |
-| OWN-08 | `ModelInputSnapshot`, transcript record/codec, and reconstruction | optional `loushang.harness.transcript`/Session profile | existing ConversationStore is the sole writable authority; no parallel Fact Store |
+| OWN-08 | `ModelInputSnapshot`, transcript record/codec, and reconstruction | `loushang.harness.transcript`; Session only orchestrates calls and assembles the committer | existing ConversationStore is the sole writable authority; no parallel Fact Store |
 | OWN-09 | CLI/RPC/TUI/Web presentation of effective views | Product/Channel presentation adapters | presentation does not become lifecycle or selection authority |
 
 Concrete filenames may be refined in the owning package, but moving a contract
@@ -161,15 +163,17 @@ PR2 uses the lifecycle foundation in a production registry.
 
 PR0 adds the following executable restrictions:
 
-- accepted graph symbols have one owner under
-  `loushang.harness.capabilities`; target registration and Model Input symbols
-  have the owners in OWN-01 and OWN-08;
-- `EffectiveRuntimeSnapshot`, a universal Capability Provider registry, a
-  global Capability container/context, and duplicate graph manager classes are
-  forbidden;
-- target graph Definition/Requirement/Planner/Binder/Runtime/Projector APIs may
-  not accept broad parameters named `context`, `runtime`, `bindings`,
-  `services`, or `container` typed as `object` or `Mapping[str, object]`;
+- the four accepted named Graph symbols have one owner under
+  `loushang.harness.capabilities`; target Registration and Model Input package
+  decisions are recorded in OWN-01 and OWN-08, with concrete symbol gates
+  deferred to their implementation PRs;
+- `EffectiveRuntimeSnapshot`, global Capability registry/graph/container/context
+  symbols, and duplicate graph manager classes are forbidden;
+- target Graph Planner/Binder/Runtime/Projector APIs may not accept
+  syntactically broad parameters named `context`, `runtime`, `bindings`,
+  `services`, or `container`, including unannotated, `Any`, `object`, and broad
+  mapping forms; this is a regression tripwire rather than whole-program
+  type-alias analysis;
 - existing `AI -X-> Harness` and `Agent -X-> Harness` import gates remain
   mandatory; and
 - the surface, call-path, ownership, compatibility, and fault IDs in this
@@ -179,6 +183,19 @@ PR0 adds the following executable restrictions:
 Legacy `ProductRuntimeBindings` and binder `context: object` remain explicit
 compatibility debt at composition roots. PR0 does not relabel them as target
 graph contracts or authorize new consumers.
+
+Two additional specialized leases are implementation precedents, not new
+surface rows or a proposed hierarchy:
+
+- Session approval presentation uses a generation-aware, idempotent lease so a
+  superseded presenter cannot close its replacement, covered by
+  `tests/coding/test_agent_session.py::test_agent_session_superseded_approval_lease_cannot_close_replacement`;
+- continuity activation keeps an unpublished candidate private until consume
+  and makes unconsumed cleanup idempotent, covered by
+  `tests/harness/continuity/test_activation.py::test_cross_domain_relaunch_lease_cleanup_is_idempotent`.
+
+PR1 should reuse their proven state transitions where applicable without
+forcing either specialized lease to inherit a common base class.
 
 ## PR0 Completion Gate
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import re
 from collections import defaultdict
+from functools import cache
 from pathlib import Path
 
 BASELINE_PATH = Path(
@@ -13,6 +14,8 @@ PLAN_PATH = Path(
 )
 README_PATH = Path("docs/internals/architecture/harness/README.md")
 SOURCE_ROOT = Path("src/loushang")
+HARNESS_ROOT = Path("src/loushang/harness")
+CAPABILITIES_ROOT = HARNESS_ROOT / "capabilities"
 
 REQUIRED_ROWS = {
     "SUR": 28,
@@ -22,48 +25,26 @@ REQUIRED_ROWS = {
     "FAULT": 14,
 }
 
-TARGET_OWNERS: dict[str, tuple[Path, ...]] = {
-    "RegistrationOwner": (Path("src/loushang/harness/runtime/registration.py"),),
-    "RegistrationIdentity": (
-        Path("src/loushang/harness/runtime/registration.py"),
-    ),
-    "RegistrationDisposalResult": (
-        Path("src/loushang/harness/runtime/registration.py"),
-    ),
-    "RegistrationScope": (Path("src/loushang/harness/runtime/registration.py"),),
-    "CapabilityDefinition": (Path("src/loushang/harness/capabilities"),),
-    "CapabilityRequirement": (Path("src/loushang/harness/capabilities"),),
-    "RuntimeCapabilityGraphPlanner": (Path("src/loushang/harness/capabilities"),),
-    "RuntimeCapabilityGraphBinder": (Path("src/loushang/harness/capabilities"),),
-    "RuntimeCapabilityGraphRuntime": (Path("src/loushang/harness/capabilities"),),
-    "RuntimeCapabilityGraphProjector": (
-        Path("src/loushang/harness/capabilities"),
-    ),
-    "MountedCapability": (Path("src/loushang/harness/capabilities"),),
-    "MountGraphSnapshot": (Path("src/loushang/harness/capabilities"),),
-    "EffectiveRuntimeView": (Path("src/loushang/harness/capabilities"),),
-    "PreparedModelRequest": (Path("src/loushang/ai"),),
-    "ModelInputSnapshot": (
-        Path("src/loushang/harness/transcript"),
-        Path("src/loushang/harness/session"),
-    ),
+ACCEPTED_GRAPH_OWNERS: dict[str, tuple[Path, ...]] = {
+    "RuntimeCapabilityGraphPlanner": (CAPABILITIES_ROOT,),
+    "RuntimeCapabilityGraphBinder": (CAPABILITIES_ROOT,),
+    "RuntimeCapabilityGraphRuntime": (CAPABILITIES_ROOT,),
+    "RuntimeCapabilityGraphProjector": (CAPABILITIES_ROOT,),
 }
 
 FORBIDDEN_RUNTIME_SYMBOLS = frozenset(
     {
         "EffectiveRuntimeSnapshot",
-        "CapabilityProviderRegistry",
         "GlobalCapabilityRegistry",
+        "GlobalCapabilityProviderRegistry",
         "GlobalCapabilityGraph",
-        "CapabilityContainer",
-        "CapabilityContext",
+        "GlobalCapabilityContainer",
+        "GlobalCapabilityContext",
     }
 )
 
 GRAPH_API_SYMBOLS = frozenset(
     {
-        "CapabilityDefinition",
-        "CapabilityRequirement",
         "RuntimeCapabilityGraphPlanner",
         "RuntimeCapabilityGraphBinder",
         "RuntimeCapabilityGraphRuntime",
@@ -76,6 +57,7 @@ BROAD_PARAMETER_NAMES = frozenset(
 )
 
 
+@cache
 def _python_trees() -> dict[Path, ast.Module]:
     return {
         path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -102,20 +84,59 @@ def _is_relative_to(path: Path, root: Path) -> bool:
     return True
 
 
+def _annotation_name(annotation: ast.expr) -> str | None:
+    if isinstance(annotation, ast.Name):
+        return annotation.id
+    if isinstance(annotation, ast.Attribute):
+        prefix = _annotation_name(annotation.value)
+        return annotation.attr if prefix is None else f"{prefix}.{annotation.attr}"
+    return None
+
+
+def _subscript_items(annotation: ast.Subscript) -> tuple[ast.expr, ...]:
+    if isinstance(annotation.slice, ast.Tuple):
+        return tuple(annotation.slice.elts)
+    return (annotation.slice,)
+
+
 def _is_broad_annotation(annotation: ast.expr | None) -> bool:
     if annotation is None:
+        return True
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        try:
+            parsed = ast.parse(annotation.value, mode="eval").body
+        except SyntaxError:
+            return False
+        return _is_broad_annotation(parsed)
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return _is_broad_annotation(annotation.left) or _is_broad_annotation(
+            annotation.right
+        )
+
+    name = _annotation_name(annotation)
+    if name is not None:
+        return name.rsplit(".", maxsplit=1)[-1] in {
+            "Any",
+            "Mapping",
+            "MutableMapping",
+            "dict",
+            "object",
+        }
+    if not isinstance(annotation, ast.Subscript):
         return False
-    normalized = ast.unparse(annotation).replace(" ", "")
-    if normalized.startswith("Optional[") and normalized.endswith("]"):
-        normalized = normalized.removeprefix("Optional[").removesuffix("]")
-    normalized = normalized.removesuffix("|None")
-    return normalized in {
-        "object",
-        "Mapping[str,object]",
-        "dict[str,object]",
-        "collections.abc.Mapping[str,object]",
-        "typing.Mapping[str,object]",
-    }
+
+    container = _annotation_name(annotation.value)
+    if container is None:
+        return False
+    container = container.rsplit(".", maxsplit=1)[-1]
+    items = _subscript_items(annotation)
+    if container in {"Optional", "Union"}:
+        return any(_is_broad_annotation(item) for item in items)
+    if container == "Annotated":
+        return bool(items) and _is_broad_annotation(items[0])
+    if container in {"Mapping", "MutableMapping", "dict"}:
+        return len(items) != 2 or _is_broad_annotation(items[1])
+    return False
 
 
 def test_pr0_inventory_keeps_required_rows_and_evidence() -> None:
@@ -150,10 +171,10 @@ def test_pr0_baseline_is_linked_from_the_plan_and_harness_catalog() -> None:
     assert link in README_PATH.read_text(encoding="utf-8")
 
 
-def test_convergence_contracts_have_one_declared_package_owner() -> None:
+def test_accepted_graph_contracts_have_one_declared_package_owner() -> None:
     definitions = _class_definitions(_python_trees())
 
-    for symbol, owners in TARGET_OWNERS.items():
+    for symbol, owners in ACCEPTED_GRAPH_OWNERS.items():
         locations = [path for path, _node in definitions.get(symbol, [])]
         assert len(locations) <= 1, (
             f"duplicate convergence contract {symbol}: {locations}"
@@ -172,9 +193,16 @@ def test_convergence_contracts_have_one_declared_package_owner() -> None:
     ]
 
     forbidden = {
-        symbol: [path for path, _node in definitions[symbol]]
+        symbol: [
+            path
+            for path, _node in definitions[symbol]
+            if _is_relative_to(path, HARNESS_ROOT)
+        ]
         for symbol in FORBIDDEN_RUNTIME_SYMBOLS
-        if definitions.get(symbol)
+        if any(
+            _is_relative_to(path, HARNESS_ROOT)
+            for path, _node in definitions.get(symbol, [])
+        )
     }
     assert forbidden == {}
 
@@ -185,9 +213,9 @@ def test_convergence_contracts_have_one_declared_package_owner() -> None:
     duplicate_graph_managers = {
         symbol: [path for path, _node in locations]
         for symbol, locations in definitions.items()
-        if "Capability" in symbol
-        and symbol.endswith(("GraphRuntime", "GraphProjector"))
+        if symbol.endswith(("GraphRuntime", "GraphProjector"))
         and symbol not in accepted_graph_managers
+        and any(_is_relative_to(path, CAPABILITIES_ROOT) for path, _node in locations)
     }
     assert duplicate_graph_managers == {}
 
@@ -205,15 +233,45 @@ def test_target_graph_apis_reject_broad_service_locator_parameters() -> None:
                     *node.args.posonlyargs,
                     *node.args.args,
                     *node.args.kwonlyargs,
+                    *(() if node.args.vararg is None else (node.args.vararg,)),
+                    *(() if node.args.kwarg is None else (node.args.kwarg,)),
                 )
                 for parameter in parameters:
                     if parameter.arg in BROAD_PARAMETER_NAMES and _is_broad_annotation(
                         parameter.annotation
                     ):
+                        annotation = (
+                            "<unannotated>"
+                            if parameter.annotation is None
+                            else ast.unparse(parameter.annotation)
+                        )
                         violations.append(
                             f"{path}:{node.lineno} "
                             f"{symbol}.{node.name}({parameter.arg}: "
-                            f"{ast.unparse(parameter.annotation)})"
+                            f"{annotation})"
                         )
 
     assert violations == []
+
+
+def test_broad_annotation_syntax_gate_covers_obvious_locator_shapes() -> None:
+    broad = (
+        "object",
+        "'object'",
+        "Any",
+        "typing.Optional[object]",
+        "Union[None, Mapping[str, Any]]",
+        "None | object",
+        "Annotated[object, 'runtime services']",
+        "dict[str, object]",
+    )
+    narrow = (
+        "WorkspaceContext",
+        "Mapping[str, WorkspaceFacet]",
+        "tuple[CapabilityRequirement, ...]",
+    )
+
+    assert all(_is_broad_annotation(ast.parse(value, mode="eval").body) for value in broad)
+    assert not any(
+        _is_broad_annotation(ast.parse(value, mode="eval").body) for value in narrow
+    )

@@ -340,20 +340,26 @@ def test_runtime_capability_registry_duplicate_compatibility_baseline() -> None:
         del selection, context
         return object()
 
-    implementation = RuntimeCapabilityImplementation(
+    first = RuntimeCapabilityImplementation(
         slot="conversation.store",
         implementation="memory",
         implementation_version=1,
         create=create,
     )
+    duplicate_key = RuntimeCapabilityImplementation(
+        slot="conversation.store",
+        implementation="memory",
+        implementation_version=1,
+        create=lambda selection, context: (selection, context),
+    )
     registry = RuntimeCapabilityRegistry()
 
-    assert registry.register(implementation) is None
+    assert registry.register(first) is None
     with pytest.raises(
         ValueError,
         match="runtime capability implementation already registered",
     ):
-        registry.register(implementation)
+        registry.register(duplicate_key)
 
 
 def test_binder_refreshes_turn_safe_slots_and_invalidates_prior_leases() -> None:
