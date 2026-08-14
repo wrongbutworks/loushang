@@ -22,7 +22,7 @@ depend on `loushang.coding`, `loushang.harnesswork`, `loushang.work`, `loushang.
 
 | Owner | Owns | Does not own |
 | --- | --- | --- |
-| `runtime` | cancellation, retry/scheduling primitives, runtime-profile declarations, admission, resolution, binding, refresh, disposal | Product capability selection policy or provider behavior |
+| `runtime` | cancellation, retry/scheduling primitives, owner-scoped exact registration lifecycle, runtime-profile declarations, admission, resolution, binding, refresh, disposal | live registry conflict policy, Product capability selection policy, or provider behavior |
 | `config` | layered/scoped configuration mechanics and optional Agent settings types, patch commands, schema codec, and manager lifecycle | Product-only fields, paths, activation effects, credentials, or presentation |
 | `session` | optional Agent-session profile, Product-neutral assembly, turn/lifecycle coordination, command and maintenance bindings, Session facade and inspection | Product prompt content, domain operations, UI state, Work persistence |
 | `conversation` | Product-neutral conversation identity, records, repository/catalog and replay contracts | Agent/AI message schema or Product-specific payload meaning |

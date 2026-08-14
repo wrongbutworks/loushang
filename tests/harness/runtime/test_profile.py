@@ -599,6 +599,384 @@ def test_binder_rolls_back_previously_created_values_when_later_factory_fails() 
     assert calls == ["create:first", "create:second", "dispose:first"]
 
 
+def test_binder_rollback_continues_after_an_individual_disposer_failure() -> None:
+    slots = tuple(
+        RuntimeCapabilitySlot(
+            key=key,
+            shape="single",
+            scope="session",
+            refresh_boundary="sealed",
+            allowed_sources=frozenset({"product"}),
+        )
+        for key in ("first", "second", "third")
+    )
+    profile = RuntimeProfileResolver().resolve(
+        ProductRuntimePlan(
+            product_id="research",
+            slots=slots,
+            defaults=tuple(
+                RuntimeCapabilitySelection(
+                    slot=slot.key,
+                    implementation=slot.key,
+                    implementation_version=1,
+                )
+                for slot in slots
+            ),
+        )
+    )
+    calls: list[str] = []
+
+    def create(selection: RuntimeCapabilitySelection, _context: object) -> str:
+        calls.append(f"create:{selection.slot}")
+        if selection.slot == "third":
+            raise RuntimeError("third factory failed")
+        return selection.slot
+
+    def dispose(value: object, _context: object) -> None:
+        calls.append(f"dispose:{value}")
+        if value == "second":
+            raise RuntimeError("second disposer failed")
+
+    binder = RuntimeProfileBinder(
+        RuntimeCapabilityRegistry(
+            tuple(
+                RuntimeCapabilityImplementation(
+                    slot=slot.key,
+                    implementation=slot.key,
+                    implementation_version=1,
+                    create=create,
+                    dispose=dispose,
+                )
+                for slot in slots
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        with pytest.raises(RuntimeCapabilityBindingError, match="third"):
+            await binder.bind(profile)
+
+    asyncio.run(scenario())
+
+    assert calls == [
+        "create:first",
+        "create:second",
+        "create:third",
+        "dispose:second",
+        "dispose:first",
+    ]
+
+
+def test_binder_cancellation_finishes_rollback_before_propagating() -> None:
+    slots = tuple(
+        RuntimeCapabilitySlot(
+            key=key,
+            shape="single",
+            scope="session",
+            refresh_boundary="sealed",
+            allowed_sources=frozenset({"product"}),
+        )
+        for key in ("first", "second", "blocked")
+    )
+    profile = RuntimeProfileResolver().resolve(
+        ProductRuntimePlan(
+            product_id="research",
+            slots=slots,
+            defaults=tuple(
+                RuntimeCapabilitySelection(
+                    slot=slot.key,
+                    implementation=slot.key,
+                    implementation_version=1,
+                )
+                for slot in slots
+            ),
+        )
+    )
+    calls: list[str] = []
+
+    async def scenario() -> None:
+        factory_started = asyncio.Event()
+        dispose_started = asyncio.Event()
+        release_dispose = asyncio.Event()
+
+        async def create(
+            selection: RuntimeCapabilitySelection,
+            _context: object,
+        ) -> str:
+            calls.append(f"create:{selection.slot}")
+            if selection.slot == "blocked":
+                factory_started.set()
+                await asyncio.Event().wait()
+            return selection.slot
+
+        async def dispose(value: object, _context: object) -> None:
+            calls.append(f"dispose:{value}:start")
+            if value == "second":
+                dispose_started.set()
+                await release_dispose.wait()
+            calls.append(f"dispose:{value}:end")
+
+        binder = RuntimeProfileBinder(
+            RuntimeCapabilityRegistry(
+                tuple(
+                    RuntimeCapabilityImplementation(
+                        slot=slot.key,
+                        implementation=slot.key,
+                        implementation_version=1,
+                        create=create,
+                        dispose=dispose,
+                    )
+                    for slot in slots
+                )
+            )
+        )
+        binding_task = asyncio.create_task(binder.bind(profile))
+        await factory_started.wait()
+        binding_task.cancel()
+        await dispose_started.wait()
+        binding_task.cancel()
+        release_dispose.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await binding_task
+
+    asyncio.run(scenario())
+
+    assert calls == [
+        "create:first",
+        "create:second",
+        "create:blocked",
+        "dispose:second:start",
+        "dispose:second:end",
+        "dispose:first:start",
+        "dispose:first:end",
+    ]
+
+
+def test_turn_rebind_candidate_cancellation_keeps_old_generation_callable() -> None:
+    slots = tuple(
+        RuntimeCapabilitySlot(
+            key=key,
+            shape="single",
+            scope="session",
+            refresh_boundary="turn",
+            allowed_sources=frozenset({"product"}),
+        )
+        for key in ("first", "second")
+    )
+
+    def profile(generation: int):
+        return RuntimeProfileResolver().resolve(
+            ProductRuntimePlan(
+                product_id="research",
+                slots=slots,
+                defaults=tuple(
+                    RuntimeCapabilitySelection(
+                        slot=slot.key,
+                        implementation=slot.key,
+                        implementation_version=1,
+                        config={"generation": generation},
+                    )
+                    for slot in slots
+                ),
+            )
+        )
+
+    calls: list[str] = []
+
+    async def scenario() -> None:
+        blocked = asyncio.Event()
+
+        async def create(
+            selection: RuntimeCapabilitySelection,
+            _context: object,
+        ) -> str:
+            generation = selection.config["generation"]
+            calls.append(f"create:{selection.slot}:{generation}")
+            if selection.slot == "second" and generation == 2:
+                blocked.set()
+                await asyncio.Event().wait()
+            return f"{selection.slot}:{generation}"
+
+        async def dispose(value: object, _context: object) -> None:
+            calls.append(f"dispose:{value}")
+
+        binder = RuntimeProfileBinder(
+            RuntimeCapabilityRegistry(
+                tuple(
+                    RuntimeCapabilityImplementation(
+                        slot=slot.key,
+                        implementation=slot.key,
+                        implementation_version=1,
+                        create=create,
+                        dispose=dispose,
+                    )
+                    for slot in slots
+                )
+            )
+        )
+        binding = await binder.bind(profile(1))
+        old_lease = binding.capture()
+        rebind_task = asyncio.create_task(binder.rebind(binding, profile(2)))
+        await blocked.wait()
+        rebind_task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await rebind_task
+
+        assert binding.value("first") == "first:1"
+        assert binding.value("second") == "second:1"
+        assert old_lease.is_current is True
+
+    asyncio.run(scenario())
+
+    assert calls == [
+        "create:first:1",
+        "create:second:1",
+        "create:first:2",
+        "create:second:2",
+        "dispose:first:2",
+    ]
+
+
+def test_turn_rebind_retirement_failure_keeps_the_replacement_callable() -> None:
+    slot = RuntimeCapabilitySlot(
+        key="turn.value",
+        shape="single",
+        scope="session",
+        refresh_boundary="turn",
+        allowed_sources=frozenset({"product"}),
+    )
+
+    def profile(generation: int):
+        return RuntimeProfileResolver().resolve(
+            ProductRuntimePlan(
+                product_id="research",
+                slots=(slot,),
+                defaults=(
+                    RuntimeCapabilitySelection(
+                        slot=slot.key,
+                        implementation="value",
+                        implementation_version=1,
+                        config={"generation": generation},
+                    ),
+                ),
+            )
+        )
+
+    def create(
+        selection: RuntimeCapabilitySelection,
+        _context: object,
+    ) -> dict[str, object]:
+        return {"generation": selection.config["generation"], "closed": False}
+
+    def dispose(value: object, _context: object) -> None:
+        assert isinstance(value, dict)
+        value["closed"] = True
+        if value["generation"] == 1:
+            raise RuntimeError("old generation retirement failed")
+
+    binder = RuntimeProfileBinder(
+        RuntimeCapabilityRegistry(
+            (
+                RuntimeCapabilityImplementation(
+                    slot=slot.key,
+                    implementation="value",
+                    implementation_version=1,
+                    create=create,
+                    dispose=dispose,
+                ),
+            )
+        )
+    )
+
+    async def scenario() -> None:
+        binding = await binder.bind(profile(1))
+        old_lease = binding.capture()
+
+        with pytest.raises(RuntimeCapabilityBindingError, match="disposer failed"):
+            await binder.rebind(binding, profile(2))
+
+        assert binding.value(slot.key) == {"generation": 2, "closed": False}
+        assert binding.profile == profile(2)
+        assert old_lease.is_current is False
+
+    asyncio.run(scenario())
+
+
+def test_binder_dispose_finishes_all_entries_before_propagating_cancellation() -> None:
+    slots = tuple(
+        RuntimeCapabilitySlot(
+            key=key,
+            shape="single",
+            scope="session",
+            refresh_boundary="sealed",
+            allowed_sources=frozenset({"product"}),
+        )
+        for key in ("first", "second")
+    )
+    profile = RuntimeProfileResolver().resolve(
+        ProductRuntimePlan(
+            product_id="research",
+            slots=slots,
+            defaults=tuple(
+                RuntimeCapabilitySelection(
+                    slot=slot.key,
+                    implementation=slot.key,
+                    implementation_version=1,
+                )
+                for slot in slots
+            ),
+        )
+    )
+    calls: list[str] = []
+
+    async def scenario() -> None:
+        dispose_started = asyncio.Event()
+        release_dispose = asyncio.Event()
+
+        async def dispose(value: object, _context: object) -> None:
+            calls.append(f"dispose:{value}:start")
+            if value == "second":
+                dispose_started.set()
+                await release_dispose.wait()
+            calls.append(f"dispose:{value}:end")
+
+        binder = RuntimeProfileBinder(
+            RuntimeCapabilityRegistry(
+                tuple(
+                    RuntimeCapabilityImplementation(
+                        slot=slot.key,
+                        implementation=slot.key,
+                        implementation_version=1,
+                        create=lambda selection, _context: selection.slot,
+                        dispose=dispose,
+                    )
+                    for slot in slots
+                )
+            )
+        )
+        binding = await binder.bind(profile)
+        dispose_task = asyncio.create_task(binder.dispose(binding))
+        await dispose_started.wait()
+        dispose_task.cancel()
+        release_dispose.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await dispose_task
+
+        assert binding.is_closed is True
+
+    asyncio.run(scenario())
+
+    assert calls == [
+        "dispose:second:start",
+        "dispose:second:end",
+        "dispose:first:start",
+        "dispose:first:end",
+    ]
+
+
 def test_snapshot_rejects_boolean_versions_instead_of_treating_them_as_integers() -> (
     None
 ):
@@ -754,9 +1132,7 @@ def test_capability_composition_slots_have_deliberate_source_boundaries() -> Non
 def test_standard_slots_have_one_explicit_variation_semantic() -> None:
     slots = {slot.key: slot for slot in standard_runtime_capability_slots()}
 
-    assert {
-        key: slot.variation_semantic for key, slot in slots.items()
-    } == {
+    assert {key: slot.variation_semantic for key, slot in slots.items()} == {
         "conversation.store": "exclusive_replacement",
         "agent.transcript_profile": "exclusive_replacement",
         "context.compaction": "exclusive_replacement",
@@ -833,7 +1209,9 @@ def test_runtime_profile_public_facades_export_the_same_admission_types() -> Non
     import loushang.harness.runtime as runtime_module
     import loushang.harness.runtime.profile as profile_module
 
-    assert runtime_module.RuntimeProfileAdmission is profile_module.RuntimeProfileAdmission
+    assert (
+        runtime_module.RuntimeProfileAdmission is profile_module.RuntimeProfileAdmission
+    )
     assert (
         runtime_module.RuntimeProfileAdmissionPolicy
         is profile_module.RuntimeProfileAdmissionPolicy
