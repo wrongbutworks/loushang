@@ -16,7 +16,12 @@ from loushang.harness.capabilities.contracts import (
 
 @dataclass(frozen=True)
 class CapabilityBundleProvider:
-    """Selected Provider metadata; live construction belongs to the graph binder."""
+    """Selected Provider metadata; diagnostic labels must already be redacted.
+
+    Live construction belongs to the graph binder. ``source_id`` and
+    ``selection_rule`` are projected verbatim and therefore must never contain
+    credentials, raw exceptions, environment values, or other sensitive data.
+    """
 
     capability_id: str
     provider_id: str

@@ -19,6 +19,9 @@ from loushang.harness.capabilities.graph_planning import (
     RuntimeCapabilityGraphPlan,
     RuntimeCapabilityGraphPlanner,
 )
+from loushang.harness.capabilities.graph_projection import (
+    RuntimeCapabilityGraphProjector,
+)
 from loushang.harness.capabilities.graph_runtime import (
     RuntimeCapabilityGraphRuntime,
 )
@@ -30,6 +33,7 @@ from loushang.harness.capabilities.provider_binding import (
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.runtime.registration import (
+    RegistrationDisposalResult,
     RegistrationIdentity,
     RegistrationLease,
 )
@@ -657,3 +661,239 @@ async def _graph_dispose_retries_retryable_provider_cleanup() -> None:
     assert runtime.is_closed
     assert await binder.dispose(runtime) == ()
     assert attempts == ["dispose", "dispose"]
+
+
+def test_failed_construction_retains_retryable_registration_cleanup() -> None:
+    asyncio.run(_failed_construction_retains_retryable_registration_cleanup())
+
+
+async def _failed_construction_retains_retryable_registration_cleanup() -> None:
+    definition = _definition("harness.workspace", scope="workspace", phase="bootstrap")
+    provider = _provider("harness.workspace")
+    active: set[str] = set()
+    disposal_attempts: list[str] = []
+
+    def fail_after_registration(context: CapabilityProviderContext):  # type: ignore[no-untyped-def]
+        identity = RegistrationIdentity.create(
+            surface="tools",
+            public_key="retryable-construction",
+        )
+        active.add(identity.registration_id)
+
+        def unregister() -> RegistrationDisposalResult:
+            disposal_attempts.append(identity.registration_id)
+            if len(disposal_attempts) == 1:
+                return RegistrationDisposalResult(state="failed_retryable")
+            active.discard(identity.registration_id)
+            return RegistrationDisposalResult(state="removed")
+
+        context.registrations.add(
+            RegistrationLease(
+                owner=context.registrations.owner,
+                identity=identity,
+                dispose=unregister,
+            )
+        )
+        raise RuntimeError("construction failed")
+
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="research",
+        runtime_id="runtime-1",
+        profile_fingerprint=_fingerprint("profile"),
+    )
+    binder = RuntimeCapabilityGraphBinder()
+
+    with pytest.raises(CapabilityGraphBindingError) as exc_info:
+        await binder.bind(
+            runtime,
+            _plan(
+                product_id="research",
+                roots=("harness.workspace",),
+                definitions=(definition,),
+                providers=(provider,),
+            ),
+            (_binding(provider, create=fail_after_registration),),
+        )
+
+    assert exc_info.value.diagnostic_codes == (
+        "provider_construction_failed",
+        "registration_rollback_failed",
+    )
+    assert len(active) == 1
+    assert runtime.snapshot is None
+    assert runtime.registration_inventory is not None
+    assert [entry.public_key for entry in runtime.registration_inventory.entries] == [
+        "retryable-construction"
+    ]
+    assert [entry.state for entry in runtime.registration_inventory.entries] == [
+        "failed_retryable"
+    ]
+    assert [entry.attachment for entry in runtime.registration_inventory.entries] == [
+        "pending_retirement"
+    ]
+
+    assert await binder.dispose(runtime) == ()
+    assert active == set()
+    assert len(disposal_attempts) == 2
+    assert runtime.registration_inventory is not None
+    assert runtime.registration_inventory.entries == ()
+
+
+def test_graph_dispose_inventory_tracks_retryable_registration_cleanup() -> None:
+    asyncio.run(_graph_dispose_inventory_tracks_retryable_registration_cleanup())
+
+
+async def _graph_dispose_inventory_tracks_retryable_registration_cleanup() -> None:
+    definition = _definition("harness.workspace", scope="workspace", phase="bootstrap")
+    provider = _provider("harness.workspace")
+    active: set[str] = set()
+    disposal_attempts: list[str] = []
+
+    def create(context: CapabilityProviderContext) -> CapabilityBundleValue:
+        identity = RegistrationIdentity.create(
+            surface="tools",
+            public_key="retryable-dispose",
+        )
+        active.add(identity.registration_id)
+
+        def unregister() -> RegistrationDisposalResult:
+            disposal_attempts.append(identity.registration_id)
+            if len(disposal_attempts) == 1:
+                return RegistrationDisposalResult(state="failed_retryable")
+            active.discard(identity.registration_id)
+            return RegistrationDisposalResult(state="removed")
+
+        context.registrations.add(
+            RegistrationLease(
+                owner=context.registrations.owner,
+                identity=identity,
+                dispose=unregister,
+            )
+        )
+        return CapabilityBundleValue((CapabilityFacetBinding("value", "workspace"),))
+
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="research",
+        runtime_id="runtime-1",
+        profile_fingerprint=_fingerprint("profile"),
+    )
+    binder = RuntimeCapabilityGraphBinder()
+    await binder.bind(
+        runtime,
+        _plan(
+            product_id="research",
+            roots=("harness.workspace",),
+            definitions=(definition,),
+            providers=(provider,),
+        ),
+        (_binding(provider, create=create),),
+    )
+
+    assert await binder.dispose(runtime) == ("registration_retirement_failed",)
+    assert len(active) == 1
+    assert runtime.registration_inventory is not None
+    assert [entry.public_key for entry in runtime.registration_inventory.entries] == [
+        "retryable-dispose"
+    ]
+    assert [entry.state for entry in runtime.registration_inventory.entries] == [
+        "failed_retryable"
+    ]
+    assert [entry.attachment for entry in runtime.registration_inventory.entries] == [
+        "pending_retirement"
+    ]
+
+    assert await binder.dispose(runtime) == ()
+    assert active == set()
+    assert len(disposal_attempts) == 2
+    assert runtime.registration_inventory is not None
+    assert runtime.registration_inventory.entries == ()
+
+
+def test_rebind_inventory_tracks_failed_old_generation_retirement() -> None:
+    asyncio.run(_rebind_inventory_tracks_failed_old_generation_retirement())
+
+
+async def _rebind_inventory_tracks_failed_old_generation_retirement() -> None:
+    definition = _definition("harness.workspace", scope="workspace", phase="bootstrap")
+    original_provider = _provider("harness.workspace", provider_id="workspace.v1")
+    replacement_provider = _provider("harness.workspace", provider_id="workspace.v2")
+    active: set[str] = set()
+    disposal_attempts: list[str] = []
+
+    def create_original(context: CapabilityProviderContext) -> CapabilityBundleValue:
+        identity = RegistrationIdentity.create(
+            surface="tools",
+            public_key="old-generation",
+        )
+        active.add(identity.registration_id)
+
+        def unregister() -> RegistrationDisposalResult:
+            disposal_attempts.append(identity.registration_id)
+            if len(disposal_attempts) == 1:
+                return RegistrationDisposalResult(state="failed_retryable")
+            active.discard(identity.registration_id)
+            return RegistrationDisposalResult(state="removed")
+
+        context.registrations.add(
+            RegistrationLease(
+                owner=context.registrations.owner,
+                identity=identity,
+                dispose=unregister,
+            )
+        )
+        return CapabilityBundleValue((CapabilityFacetBinding("value", "old"),))
+
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="research",
+        runtime_id="runtime-1",
+        profile_fingerprint=_fingerprint("profile"),
+    )
+    binder = RuntimeCapabilityGraphBinder()
+    await binder.bind(
+        runtime,
+        _plan(
+            product_id="research",
+            roots=("harness.workspace",),
+            definitions=(definition,),
+            providers=(original_provider,),
+        ),
+        (_binding(original_provider, create=create_original),),
+    )
+
+    replacement = await binder.bind(
+        runtime,
+        _plan(
+            product_id="research",
+            roots=("harness.workspace",),
+            definitions=(definition,),
+            providers=(replacement_provider,),
+        ),
+        (_binding(replacement_provider, value="new"),),
+    )
+
+    assert replacement.retirement_diagnostic_codes == (
+        "registration_retirement_failed",
+    )
+    assert len(active) == 1
+    assert runtime.registration_inventory is not None
+    assert [entry.public_key for entry in runtime.registration_inventory.entries] == [
+        "old-generation"
+    ]
+    assert [entry.state for entry in runtime.registration_inventory.entries] == [
+        "failed_retryable"
+    ]
+    assert [entry.attachment for entry in runtime.registration_inventory.entries] == [
+        "pending_retirement"
+    ]
+    assert (
+        RuntimeCapabilityGraphProjector(runtime)
+        .explain("harness.workspace")
+        .registration_ids
+        == ()
+    )
+
+    assert await binder.dispose(runtime) == ()
+    assert active == set()
+    assert len(disposal_attempts) == 2
+    assert runtime.registration_inventory is not None
+    assert runtime.registration_inventory.entries == ()

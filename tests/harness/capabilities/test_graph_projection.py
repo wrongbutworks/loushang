@@ -163,6 +163,7 @@ async def _projector_explains_committed_graph_without_live_values() -> None:
     assert len(explanation.registration_ids) == 1
     assert inventory.entries[0].owner_id == "harness.workspace"
     assert inventory.entries[0].public_key == "read"
+    assert inventory.entries[0].attachment == "effective"
     assert "DO-NOT-PROJECT" not in repr(asdict(snapshot))
     assert "secret-token" not in repr(asdict(explanation))
 

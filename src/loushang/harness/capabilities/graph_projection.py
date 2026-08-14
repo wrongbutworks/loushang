@@ -97,7 +97,9 @@ class RuntimeCapabilityGraphProjector:
         return tuple(
             entry
             for entry in self.registration_inventory().entries
-            if entry.owner_id == capability_id and entry.owner_kind == "capability"
+            if entry.owner_id == capability_id
+            and entry.owner_kind == "capability"
+            and entry.attachment == "effective"
         )
 
 

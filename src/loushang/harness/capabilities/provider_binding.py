@@ -161,7 +161,11 @@ CapabilityProviderDisposer: TypeAlias = Callable[
 
 @dataclass(frozen=True)
 class CapabilityBundleProviderBinding:
-    """Live factory/disposer paired exactly with selected Provider metadata."""
+    """Live factory/disposer paired exactly with selected Provider metadata.
+
+    ``scope_instance_id`` is a pre-redacted diagnostic identity projected
+    verbatim; it must not embed secrets or raw environment values.
+    """
 
     provider: CapabilityBundleProvider
     scope_instance_id: str

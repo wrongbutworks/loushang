@@ -49,7 +49,7 @@ _DISPOSAL_STATES = frozenset(
 
 @dataclass(frozen=True)
 class RegistrationOwner:
-    """Stable owner identity for one runtime generation."""
+    """Stable, pre-redacted diagnostic owner identity for one runtime generation."""
 
     owner_kind: RegistrationOwnerKind
     owner_id: str
@@ -69,7 +69,7 @@ class RegistrationOwner:
 
 @dataclass(frozen=True)
 class RegistrationIdentity:
-    """Opaque exact identity, distinct from a registry's public lookup key."""
+    """Opaque exact identity plus pre-redacted diagnostic surface/key labels."""
 
     surface: str
     registration_id: str

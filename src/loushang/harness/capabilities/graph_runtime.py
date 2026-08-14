@@ -17,6 +17,7 @@ from loushang.harness.runtime.registration import RegistrationScope
 
 MountLifecycleState = Literal["bound", "disposed"]
 GraphBindingAttemptState = Literal["committed", "failed", "cancelled", "disposed"]
+RegistrationAttachmentState = Literal["effective", "pending_retirement"]
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ class RegistrationInventoryEntry:
     owner_id: str
     runtime_id: str
     owner_generation: int
+    attachment: RegistrationAttachmentState
     state: str
 
 
@@ -155,6 +157,7 @@ class RuntimeCapabilityGraphRuntime:
         self._generation = 0
         self._nodes: dict[str, _MountedCapability] = {}
         self._retired_nodes: list[_MountedCapability] = []
+        self._retired_scopes: list[RegistrationScope] = []
         self._snapshot: MountGraphSnapshot | None = None
         self._registration_inventory: RegistrationInventorySnapshot | None = None
         self._last_attempt: CapabilityGraphBindingAttempt | None = None
@@ -253,5 +256,6 @@ __all__ = [
     "MountRequirementSnapshot",
     "RegistrationInventoryEntry",
     "RegistrationInventorySnapshot",
+    "RegistrationAttachmentState",
     "RuntimeCapabilityGraphRuntime",
 ]
