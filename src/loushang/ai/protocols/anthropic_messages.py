@@ -265,14 +265,18 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
 
         normalized = request.context
         adapter_config = _request_adapter_config(resolved)
-        protocol_headers = canonicalize_sdk_headers(resolved.headers or {})
+        # Resolved headers mix transport configuration and credentials.  They
+        # are never eligible for durable/model-visible projection because
+        # provenance has already been erased at this boundary.  Only behavior
+        # headers generated from typed adapter inputs are frozen and replayed.
+        protocol_headers: dict[str, str] = {}
         need_ilt = self.should_inject_interleaved_thinking(
             reasoning_enabled=resolved.reasoning_enabled,
             adapter_config=adapter_config,
         )
         need_fg = self.should_inject_fine_grained_tools(
             adapter_config=adapter_config,
-            headers=protocol_headers,
+            headers=None,
         )
         if need_ilt or need_fg:
             protocol_headers = self.apply_beta_headers(

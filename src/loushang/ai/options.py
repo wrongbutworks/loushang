@@ -91,10 +91,6 @@ class CallOptions:
     idle_timeout_seconds: float | int | None = None
     retry: RetryOptions | None = None
     trace: object | None = None
-    prepared_request_committer: PreparedRequestCommitter | None = field(
-        default=None,
-        repr=False,
-    )
     # Default to repair so interrupted/partial transcripts (e.g. a run killed
     # mid-tool-call) recover automatically instead of failing the whole request.
     # Callers that need strict validation (e.g. new-session message flow) can
@@ -103,6 +99,10 @@ class CallOptions:
     reasoning: ReasoningOptions | None = None
     tool_choice: ToolChoice | None = None
     output: StructuredOutputOptions | None = None
+    prepared_request_committer: PreparedRequestCommitter | None = field(
+        default=None,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if self.auth is not None and not isinstance(

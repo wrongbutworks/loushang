@@ -150,11 +150,11 @@ register_api_adapter(custom_adapter)
 - `idle_timeout_seconds`
 - `retry`
 - `trace`
-- `prepared_request_committer`
 - `pairing_mode`
 - `reasoning`
 - `tool_choice`
 - `output`
+- `prepared_request_committer`
 
 `timeout_seconds` 是一次 attempt 的完整 deadline，覆盖请求创建、首包和完整消费。
 `idle_timeout_seconds` 只约束流式 raw part 之间的空闲时间。
@@ -165,6 +165,11 @@ register_api_adapter(custom_adapter)
 transport。同一次逻辑调用共享 `invocation_id`，重试递增 `attempt`。没有配置该端口
 时，AI 与 Agent 仍可独立运行；配置端口时，不实现 prepared-request seam 的自定义
 adapter 会 fail closed。
+
+未配置 committer 时，runtime 继续调用 adapter 自己的 `invoke_raw`，因此已有扩展对
+该方法的覆写语义不变。配置 committer 后才要求并直接使用 prepared-request seam。
+进入 provider runtime 的初始 `ProviderRequest.attempt` 固定为 `1`；runtime retry
+在同一个 `invocation_id` 下递增它，避免 transport trace 与 commit identity 分叉。
 
 高级组合方从 `loushang.ai.prepared_request` 导入
 `PreparedModelRequest` 与 `PreparedRequestCommitter`；它们不扩大根包的稳定应用
@@ -210,14 +215,21 @@ ProviderRequest(
 1. `prepare_request(request)` 完成消息、工具、reasoning、structured output、cache
    和 provider-specific 字段映射，返回不可变且带 SHA-256 指纹的
    `PreparedModelRequest`；
-2. commit 成功后，`invoke_prepared_raw(request, prepared)` 只从冻结的 canonical
-   payload 重建 transport 参数并发送，不再添加模型可见字段。
+2. commit 成功后，`invoke_prepared_raw(request, prepared)` 只从冻结 payload
+   复制 transport 参数并发送，不再添加模型可见字段。
 
 `PreparedModelRequest` 不包含认证 header、SDK client、回调或其他 transport metadata。
 adapter 生成、会改变模型行为的协议 header（当前为 Anthropic beta feature header）
 则作为 `model_visible_headers` 一并冻结和计算指纹。纯 transport 值可以在发送阶段
 附加，但不能进入模型可见 payload。每次 retry 都重新 prepare 并 commit；相同
 payload 和 model-visible headers 可以得到相同 `payload_hash`，但 attempt 身份始终不同。
+
+resolved transport headers 已混合认证和调用配置，不具备可安全持久化的来源信息，
+因此不会进入 `model_visible_headers`；Anthropic beta feature header 只从 typed adapter
+配置和 reasoning 输入重新生成。Canonical JSON 为稳定 hash 对对象键排序，transport
+则从冻结值复制，保留 adapter 原始键序。跨包组合测试可直接调用
+`loushang.ai.provider.prepared_request_conformance.run_prepared_request_barrier_conformance`
+验证 commit-before-transport 与 commit 失败零 transport 的契约。
 
 ## Auth
 

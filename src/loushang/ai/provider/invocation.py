@@ -90,6 +90,8 @@ async def call_api_adapter_stream(
         raise TypeError("API adapter missing required invoke_raw method")
     if not isinstance(request.context, NormalizedContext):
         raise TypeError("ProviderRequest.context must be NormalizedContext")
+    if request.attempt != 1:
+        raise ValueError("ProviderRequest initial attempt must be 1")
     committer = (
         request.options.prepared_request_committer
         if request.options is not None
@@ -116,7 +118,7 @@ async def call_api_adapter_stream(
                 attempt=attempt,
             )
         )
-        if uses_prepared_barrier:
+        if committer is not None:
             return invoke_prepared_request(adapter, attempt_request)
         return _call_adapter_raw_parts(adapter, attempt_request)
 

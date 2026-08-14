@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from collections.abc import AsyncIterator, Mapping, Sequence
@@ -115,19 +116,14 @@ class PreparedModelRequest:
         )
 
     def payload_for_transport(self) -> dict[str, JSONValue]:
-        """Return a fresh transport object derived only from the frozen bytes."""
+        """Return a fresh transport object without reordering adapter mappings."""
 
         digest = "sha256:" + hashlib.sha256(
             self.canonical_payload.encode("utf-8")
         ).hexdigest()
         if digest != self.payload_hash:
             raise RuntimeError("prepared model request payload hash mismatch")
-        decoded = json.loads(self.canonical_payload)
-        envelope = require_json_mapping(decoded, name="prepared model request")
-        return require_json_mapping(
-            envelope["payload"],
-            name="prepared model request payload",
-        )
+        return _project_payload(self.payload)
 
     def model_visible_headers_for_transport(self) -> dict[str, str]:
         return dict(self.model_visible_headers)
@@ -172,8 +168,17 @@ async def invoke_prepared_request(
         else None
     )
     await commit_prepared_request(prepared, committer)
+    _raise_if_transport_cancelled()
     async for part in adapter.invoke_prepared_raw(request, prepared):
         yield part
+
+
+def _raise_if_transport_cancelled() -> None:
+    """Keep a committer from consuming caller cancellation before transport."""
+
+    task = asyncio.current_task()
+    if task is not None and task.cancelling():
+        raise asyncio.CancelledError
 
 
 def _project_payload(payload: Mapping[str, FrozenJSONValue]) -> dict[str, JSONValue]:

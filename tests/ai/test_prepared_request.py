@@ -94,6 +94,20 @@ class _LegacyAdapter:
         yield {"type": "response_done"}
 
 
+class _InheritedPreparedAdapter(_PreparedAdapter):
+    def __init__(self, events: list[str]) -> None:
+        super().__init__(events)
+        self.legacy_invoke_calls = 0
+
+    async def invoke_raw(
+        self,
+        request: ProviderRequest,
+    ) -> AsyncIterator[dict[str, object]]:
+        self.legacy_invoke_calls += 1
+        self.events.append("legacy-invoke")
+        yield {"type": "response_done"}
+
+
 def test_prepared_model_request_is_canonical_and_deeply_immutable() -> None:
     prepared = PreparedModelRequest.from_provider_request(
         _request(invocation_id="invocation-1", attempt=2),
@@ -119,6 +133,37 @@ def test_prepared_model_request_is_canonical_and_deeply_immutable() -> None:
         prepared.payload["model"] = "changed"  # type: ignore[index]
     with pytest.raises(TypeError):
         prepared.payload["messages"][0]["content"] = "changed"  # type: ignore[index]
+
+
+def test_transport_preserves_adapter_payload_key_order() -> None:
+    prepared = PreparedModelRequest.from_provider_request(
+        _request(invocation_id="invocation-order"),
+        payload={
+            "tools": [
+                {
+                    "name": "lookup",
+                    "input_schema": {
+                        "type": "object",
+                        "required": ["query"],
+                        "properties": {"query": {"type": "string"}},
+                    },
+                }
+            ],
+            "messages": [{"role": "user", "content": "hello"}],
+            "model": "faux-model",
+        },
+    )
+
+    transport = prepared.payload_for_transport()
+
+    assert list(transport) == ["tools", "messages", "model"]
+    tools = transport["tools"]
+    assert isinstance(tools, list)
+    tool = tools[0]
+    assert isinstance(tool, dict)
+    schema = tool["input_schema"]
+    assert isinstance(schema, dict)
+    assert list(schema) == ["type", "required", "properties"]
 
 
 def test_prepared_model_request_rejects_non_json_payload() -> None:
@@ -174,6 +219,20 @@ def test_anthropic_protocol_behavior_headers_are_frozen_before_commit() -> None:
     assert beta_header in prepared.canonical_payload
 
 
+def test_anthropic_transport_header_cannot_enter_frozen_behavior_headers() -> None:
+    request = _request(
+        api="anthropic-messages",
+        headers={"anthropic-beta": "secret-credential-value"},
+        invocation_id="invocation-anthropic-secret",
+        reasoning_enabled=True,
+    )
+
+    prepared = AnthropicMessagesAdapter().prepare_request(request)
+
+    assert "secret-credential-value" not in prepared.canonical_payload
+    assert "secret-credential-value" not in prepared.model_visible_headers.values()
+
+
 def test_prepared_barrier_commits_before_each_retry_transport() -> None:
     async def _run() -> tuple[_PreparedAdapter, _RecordingCommitter]:
         events: list[str] = []
@@ -219,6 +278,37 @@ def test_committer_failure_makes_zero_transport_calls() -> None:
     assert adapter.transport_calls == 0
 
 
+def test_swallowed_commit_cancellation_still_makes_zero_transport_calls() -> None:
+    class _CancellationSwallowingCommitter:
+        async def commit_prepared_request(
+            self,
+            request: PreparedModelRequest,
+        ) -> None:
+            del request
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                return
+
+    async def _run() -> _PreparedAdapter:
+        events: list[str] = []
+        adapter = _PreparedAdapter(events)
+        request = _request(
+            options=CallOptions(
+                timeout_seconds=0.01,
+                prepared_request_committer=_CancellationSwallowingCommitter(),
+            )
+        )
+        stream = await call_api_adapter_stream(adapter, request)
+        with pytest.raises(AIProviderError):
+            await stream.result()
+        return adapter
+
+    adapter = asyncio.run(_run())
+
+    assert adapter.transport_calls == 0
+
+
 def test_committer_rejects_adapter_without_prepared_barrier() -> None:
     committer = _RecordingCommitter()
 
@@ -237,6 +327,25 @@ def test_legacy_adapter_remains_standalone_without_committer() -> None:
         await stream.result()
 
     asyncio.run(_run())
+
+
+def test_no_committer_preserves_inherited_invoke_raw_override() -> None:
+    async def _run() -> _InheritedPreparedAdapter:
+        adapter = _InheritedPreparedAdapter([])
+        stream = await call_api_adapter_stream(adapter, _request())
+        await stream.result()
+        return adapter
+
+    adapter = asyncio.run(_run())
+
+    assert isinstance(adapter, PreparedRequestAdapter)
+    assert adapter.legacy_invoke_calls == 1
+    assert adapter.transport_calls == 0
+
+
+def test_provider_runtime_requires_initial_attempt_one() -> None:
+    with pytest.raises(ValueError, match="initial attempt must be 1"):
+        asyncio.run(call_api_adapter_stream(_LegacyAdapter(), _request(attempt=2)))
 
 
 def _request(
