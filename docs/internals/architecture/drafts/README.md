@@ -30,6 +30,7 @@ Current live references:
 - [Foundation Phase 0 Inventory](foundation-phase-0-inventory.md)
 - [Loushang Future Target Architecture v3](future-loushang-architecture-v3.md)
 - [Application Service Refactor](application-service-refactor.md)
+- [AppService Hosted Boundary With An Embedded TUI](appservice-embedded-tui-hosted-boundary-plan.md)
 - [Loushang Runtime Architecture](loushang-runtime-architecture.md)
 - [Loushang Work / Method / Channel / Harness Architecture](loushang-work-method-channel-harness-architecture.md)
 - [P3 Fixed MethodPlan Flow Research](p3-fixed-methodplan-flow-research.md)

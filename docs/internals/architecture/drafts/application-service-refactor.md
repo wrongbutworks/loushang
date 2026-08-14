@@ -5,6 +5,12 @@
 Proposed. This document defines a staged refactor, not an instruction to build
 a daemon, WebSocket transport, or new client protocol immediately.
 
+The current delivery clarification is
+[AppService Hosted Boundary With An Embedded TUI](appservice-embedded-tui-hosted-boundary-plan.md):
+the default native TUI remains on the direct embedded path. References below
+to an embedded `AppClient` or Harnesstui migration are optional Product
+elections, not a prerequisite for AppService or the default local composition.
+
 ## Decision
 
 Loushang will keep its current in-process path simple until a real external
