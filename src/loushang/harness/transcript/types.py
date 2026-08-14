@@ -14,6 +14,10 @@ from loushang.harness.conversation.types import (
     ConversationRecord,
     OpaquePayload,
 )
+from loushang.harness.transcript.model_input_types import (
+    ModelInputComponent,
+    ModelInputSnapshot,
+)
 
 ContentBlock: TypeAlias = TextPart | ImagePart
 ApplicationDeliveryMode: TypeAlias = Literal[
@@ -252,6 +256,8 @@ AgentTranscriptPayload: TypeAlias = (
     | ExtensionData
     | RecordAnnotationPatch
     | ConversationMetadataPatch
+    | ModelInputComponent
+    | ModelInputSnapshot
 )
 DecodedAgentTranscriptPayload: TypeAlias = AgentTranscriptPayload | OpaquePayload
 AgentTranscriptRecord: TypeAlias = ConversationRecord[DecodedAgentTranscriptPayload]

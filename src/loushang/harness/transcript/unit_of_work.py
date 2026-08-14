@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,6 +16,7 @@ from loushang.harness.conversation import (
     ConversationStore,
     StoreCommitOutcomeUnknown,
 )
+from loushang.harness.conversation.jsonl_codec import ConversationJsonlRecordCodec
 from loushang.harness.conversation.repository import ConversationRepository
 from loushang.harness.conversation.types import (
     BranchDelta,
@@ -22,6 +24,7 @@ from loushang.harness.conversation.types import (
     ConversationHeader,
     ConversationTreeNode,
 )
+from loushang.harness.journal import DEFAULT_JSONL_FORMAT
 from loushang.harness.transcript.codecs import STANDARD_PAYLOAD_VERSION
 from loushang.harness.transcript.kinds import (
     AGENT_MESSAGE_KIND,
@@ -31,9 +34,17 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_INPUT_COMPONENT_KIND,
+    MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     THINKING_SELECTION_KIND,
+)
+from loushang.harness.transcript.model_input_types import (
+    ModelInputComponent,
+    ModelInputIntegrityError,
+    ModelInputRecordSizeError,
+    ModelInputSnapshot,
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import (
@@ -303,6 +314,7 @@ class AgentTranscriptUnitOfWork:
         *,
         payload_version: int = STANDARD_PAYLOAD_VERSION,
         metadata: Mapping[str, JSONValue] | None = None,
+        max_encoded_record_bytes: int | None = None,
     ) -> AgentTranscriptCommit:
         async with self._commit_lock:
             record = self._record_factory.create(
@@ -312,6 +324,8 @@ class AgentTranscriptUnitOfWork:
                 payload_version=payload_version,
                 metadata=metadata,
             )
+            if max_encoded_record_bytes is not None:
+                self._require_record_size(record, max_encoded_record_bytes)
             return await self._finish_commit_atomically(record)
 
     async def append_agent_message(
@@ -404,6 +418,67 @@ class AgentTranscriptUnitOfWork:
             metadata=metadata,
         )
 
+    async def append_model_input_component(
+        self,
+        component: ModelInputComponent,
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> AgentTranscriptCommit:
+        return await self._append_model_input_fact(
+            MODEL_INPUT_COMPONENT_KIND,
+            component,
+            max_encoded_record_bytes=max_encoded_record_bytes,
+            expected_revision=expected_revision,
+            expected_leaf_id=expected_leaf_id,
+        )
+
+    async def append_model_input_snapshot(
+        self,
+        snapshot: ModelInputSnapshot,
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> AgentTranscriptCommit:
+        return await self._append_model_input_fact(
+            MODEL_INPUT_PREPARED_KIND,
+            snapshot,
+            max_encoded_record_bytes=max_encoded_record_bytes,
+            expected_revision=expected_revision,
+            expected_leaf_id=expected_leaf_id,
+        )
+
+    async def _append_model_input_fact(
+        self,
+        kind: str,
+        payload: ModelInputComponent | ModelInputSnapshot,
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> AgentTranscriptCommit:
+        async with self._commit_lock:
+            if (
+                self.revision != expected_revision
+                or self.leaf_id != expected_leaf_id
+            ):
+                raise ModelInputIntegrityError(
+                    "transcript changed outside the Model Input commit sequence"
+                )
+            record = self._record_factory.create(
+                kind,
+                payload,
+                parent_id=expected_leaf_id,
+                payload_version=STANDARD_PAYLOAD_VERSION,
+            )
+            self._require_record_size(record, max_encoded_record_bytes)
+            return await self._finish_commit_atomically(
+                record,
+                propagate_cancellation=True,
+            )
+
     async def fork(
         self,
         target_key: ConversationKey,
@@ -482,6 +557,8 @@ class AgentTranscriptUnitOfWork:
     async def _finish_commit_atomically(
         self,
         record: AgentTranscriptRecord,
+        *,
+        propagate_cancellation: bool = False,
     ) -> AgentTranscriptCommit:
         """Finish an accepted commit before releasing the lock.
 
@@ -494,18 +571,23 @@ class AgentTranscriptUnitOfWork:
 
         operation = asyncio.create_task(self._commit_locked(record))
         caller = asyncio.current_task()
+        cancellation_requested = False
         while not operation.done():
             try:
                 await asyncio.shield(operation)
             except asyncio.CancelledError:
                 if caller is not None and caller.cancelling():
+                    cancellation_requested = True
                     while caller.cancelling():
                         caller.uncancel()
                     continue
                 if operation.done():
                     break
                 raise
-        return operation.result()
+        result = operation.result()
+        if cancellation_requested and propagate_cancellation:
+            raise asyncio.CancelledError
+        return result
 
     async def _materialize_locked(
         self,
@@ -558,6 +640,30 @@ class AgentTranscriptUnitOfWork:
     def _require_idle_commit(self, operation: str) -> None:
         if self._commit_lock.locked():
             raise RuntimeError(f"cannot {operation} while a commit is in progress")
+
+    def _require_record_size(
+        self,
+        record: AgentTranscriptRecord,
+        maximum: int,
+    ) -> None:
+        if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 1:
+            raise ValueError("maximum encoded record bytes must be positive")
+        codec = ConversationJsonlRecordCodec(self._profile.payload_codecs)
+        envelope = codec.encode_record(record)
+        profile = DEFAULT_JSONL_FORMAT
+        line = json.dumps(
+            envelope,
+            ensure_ascii=profile.ensure_ascii,
+            sort_keys=profile.sort_keys,
+            separators=profile.separators,
+            allow_nan=False,
+        ) + profile.newline
+        encoded_size = len(line.encode(profile.encoding))
+        if encoded_size > maximum:
+            raise ModelInputRecordSizeError(
+                f"{record.kind} encoded record is {encoded_size} bytes; "
+                f"limit is {maximum}"
+            )
 
 
 def _create_repository(
