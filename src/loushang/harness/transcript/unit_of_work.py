@@ -141,6 +141,7 @@ class AgentTranscriptUnitOfWork:
     ) -> AgentTranscriptUnitOfWork:
         _require_matching_identity(key, header)
         initial_records = tuple(records)
+        resolved_profile = profile or AgentTranscriptProfile.default()
         repository = _create_repository(
             header=header,
             records=initial_records,
@@ -162,11 +163,13 @@ class AgentTranscriptUnitOfWork:
                     clock=resolved_clock,
                     id_factory=id_factory,
                 ),
-                profile=profile,
+                profile=resolved_profile,
                 materialized=False,
                 materialization_policy=materialization_policy,
                 clock=resolved_clock,
             )
+        for record in initial_records:
+            _require_model_input_record_size(record, resolved_profile)
         snapshot = await backend.create(
             key,
             header,
@@ -189,7 +192,7 @@ class AgentTranscriptUnitOfWork:
                 clock=resolved_clock,
                 id_factory=id_factory,
             ),
-            profile=profile,
+            profile=resolved_profile,
             diagnostics=repository.diagnostics,
             materialization_policy=materialization_policy,
             clock=resolved_clock,
@@ -567,11 +570,7 @@ class AgentTranscriptUnitOfWork:
         not continue with a stale ``Task.cancelling()`` count.
         """
 
-        if record.kind in {MODEL_INPUT_COMPONENT_KIND, MODEL_INPUT_PREPARED_KIND}:
-            self._require_record_size(
-                record,
-                MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
-            )
+        _require_model_input_record_size(record, self._profile)
         operation = asyncio.create_task(self._commit_locked(record))
         caller = asyncio.current_task()
         cancellation_requested = False
@@ -649,24 +648,44 @@ class AgentTranscriptUnitOfWork:
         record: AgentTranscriptRecord,
         maximum: int,
     ) -> None:
-        if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 1:
-            raise ValueError("maximum encoded record bytes must be positive")
-        codec = ConversationJsonlRecordCodec(self._profile.payload_codecs)
-        envelope = codec.encode_record(record)
-        profile = DEFAULT_JSONL_FORMAT
-        line = json.dumps(
-            envelope,
-            ensure_ascii=profile.ensure_ascii,
-            sort_keys=profile.sort_keys,
-            separators=profile.separators,
-            allow_nan=False,
-        ) + profile.newline
-        encoded_size = len(line.encode(profile.encoding))
-        if encoded_size > maximum:
-            raise ModelInputRecordSizeError(
-                f"{record.kind} encoded record is {encoded_size} bytes; "
-                f"limit is {maximum}"
-            )
+        _require_encoded_record_size(record, maximum, self._profile)
+
+
+def _require_model_input_record_size(
+    record: AgentTranscriptRecord,
+    profile: AgentTranscriptProfile,
+) -> None:
+    if record.kind in {MODEL_INPUT_COMPONENT_KIND, MODEL_INPUT_PREPARED_KIND}:
+        _require_encoded_record_size(
+            record,
+            MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
+            profile,
+        )
+
+
+def _require_encoded_record_size(
+    record: AgentTranscriptRecord,
+    maximum: int,
+    profile: AgentTranscriptProfile,
+) -> None:
+    if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 1:
+        raise ValueError("maximum encoded record bytes must be positive")
+    codec = ConversationJsonlRecordCodec(profile.payload_codecs)
+    envelope = codec.encode_record(record)
+    jsonl_format = DEFAULT_JSONL_FORMAT
+    line = json.dumps(
+        envelope,
+        ensure_ascii=jsonl_format.ensure_ascii,
+        sort_keys=jsonl_format.sort_keys,
+        separators=jsonl_format.separators,
+        allow_nan=False,
+    ) + jsonl_format.newline
+    encoded_size = len(line.encode(jsonl_format.encoding))
+    if encoded_size > maximum:
+        raise ModelInputRecordSizeError(
+            f"{record.kind} encoded record is {encoded_size} bytes; "
+            f"limit is {maximum}"
+        )
 
 
 def _create_repository(

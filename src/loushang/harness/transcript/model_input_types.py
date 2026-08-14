@@ -13,6 +13,12 @@ from loushang.foundation.json import JSONValue, dump_json_value
 MODEL_INPUT_SCHEMA_VERSION = 1
 MODEL_INPUT_PROJECTION_VERSION = "harness.model-input.v1"
 MODEL_INPUT_MAX_ENCODED_RECORD_BYTES = 1024 * 1024
+_MODEL_INPUT_V1_REQUIRED_LOGICAL_COMPONENTS = (
+    "system_prompt",
+    "messages",
+    "tools",
+    "request_options",
+)
 
 FrozenModelInputPrimitive: TypeAlias = str | int | float | bool | None
 FrozenModelInputValue: TypeAlias = (
@@ -194,11 +200,25 @@ class ModelInputSnapshot:
             self.prepared_payload_components,
             name="prepared payload components",
         )
+        logical_names = {reference.name for reference in logical}
+        missing = [
+            name
+            for name in _MODEL_INPUT_V1_REQUIRED_LOGICAL_COMPONENTS
+            if name not in logical_names
+        ]
+        if missing:
+            raise ValueError(
+                "Model Input logical components are missing: " + ", ".join(missing)
+            )
         if not isinstance(
             self.model_visible_headers_component,
             ModelInputComponentReference,
         ):
             raise TypeError("model-visible headers must use a component reference")
+        if self.model_visible_headers_component.name != "model_visible_headers":
+            raise ValueError(
+                "Model Input headers component must be named model_visible_headers"
+            )
         object.__setattr__(self, "logical_components", logical)
         object.__setattr__(self, "prepared_payload_components", prepared)
 

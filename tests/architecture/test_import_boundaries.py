@@ -280,6 +280,21 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
     assert offenders == []
 
 
+def test_model_input_uses_only_the_ai_prepared_request_contract() -> None:
+    path = Path("src/loushang/harness/transcript/model_input.py")
+    ai_imports = {
+        imported
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, ("loushang.ai",))
+    }
+
+    assert ai_imports
+    assert all(
+        _matches_any(imported, ("loushang.ai.prepared_request",))
+        for imported in ai_imports
+    )
+
+
 def test_extension_agent_profile_has_no_session_or_product_dependency() -> None:
     profile_root = Path("src/loushang/harness/extensions/agent")
     forbidden_prefixes = (

@@ -419,6 +419,7 @@ def _rebuild_model_input(
         ):
             raise ModelInputIntegrityError("Model Input origin revision is invalid")
     logical_input = _rebuild_mapping(snapshot.logical_components, ancestors)
+    _validate_rebuilt_logical_input(logical_input)
     prepared_payload = _rebuild_mapping(
         snapshot.prepared_payload_components,
         ancestors,
@@ -500,6 +501,17 @@ def _component_content(
     if component.content_hash != reference.content_hash:
         raise ModelInputIntegrityError("Model Input component reference hash changed")
     return thaw_model_input_json(component.content)
+
+
+def _validate_rebuilt_logical_input(value: Mapping[str, JSONValue]) -> None:
+    if not isinstance(value.get("messages"), list):
+        raise ModelInputIntegrityError("Model Input messages must be an array")
+    if not isinstance(value.get("tools"), list):
+        raise ModelInputIntegrityError("Model Input tools must be an array")
+    if not isinstance(value.get("request_options"), dict):
+        raise ModelInputIntegrityError(
+            "Model Input request options must be an object"
+        )
 
 
 def _index_components(

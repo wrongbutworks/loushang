@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from loushang.ai.types import TextPart, UserMessage
@@ -127,9 +129,20 @@ def _payloads():
             model_id="model-1",
             api_id="api-1",
             endpoint_id="endpoint-1",
-            logical_components=(reference,),
+            logical_components=tuple(
+                replace(reference, name=name)
+                for name in (
+                    "system_prompt",
+                    "messages",
+                    "tools",
+                    "request_options",
+                )
+            ),
             prepared_payload_components=(reference,),
-            model_visible_headers_component=reference,
+            model_visible_headers_component=replace(
+                reference,
+                name="model_visible_headers",
+            ),
             logical_input_hash="c" * 64,
             prepared_payload_hash="d" * 64,
         ),

@@ -151,6 +151,12 @@ messages, Tool schemas, and relevant request options, plus
 restart/source-deletion reconstruction. Wiring all managed Session call and
 retry paths remains a later closure.
 
+The v1 snapshot schema requires references named `system_prompt`, `messages`,
+`tools`, and `request_options`, plus a `model_visible_headers` reference.
+Reconstruction additionally requires messages and tools to be arrays and
+request options to be an object. Provider-specific prepared-payload fields
+remain unconstrained.
+
 ## Codec And Opaque Contract
 
 The conversation codec always validates and decodes the envelope. The profile

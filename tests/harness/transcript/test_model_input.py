@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -38,9 +39,11 @@ from loushang.harness.transcript import (
     AgentTranscriptUnitOfWork,
     ModelInputCommitContext,
     ModelInputComponent,
+    ModelInputComponentReference,
     ModelInputIntegrityError,
     ModelInputRecordSizeError,
     ModelInputRuntimeReferences,
+    ModelInputSnapshot,
     ModelInputTranscriptCommitter,
     create_agent_transcript_file_store,
     rebuild_model_input,
@@ -442,6 +445,163 @@ def test_model_input_hard_record_ceiling_cannot_be_bypassed() -> None:
         )
         with pytest.raises(ModelInputRecordSizeError):
             await transcript.commit(record)
+
+        initial_backend = MemoryConversationStore(
+            record_id=lambda item: item.record_id
+        )
+        initial_record = AgentTranscriptRecordFactory().create(
+            MODEL_INPUT_COMPONENT_KIND,
+            component,
+            parent_id=None,
+        )
+        with pytest.raises(ModelInputRecordSizeError):
+            await AgentTranscriptUnitOfWork.create(
+                initial_backend,
+                ConversationKey("initial", "oversized-model-input"),
+                _header("oversized-model-input"),
+                records=(initial_record,),
+            )
+        assert await initial_backend.scan("initial") == ()
+
+    asyncio.run(scenario())
+
+
+def test_model_input_snapshot_requires_the_v1_logical_surface() -> None:
+    reference = ModelInputComponentReference(
+        name="messages",
+        record_id="component-record",
+        content_hash="a" * 64,
+    )
+    snapshot = ModelInputSnapshot(
+        snapshot_id="snapshot-1",
+        invocation_id="invocation-1",
+        attempt=1,
+        purpose="main_turn",
+        product_id="coding",
+        runtime_id="runtime-1",
+        mount_generation=1,
+        profile_fingerprint="b" * 64,
+        registration_revision="c" * 64,
+        conversation_id="conversation-1",
+        source_leaf_id="source-record",
+        source_revision=1,
+        commit_revision=2,
+        provider_id="provider-1",
+        model_id="model-1",
+        api_id="api-1",
+        endpoint_id="endpoint-1",
+        logical_components=tuple(
+            replace(reference, name=name)
+            for name in ("system_prompt", "messages", "tools", "request_options")
+        ),
+        prepared_payload_components=(),
+        model_visible_headers_component=replace(
+            reference,
+            name="model_visible_headers",
+        ),
+        logical_input_hash="d" * 64,
+        prepared_payload_hash="e" * 64,
+    )
+
+    with pytest.raises(ValueError, match="logical components are missing"):
+        replace(snapshot, logical_components=())
+    with pytest.raises(ValueError, match="model_visible_headers"):
+        replace(snapshot, model_visible_headers_component=reference)
+
+
+@pytest.mark.parametrize(
+    ("invalid_name", "invalid_value", "error"),
+    (
+        ("messages", {}, "messages must be an array"),
+        ("tools", {}, "tools must be an array"),
+        ("request_options", [], "request options must be an object"),
+    ),
+)
+def test_reconstruction_rejects_invalid_v1_logical_component_types(
+    invalid_name: str,
+    invalid_value: object,
+    error: str,
+) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        assert transcript.leaf_id is not None
+        source_leaf_id = transcript.leaf_id
+        source_revision = transcript.revision
+        logical_input: dict[str, object] = {
+            "system_prompt": "system prompt",
+            "messages": [],
+            "tools": [],
+            "request_options": {},
+        }
+        logical_input[invalid_name] = invalid_value
+
+        references: list[ModelInputComponentReference] = []
+        for name, content in logical_input.items():
+            component_hash = hash_model_input_json(
+                content,
+                name=f"invalid Model Input {name}",
+            )
+            commit = await transcript.append(
+                MODEL_INPUT_COMPONENT_KIND,
+                ModelInputComponent(
+                    content_hash=component_hash,
+                    content=content,
+                ),
+            )
+            references.append(
+                ModelInputComponentReference(
+                    name=name,
+                    record_id=commit.record.record_id,
+                    content_hash=component_hash,
+                )
+            )
+
+        headers_hash = hash_model_input_json(
+            {},
+            name="invalid Model Input headers",
+        )
+        headers_commit = await transcript.append(
+            MODEL_INPUT_COMPONENT_KIND,
+            ModelInputComponent(content_hash=headers_hash, content={}),
+        )
+        snapshot = ModelInputSnapshot(
+            snapshot_id=f"invalid-{invalid_name}",
+            invocation_id="invocation-1",
+            attempt=1,
+            purpose="main_turn",
+            product_id="coding",
+            runtime_id="runtime-1",
+            mount_generation=1,
+            profile_fingerprint="a" * 64,
+            registration_revision="b" * 64,
+            conversation_id=transcript.header.conversation_id,
+            source_leaf_id=source_leaf_id,
+            source_revision=source_revision,
+            commit_revision=transcript.revision + 1,
+            provider_id="provider-1",
+            model_id="model-1",
+            api_id="api-1",
+            endpoint_id="endpoint-1",
+            logical_components=tuple(references),
+            prepared_payload_components=(),
+            model_visible_headers_component=ModelInputComponentReference(
+                name="model_visible_headers",
+                record_id=headers_commit.record.record_id,
+                content_hash=headers_hash,
+            ),
+            logical_input_hash=hash_model_input_json(
+                logical_input,
+                name="invalid logical Model Input",
+            ),
+            prepared_payload_hash=hash_model_input_json(
+                {"model_visible_headers": {}, "payload": {}},
+                name="empty prepared Model Input",
+            ),
+        )
+        await transcript.append(MODEL_INPUT_PREPARED_KIND, snapshot)
+
+        with pytest.raises(ModelInputIntegrityError, match=error):
+            rebuild_model_input(transcript, snapshot.snapshot_id)
 
     asyncio.run(scenario())
 
