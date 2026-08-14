@@ -25,6 +25,8 @@ class CapabilityBundleProvider:
     facets: tuple[str, ...]
     requirements: tuple[CapabilityRequirement, ...] = ()
     required_authorities: frozenset[str] = frozenset()
+    source_id: str = "builtin"
+    selection_rule: str = "explicit"
 
     def __post_init__(self) -> None:
         capability_id = _require_nonempty(
@@ -62,11 +64,18 @@ class CapabilityBundleProvider:
             _require_nonempty(value, name="provider required authority")
             for value in self.required_authorities
         )
+        source_id = _require_nonempty(self.source_id, name="provider source id")
+        selection_rule = _require_nonempty(
+            self.selection_rule,
+            name="provider selection rule",
+        )
         object.__setattr__(self, "capability_id", capability_id)
         object.__setattr__(self, "provider_id", provider_id)
         object.__setattr__(self, "facets", facets)
         object.__setattr__(self, "requirements", requirements)
         object.__setattr__(self, "required_authorities", authorities)
+        object.__setattr__(self, "source_id", source_id)
+        object.__setattr__(self, "selection_rule", selection_rule)
 
 
 def _require_nonempty(value: object, *, name: str) -> str:

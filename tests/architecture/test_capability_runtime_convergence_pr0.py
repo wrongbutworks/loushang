@@ -24,6 +24,36 @@ PURE_GRAPH_MODULE_IMPORTS = {
         "loushang.harness.capabilities.providers",
     },
 }
+GRAPH_RUNTIME_MODULE_IMPORTS = {
+    CAPABILITIES_ROOT / "provider_binding.py": {
+        "loushang.harness.capabilities.contracts",
+        "loushang.harness.capabilities.providers",
+        "loushang.harness.runtime.registration",
+    },
+    CAPABILITIES_ROOT / "graph_runtime.py": {
+        "loushang.harness.capabilities.contracts",
+        "loushang.harness.capabilities.graph_planning",
+        "loushang.harness.capabilities.provider_binding",
+        "loushang.harness.runtime.bindings",
+        "loushang.harness.runtime.registration",
+    },
+    CAPABILITIES_ROOT / "graph_binding.py": {
+        "loushang.harness.capabilities.graph_planning",
+        "loushang.harness.capabilities.graph_runtime",
+        "loushang.harness.capabilities.provider_binding",
+        "loushang.harness.runtime.bindings",
+        "loushang.harness.runtime.registration",
+    },
+    CAPABILITIES_ROOT / "graph_projection.py": {
+        "loushang.harness.capabilities.graph_runtime",
+    },
+}
+WORKSPACE_DEFINITION_PATH = CAPABILITIES_ROOT / "workspace_contracts.py"
+WORKSPACE_PROVIDER_PATH = CAPABILITIES_ROOT / "workspace_provider.py"
+WORKSPACE_CONSUMER_PATHS = (
+    CAPABILITIES_ROOT / "workspace_tool_consumer.py",
+    CAPABILITIES_ROOT / "workspace_process_consumer.py",
+)
 
 REQUIRED_ROWS = {
     "SUR": 28,
@@ -60,7 +90,7 @@ GRAPH_API_SYMBOLS = frozenset(
     }
 )
 
-IMPLEMENTED_GRAPH_API_SYMBOLS = frozenset({"RuntimeCapabilityGraphPlanner"})
+IMPLEMENTED_GRAPH_API_SYMBOLS = GRAPH_API_SYMBOLS
 
 BROAD_PARAMETER_NAMES = frozenset(
     {"context", "runtime", "bindings", "services", "container"}
@@ -284,6 +314,29 @@ def test_graph_planning_modules_keep_data_only_dependency_boundaries() -> None:
     assert {
         path: _absolute_loushang_imports(path) for path in PURE_GRAPH_MODULE_IMPORTS
     } == PURE_GRAPH_MODULE_IMPORTS
+
+
+def test_graph_runtime_and_workspace_definition_provider_consumer_boundaries() -> None:
+    assert {
+        path: _absolute_loushang_imports(path) for path in GRAPH_RUNTIME_MODULE_IMPORTS
+    } == GRAPH_RUNTIME_MODULE_IMPORTS
+
+    definition_imports = _absolute_loushang_imports(WORKSPACE_DEFINITION_PATH)
+    assert definition_imports == {"loushang.harness.capabilities.contracts"}
+    assert all("provider" not in item for item in definition_imports)
+    assert all("consumer" not in item for item in definition_imports)
+
+    provider_imports = _absolute_loushang_imports(WORKSPACE_PROVIDER_PATH)
+    assert "loushang.harness.capabilities.workspace_contracts" in provider_imports
+    provider_source = WORKSPACE_PROVIDER_PATH.read_text(encoding="utf-8")
+    assert "ProcessHost" not in provider_source
+    assert "SandboxBackend" not in provider_source
+    for consumer_path in WORKSPACE_CONSUMER_PATHS:
+        consumer_imports = _absolute_loushang_imports(consumer_path)
+        assert "loushang.harness.capabilities.workspace_contracts" in consumer_imports
+        assert all("workspace_provider" not in item for item in consumer_imports)
+        consumer_source = consumer_path.read_text(encoding="utf-8")
+        assert "RuntimeCapabilityGraphRuntime" not in consumer_source
 
 
 def test_broad_annotation_syntax_gate_covers_obvious_locator_shapes() -> None:

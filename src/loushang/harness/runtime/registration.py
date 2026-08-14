@@ -266,6 +266,18 @@ class RegistrationScope:
     def last_result(self) -> RegistrationScopeDisposalResult | None:
         return self._last_result
 
+    @property
+    def inventory(
+        self,
+    ) -> tuple[
+        tuple[RegistrationOwner, RegistrationIdentity, RegistrationLeaseState], ...
+    ]:
+        """Return read-only ownership facts without exposing lease/disposer handles."""
+
+        return tuple(
+            (lease.owner, lease.identity, lease.state) for lease in self._leases
+        )
+
     def add(self, lease: RegistrationLease) -> RegistrationLease:
         if self._state != "open":
             raise RuntimeError("registration scope no longer accepts leases")
