@@ -26,13 +26,50 @@ from loushang.harness.resources.packages import (
     PackageSourceConfig,
     package_source_from_raw,
 )
-from loushang.harness.resources.plugins import PluginManager
+from loushang.harness.resources.plugins import (
+    InstalledPlugin,
+    PluginManager,
+    PluginManifest,
+    PluginRegistry,
+    PluginSource,
+)
 
 
 class _AllowPackageSources:
     def evaluate_package_source(self, source: str | Path) -> PolicyDecision:
         del source
         return PolicyDecision.allow()
+
+
+def test_resource_registries_public_key_compatibility_baseline(tmp_path) -> None:
+    built_ins = BuiltInResourceRegistry()
+    first_package = BuiltInResourcePackage(name="shared", package="first.resources")
+    replacement_package = BuiltInResourcePackage(
+        name="shared",
+        package="replacement.resources",
+    )
+
+    assert built_ins.register(first_package) is first_package
+    assert built_ins.register(replacement_package) is replacement_package
+    assert built_ins.list_packages() == (replacement_package,)
+    assert built_ins.unregister("shared") is replacement_package
+    assert built_ins.unregister("shared") is None
+
+    plugins = PluginRegistry()
+    first_plugin = InstalledPlugin(
+        manifest=PluginManifest(name="shared", root=tmp_path / "first"),
+        source=PluginSource(path=tmp_path / "first"),
+    )
+    replacement_plugin = InstalledPlugin(
+        manifest=PluginManifest(name="shared", root=tmp_path / "replacement"),
+        source=PluginSource(path=tmp_path / "replacement"),
+    )
+
+    assert plugins.register(first_plugin) is first_plugin
+    assert plugins.register(replacement_plugin) is replacement_plugin
+    assert plugins.list_plugins() == [replacement_plugin]
+    assert plugins.unregister("shared") is replacement_plugin
+    assert plugins.unregister("shared") is None
 
 
 def test_platform_resource_layout_resolves_standard_roots(tmp_path) -> None:

@@ -71,6 +71,28 @@ def test_api_registry_manages_adapters_by_source() -> None:
     assert registry.list_api_adapters() == []
 
 
+def test_api_registry_duplicate_and_source_scope_compatibility_baseline() -> None:
+    registry = APIRegistry()
+    first = _Adapter()
+    same_source = _Adapter()
+    same_source.api = "same-source"
+    retained = _Adapter()
+    retained.api = "retained"
+
+    assert registry.register_api_adapter(first, source_id="plugin-a") is None
+    assert registry.register_api_adapter(same_source, source_id="plugin-a") is None
+    assert registry.register_api_adapter(retained, source_id="plugin-b") is None
+
+    with pytest.raises(ValueError, match="API adapter already registered: custom"):
+        registry.register_api_adapter(_Adapter(), source_id="plugin-b")
+
+    registry.unregister_api_adapters("plugin-a")
+
+    assert registry.list_api_adapters() == [retained]
+    with pytest.raises(KeyError, match="custom"):
+        registry.get_api_adapter("custom")
+
+
 @pytest.mark.parametrize(
     ("adapter", "message"),
     [
@@ -142,6 +164,58 @@ def test_provider_registry_prefers_vendor_adapter_then_uses_api_fallback() -> No
 
     assert registry.resolve_api_adapter("vendor", "custom") is vendor_adapter
     assert registry.resolve_api_adapter("other", "custom") is generic_adapter
+
+
+def test_provider_registry_duplicate_and_source_scope_compatibility_baseline() -> None:
+    registry = ProviderRegistry(APIRegistry())
+    first = _Adapter()
+    same_source = _Adapter()
+    retained = _Adapter()
+
+    assert (
+        registry.register_provider_adapter(
+            "vendor-a",
+            "custom",
+            first,
+            source_id="plugin-a",
+        )
+        is None
+    )
+    assert (
+        registry.register_provider_adapter(
+            "vendor-b",
+            "custom",
+            same_source,
+            source_id="plugin-a",
+        )
+        is None
+    )
+    assert (
+        registry.register_provider_adapter(
+            "vendor-c",
+            "custom",
+            retained,
+            source_id="plugin-b",
+        )
+        is None
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Provider adapter already registered: vendor-a:custom",
+    ):
+        registry.register_provider_adapter(
+            "vendor-a",
+            "custom",
+            _Adapter(),
+            source_id="plugin-b",
+        )
+
+    registry.unregister_provider_adapters("plugin-a")
+
+    assert registry.get_provider_adapter("vendor-a", "custom") is None
+    assert registry.get_provider_adapter("vendor-b", "custom") is None
+    assert registry.get_provider_adapter("vendor-c", "custom") is retained
 
 
 def test_azure_openai_provider_module_is_not_in_core() -> None:

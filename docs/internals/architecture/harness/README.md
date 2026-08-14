@@ -22,6 +22,13 @@ planning, work event persistence, or AI provider behavior.
 - [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
   defines top-level Capability IDs, dependency direction, Mount identity,
   graph lifecycle, and graph diagnostics.
+- [Capability Runtime Convergence Plan](capability-runtime-convergence-plan.md)
+  records the reviewed delivery plan for owner-scoped reversible registration,
+  Definition/Provider/Consumer separation, composed Profile/Mount/registration
+  projection, and reconstruction of model-visible inputs from committed facts.
+- [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
+  freezes the mutable-surface, compatibility, model-call, package-owner, and
+  lifecycle-fault evidence that later convergence PRs must preserve or revise.
 - [Refactoring Principles](refactoring-principles.md) defines the evidence and
   neutrality gates for moving code into Harness.
 
@@ -46,6 +53,14 @@ description.
   exclusive replacement, protocol injection, composition-root ownership, and
   the invariant enforcement layer that Product and Plugin variation cannot
   bypass.
+- [Capability Runtime Convergence Plan](capability-runtime-convergence-plan.md)
+  joins registration ownership and disposal, Capability role separation,
+  existing graph projection, and durable model-input reconstruction into one
+  reviewed migration sequence. It is a delivery plan and does not override
+  implemented source or accepted boundary documents.
+- [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
+  is the executable pre-change inventory for that sequence. It records current
+  compatibility and assigns each future contract to one package owner.
 - [Refactoring Principles](refactoring-principles.md) defines what may move
   into harness and how migration slices should be shaped.
 - [Shared Capability Boundaries](shared-capability-boundaries.md) maps tools,

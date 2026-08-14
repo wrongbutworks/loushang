@@ -332,6 +332,30 @@ def test_failed_external_replacement_does_not_implicitly_bind_product_baseline()
     assert created == []
 
 
+def test_runtime_capability_registry_duplicate_compatibility_baseline() -> None:
+    def create(
+        selection: RuntimeCapabilitySelection,
+        context: object | None,
+    ) -> object:
+        del selection, context
+        return object()
+
+    implementation = RuntimeCapabilityImplementation(
+        slot="conversation.store",
+        implementation="memory",
+        implementation_version=1,
+        create=create,
+    )
+    registry = RuntimeCapabilityRegistry()
+
+    assert registry.register(implementation) is None
+    with pytest.raises(
+        ValueError,
+        match="runtime capability implementation already registered",
+    ):
+        registry.register(implementation)
+
+
 def test_binder_refreshes_turn_safe_slots_and_invalidates_prior_leases() -> None:
     calls: list[tuple[str, object]] = []
 

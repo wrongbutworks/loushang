@@ -157,6 +157,53 @@ def test_registry_accepts_neutral_definitions_and_preserves_order_and_source_inf
     assert [definition.name for definition in registry.list_enabled_definitions()] == ["second"]
 
 
+def test_tool_registry_duplicate_registration_compatibility_baseline() -> None:
+    from loushang.agent.types import AgentToolResult
+    from loushang.harness.tools.core import ToolDefinition, ToolRegistry
+
+    async def execute(tool_call_id, params, signal=None, on_update=None):
+        del tool_call_id, params, signal, on_update
+        return AgentToolResult(content=[], details={})
+
+    first = ToolDefinition(
+        name="shared",
+        label="First",
+        description="first",
+        parameters={"type": "object"},
+        execution=direct_execution(execute),
+    )
+    replacement = ToolDefinition(
+        name="shared",
+        label="Replacement",
+        description="replacement",
+        parameters={"type": "object"},
+        execution=direct_execution(execute),
+    )
+    registry = ToolRegistry()
+
+    assert (
+        registry.register_tool(
+            first,
+            enabled=False,
+            source_info={"owner": "first"},
+        )
+        is first
+    )
+    assert (
+        registry.register_tool(
+            replacement,
+            enabled=True,
+            source_info={"owner": "replacement"},
+        )
+        is replacement
+    )
+
+    assert registry.list_definitions() == [replacement]
+    assert registry.list_enabled_definitions() == [replacement]
+    assert registry.get_source_info("shared") == {"owner": "replacement"}
+    assert not hasattr(registry, "unregister_tool")
+
+
 def test_registry_rejects_decorated_plain_return_tools() -> None:
     from loushang.harness.tools.core import ToolRegistry, tool
 

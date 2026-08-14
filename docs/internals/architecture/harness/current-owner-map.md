@@ -185,7 +185,9 @@ policy remains with Host prompt input and the read tool.
 - Product-neutral Harnesstui and shared runtime owners;
 - canonical coarse Capability IDs and Mount terminology in architecture
   documents, without representing Product, Plugin, Package, or Extension
-  identities as graph nodes.
+  identities as graph nodes; and
+- the capability-runtime convergence PR0 inventory, target contract package
+  owners, no-second-runtime rule, and narrow graph API parameters.
 
 New boundaries must update this map when they change current ownership. A
 migration ledger alone is not sufficient evidence of the resulting boundary.

@@ -2,7 +2,29 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.harness.runtime import RuntimeBindingState
+from loushang.harness.runtime import ProductRuntimeBindings, RuntimeBindingState
+
+
+def test_product_runtime_bindings_default_tool_registration_is_noop() -> None:
+    async def set_active_tools(names: list[str]) -> None:
+        del names
+
+    async def set_model(model: object) -> None:
+        del model
+
+    bindings = ProductRuntimeBindings(
+        cwd="/workspace",
+        get_active_tool_names=lambda: [],
+        get_model_selection=lambda: None,
+        set_active_tools=set_active_tools,
+        set_model=set_model,
+        request_resource_refresh=lambda: None,
+        shutdown=lambda: None,
+        record_diagnostic=lambda diagnostic: None,
+    )
+
+    assert bindings.register_tool(object(), {"owner": "extension"}) is None
+    assert bindings.get_all_tools() == []
 
 
 def test_binding_lease_reads_refreshed_bindings_until_invalidated() -> None:
