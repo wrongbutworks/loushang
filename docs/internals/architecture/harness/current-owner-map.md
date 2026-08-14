@@ -29,16 +29,17 @@ depend on `loushang.coding`, `loushang.harnesswork`, `loushang.work`, `loushang.
 | `transcript` | optional Agent/AI transcript profile, codecs, file/session lifecycle, context rebuild, compaction/retry/navigation mechanisms | Product compaction prompts, semantic summary policy, Product store selection |
 | `context` | context items, packing, deterministic budget/accounting records, summary evaluation foundations | Product salience policy or model-specific estimation decisions |
 | `tools` / `approval` / `policy` / `sandbox` | tool authoring and hosted execution mechanics, action policy evaluation, approval lifecycle, effects, execution-scope process-start authorization, and optional containment binding | Product risk defaults, executable/catalog admission, Product approval wording, arbitrary Product commands |
-| `resources` / `extensions` / `capabilities` | resource discovery and precedence, package materialization mechanics, extension runtime, capability composition | Product-owned built-in content, trust decisions, activation policy |
+| `resources` / `extensions` / `capabilities` | resource discovery and precedence, package materialization mechanics, extension runtime, capability composition, and pure coarse Capability graph contracts/planning | Product-owned built-in content, trust decisions, activation policy, or Product-specific Provider behavior |
 | `host` / `cli` / `events` / `presentation` | Product-neutral host lifecycle, RPC/JSON projection, runtime event contracts and reusable presentation | AppService tenancy, Channel protocol, Product grammar or final UI composition |
 | `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, one-shot execution, and bounded session-owned process primitives | Product-specific recovery UX, business audit retention, protocol/server selection, Product artifact semantics |
 
-## Accepted Capability Graph Target (Not Yet Implemented)
+## Accepted Capability Graph Target (Planning Implemented)
 
 The implemented owner table above remains authoritative for current code. The
 accepted [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
-decision adds a coarser target architecture without pretending that its graph
-owners already exist in source.
+decision adds a coarser target architecture. Its immutable Definition,
+Requirement, Bundle Provider declaration, and pure graph planner now exist;
+binding, live Mount state, and projection remain target boundaries only.
 
 The initial top-level Harness Capability IDs are `harness.workspace`,
 `harness.resources`, and `harness.session`; current Coding-owned examples are
@@ -47,14 +48,15 @@ Binding Facets rather than additional top-level graph nodes.
 
 | Accepted target responsibility | Current implementation status |
 | --- | --- |
-| plan dependencies, closure, order, and validation | no top-level Capability graph planner yet |
+| plan dependencies, closure, order, and validation | `RuntimeCapabilityGraphPlanner` is implemented as a pure planner under `loushang.harness.capabilities` |
 | bind final nodes transactionally and reuse unchanged binding signatures | current Runtime Profile binding is narrower; graph finalization is not implemented |
 | own live Mounted Capability state, generations, and scope leases | current runtime-profile generations and leases do not yet form a live Mount graph |
 | project read-only graph snapshots, explanations, and impact paths | no Capability graph projector yet |
 
-The target responsibility names are conceptual boundaries, not current public
-classes or permission to create a global mutable registry. When implementation
-lands, this map and its architecture gates must be updated in the same change.
+The remaining target responsibility names are conceptual boundaries, not
+current public classes or permission to create a global mutable registry. When
+each implementation lands, this map and its architecture gates must be updated
+in the same change.
 
 ## Dependency Direction
 
@@ -186,8 +188,8 @@ policy remains with Host prompt input and the read tool.
 - canonical coarse Capability IDs and Mount terminology in architecture
   documents, without representing Product, Plugin, Package, or Extension
   identities as graph nodes; and
-- the capability-runtime convergence PR0 inventory, target contract package
-  owners, no-second-runtime rule, and narrow graph API parameters.
+- the capability-runtime convergence inventory, exact existence of implemented
+  graph owners, no-second-runtime rule, and narrow graph API parameters.
 
 New boundaries must update this map when they change current ownership. A
 migration ledger alone is not sufficient evidence of the resulting boundary.

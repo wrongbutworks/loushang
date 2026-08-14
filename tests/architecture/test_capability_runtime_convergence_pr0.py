@@ -16,6 +16,14 @@ README_PATH = Path("docs/internals/architecture/harness/README.md")
 SOURCE_ROOT = Path("src/loushang")
 HARNESS_ROOT = Path("src/loushang/harness")
 CAPABILITIES_ROOT = HARNESS_ROOT / "capabilities"
+PURE_GRAPH_MODULE_IMPORTS = {
+    CAPABILITIES_ROOT / "contracts.py": {"loushang.harness.runtime"},
+    CAPABILITIES_ROOT / "providers.py": {"loushang.harness.capabilities.contracts"},
+    CAPABILITIES_ROOT / "graph_planning.py": {
+        "loushang.harness.capabilities.contracts",
+        "loushang.harness.capabilities.providers",
+    },
+}
 
 REQUIRED_ROWS = {
     "SUR": 28,
@@ -51,6 +59,8 @@ GRAPH_API_SYMBOLS = frozenset(
         "RuntimeCapabilityGraphProjector",
     }
 )
+
+IMPLEMENTED_GRAPH_API_SYMBOLS = frozenset({"RuntimeCapabilityGraphPlanner"})
 
 BROAD_PARAMETER_NAMES = frozenset(
     {"context", "runtime", "bindings", "services", "container"}
@@ -139,6 +149,23 @@ def _is_broad_annotation(annotation: ast.expr | None) -> bool:
     return False
 
 
+def _absolute_loushang_imports(path: Path) -> set[str]:
+    imports: set[str] = set()
+    for node in ast.walk(_python_trees()[path]):
+        if isinstance(node, ast.Import):
+            imports.update(
+                alias.name for alias in node.names if alias.name.startswith("loushang.")
+            )
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.level == 0
+            and node.module is not None
+            and node.module.startswith("loushang.")
+        ):
+            imports.add(node.module)
+    return imports
+
+
 def test_pr0_inventory_keeps_required_rows_and_evidence() -> None:
     text = BASELINE_PATH.read_text(encoding="utf-8")
 
@@ -176,14 +203,13 @@ def test_accepted_graph_contracts_have_one_declared_package_owner() -> None:
 
     for symbol, owners in ACCEPTED_GRAPH_OWNERS.items():
         locations = [path for path, _node in definitions.get(symbol, [])]
-        assert len(locations) <= 1, (
-            f"duplicate convergence contract {symbol}: {locations}"
+        expected_count = 1 if symbol in IMPLEMENTED_GRAPH_API_SYMBOLS else 0
+        assert len(locations) == expected_count, (
+            f"unexpected convergence contract count for {symbol}: {locations}"
         )
         assert all(
             any(_is_relative_to(path, owner) for owner in owners) for path in locations
-        ), (
-            f"{symbol} must be owned by one of {owners}, found {locations}"
-        )
+        ), f"{symbol} must be owned by one of {owners}, found {locations}"
 
     legacy_runtime_locations = [
         path for path, _node in definitions.get("CapabilityCompositionRuntime", [])
@@ -254,6 +280,12 @@ def test_target_graph_apis_reject_broad_service_locator_parameters() -> None:
     assert violations == []
 
 
+def test_graph_planning_modules_keep_data_only_dependency_boundaries() -> None:
+    assert {
+        path: _absolute_loushang_imports(path) for path in PURE_GRAPH_MODULE_IMPORTS
+    } == PURE_GRAPH_MODULE_IMPORTS
+
+
 def test_broad_annotation_syntax_gate_covers_obvious_locator_shapes() -> None:
     broad = (
         "object",
@@ -271,7 +303,9 @@ def test_broad_annotation_syntax_gate_covers_obvious_locator_shapes() -> None:
         "tuple[CapabilityRequirement, ...]",
     )
 
-    assert all(_is_broad_annotation(ast.parse(value, mode="eval").body) for value in broad)
+    assert all(
+        _is_broad_annotation(ast.parse(value, mode="eval").body) for value in broad
+    )
     assert not any(
         _is_broad_annotation(ast.parse(value, mode="eval").body) for value in narrow
     )
