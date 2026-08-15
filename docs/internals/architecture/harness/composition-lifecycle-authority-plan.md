@@ -2,13 +2,12 @@
 
 ## Status
 
-Proposed next-stage delivery plan. This document does not change the current
-owner map or authorize a second composition framework. It becomes an
-implementation authority only after review and acceptance.
-
-The draft has been revised after independent source review. It remains proposed
-until the required boundary-document revisions and delivery sequence are
-explicitly accepted.
+Accepted next-stage delivery plan. Independent source review confirmed that
+the required revisions are closed. This document authorizes the CLA0-CLA8
+delivery sequence, but it does not change the implemented current owner map or
+authorize a second composition framework. Source and implemented boundary
+documents remain authoritative for present behavior until each corresponding
+CLA slice lands.
 
 The completed [Capability Runtime Convergence Plan](capability-runtime-convergence-plan.md)
 established owned registrations, Capability Definition / Provider / Consumer

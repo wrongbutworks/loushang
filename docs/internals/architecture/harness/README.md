@@ -30,9 +30,9 @@ planning, work event persistence, or AI provider behavior.
   Definition/Provider/Consumer separation, composed Profile/Mount/registration
   projection, and reconstruction of model-visible inputs from committed facts.
 - [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md)
-  proposes the next-stage convergence of Profile, Mount, Registration, and
-  Extension/Resource construction authority around one publisher per owned live
-  object while preserving independent fact clocks.
+  defines the accepted next-stage convergence of Profile, Mount, Registration,
+  and Extension/Resource construction authority around one publisher per owned
+  live object while preserving independent fact clocks.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   freezes the mutable-surface, compatibility, model-call, package-owner, and
   lifecycle-fault evidence that later convergence PRs must preserve or revise.
@@ -75,7 +75,7 @@ description.
   model-input reconstruction. It does not override implemented source or
   accepted boundary documents.
 - [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md)
-  is the proposed follow-on delivery plan for a Session-owned graph, the
+  is the accepted follow-on delivery plan for a Session-owned graph, the
   `harness.resources` vertical slice, and contraction of duplicate live
   construction paths; workspace production mounting remains an independent
   follow-up. Its
