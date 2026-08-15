@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from loushang.agent import Agent
 from loushang.ai.api_registry import (
@@ -446,19 +446,32 @@ class AgentProductSession(AgentSessionAdapterMixin):
         tool_registry = self._tool_registry
         if tool_registry is None:
             tool_registry = self._composition.tool_controller.tool_registry
-        raw = (
-            list(tool_registry.registration_inventory)
-            if tool_registry is not None
-            else []
+        raw = [
+            (*item, "effective")
+            for item in (
+                tool_registry.registration_inventory
+                if tool_registry is not None
+                else ()
+            )
+        ]
+        raw.extend(
+            (*item, "effective")
+            for item in getattr(
+                self._extension_runner,
+                "registration_inventory",
+                (),
+            )
         )
-        extension_inventory = getattr(
-            self._extension_runner,
-            "registration_inventory",
-            (),
+        raw.extend(
+            (*item, "pending_retirement")
+            for item in getattr(
+                self._extension_runner,
+                "retired_registration_inventory",
+                (),
+            )
         )
-        raw.extend(extension_inventory)
         entries: dict[str, RegistrationInventoryEntry] = {}
-        for owner, identity, state in raw:
+        for owner, identity, state, attachment in raw:
             if state == "disposed":
                 continue
             entry = RegistrationInventoryEntry(
@@ -469,11 +482,15 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 owner_id=owner.owner_id,
                 runtime_id=owner.runtime_id,
                 owner_generation=owner.generation,
-                attachment="effective",
+                attachment=cast(
+                    Literal["effective", "pending_retirement"], attachment
+                ),
                 state=state,
             )
             existing = entries.get(entry.registration_id)
-            if existing is not None and existing != entry:
+            if existing is not None and not _same_registration_identity(
+                existing, entry
+            ):
                 raise RuntimeError(
                     "registration id maps to conflicting Session inventory entries"
                 )
@@ -963,6 +980,29 @@ class AgentProductSession(AgentSessionAdapterMixin):
             },
             cwd=self.session_manager.get_cwd(),
         )
+
+
+def _same_registration_identity(
+    left: RegistrationInventoryEntry,
+    right: RegistrationInventoryEntry,
+) -> bool:
+    return (
+        left.registration_id,
+        left.surface,
+        left.public_key,
+        left.owner_kind,
+        left.owner_id,
+        left.runtime_id,
+        left.owner_generation,
+    ) == (
+        right.registration_id,
+        right.surface,
+        right.public_key,
+        right.owner_kind,
+        right.owner_id,
+        right.runtime_id,
+        right.owner_generation,
+    )
 
 
 __all__ = ["AgentProductSession"]

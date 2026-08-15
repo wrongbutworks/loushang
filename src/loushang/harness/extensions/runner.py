@@ -272,6 +272,21 @@ class ExtensionRunner(ExtensionRuntime):
             for item in registrations.inventory
         )
 
+    @property
+    def retired_registration_inventory(
+        self,
+    ) -> tuple[
+        tuple[RegistrationOwner, RegistrationIdentity, RegistrationLeaseState], ...
+    ]:
+        """Return exact registrations retained for retirement retry."""
+
+        return tuple(
+            item
+            for generation in self._retired_generation_registrations
+            for registrations in generation
+            for item in registrations.inventory
+        )
+
     def create_command_context(
         self, *, fallback_cwd: str = ""
     ) -> ExtensionCommandContext:

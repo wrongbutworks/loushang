@@ -885,6 +885,13 @@ async def _rebind_inventory_tracks_failed_old_generation_retirement() -> None:
     assert [entry.attachment for entry in runtime.registration_inventory.entries] == [
         "pending_retirement"
     ]
+    pending_registration = runtime.registration_inventory.entries[0]
+    assert (
+        RuntimeCapabilityGraphProjector(runtime)
+        .explain_registration(pending_registration.registration_id)
+        .owner_node
+        is None
+    )
     assert (
         RuntimeCapabilityGraphProjector(runtime)
         .explain("harness.workspace")

@@ -895,6 +895,7 @@ def test_disposed_runner_rejects_rebind_refresh_and_stale_api_mutation() -> None
 
 def test_shutdown_retains_retryable_retired_generation_cleanup() -> None:
     layers: list[str] = []
+    identities: dict[str, RegistrationIdentity] = {}
     old_disposal_attempts = 0
 
     def bind_tool(
@@ -911,6 +912,7 @@ def test_shutdown_retains_retryable_retired_generation_cleanup() -> None:
             surface="review-tool",
             public_key=value.name,
         )
+        identities[marker] = identity
 
         def dispose() -> RegistrationDisposalResult:
             nonlocal old_disposal_attempts
@@ -950,12 +952,16 @@ def test_shutdown_retains_retryable_retired_generation_cleanup() -> None:
         retirement = candidate.publish(lambda: None)
         first = await retirement.retire()
         assert first[0].has_failures
+        assert runtime.retired_registration_inventory[0][1] == identities["old"]
+        assert runtime.retired_registration_inventory[0][2] == "failed_retryable"
 
         await runtime.dispose_runtime_generation()
+        assert runtime.retired_registration_inventory[0][2] == "failed_retryable"
         await runtime.dispose_runtime_generation()
 
         assert old_disposal_attempts == 3
         assert layers == []
+        assert runtime.retired_registration_inventory == ()
 
     asyncio.run(scenario())
 

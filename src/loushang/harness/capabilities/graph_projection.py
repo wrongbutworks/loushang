@@ -184,8 +184,10 @@ class RuntimeCapabilityGraphProjector:
             )
         entry = matches[0]
         owner_node = None
-        if entry.owner_kind == "capability":
-            owner_node = self._node(entry.owner_id)
+        if entry.owner_kind == "capability" and entry.attachment == "effective":
+            candidate = self._node(entry.owner_id)
+            if candidate.mount_generation == entry.owner_generation:
+                owner_node = candidate
         return RegistrationExplanation(
             product_id=self._runtime.product_id,
             runtime_id=self._runtime.runtime_id,

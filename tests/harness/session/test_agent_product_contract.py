@@ -4,7 +4,10 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
+
+import pytest
 
 from loushang.agent import Agent
 from loushang.ai.model import Capabilities, Model
@@ -21,7 +24,12 @@ from loushang.harness.config.agent import (
     SettingsManager,
 )
 from loushang.harness.conversation import ConversationKey, MemoryConversationStore
-from loushang.harness.runtime import CancellationSignal, RuntimeProfileResolver
+from loushang.harness.runtime import (
+    CancellationSignal,
+    RegistrationIdentity,
+    RegistrationOwner,
+    RuntimeProfileResolver,
+)
 from loushang.harness.session import AgentProductSession
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
@@ -160,6 +168,37 @@ class _ContractProductSession(AgentProductSession):
         self.hook_calls.append(("after", result.summary, (record_id, from_hook)))
 
 
+def test_session_registration_inventory_keeps_retirement_retry_facts() -> None:
+    owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="review",
+        runtime_id="session:review",
+        generation=1,
+    )
+    identity = RegistrationIdentity(
+        surface="tool",
+        public_key="review_lookup",
+        registration_id="review-tool-v1",
+    )
+    session = object.__new__(AgentProductSession)
+    session._tool_registry = SimpleNamespace(  # type: ignore[attr-defined]
+        registration_inventory=((owner, identity, "active"),)
+    )
+    session._extension_runner = SimpleNamespace(  # type: ignore[attr-defined]
+        registration_inventory=(),
+        retired_registration_inventory=(
+            (owner, identity, "failed_retryable"),
+        ),
+    )
+
+    entries = session._effective_registration_entries()
+
+    assert len(entries) == 1
+    assert entries[0].registration_id == identity.registration_id
+    assert entries[0].attachment == "pending_retirement"
+    assert entries[0].state == "failed_retryable"
+
+
 def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
     tmp_path: Path,
 ) -> None:
@@ -248,6 +287,17 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert research_capabilities.binding.is_closed is True
         assert design_capabilities.binding.is_closed is False
         assert disposed_transcripts == ["research-session"]
+        with pytest.raises(RuntimeError, match="disposed"):
+            research.get_effective_runtime_view()
+        assert research.effective_runtime_to_json(effective_runtime)[
+            "runtime_id"
+        ] == effective_runtime.runtime_id
+        detached_diff = research.diff_effective_runtime(
+            effective_runtime,
+            effective_runtime,
+        )
+        assert detached_diff.profile_changed is False
+        assert detached_diff.registration_revision_changed is False
 
         design_result = await design.compact("design-only")
 

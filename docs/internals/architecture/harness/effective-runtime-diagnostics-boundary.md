@@ -35,10 +35,12 @@ registration revision. Provider payloads and transcript components remain in
 the transcript authority.
 
 The registration read model reuses the graph inventory plus current
-owner-scoped Tool and Extension-generation inventories. It deduplicates exact
-registration ids and computes one revision without changing any registration
-lifecycle owner. A private-facet refresh may therefore advance only the
-registration clock while the Mount generation remains unchanged.
+owner-scoped Tool and Extension-generation inventories. Extension registrations
+retained after retryable retirement failure remain visible as
+`pending_retirement` until exact cleanup succeeds. The read model deduplicates
+exact registration ids and computes one revision without changing any
+registration lifecycle owner. A private-facet refresh may therefore advance
+only the registration clock while the Mount generation remains unchanged.
 
 ## Skew Semantics
 
