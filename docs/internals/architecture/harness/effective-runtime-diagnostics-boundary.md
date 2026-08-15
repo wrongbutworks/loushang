@@ -1,7 +1,7 @@
 # Effective Runtime Diagnostics Boundary
 
-Status: Accepted implementation boundary for PR9 of the capability runtime
-convergence plan.
+Status: implemented PR9 boundary. The effective-runtime projection, explain,
+JSON, diff, and clock-skew contracts are enforced by source and tests.
 
 ## Purpose
 

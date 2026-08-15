@@ -44,6 +44,11 @@ Definition / Provider / Consumer slice: Consumers receive only declared
 filesystem facets or the authorized process-launch port, never the graph
 Runtime, raw process host, approval gateway, or sandbox backend.
 
+The generated [Harness Capability Catalog](capability-catalog.md) is the
+source-backed coverage projection. A target Capability is not reported as
+implemented there until its Definition, Provider, requirements, and Consumers
+all exist and pass the architecture gate.
+
 The initial top-level Harness Capability IDs are `harness.workspace`,
 `harness.resources`, and `harness.session`; current Coding-owned examples are
 `coding.lsp` and `coding.arch`. Runtime Profile slots remain finer internal
