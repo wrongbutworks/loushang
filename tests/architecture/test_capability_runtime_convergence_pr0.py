@@ -44,8 +44,16 @@ GRAPH_RUNTIME_MODULE_IMPORTS = {
         "loushang.harness.runtime.bindings",
         "loushang.harness.runtime.registration",
     },
-    CAPABILITIES_ROOT / "graph_projection.py": {
+    CAPABILITIES_ROOT / "effective_runtime.py": {
+        "loushang.foundation.json",
         "loushang.harness.capabilities.graph_runtime",
+        "loushang.harness.runtime",
+    },
+    CAPABILITIES_ROOT / "graph_projection.py": {
+        "loushang.foundation.json",
+        "loushang.harness.capabilities.effective_runtime",
+        "loushang.harness.capabilities.graph_runtime",
+        "loushang.harness.runtime",
     },
 }
 WORKSPACE_DEFINITION_PATH = CAPABILITIES_ROOT / "workspace_contracts.py"

@@ -26,24 +26,36 @@ from loushang.harness.capabilities import (
     CapabilityFacetBinding,
     CapabilityGraphPlanRequest,
     CapabilityProviderContext,
+    EffectiveRuntimeDiff,
+    EffectiveRuntimeView,
+    ModelSurfaceReference,
+    RegistrationExplanation,
+    RegistrationInventoryEntry,
+    RegistrationInventorySnapshot,
     RuntimeCapabilityGraphBinder,
     RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphProjector,
     RuntimeCapabilityGraphRuntime,
+    RuntimeProfileSlotExplanation,
 )
+from loushang.harness.capabilities.effective_runtime import (
+    compose_registration_inventory,
+)
+from loushang.harness.capabilities.graph_projection import CapabilityGraphExplanation
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     MODEL_INPUT_PREPARATION_FACET,
     MODEL_INPUT_PREPARATION_REQUIREMENT,
 )
-from loushang.harness.runtime import ResolvedRuntimeProfile
+from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileSnapshot
 from loushang.harness.transcript import (
     AgentTranscriptSession,
     ModelInputRuntimeReferences,
 )
 
 CurrentSessionPredicate = Callable[[], bool]
+RegistrationEntriesProvider = Callable[[], tuple[RegistrationInventoryEntry, ...]]
 
 
 class SessionModelCallPreparer:
@@ -55,6 +67,7 @@ class SessionModelCallPreparer:
         transcript: AgentTranscriptSession,
         graph_runtime: RuntimeCapabilityGraphRuntime,
         is_current: CurrentSessionPredicate,
+        registration_entries_provider: RegistrationEntriesProvider,
     ) -> None:
         if not isinstance(transcript, AgentTranscriptSession):
             raise TypeError("model-call preparation requires AgentTranscriptSession")
@@ -64,9 +77,12 @@ class SessionModelCallPreparer:
             )
         if not callable(is_current):
             raise TypeError("model-call preparation requires a current-Session check")
+        if not callable(registration_entries_provider):
+            raise TypeError("model-call preparation requires registration inventory")
         self._transcript = transcript
         self._projector = RuntimeCapabilityGraphProjector(graph_runtime)
         self._is_current = is_current
+        self._registration_entries_provider = registration_entries_provider
 
     def __call__(self, preparation: ModelCallPreparation) -> CallOptions:
         if not isinstance(preparation, ModelCallPreparation):
@@ -79,7 +95,10 @@ class SessionModelCallPreparer:
             )
 
         graph = self._projector.snapshot()
-        registrations = self._projector.registration_inventory()
+        registrations = compose_registration_inventory(
+            self._projector.registration_inventory(),
+            self._registration_entries_provider(),
+        )
         committer = self._transcript.create_model_input_committer(
             purpose=preparation.purpose,
             logical_input=_logical_input(preparation),
@@ -156,6 +175,7 @@ class SessionModelCallRuntime:
         profile: ResolvedRuntimeProfile,
         runtime_id: str,
         is_current: CurrentSessionPredicate,
+        registration_entries_provider: RegistrationEntriesProvider | None = None,
     ) -> None:
         if not isinstance(transcript, AgentTranscriptSession):
             raise TypeError("model-call runtime requires AgentTranscriptSession")
@@ -165,9 +185,16 @@ class SessionModelCallRuntime:
             raise ValueError("model-call runtime id must be non-empty")
         if not callable(is_current):
             raise TypeError("model-call runtime requires a current-Session check")
+        if registration_entries_provider is not None and not callable(
+            registration_entries_provider
+        ):
+            raise TypeError("model-call runtime registration inventory must be callable")
 
         self._transcript = transcript
         self._is_current = is_current
+        self._registration_entries_provider = (
+            registration_entries_provider or (lambda: ())
+        )
         self._runtime = RuntimeCapabilityGraphRuntime(
             product_id=profile.product_id,
             runtime_id=runtime_id,
@@ -205,6 +232,9 @@ class SessionModelCallRuntime:
                             transcript=self._transcript,
                             graph_runtime=self._runtime,
                             is_current=self._is_current,
+                            registration_entries_provider=(
+                                self._registration_entries_provider
+                            ),
                         ),
                     ),
                 )
@@ -225,6 +255,78 @@ class SessionModelCallRuntime:
     @property
     def graph_runtime(self) -> RuntimeCapabilityGraphRuntime:
         return self._runtime
+
+    def effective_view(
+        self,
+        profile: RuntimeProfileSnapshot,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> EffectiveRuntimeView:
+        return self._projector().effective_view(
+            profile,
+            model_surface=self._model_surface(model_input_snapshot_id),
+            registrations=self._registration_inventory(),
+        )
+
+    def explain_capability(
+        self,
+        profile: RuntimeProfileSnapshot,
+        capability_id: str,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> CapabilityGraphExplanation:
+        model_surface = self._model_surface(model_input_snapshot_id)
+        return self._projector().explain(
+            capability_id,
+            profile=profile,
+            model_surface=model_surface,
+            registrations=self._registration_inventory(),
+        )
+
+    def explain_profile_slot(
+        self,
+        profile: RuntimeProfileSnapshot,
+        slot: str,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> RuntimeProfileSlotExplanation:
+        return self._projector().explain_profile_slot(
+            profile,
+            slot,
+            model_surface=self._model_surface(model_input_snapshot_id),
+            registrations=self._registration_inventory(),
+        )
+
+    def explain_registration(
+        self,
+        profile: RuntimeProfileSnapshot,
+        registration_id: str,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> RegistrationExplanation:
+        return self._projector().explain_registration(
+            registration_id,
+            profile=profile,
+            model_surface=self._model_surface(model_input_snapshot_id),
+            registrations=self._registration_inventory(),
+        )
+
+    def diff(
+        self,
+        before: EffectiveRuntimeView,
+        after: EffectiveRuntimeView,
+    ) -> EffectiveRuntimeDiff:
+        return self._projector().diff(before, after)
+
+    def to_json(
+        self,
+        value: EffectiveRuntimeView
+        | EffectiveRuntimeDiff
+        | CapabilityGraphExplanation
+        | RuntimeProfileSlotExplanation
+        | RegistrationExplanation,
+    ) -> dict[str, JSONValue]:
+        return self._projector().to_json(value)
 
     async def bind(self) -> None:
         if self._consumer is not None:
@@ -248,6 +350,33 @@ class SessionModelCallRuntime:
         async with self._bind_lock:
             self._consumer = None
             await self._binder.dispose(self._runtime)
+
+    def _projector(self) -> RuntimeCapabilityGraphProjector:
+        return RuntimeCapabilityGraphProjector(self._runtime)
+
+    def _registration_inventory(self) -> RegistrationInventorySnapshot:
+        projector = self._projector()
+        return compose_registration_inventory(
+            projector.registration_inventory(),
+            self._registration_entries_provider(),
+        )
+
+    def _model_surface(
+        self,
+        snapshot_id: str | None,
+    ) -> ModelSurfaceReference | None:
+        if snapshot_id is None:
+            return None
+        snapshot = self._transcript.rebuild_model_input(snapshot_id).snapshot
+        return ModelSurfaceReference(
+            schema_version=snapshot.schema_version,
+            snapshot_id=snapshot.snapshot_id,
+            product_id=snapshot.product_id,
+            runtime_id=snapshot.runtime_id,
+            profile_fingerprint=snapshot.profile_fingerprint,
+            mount_generation=snapshot.mount_generation,
+            registration_revision=snapshot.registration_revision,
+        )
 
 
 def _fingerprint(value: object) -> str:

@@ -30,6 +30,21 @@ from loushang.harness.capabilities.contracts import (
 from loushang.harness.capabilities.contracts import (
     CapabilityRequirementBinding as CapabilityRequirementBinding,
 )
+from loushang.harness.capabilities.effective_runtime import (
+    EffectiveRuntimeClocks as EffectiveRuntimeClocks,
+)
+from loushang.harness.capabilities.effective_runtime import (
+    EffectiveRuntimeDiff as EffectiveRuntimeDiff,
+)
+from loushang.harness.capabilities.effective_runtime import (
+    EffectiveRuntimeSkew as EffectiveRuntimeSkew,
+)
+from loushang.harness.capabilities.effective_runtime import (
+    EffectiveRuntimeView as EffectiveRuntimeView,
+)
+from loushang.harness.capabilities.effective_runtime import (
+    ModelSurfaceReference as ModelSurfaceReference,
+)
 from loushang.harness.capabilities.graph_binding import (
     CapabilityGraphBindingError as CapabilityGraphBindingError,
 )
@@ -61,7 +76,13 @@ from loushang.harness.capabilities.graph_projection import (
     CapabilityGraphExplanation as CapabilityGraphExplanation,
 )
 from loushang.harness.capabilities.graph_projection import (
+    RegistrationExplanation as RegistrationExplanation,
+)
+from loushang.harness.capabilities.graph_projection import (
     RuntimeCapabilityGraphProjector as RuntimeCapabilityGraphProjector,
+)
+from loushang.harness.capabilities.graph_projection import (
+    RuntimeProfileSlotExplanation as RuntimeProfileSlotExplanation,
 )
 from loushang.harness.capabilities.graph_runtime import (
     CapabilityFacetSet as CapabilityFacetSet,
@@ -171,6 +192,11 @@ __all__ = [
     "CapabilityRegistrationCollector",
     "CapabilityRequirement",
     "CapabilityRequirementBinding",
+    "EffectiveRuntimeClocks",
+    "EffectiveRuntimeDiff",
+    "EffectiveRuntimeSkew",
+    "EffectiveRuntimeView",
+    "ModelSurfaceReference",
     "PlannedCapability",
     "MountGraphSnapshot",
     "MountNodeSnapshot",
@@ -180,11 +206,13 @@ __all__ = [
     "MODEL_INPUT_PREPARATION_REQUIREMENT",
     "RegistrationInventoryEntry",
     "RegistrationInventorySnapshot",
+    "RegistrationExplanation",
     "RuntimeCapabilityGraphBinder",
     "RuntimeCapabilityGraphPlan",
     "RuntimeCapabilityGraphPlanner",
     "RuntimeCapabilityGraphProjector",
     "RuntimeCapabilityGraphRuntime",
+    "RuntimeProfileSlotExplanation",
     "WORKSPACE_CAPABILITY_DEFINITION",
     "WORKSPACE_PROCESS_REQUIREMENT",
     "WORKSPACE_TOOL_REQUIREMENT",

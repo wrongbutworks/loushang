@@ -257,6 +257,15 @@ def test_tool_registry_live_bindings_restore_the_previous_exact_winner() -> None
     assert first_lease.identity != second_lease.identity
     assert registry.list_definitions() == [second]
     assert registry.get_source_info("shared") == {"owner": "second"}
+    assert {
+        identity.registration_id
+        for _owner, identity, _state in registry.registration_inventory
+    }.issuperset(
+        {
+            first_lease.identity.registration_id,
+            second_lease.identity.registration_id,
+        }
+    )
 
     wrong_surface = RegistrationIdentity(
         surface="command",
@@ -345,11 +354,19 @@ def test_tool_registry_adopts_bootstrap_tool_into_exact_generation_ownership() -
     new_lease = registry.stage_tool(new_definition, owner=new_owner)
 
     assert new_lease.state == "staged"
+    assert all(
+        identity.registration_id != new_lease.identity.registration_id
+        for _owner, identity, _state in registry.registration_inventory
+    )
     assert registry.list_definitions()[0].label == "Bootstrap"
     scope = RegistrationScope(new_owner)
     scope.add(new_lease)
     scope.commit()
     assert new_lease.state == "active"
+    assert any(
+        identity.registration_id == new_lease.identity.registration_id
+        for _owner, identity, _state in registry.registration_inventory
+    )
     assert asyncio.run(old_lease.dispose()).state == "removed"
     assert registry.list_definitions() == [new_definition]
     assert asyncio.run(new_lease.dispose()).state == "removed"

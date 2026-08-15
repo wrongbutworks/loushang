@@ -194,6 +194,8 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         design_events: list[dict[str, object]] = []
         research.subscribe(research_events.append)
         design.subscribe(design_events.append)
+        await research.prepare_model_call_runtime()
+        effective_runtime = research.get_effective_runtime_view()
 
         assert research.session_control is research
         assert design.session_control is design
@@ -201,6 +203,15 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert design.session_id == "design-session"
         assert research.get_active_tool_names() == []
         assert design.get_active_tool_names() == []
+        assert effective_runtime.product_id == "research"
+        assert effective_runtime.clocks.model_surface is None
+        assert effective_runtime.skew == ()
+        assert research.explain_runtime_capability(
+            "harness.model_input"
+        ).clocks.mount == effective_runtime.clocks.mount
+        assert research.effective_runtime_to_json(effective_runtime)[
+            "runtime_id"
+        ] == effective_runtime.runtime_id
         _assert_no_composed_runtime_mirrors(research)
         _assert_no_composed_runtime_mirrors(design)
 

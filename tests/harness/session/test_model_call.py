@@ -19,7 +19,10 @@ from loushang.coding.compaction.profiles import (
     CODING_COMPACTION_SUMMARY_PROFILE,
     CODING_TURN_PREFIX_SUMMARY_PROFILE,
 )
-from loushang.harness.capabilities import standard_capability_composition_plan
+from loushang.harness.capabilities import (
+    RegistrationInventoryEntry,
+    standard_capability_composition_plan,
+)
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationKey,
@@ -79,6 +82,7 @@ def _model_call_runtime(
     session: AgentTranscriptSession,
     *,
     is_current: Callable[[], bool],
+    registrations: tuple[RegistrationInventoryEntry, ...] = (),
 ) -> SessionModelCallRuntime:
     profile = RuntimeProfileResolver().resolve(
         standard_capability_composition_plan(product_id="coding")
@@ -88,6 +92,7 @@ def _model_call_runtime(
         profile=profile,
         runtime_id="session:model-call-test",
         is_current=is_current,
+        registration_entries_provider=lambda: registrations,
     )
 
 
@@ -150,7 +155,22 @@ class _PreparedAdapter:
 def test_current_session_prepares_and_rebuilds_main_model_call() -> None:
     async def scenario() -> None:
         session = await _transcript_session()
-        runtime = _model_call_runtime(session, is_current=lambda: True)
+        supplemental_registration = RegistrationInventoryEntry(
+            registration_id="extension-tool-registration",
+            surface="tool",
+            public_key="extension_echo",
+            owner_kind="extension",
+            owner_id="echo",
+            runtime_id="session:model-call-test",
+            owner_generation=1,
+            attachment="effective",
+            state="active",
+        )
+        runtime = _model_call_runtime(
+            session,
+            is_current=lambda: True,
+            registrations=(supplemental_registration,),
+        )
         adapter = _PreparedAdapter()
         registry = get_default_api_registry()
         source_id = "session-model-call-test"
@@ -185,6 +205,30 @@ def test_current_session_prepares_and_rebuilds_main_model_call() -> None:
         assert [node.capability_id for node in graph_snapshot.nodes] == [
             "harness.model_input"
         ]
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        ).snapshot()
+        view = runtime.effective_view(
+            profile,
+            model_input_snapshot_id=snapshot_ids[0],
+        )
+        explanation = runtime.explain_capability(
+            profile,
+            "harness.model_input",
+            model_input_snapshot_id=snapshot_ids[0],
+        )
+        projected = runtime.to_json(view)
+
+        assert view.clocks.model_surface is not None
+        assert view.clocks.model_surface.snapshot_id == snapshot_ids[0]
+        assert view.skew == ()
+        assert supplemental_registration in view.registrations
+        assert rebuilt.snapshot.registration_revision == (
+            view.clocks.registration.revision
+        )
+        assert explanation.clocks == view.clocks
+        assert projected["assembly_fingerprint"] == view.assembly_fingerprint
+        assert "durable system prompt" not in repr(projected)
         await runtime.dispose()
         assert runtime.graph_runtime.is_closed
 

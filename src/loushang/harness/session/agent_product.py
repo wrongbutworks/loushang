@@ -12,8 +12,17 @@ from loushang.ai.api_registry import (
     get_default_api_registry,
 )
 from loushang.ai.model import ModelSelection
+from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
-from loushang.harness.capabilities import CapabilityCompositionRuntime
+from loushang.harness.capabilities import (
+    CapabilityCompositionRuntime,
+    CapabilityGraphExplanation,
+    EffectiveRuntimeDiff,
+    EffectiveRuntimeView,
+    RegistrationExplanation,
+    RegistrationInventoryEntry,
+    RuntimeProfileSlotExplanation,
+)
 from loushang.harness.config.agent import (
     CompactionSettings,
     RetrySettings,
@@ -206,6 +215,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 + str(self.session_manager.get_session_record().session_id)
             ),
             is_current=self._is_current_model_call_session,
+            registration_entries_provider=self._effective_registration_entries,
         )
         self._previous_agent_prepare_model_call = self.agent.prepare_model_call
         self._installed_agent_prepare_model_call: object | None = None
@@ -364,6 +374,111 @@ class AgentProductSession(AgentSessionAdapterMixin):
         if runtime is None:
             raise RuntimeError("Session capability profile has been disposed.")
         return runtime.profile
+
+    def get_effective_runtime_view(
+        self,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> EffectiveRuntimeView:
+        """Compose current runtime facts without claiming one atomic clock."""
+
+        return self._model_call_runtime.effective_view(
+            self.capability_profile.snapshot(),
+            model_input_snapshot_id=model_input_snapshot_id,
+        )
+
+    def explain_runtime_capability(
+        self,
+        capability_id: str,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> CapabilityGraphExplanation:
+        return self._model_call_runtime.explain_capability(
+            self.capability_profile.snapshot(),
+            capability_id,
+            model_input_snapshot_id=model_input_snapshot_id,
+        )
+
+    def explain_runtime_profile_slot(
+        self,
+        slot: str,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> RuntimeProfileSlotExplanation:
+        return self._model_call_runtime.explain_profile_slot(
+            self.capability_profile.snapshot(),
+            slot,
+            model_input_snapshot_id=model_input_snapshot_id,
+        )
+
+    def explain_runtime_registration(
+        self,
+        registration_id: str,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> RegistrationExplanation:
+        return self._model_call_runtime.explain_registration(
+            self.capability_profile.snapshot(),
+            registration_id,
+            model_input_snapshot_id=model_input_snapshot_id,
+        )
+
+    def diff_effective_runtime(
+        self,
+        before: EffectiveRuntimeView,
+        after: EffectiveRuntimeView,
+    ) -> EffectiveRuntimeDiff:
+        return self._model_call_runtime.diff(before, after)
+
+    def effective_runtime_to_json(
+        self,
+        value: EffectiveRuntimeView
+        | EffectiveRuntimeDiff
+        | CapabilityGraphExplanation
+        | RuntimeProfileSlotExplanation
+        | RegistrationExplanation,
+    ) -> dict[str, JSONValue]:
+        return self._model_call_runtime.to_json(value)
+
+    def _effective_registration_entries(
+        self,
+    ) -> tuple[RegistrationInventoryEntry, ...]:
+        tool_registry = self._tool_registry
+        if tool_registry is None:
+            tool_registry = self._composition.tool_controller.tool_registry
+        raw = (
+            list(tool_registry.registration_inventory)
+            if tool_registry is not None
+            else []
+        )
+        extension_inventory = getattr(
+            self._extension_runner,
+            "registration_inventory",
+            (),
+        )
+        raw.extend(extension_inventory)
+        entries: dict[str, RegistrationInventoryEntry] = {}
+        for owner, identity, state in raw:
+            if state == "disposed":
+                continue
+            entry = RegistrationInventoryEntry(
+                registration_id=identity.registration_id,
+                surface=identity.surface,
+                public_key=identity.public_key,
+                owner_kind=owner.owner_kind,
+                owner_id=owner.owner_id,
+                runtime_id=owner.runtime_id,
+                owner_generation=owner.generation,
+                attachment="effective",
+                state=state,
+            )
+            existing = entries.get(entry.registration_id)
+            if existing is not None and existing != entry:
+                raise RuntimeError(
+                    "registration id maps to conflicting Session inventory entries"
+                )
+            entries[entry.registration_id] = entry
+        return tuple(entries.values())
 
     def _composition_ports(
         self,

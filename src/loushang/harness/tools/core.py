@@ -27,6 +27,7 @@ from loushang.harness.runtime.registration import (
     RegistrationDisposalResult,
     RegistrationIdentity,
     RegistrationLease,
+    RegistrationLeaseState,
     RegistrationOwner,
 )
 from loushang.harness.tools.execution import (
@@ -591,6 +592,21 @@ class ToolRegistry:
 
     def bind_execution_host(self, host: ToolExecutionHost) -> None:
         self._execution_host = host
+
+    @property
+    def registration_inventory(
+        self,
+    ) -> tuple[
+        tuple[RegistrationOwner, RegistrationIdentity, RegistrationLeaseState], ...
+    ]:
+        """Return pre-redacted identities for currently published Tool layers."""
+
+        return tuple(
+            (registered.owner, registered.identity, "active")
+            for name in self._order
+            for registered in self._tools.get(name, ())
+            if registered.published
+        )
 
     def register_tool(
         self,
