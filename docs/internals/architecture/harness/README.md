@@ -33,6 +33,10 @@ planning, work event persistence, or AI provider behavior.
   defines the accepted next-stage convergence of Profile, Mount, Registration,
   and Extension/Resource construction authority around one publisher per owned
   live object while preserving independent fact clocks.
+- [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
+  freezes the current construction/publication owners, supported entrypoint
+  counts, Profile-slot handoff classes, Binder ordering, and production
+  construction allowlists before lifecycle convergence changes behavior.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   freezes the mutable-surface, compatibility, model-call, package-owner, and
   lifecycle-fault evidence that later convergence PRs must preserve or revise.
@@ -81,6 +85,9 @@ description.
   follow-up. Its
   [independent review brief](composition-lifecycle-authority-review-brief.md)
   can be given to reviewers without prior conversation context.
+- [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
+  is the executable zero-behavior-change inventory for that accepted plan and
+  distinguishes current repeated construction from cleanup leakage.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   is the executable pre-change inventory for that sequence. It records current
   compatibility and assigns each future contract to one package owner.

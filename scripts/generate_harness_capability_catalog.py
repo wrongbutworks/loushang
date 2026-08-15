@@ -36,6 +36,11 @@ class CapabilitySeam:
     definition: SymbolRef
     providers: tuple[SymbolRef, ...]
     consumers: tuple[ConsumerRole, ...]
+    production_mounts: tuple[SymbolRef, ...] = ()
+
+    @property
+    def mount_status(self) -> str:
+        return "production-mounted" if self.production_mounts else "source-complete"
 
 
 SOURCE_BACKED_SEAMS = (
@@ -85,6 +90,9 @@ SOURCE_BACKED_SEAMS = (
                 ),
             ),
         ),
+        production_mounts=(
+            "loushang.harness.session.model_call:SessionModelCallRuntime",
+        ),
     ),
 )
 
@@ -112,6 +120,7 @@ def load_catalog_entries() -> tuple[tuple[CapabilitySeam, CapabilityDefinition],
         capability_ids.add(definition.capability_id)
         _validate_providers(seam)
         _validate_consumers(seam, definition)
+        _validate_production_mounts(seam)
         loaded.append((seam, definition))
     return tuple(sorted(loaded, key=lambda item: item[1].capability_id))
 
@@ -133,10 +142,12 @@ def render_catalog() -> str:
             "remains defined by [Capability Dependency And Mount Lifecycle]"
             "(capability-dependency-and-mount-lifecycle.md).",
             "",
-            "Every listed Provider is bound through the existing "
-            "`RuntimeCapabilityGraphBinder`; owner-scoped live contributions use "
-            "`RegistrationScope`. A Capability appears here only after its Definition,",
-            "Provider, requirement, and Consumer symbols all exist in source.",
+            "A Capability appears here only after its Definition, Provider, requirement,",
+            "and Consumer symbols all exist in source. `source-complete` does not imply",
+            "that a Product mounts the seam. `production-mounted` requires a separate,",
+            "source-verified composition-owner reference. Mounted Providers use the",
+            "existing `RuntimeCapabilityGraphBinder`; owner-scoped live contributions",
+            "use `RegistrationScope`.",
             "",
             "Regenerate with:",
             "",
@@ -148,9 +159,9 @@ def render_catalog() -> str:
             "",
             "## Source-Backed Capability Seams",
             "",
-            "| Capability | Contract | Lifecycle | Facets | Definition | Provider | "
-            "Consumer requirements | Consumer |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| Capability | Mount status | Contract | Lifecycle | Facets | Definition | "
+            "Provider | Consumer requirements | Consumer |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
             *rows,
             "",
             "## Coverage Boundary",
@@ -181,12 +192,27 @@ def _render_row(seam: CapabilitySeam, definition: CapabilityDefinition) -> str:
         f"`{definition.scope}` / `{definition.refresh_boundary}` / "
         f"`{definition.phase}`"
     )
+    mount_status = f"`{seam.mount_status}`"
+    if seam.production_mounts:
+        mount_status += "<br>" + "<br>".join(
+            f"`{_label(item)}`" for item in seam.production_mounts
+        )
     return (
-        f"| `{definition.capability_id}` | v{definition.contract_version} / "
+        f"| `{definition.capability_id}` | {mount_status} | "
+        f"v{definition.contract_version} / "
         f"`{definition.owner_id}` | {lifecycle} | {facets} | "
         f"`{_label(seam.definition)}` | {provider_text} | {requirement_text} | "
         f"{consumer_text} |"
     )
+
+
+def _validate_production_mounts(seam: CapabilitySeam) -> None:
+    for reference in seam.production_mounts:
+        mounted_by = _resolve(reference)
+        if not callable(mounted_by):
+            raise TypeError(
+                f"catalog production mount is not callable: {_label(reference)}"
+            )
 
 
 def _validate_providers(seam: CapabilitySeam) -> None:
