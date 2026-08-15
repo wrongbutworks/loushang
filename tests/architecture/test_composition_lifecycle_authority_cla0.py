@@ -30,24 +30,20 @@ REQUIRED_ROWS = {
 EXPECTED_CONSTRUCTION_SITES = {
     "RuntimeCapabilityGraphRuntime": {
         (
-            Path("src/loushang/harness/session/model_call.py"),
-            "SessionModelCallRuntime.__init__",
+            Path("src/loushang/harness/session/agent_product.py"),
+            "AgentProductSession.__init__",
         ),
     },
     "RuntimeCapabilityGraphBinder": {
         (
-            Path("src/loushang/harness/session/model_call.py"),
-            "SessionModelCallRuntime.__init__",
+            Path("src/loushang/harness/session/agent_product.py"),
+            "AgentProductSession.__init__",
         ),
     },
     "RuntimeCapabilityGraphProjector": {
         (
-            Path("src/loushang/harness/session/model_call.py"),
-            "SessionModelCallPreparer.__init__",
-        ),
-        (
-            Path("src/loushang/harness/session/model_call.py"),
-            "SessionModelCallRuntime._projector",
+            Path("src/loushang/harness/session/agent_product.py"),
+            "AgentProductSession.__init__",
         ),
     },
     "RuntimeProfileBinder": {
@@ -362,8 +358,8 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
     assert len(fallback_matches) == 1
 
     model_call = _method_node(
-        Path("src/loushang/harness/session/model_call.py"),
-        "SessionModelCallRuntime",
+        Path("src/loushang/harness/session/agent_product.py"),
+        "AgentProductSession",
         "__init__",
     )
     model_calls = [
@@ -373,6 +369,7 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
     ]
     assert model_calls.count("RuntimeCapabilityGraphRuntime") == 1
     assert model_calls.count("RuntimeCapabilityGraphBinder") == 1
+    assert model_calls.count("RuntimeCapabilityGraphProjector") == 1
 
     extension_candidate = _method_node(
         Path("src/loushang/harness/extensions/runner.py"),

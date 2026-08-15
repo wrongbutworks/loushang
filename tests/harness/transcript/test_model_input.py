@@ -88,7 +88,10 @@ def _header(conversation_id: str = "model-input-conversation") -> ConversationHe
     )
 
 
-def _runtime_references() -> ModelInputRuntimeReferences:
+def _runtime_references(
+    *,
+    profile_fingerprint: str | None = None,
+) -> ModelInputRuntimeReferences:
     graph = MountGraphSnapshot(
         schema_version=1,
         graph_id="coding:runtime-1",
@@ -108,7 +111,26 @@ def _runtime_references() -> ModelInputRuntimeReferences:
         revision="c" * 64,
         entries=(),
     )
-    return ModelInputRuntimeReferences.from_snapshots(graph, inventory)
+    if profile_fingerprint is None:
+        return ModelInputRuntimeReferences.from_snapshots(graph, inventory)
+    return ModelInputRuntimeReferences.from_snapshots(
+        graph,
+        inventory,
+        profile_fingerprint=profile_fingerprint,
+    )
+
+
+def test_runtime_references_keep_current_profile_separate_from_mount() -> None:
+    references = _runtime_references(profile_fingerprint="d" * 64)
+
+    assert references.profile_fingerprint == "d" * 64
+    assert references.mount_generation == 3
+
+
+def test_runtime_references_keep_legacy_mount_profile_default() -> None:
+    references = _runtime_references()
+
+    assert references.profile_fingerprint == "a" * 64
 
 
 async def _memory_transcript(

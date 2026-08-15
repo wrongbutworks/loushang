@@ -87,6 +87,8 @@ class ModelInputRuntimeReferences:
         cls,
         graph: MountGraphSnapshot,
         registrations: RegistrationInventorySnapshot,
+        *,
+        profile_fingerprint: str | None = None,
     ) -> ModelInputRuntimeReferences:
         if not isinstance(graph, MountGraphSnapshot):
             raise TypeError("Model Input requires a committed MountGraphSnapshot")
@@ -106,7 +108,11 @@ class ModelInputRuntimeReferences:
             product_id=graph.product_id,
             runtime_id=graph.runtime_id,
             mount_generation=graph.generation,
-            profile_fingerprint=graph.profile_fingerprint,
+            profile_fingerprint=(
+                graph.profile_fingerprint
+                if profile_fingerprint is None
+                else profile_fingerprint
+            ),
             registration_revision=registrations.revision,
         )
 

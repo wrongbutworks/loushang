@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 
 import pytest
 
@@ -20,8 +21,15 @@ from loushang.coding.compaction.profiles import (
     CODING_TURN_PREFIX_SUMMARY_PROFILE,
 )
 from loushang.harness.capabilities import (
+    MODEL_INPUT_PREPARATION_REQUIREMENT,
     RegistrationInventoryEntry,
+    RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphProjector,
+    RuntimeCapabilityGraphRuntime,
     standard_capability_composition_plan,
+)
+from loushang.harness.capabilities.effective_runtime import (
+    runtime_profile_fingerprint,
 )
 from loushang.harness.conversation import (
     ConversationHeader,
@@ -29,7 +37,11 @@ from loushang.harness.conversation import (
     MemoryConversationStore,
 )
 from loushang.harness.runtime import RuntimeProfileResolver
-from loushang.harness.session.model_call import SessionModelCallRuntime
+from loushang.harness.session.model_call import (
+    SessionModelCallCapabilityConsumer,
+    SessionModelCallRuntime,
+    build_session_model_call_capability_binding,
+)
 from loushang.harness.transcript import (
     CONTEXT_BRANCH_SUMMARY_KIND,
     AgentTranscriptRecordFactory,
@@ -78,21 +90,87 @@ async def _transcript_session() -> AgentTranscriptSession:
     return session
 
 
+class _ModelCallTestRoot:
+    def __init__(
+        self,
+        session: AgentTranscriptSession,
+        *,
+        is_current: Callable[[], bool],
+        registrations: tuple[RegistrationInventoryEntry, ...],
+    ) -> None:
+        self._profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        profile_snapshot = self._profile.snapshot()
+        self.graph_runtime = RuntimeCapabilityGraphRuntime(
+            product_id=profile_snapshot.product_id,
+            runtime_id="session:model-call-test",
+            profile_fingerprint=runtime_profile_fingerprint(profile_snapshot),
+        )
+        self.current_profile_fingerprint = self.graph_runtime.profile_fingerprint
+        self._binder = RuntimeCapabilityGraphBinder()
+        self._projector = RuntimeCapabilityGraphProjector(self.graph_runtime)
+        self._lock = asyncio.Lock()
+        self._consumer: SessionModelCallCapabilityConsumer | None = None
+        self._binding = build_session_model_call_capability_binding(
+            transcript=session,
+            projector=self._projector,
+            product_id=profile_snapshot.product_id,
+            runtime_id="session:model-call-test",
+            is_current=is_current,
+            registration_entries_provider=lambda: registrations,
+            profile_fingerprint_provider=lambda: self.current_profile_fingerprint,
+        )
+        self._runtime = SessionModelCallRuntime(
+            transcript=session,
+            ensure_consumer=self._ensure_consumer,
+            projector=self._projector,
+            registration_entries_provider=lambda: registrations,
+        )
+
+    async def _ensure_consumer(self) -> SessionModelCallCapabilityConsumer:
+        if self._consumer is not None:
+            return self._consumer
+        async with self._lock:
+            if self._consumer is None:
+                await self._binder.bind(
+                    self.graph_runtime,
+                    self._binding.plan,
+                    (self._binding.provider_binding,),
+                )
+                self._consumer = SessionModelCallCapabilityConsumer(
+                    self.graph_runtime.capture(MODEL_INPUT_PREPARATION_REQUIREMENT)
+                )
+            return self._consumer
+
+    async def prepare(self, preparation: ModelCallPreparation) -> CallOptions:
+        return await self._runtime.prepare(preparation)
+
+    def effective_view(self, *args: object, **kwargs: object):
+        return self._runtime.effective_view(*args, **kwargs)
+
+    def explain_capability(self, *args: object, **kwargs: object):
+        return self._runtime.explain_capability(*args, **kwargs)
+
+    def to_json(self, value: object):
+        return self._runtime.to_json(value)  # type: ignore[arg-type]
+
+    async def dispose(self) -> None:
+        async with self._lock:
+            self._consumer = None
+            await self._binder.dispose(self.graph_runtime)
+
+
 def _model_call_runtime(
     session: AgentTranscriptSession,
     *,
     is_current: Callable[[], bool],
     registrations: tuple[RegistrationInventoryEntry, ...] = (),
-) -> SessionModelCallRuntime:
-    profile = RuntimeProfileResolver().resolve(
-        standard_capability_composition_plan(product_id="coding")
-    )
-    return SessionModelCallRuntime(
-        transcript=session,
-        profile=profile,
-        runtime_id="session:model-call-test",
+) -> _ModelCallTestRoot:
+    return _ModelCallTestRoot(
+        session,
         is_current=is_current,
-        registration_entries_provider=lambda: registrations,
+        registrations=registrations,
     )
 
 
@@ -270,6 +348,79 @@ def test_provider_retry_commits_each_attempt_with_one_invocation_identity() -> N
         assert [snapshot.purpose for snapshot in snapshots] == ["main", "main"]
         for snapshot in snapshots:
             assert session.rebuild_model_input(snapshot.snapshot_id).snapshot == snapshot
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_model_input_uses_current_profile_fact_instead_of_mount_profile() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        runtime.current_profile_fingerprint = "d" * 64
+        adapter = _PreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = "session-model-call-current-profile-test"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("hello")
+        finally:
+            registry.unregister_api_adapters(source_id)
+
+        snapshot = next(
+            entry.payload
+            for entry in session.get_entries()
+            if entry.kind == "model.input.prepared"
+        )
+        assert snapshot.profile_fingerprint == "d" * 64
+        assert snapshot.profile_fingerprint != runtime.graph_runtime.profile_fingerprint
+        assert session.rebuild_model_input(snapshot.snapshot_id).snapshot == snapshot
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_mount_registration_mismatch_writes_nothing_and_sends_nothing() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        await runtime._ensure_consumer()
+        inventory = runtime._projector.registration_inventory()
+        runtime._projector.registration_inventory = lambda: replace(  # type: ignore[method-assign]
+            inventory,
+            mount_generation=inventory.mount_generation + 1,
+        )
+        adapter = _PreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = "session-model-call-clock-mismatch-test"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("hello")
+        finally:
+            registry.unregister_api_adapters(source_id)
+
+        assert adapter.transport_calls == 0
+        assert all(
+            entry.kind != "model.input.prepared" for entry in session.get_entries()
+        )
+        assert isinstance(agent.state.messages[-1], AssistantMessage)
+        assert "clocks diverge" in (agent.state.messages[-1].error_message or "")
         await runtime.dispose()
 
     asyncio.run(scenario())

@@ -142,11 +142,11 @@ It is the transaction foundation. This plan does not introduce another binder.
 
 ### Model Input
 
-`SessionModelCallRuntime` currently creates and binds a private graph containing
-only `harness.model_input`. That graph proved the Capability lifecycle, but a
-private model-call graph cannot become the Session-wide composition authority.
-The Session composition root must own the graph and inject the declared
-model-input Consumer into the model-call runtime.
+At the CLA0 baseline, `SessionModelCallRuntime` created and bound a private
+graph containing only `harness.model_input`. That graph proved the Capability
+lifecycle, but a private model-call graph could not become the Session-wide
+composition authority. CLA2 moves that graph to the Session composition root
+and injects the declared model-input Consumer into the model-call runtime.
 
 ### Workspace
 

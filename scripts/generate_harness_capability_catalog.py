@@ -78,7 +78,8 @@ SOURCE_BACKED_SEAMS = (
             "MODEL_INPUT_CAPABILITY_DEFINITION"
         ),
         providers=(
-            "loushang.harness.session.model_call:SessionModelCallRuntime",
+            "loushang.harness.session.model_call:"
+            "build_session_model_call_capability_binding",
         ),
         consumers=(
             (
@@ -91,7 +92,7 @@ SOURCE_BACKED_SEAMS = (
             ),
         ),
         production_mounts=(
-            "loushang.harness.session.model_call:SessionModelCallRuntime",
+            "loushang.harness.session.agent_product:AgentProductSession",
         ),
     ),
 )

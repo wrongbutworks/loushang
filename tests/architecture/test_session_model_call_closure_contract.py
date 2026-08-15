@@ -27,6 +27,8 @@ EXPECTED_DIRECT_AI_IMPORTS = {
     ),
 }
 
+MODEL_CALL_RUNTIME_PATH = Path("src/loushang/harness/session/model_call.py")
+
 
 def test_pr8_contract_keeps_complete_model_call_inventory_and_evidence() -> None:
     text = CONTRACT_PATH.read_text(encoding="utf-8")
@@ -106,3 +108,30 @@ def test_pr8_contract_is_linked_from_plan_and_harness_catalog() -> None:
 
     assert link in PLAN_PATH.read_text(encoding="utf-8")
     assert link in README_PATH.read_text(encoding="utf-8")
+
+
+def test_cla2_model_call_runtime_cannot_plan_bind_or_own_the_graph() -> None:
+    tree = ast.parse(
+        MODEL_CALL_RUNTIME_PATH.read_text(encoding="utf-8"),
+        filename=str(MODEL_CALL_RUNTIME_PATH),
+    )
+    runtime = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "SessionModelCallRuntime"
+    )
+    forbidden = {
+        "RuntimeCapabilityGraphBinder",
+        "RuntimeCapabilityGraphPlanner",
+        "RuntimeCapabilityGraphRuntime",
+    }
+    referenced = {
+        node.id for node in ast.walk(runtime) if isinstance(node, ast.Name)
+    }
+
+    assert referenced.isdisjoint(forbidden)
+    assert {
+        node.name
+        for node in runtime.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }.isdisjoint({"bind", "dispose"})

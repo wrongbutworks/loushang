@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import cast
 
@@ -32,10 +31,9 @@ from loushang.harness.capabilities import (
     RegistrationExplanation,
     RegistrationInventoryEntry,
     RegistrationInventorySnapshot,
-    RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphPlan,
     RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphProjector,
-    RuntimeCapabilityGraphRuntime,
     RuntimeProfileSlotExplanation,
 )
 from loushang.harness.capabilities.effective_runtime import (
@@ -48,7 +46,7 @@ from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_PREPARATION_FACET,
     MODEL_INPUT_PREPARATION_REQUIREMENT,
 )
-from loushang.harness.runtime import ResolvedRuntimeProfile, RuntimeProfileSnapshot
+from loushang.harness.runtime import RuntimeProfileSnapshot
 from loushang.harness.transcript import (
     AgentTranscriptSession,
     ModelInputRuntimeReferences,
@@ -56,6 +54,7 @@ from loushang.harness.transcript import (
 
 CurrentSessionPredicate = Callable[[], bool]
 RegistrationEntriesProvider = Callable[[], tuple[RegistrationInventoryEntry, ...]]
+CurrentProfileFingerprintProvider = Callable[[], str]
 
 
 class SessionModelCallPreparer:
@@ -65,24 +64,26 @@ class SessionModelCallPreparer:
         self,
         *,
         transcript: AgentTranscriptSession,
-        graph_runtime: RuntimeCapabilityGraphRuntime,
+        projector: RuntimeCapabilityGraphProjector,
         is_current: CurrentSessionPredicate,
         registration_entries_provider: RegistrationEntriesProvider,
+        profile_fingerprint_provider: CurrentProfileFingerprintProvider,
     ) -> None:
         if not isinstance(transcript, AgentTranscriptSession):
             raise TypeError("model-call preparation requires AgentTranscriptSession")
-        if not isinstance(graph_runtime, RuntimeCapabilityGraphRuntime):
-            raise TypeError(
-                "model-call preparation requires RuntimeCapabilityGraphRuntime"
-            )
+        if not isinstance(projector, RuntimeCapabilityGraphProjector):
+            raise TypeError("model-call preparation requires graph projection")
         if not callable(is_current):
             raise TypeError("model-call preparation requires a current-Session check")
         if not callable(registration_entries_provider):
             raise TypeError("model-call preparation requires registration inventory")
+        if not callable(profile_fingerprint_provider):
+            raise TypeError("model-call preparation requires current Profile facts")
         self._transcript = transcript
-        self._projector = RuntimeCapabilityGraphProjector(graph_runtime)
+        self._projector = projector
         self._is_current = is_current
         self._registration_entries_provider = registration_entries_provider
+        self._profile_fingerprint_provider = profile_fingerprint_provider
 
     def __call__(self, preparation: ModelCallPreparation) -> CallOptions:
         if not isinstance(preparation, ModelCallPreparation):
@@ -105,6 +106,7 @@ class SessionModelCallPreparer:
             runtime_references=ModelInputRuntimeReferences.from_snapshots(
                 graph,
                 registrations,
+                profile_fingerprint=self._profile_fingerprint_provider(),
             ),
         )
         return replace(
@@ -165,82 +167,80 @@ class SessionModelCallCapabilityConsumer:
         return preparer(preparation)
 
 
-class SessionModelCallRuntime:
-    """Own the Session graph node and expose only the Agent preparation seam."""
+@dataclass(frozen=True)
+class SessionModelCallCapabilityBinding:
+    """Immutable graph inputs assembled for the Session composition root."""
 
-    def __init__(
-        self,
-        *,
-        transcript: AgentTranscriptSession,
-        profile: ResolvedRuntimeProfile,
-        runtime_id: str,
-        is_current: CurrentSessionPredicate,
-        registration_entries_provider: RegistrationEntriesProvider | None = None,
-    ) -> None:
-        if not isinstance(transcript, AgentTranscriptSession):
-            raise TypeError("model-call runtime requires AgentTranscriptSession")
-        if not isinstance(profile, ResolvedRuntimeProfile):
-            raise TypeError("model-call runtime requires ResolvedRuntimeProfile")
-        if not isinstance(runtime_id, str) or not runtime_id.strip():
-            raise ValueError("model-call runtime id must be non-empty")
-        if not callable(is_current):
-            raise TypeError("model-call runtime requires a current-Session check")
-        if registration_entries_provider is not None and not callable(
-            registration_entries_provider
-        ):
-            raise TypeError("model-call runtime registration inventory must be callable")
+    plan: RuntimeCapabilityGraphPlan
+    provider_binding: CapabilityBundleProviderBinding
 
-        self._transcript = transcript
-        self._is_current = is_current
-        self._registration_entries_provider = (
-            registration_entries_provider or (lambda: ())
-        )
-        self._runtime = RuntimeCapabilityGraphRuntime(
-            product_id=profile.product_id,
-            runtime_id=runtime_id,
-            profile_fingerprint=_fingerprint(profile.snapshot().to_json()),
-        )
-        self._binder = RuntimeCapabilityGraphBinder()
-        self._bind_lock = asyncio.Lock()
-        self._consumer: SessionModelCallCapabilityConsumer | None = None
 
-        provider = CapabilityBundleProvider(
-            capability_id=MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-            provider_id="harness.model_input.standard",
-            implementation_version=1,
-            compatible_contract=CapabilityContractRange.exact(1),
-            facets=MODEL_INPUT_CAPABILITY_DEFINITION.facets,
-            required_authorities=frozenset({"transcript"}),
-            source_id="builtin",
-            selection_rule="Product durable Model Input selection",
-        )
-        self._plan = RuntimeCapabilityGraphPlanner().plan(
-            CapabilityGraphPlanRequest(
-                product_id=profile.product_id,
-                roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-                definitions=(MODEL_INPUT_CAPABILITY_DEFINITION,),
-                providers=(provider,),
-            )
-        )
+def build_session_model_call_capability_binding(
+    *,
+    transcript: AgentTranscriptSession,
+    projector: RuntimeCapabilityGraphProjector,
+    product_id: str,
+    runtime_id: str,
+    is_current: CurrentSessionPredicate,
+    registration_entries_provider: RegistrationEntriesProvider,
+    profile_fingerprint_provider: CurrentProfileFingerprintProvider,
+) -> SessionModelCallCapabilityBinding:
+    """Build data-only graph inputs without acquiring graph lifecycle authority."""
 
-        def create(_context: CapabilityProviderContext) -> CapabilityBundleValue:
-            return CapabilityBundleValue(
-                (
-                    CapabilityFacetBinding(
-                        MODEL_INPUT_PREPARATION_FACET,
-                        SessionModelCallPreparer(
-                            transcript=self._transcript,
-                            graph_runtime=self._runtime,
-                            is_current=self._is_current,
-                            registration_entries_provider=(
-                                self._registration_entries_provider
-                            ),
-                        ),
+    if not isinstance(transcript, AgentTranscriptSession):
+        raise TypeError("model-call binding requires AgentTranscriptSession")
+    if not isinstance(projector, RuntimeCapabilityGraphProjector):
+        raise TypeError("model-call binding requires graph projection")
+    if not isinstance(product_id, str) or not product_id.strip():
+        raise ValueError("model-call binding Product id must be non-empty")
+    if not isinstance(runtime_id, str) or not runtime_id.strip():
+        raise ValueError("model-call binding runtime id must be non-empty")
+    for callback, name in (
+        (is_current, "current-Session check"),
+        (registration_entries_provider, "registration inventory"),
+        (profile_fingerprint_provider, "current Profile facts"),
+    ):
+        if not callable(callback):
+            raise TypeError(f"model-call binding requires {name}")
+
+    provider = CapabilityBundleProvider(
+        capability_id=MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
+        provider_id="harness.model_input.standard",
+        implementation_version=1,
+        compatible_contract=CapabilityContractRange.exact(1),
+        facets=MODEL_INPUT_CAPABILITY_DEFINITION.facets,
+        required_authorities=frozenset({"transcript"}),
+        source_id="builtin",
+        selection_rule="Product durable Model Input selection",
+    )
+    plan = RuntimeCapabilityGraphPlanner().plan(
+        CapabilityGraphPlanRequest(
+            product_id=product_id,
+            roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+            definitions=(MODEL_INPUT_CAPABILITY_DEFINITION,),
+            providers=(provider,),
+        )
+    )
+
+    def create(_context: CapabilityProviderContext) -> CapabilityBundleValue:
+        return CapabilityBundleValue(
+            (
+                CapabilityFacetBinding(
+                    MODEL_INPUT_PREPARATION_FACET,
+                    SessionModelCallPreparer(
+                        transcript=transcript,
+                        projector=projector,
+                        is_current=is_current,
+                        registration_entries_provider=registration_entries_provider,
+                        profile_fingerprint_provider=profile_fingerprint_provider,
                     ),
-                )
+                ),
             )
+        )
 
-        self._binding = CapabilityBundleProviderBinding(
+    return SessionModelCallCapabilityBinding(
+        plan=plan,
+        provider_binding=CapabilityBundleProviderBinding(
             provider=provider,
             scope_instance_id=runtime_id,
             binding_input_fingerprint=_fingerprint(
@@ -250,11 +250,40 @@ class SessionModelCallRuntime:
                 }
             ),
             create=create,
-        )
+        ),
+    )
 
-    @property
-    def graph_runtime(self) -> RuntimeCapabilityGraphRuntime:
-        return self._runtime
+
+class SessionModelCallRuntime:
+    """Consume the Session-owned model-input facet and read-only projection."""
+
+    def __init__(
+        self,
+        *,
+        transcript: AgentTranscriptSession,
+        ensure_consumer: Callable[
+            [], Awaitable[SessionModelCallCapabilityConsumer]
+        ],
+        projector: RuntimeCapabilityGraphProjector,
+        registration_entries_provider: RegistrationEntriesProvider | None = None,
+    ) -> None:
+        if not isinstance(transcript, AgentTranscriptSession):
+            raise TypeError("model-call runtime requires AgentTranscriptSession")
+        if not callable(ensure_consumer):
+            raise TypeError("model-call runtime requires a typed Consumer port")
+        if not isinstance(projector, RuntimeCapabilityGraphProjector):
+            raise TypeError("model-call runtime requires graph projection")
+        if registration_entries_provider is not None and not callable(
+            registration_entries_provider
+        ):
+            raise TypeError("model-call runtime registration inventory must be callable")
+
+        self._transcript = transcript
+        self._ensure_consumer = ensure_consumer
+        self._projector = projector
+        self._registration_entries_provider = (
+            registration_entries_provider or (lambda: ())
+        )
 
     def effective_view(
         self,
@@ -262,7 +291,7 @@ class SessionModelCallRuntime:
         *,
         model_input_snapshot_id: str | None = None,
     ) -> EffectiveRuntimeView:
-        return self._projector().effective_view(
+        return self._projector.effective_view(
             profile,
             model_surface=self._model_surface(model_input_snapshot_id),
             registrations=self._registration_inventory(),
@@ -276,7 +305,7 @@ class SessionModelCallRuntime:
         model_input_snapshot_id: str | None = None,
     ) -> CapabilityGraphExplanation:
         model_surface = self._model_surface(model_input_snapshot_id)
-        return self._projector().explain(
+        return self._projector.explain(
             capability_id,
             profile=profile,
             model_surface=model_surface,
@@ -290,7 +319,7 @@ class SessionModelCallRuntime:
         *,
         model_input_snapshot_id: str | None = None,
     ) -> RuntimeProfileSlotExplanation:
-        return self._projector().explain_profile_slot(
+        return self._projector.explain_profile_slot(
             profile,
             slot,
             model_surface=self._model_surface(model_input_snapshot_id),
@@ -304,7 +333,7 @@ class SessionModelCallRuntime:
         *,
         model_input_snapshot_id: str | None = None,
     ) -> RegistrationExplanation:
-        return self._projector().explain_registration(
+        return self._projector.explain_registration(
             registration_id,
             profile=profile,
             model_surface=self._model_surface(model_input_snapshot_id),
@@ -316,7 +345,7 @@ class SessionModelCallRuntime:
         before: EffectiveRuntimeView,
         after: EffectiveRuntimeView,
     ) -> EffectiveRuntimeDiff:
-        return self._projector().diff(before, after)
+        return self._projector.diff(before, after)
 
     def to_json(
         self,
@@ -326,38 +355,15 @@ class SessionModelCallRuntime:
         | RuntimeProfileSlotExplanation
         | RegistrationExplanation,
     ) -> dict[str, JSONValue]:
-        return self._projector().to_json(value)
-
-    async def bind(self) -> None:
-        if self._consumer is not None:
-            return
-        async with self._bind_lock:
-            if self._consumer is not None:
-                return
-            await self._binder.bind(self._runtime, self._plan, (self._binding,))
-            self._consumer = SessionModelCallCapabilityConsumer(
-                self._runtime.capture(MODEL_INPUT_PREPARATION_REQUIREMENT)
-            )
+        return self._projector.to_json(value)
 
     async def prepare(self, preparation: ModelCallPreparation) -> CallOptions:
-        await self.bind()
-        consumer = self._consumer
-        if consumer is None:
-            raise RuntimeError("model-call Capability is not bound")
+        consumer = await self._ensure_consumer()
         return consumer.prepare(preparation)
 
-    async def dispose(self) -> None:
-        async with self._bind_lock:
-            self._consumer = None
-            await self._binder.dispose(self._runtime)
-
-    def _projector(self) -> RuntimeCapabilityGraphProjector:
-        return RuntimeCapabilityGraphProjector(self._runtime)
-
     def _registration_inventory(self) -> RegistrationInventorySnapshot:
-        projector = self._projector()
         return compose_registration_inventory(
-            projector.registration_inventory(),
+            self._projector.registration_inventory(),
             self._registration_entries_provider(),
         )
 
