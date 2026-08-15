@@ -93,6 +93,10 @@ from loushang.harness.session.composition import (
 )
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.extension_bridge import AgentSessionExtensionBridge
+from loushang.harness.session.legacy_side_question import (
+    LegacySideQuestionBinding,
+    bind_legacy_side_question,
+)
 from loushang.harness.session.model_call import (
     SessionModelCallCapabilityConsumer,
     SessionModelCallRuntime,
@@ -156,6 +160,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         copy_to_clipboard: ClipboardWriter,
         retry_sleep: RetrySleeper,
         footer_data_provider: FooterDataPort,
+        side_question_binding: LegacySideQuestionBinding | None = None,
         package_summary_provider: PackageSummaryProvider | None = None,
         settings_manager: SettingsManager | None = None,
         model_registry: SessionModelCatalogPort | None = None,
@@ -265,12 +270,22 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
         self._tool_exec_service = tool_exec_service
-        side_question_factory = capability_runtime.side_question_provider_factory
-        self._side_question = (
-            SideQuestionCoordinator(side_question_factory.bind(self))
-            if side_question_factory is not None
-            else None
+        self._side_question_binding: LegacySideQuestionBinding | None = (
+            side_question_binding
+            if side_question_binding is not None
+            else bind_legacy_side_question(capability_runtime.profile)
         )
+        try:
+            side_question_factory = self._side_question_binding.provider_factory
+            self._side_question = (
+                SideQuestionCoordinator(side_question_factory.bind(self))
+                if side_question_factory is not None
+                else None
+            )
+        except BaseException:
+            self._side_question_binding.dispose()
+            self._side_question_binding = None
+            raise
         self.footer_data_provider = footer_data_provider
         self._base_prompt = (
             base_prompt if base_prompt is not None else self.agent.system_prompt
@@ -718,6 +733,13 @@ class AgentProductSession(AgentSessionAdapterMixin):
         if coordinator is not None:
             try:
                 await coordinator.cancel_and_wait()
+            except BaseException as exc:
+                errors.append(exc)
+        side_question_binding = self._side_question_binding
+        self._side_question_binding = None
+        if side_question_binding is not None:
+            try:
+                side_question_binding.dispose()
             except BaseException as exc:
                 errors.append(exc)
         self._restore_agent_model_call_boundary()

@@ -3,9 +3,13 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
+import loushang.coding.session.agent_session as agent_session_module
+import loushang.harness.session.agent_product as agent_product_module
 from loushang.agent import Agent
 from loushang.coding.product_plan import (
     CODING_CAPABILITY_PLAN,
@@ -15,7 +19,6 @@ from loushang.coding.product_plan import (
 )
 from loushang.coding.runtime_capability_admission import (
     SIDE_QUESTION_RUNTIME_PERMISSION,
-    bind_coding_capability_composition_runtime,
     resolve_coding_capability_profile,
 )
 from loushang.coding.session import AgentSession
@@ -23,6 +26,7 @@ from loushang.coding.session_manager import SessionManager
 from loushang.harness.capabilities import (
     CapabilityPack,
     bind_capability_composition_runtime,
+    standard_capability_composition_implementations,
 )
 from loushang.harness.capabilities.prompt import PromptSection
 from loushang.harness.conversation import ConversationHeader
@@ -49,6 +53,7 @@ from loushang.harness.runtime import (
     RuntimeProfileSnapshot,
     SideQuestionAnswer,
 )
+from loushang.harness.session.legacy_side_question import bind_legacy_side_question
 
 
 class _SideQuestionProviderFactory:
@@ -185,7 +190,9 @@ def test_agent_extension_side_question_replacement_runs_full_profile_chain() -> 
     )
     extension_runtime = ExtensionRunner([loaded])
 
-    runtime = bind_coding_capability_composition_runtime(extension_runtime)
+    resolution = resolve_coding_capability_profile(extension_runtime.active_extensions)
+    runtime = resolution.bind()
+    side_question = resolution.bind_side_question()
 
     selected = runtime.profile.capability(SIDE_QUESTION_PROVIDER_SLOT.key).selections
     assert len(selected) == 1
@@ -194,10 +201,23 @@ def test_agent_extension_side_question_replacement_runs_full_profile_chain() -> 
     assert selected[0].selection.implementation.endswith(
         ":interaction.side_question:review"
     )
-    assert runtime.side_question_provider_factory.name == "review"
+    assert getattr(side_question.provider_factory, "name") == "review"
     assert created == ["review"]
+    side_question.dispose()
     runtime.dispose()
     assert disposed == ["review"]
+
+
+def test_legacy_side_question_binding_ignores_unrelated_implementations() -> None:
+    unrelated = standard_capability_composition_implementations()[0]
+
+    binding = bind_legacy_side_question(
+        CODING_CAPABILITY_PROFILE,
+        additional_implementations=(unrelated, unrelated),
+    )
+
+    assert binding.provider_factory is not None
+    binding.dispose()
 
 
 def test_discovered_extension_can_replace_side_question_runtime(tmp_path) -> None:
@@ -254,9 +274,11 @@ capabilities = ["interaction.side_question"]
         ]
     )
 
-    runtime = bind_coding_capability_composition_runtime(extension_runtime)
+    resolution = resolve_coding_capability_profile(extension_runtime.active_extensions)
+    runtime = resolution.bind()
+    side_question = resolution.bind_side_question()
 
-    assert runtime.side_question_provider_factory.name == "discovered"
+    assert getattr(side_question.provider_factory, "name") == "discovered"
     assert (
         runtime.profile.capability(SIDE_QUESTION_PROVIDER_SLOT.key)
         .selections[0]
@@ -268,6 +290,7 @@ capabilities = ["interaction.side_question"]
         (surface.type, surface.name)
         for surface in extension_runtime.active_extensions[0].surfaces
     ] == [("runtime_capability", "discovered")]
+    side_question.dispose()
     runtime.dispose()
 
 
@@ -296,10 +319,10 @@ def test_multiple_external_replacements_select_only_the_highest_priority_factory
     assert selected[0].layer_id == "extension:acme.high"
     assert created == []
 
-    runtime = resolution.bind()
-    assert runtime.side_question_provider_factory.name == "high"
+    side_question = resolution.bind_side_question()
+    assert getattr(side_question.provider_factory, "name") == "high"
     assert created == ["high"]
-    runtime.dispose()
+    side_question.dispose()
 
 
 def test_ungranted_external_replacement_is_rejected_before_factory_creation() -> None:
@@ -407,10 +430,10 @@ def test_equal_priority_external_candidates_do_not_depend_on_discovery_order() -
     assert forward_selection.layer_id == "extension:acme.zeta"
     assert created == []
 
-    runtime = reverse.bind()
-    assert runtime.side_question_provider_factory.name == "zeta"
+    side_question = reverse.bind_side_question()
+    assert getattr(side_question.provider_factory, "name") == "zeta"
     assert created == ["zeta"]
-    runtime.dispose()
+    side_question.dispose()
 
 
 def test_selected_external_factory_failure_does_not_fallback_to_lower_candidate() -> (
@@ -439,7 +462,7 @@ def test_selected_external_factory_failure_does_not_fallback_to_lower_candidate(
     )
 
     with pytest.raises(RuntimeCapabilityBindingError) as exc_info:
-        resolution.bind()
+        resolution.bind_side_question()
 
     assert exc_info.value.implementation.endswith(":interaction.side_question:high")
     assert isinstance(exc_info.value.__cause__, RuntimeError)
@@ -477,6 +500,9 @@ def test_external_side_question_replacement_binds_to_the_live_coding_session(
     )
     extension = _extension("acme.external", replacement)
     extension_runtime = ExtensionRunner([extension])
+    capability_runtime = resolve_coding_capability_profile(
+        extension_runtime.active_extensions
+    ).bind()
 
     async def scenario() -> None:
         manager = await SessionManager.new(
@@ -487,6 +513,7 @@ def test_external_side_question_replacement_binds_to_the_live_coding_session(
         session = AgentSession(
             agent=Agent(initial_state={"system_prompt": "Coding"}),
             session_manager=manager,
+            capability_runtime=capability_runtime,
             extension_runner=extension_runtime,
         )
 
@@ -501,6 +528,90 @@ def test_external_side_question_replacement_binds_to_the_live_coding_session(
             == "extension"
         )
         await session.dispose()
+
+    asyncio.run(scenario())
+    assert disposed == ["external"]
+
+
+def test_direct_session_rolls_back_resource_runtime_if_side_question_binding_fails(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+    runtime = cast(
+        Any,
+        SimpleNamespace(dispose=lambda: events.append("dispose:resources")),
+    )
+
+    class Resolution:
+        def bind(self):  # type: ignore[no-untyped-def]
+            events.append("bind:resources")
+            return runtime
+
+        def bind_side_question(self):  # type: ignore[no-untyped-def]
+            raise RuntimeError("side-question binding failed")
+
+    monkeypatch.setattr(
+        agent_session_module,
+        "resolve_coding_capability_profile",
+        lambda _extensions: Resolution(),
+    )
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd=str(tmp_path),
+            persist=False,
+        )
+        with pytest.raises(RuntimeError, match="side-question binding failed"):
+            AgentSession(
+                agent=Agent(initial_state={"system_prompt": "Coding"}),
+                session_manager=manager,
+                extension_runner=ExtensionRunner([]),
+            )
+
+    asyncio.run(scenario())
+    assert events == ["bind:resources", "dispose:resources"]
+
+
+def test_direct_session_rolls_back_side_question_after_late_construction_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    disposed: list[str] = []
+
+    class Factory:
+        name = "external"
+
+        def bind(self, _context: object) -> object:
+            return SimpleNamespace(cancel=lambda: None)
+
+    replacement = RegisteredRuntimeCapabilityReplacement(
+        slot=SIDE_QUESTION_PROVIDER_SLOT.key,
+        name="external",
+        create=Factory,
+        dispose=lambda value: disposed.append(str(getattr(value, "name"))),
+    )
+    monkeypatch.setattr(
+        agent_product_module,
+        "compose_session_runtime",
+        lambda _ports: (_ for _ in ()).throw(RuntimeError("composition failed")),
+    )
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd=str(tmp_path),
+            persist=False,
+        )
+        with pytest.raises(RuntimeError, match="composition failed"):
+            AgentSession(
+                agent=Agent(initial_state={"system_prompt": "Coding"}),
+                session_manager=manager,
+                extension_runner=ExtensionRunner(
+                    [_extension("acme.external", replacement)]
+                ),
+            )
 
     asyncio.run(scenario())
     assert disposed == ["external"]

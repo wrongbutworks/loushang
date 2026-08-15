@@ -56,6 +56,14 @@ EXPECTED_CONSTRUCTION_SITES = {
             "bind_capability_composition_runtime",
         ),
         (
+            Path("src/loushang/harness/capabilities/resources_provider.py"),
+            "resources_capability_provider_binding.create",
+        ),
+        (
+            Path("src/loushang/harness/session/legacy_side_question.py"),
+            "bind_legacy_side_question",
+        ),
+        (
             Path("src/loushang/harness/transcript/runtime_profile.py"),
             "AgentTranscriptProfileRuntime.__init__",
         ),
@@ -87,10 +95,15 @@ TRACKED_CALL_SYMBOLS = frozenset(
         *EXPECTED_CONSTRUCTION_SITES,
         "bind_capability_composition_runtime",
         "_publish_generation",
+        "resources_capability_provider_binding",
     }
 )
 GUARDED_CONSTRUCTION_SYMBOLS = frozenset(
-    {*EXPECTED_CONSTRUCTION_SITES, "bind_capability_composition_runtime"}
+    {
+        *EXPECTED_CONSTRUCTION_SITES,
+        "bind_capability_composition_runtime",
+        "resources_capability_provider_binding",
+    }
 )
 
 
@@ -335,27 +348,18 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
     ]
     assert managed_calls.count("bind_capabilities") == 1
     assert managed_calls.count("bind_session_capabilities") == 1
+    assert managed_calls.count("bind_session_side_question") == 1
 
     direct = _method_node(
         Path("src/loushang/coding/session/agent_session.py"),
         "AgentSession",
         "__init__",
     )
-    fallback_matches = [
-        node
-        for node in ast.walk(direct)
-        if isinstance(node, ast.IfExp)
-        and {
-            _call_name(call.func)
-            for call in ast.walk(node)
-            if isinstance(call, ast.Call)
-        }
-        == {
-            "bind_coding_capability_composition_runtime",
-            "bind_capability_composition_runtime",
-        }
+    direct_calls = [
+        _call_name(node.func) for node in ast.walk(direct) if isinstance(node, ast.Call)
     ]
-    assert len(fallback_matches) == 1
+    assert direct_calls.count("resolve_coding_capability_profile") == 1
+    assert direct_calls.count("bind_capability_composition_runtime") == 1
 
     model_call = _method_node(
         Path("src/loushang/harness/session/agent_product.py"),
@@ -459,5 +463,10 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
     )
     assert statuses == {
         "harness.model_input": "production-mounted",
+        "harness.resources": "source-complete",
         "harness.workspace": "source-complete",
     }
+
+
+def test_cla3_resources_provider_is_not_production_mounted() -> None:
+    assert _construction_sites("resources_capability_provider_binding") == Counter()

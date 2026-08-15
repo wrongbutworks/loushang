@@ -5,6 +5,7 @@ import pytest
 from loushang.harness.capabilities import (
     CapabilityPack,
     bind_capability_composition_runtime,
+    standard_capability_composition_implementations,
     standard_capability_composition_plan,
 )
 from loushang.harness.capabilities.composition_runtime import (
@@ -23,6 +24,7 @@ from loushang.harness.runtime import (
     RuntimeProfileResolver,
     standard_capability_composition_slots,
 )
+from loushang.harness.session.legacy_side_question import bind_legacy_side_question
 
 
 def _profile(*, prompt_config: dict[str, object] | None = None):
@@ -135,7 +137,15 @@ def test_standard_composition_plan_supports_per_slot_source_boundaries() -> None
     assert slots[SIDE_QUESTION_PROVIDER_SLOT.key].allowed_sources == frozenset(
         {"product", "oem", "extension"}
     )
-    assert runtime.side_question_provider_factory is not None
+    assert SIDE_QUESTION_PROVIDER_SLOT.key not in runtime.binding.values()
+    assert SIDE_QUESTION_PROVIDER_SLOT.key in {
+        implementation.slot
+        for implementation in standard_capability_composition_implementations()
+    }
+    assert not hasattr(runtime, "side_question_provider_factory")
+    side_question = bind_legacy_side_question(profile)
+    assert side_question.provider_factory is not None
+    side_question.dispose()
     runtime.dispose()
 
 

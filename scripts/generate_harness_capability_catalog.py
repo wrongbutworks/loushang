@@ -46,6 +46,50 @@ class CapabilitySeam:
 SOURCE_BACKED_SEAMS = (
     CapabilitySeam(
         definition=(
+            "loushang.harness.capabilities.resources_contracts:"
+            "RESOURCES_CAPABILITY_DEFINITION"
+        ),
+        providers=(
+            "loushang.harness.capabilities.resources_provider:"
+            "resources_capability_provider_binding",
+        ),
+        consumers=(
+            (
+                "loushang.harness.capabilities.resources_consumers:"
+                "ResourceActivationCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.resources_contracts:"
+                    "RESOURCES_ACTIVATION_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.capabilities.resources_consumers:"
+                "ResourcePromptCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.resources_contracts:"
+                    "RESOURCES_PROMPT_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.capabilities.resources_consumers:"
+                "ResourceToolPackCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.resources_contracts:"
+                    "RESOURCES_TOOL_PACK_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.capabilities.resources_consumers:"
+                "ResourceCommandPackCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.resources_contracts:"
+                    "RESOURCES_COMMAND_PACK_REQUIREMENT",
+                ),
+            ),
+        ),
+    ),
+    CapabilitySeam(
+        definition=(
             "loushang.harness.capabilities.workspace_contracts:"
             "WORKSPACE_CAPABILITY_DEFINITION"
         ),
@@ -168,8 +212,8 @@ def render_catalog() -> str:
             "",
             "## Coverage Boundary",
             "",
-            "`harness.resources`, `harness.session`, `coding.lsp`, and `coding.arch` "
-            "remain accepted rollout targets, but they are deliberately absent from the "
+            "`harness.session`, `coding.lsp`, and `coding.arch` remain accepted rollout "
+            "targets, but they are deliberately absent from the "
             "table until each has a complete source-backed Definition / Provider /",
             "Consumer seam. Fine-grained Runtime Profile slots and individual Tools,",
             "hooks, resources, and Extension contributions do not become top-level",
