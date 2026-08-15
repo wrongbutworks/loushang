@@ -108,9 +108,17 @@ class SideQuestionCoordinator:
         """Cancel the owned request and join it before its Session is disposed."""
 
         task = self._active_task
-        cancelled = self.cancel()
-        if task is not None and task is not asyncio.current_task():
-            await asyncio.gather(task, return_exceptions=True)
+        error: BaseException | None = None
+        cancelled = False
+        try:
+            cancelled = self.cancel()
+        except BaseException as exc:
+            error = exc
+        finally:
+            if task is not None and task is not asyncio.current_task():
+                await asyncio.gather(task, return_exceptions=True)
+        if error is not None:
+            raise error
         return cancelled
 
 

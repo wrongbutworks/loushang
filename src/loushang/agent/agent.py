@@ -10,6 +10,7 @@ from loushang.agent.agent_loop import run_agent_loop, run_agent_loop_continue
 from loushang.agent.model_transport import (
     is_prepared_request_conformant,
     is_synthetic_model_transport,
+    prepared_request_conformant,
 )
 from loushang.agent.types import (
     AfterToolCallContext,
@@ -49,6 +50,7 @@ class AgentStateError(RuntimeError):
     pass
 
 
+@prepared_request_conformant
 async def _default_stream(model, context, options=None):
     return await stream(model, context, options)
 
@@ -154,14 +156,7 @@ class Agent:
         self.convert_to_llm = options.convert_to_llm or _default_convert_to_llm
         self.transform_context = options.transform_context
         self.stream_fn = options.stream_fn or _default_stream
-        self.model_transport_is_prepared_request_conformant = (
-            options.stream_fn is None
-            or is_prepared_request_conformant(options.stream_fn)
-        )
-        self.model_transport_is_explicitly_synthetic = (
-            options.stream_fn is not None
-            and is_synthetic_model_transport(options.stream_fn)
-        )
+        self.model_transport_requires_prepared_request_conformance = False
         self.call_options = options.call_options or CallOptions()
         self.prepare_model_call = options.prepare_model_call
         self.before_tool_call = options.before_tool_call
@@ -330,6 +325,22 @@ class Agent:
         self._max_retry_delay_ms = value
 
     # === Convenience properties ===
+
+    @property
+    def model_transport_is_prepared_request_conformant(self) -> bool:
+        """Report conformance for the currently installed transport."""
+
+        return (
+            self.stream_fn is _default_stream
+            or self.stream_fn is stream
+            or is_prepared_request_conformant(self.stream_fn)
+        )
+
+    @property
+    def model_transport_is_explicitly_synthetic(self) -> bool:
+        """Report the current transport's visible test/simulation opt-out."""
+
+        return is_synthetic_model_transport(self.stream_fn)
 
     @property
     def is_streaming(self) -> bool:
@@ -601,6 +612,9 @@ class Agent:
             before_tool_call=self.before_tool_call,
             after_tool_call=self.after_tool_call,
             prepare_model_call=self.prepare_model_call,
+            require_prepared_request_conformance=(
+                self.model_transport_requires_prepared_request_conformance
+            ),
             convert_to_llm=self.convert_to_llm,
             transform_context=self.transform_context,
             get_mailbox_messages=get_mailbox_messages,

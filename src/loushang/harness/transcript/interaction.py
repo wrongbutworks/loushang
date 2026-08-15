@@ -397,6 +397,12 @@ class AgentTranscriptNavigationRuntime:
     def abort(self) -> bool:
         return self._transaction.abort()
 
+    async def cancel_and_wait(self) -> None:
+        """Abort and join the active summary transaction before disposal."""
+
+        self.abort()
+        await self._transaction.wait()
+
     def prepare(self, target_id: str) -> TranscriptNavigationPlan | None:
         old_leaf_id = self.session.get_leaf_id()
         if target_id == old_leaf_id:

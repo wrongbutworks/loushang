@@ -10,7 +10,8 @@ from loushang.agent import (
     prepared_request_conformant,
     synthetic_model_transport,
 )
-from loushang.agent.types import AgentToolResult
+from loushang.agent.agent_loop import run_agent_loop
+from loushang.agent.types import AgentContext, AgentToolResult
 from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
@@ -383,6 +384,144 @@ def test_durable_session_rejects_unconstrained_custom_stream(tmp_path) -> None:
     asyncio.run(scenario())
 
 
+def test_durable_session_rechecks_replaced_transport_before_sampling(tmp_path) -> None:
+    transport_calls = 0
+
+    async def custom_stream(model, context, options=None):
+        nonlocal transport_calls
+        del model, context, options
+        transport_calls += 1
+        raise AssertionError("transport must not start")
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd=str(tmp_path),
+            persist=True,
+        )
+        agent = Agent()
+        session = AgentSession(agent=agent, session_manager=manager)
+        agent.stream_fn = custom_stream
+        try:
+            async def emit(event):
+                del event
+
+            with pytest.raises(ValueError, match="prepared_request_conformant"):
+                await run_agent_loop(
+                    [
+                        UserMessage(
+                            role="user",
+                            content="must remain durable",
+                            timestamp=1.0,
+                        )
+                    ],
+                    AgentContext(system_prompt="", messages=[]),
+                    agent._create_loop_config(),
+                    emit,
+                    stream_fn=agent.stream_fn,
+                )
+            assert transport_calls == 0
+            assert all(
+                entry.kind != "model.input.prepared" for entry in manager.get_entries()
+            )
+        finally:
+            await session.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_session_dispose_restores_exact_agent_model_call_boundary(tmp_path) -> None:
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd=str(tmp_path),
+            persist=False,
+        )
+        agent = Agent()
+        session = AgentSession(agent=agent, session_manager=manager)
+        assert callable(agent.prepare_model_call)
+
+        await session.dispose()
+        assert agent.prepare_model_call is None
+        assert agent.model_transport_requires_prepared_request_conformance is False
+
+        def replacement(preparation):
+            return preparation.options
+
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "replacement",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+        session = AgentSession(agent=agent, session_manager=manager)
+        agent.prepare_model_call = replacement
+        await session.dispose()
+        assert agent.prepare_model_call is replacement
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_session_dispose_finishes_model_call_cleanup(tmp_path) -> None:
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd=str(tmp_path),
+            persist=False,
+        )
+        agent = Agent()
+        session = AgentSession(agent=agent, session_manager=manager)
+        original_dispose = session._model_call_runtime.dispose
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def slow_dispose() -> None:
+            started.set()
+            await release.wait()
+            await original_dispose()
+
+        session._model_call_runtime.dispose = slow_dispose  # type: ignore[method-assign]
+        task = asyncio.create_task(session.dispose())
+        await started.wait()
+        task.cancel()
+        release.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert agent.prepare_model_call is None
+        assert agent.model_transport_requires_prepared_request_conformance is False
+        with pytest.raises(RuntimeError, match="has been disposed"):
+            _ = session.capability_profile
+
+    asyncio.run(scenario())
+
+
+def test_side_question_cancel_failure_does_not_skip_model_call_cleanup(tmp_path) -> None:
+    class _FailingCoordinator:
+        async def cancel_and_wait(self) -> bool:
+            raise RuntimeError("side-question cancel failed")
+
+        def cancel(self) -> bool:
+            return False
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd=str(tmp_path),
+            persist=False,
+        )
+        agent = Agent()
+        session = AgentSession(agent=agent, session_manager=manager)
+        session._side_question = _FailingCoordinator()  # type: ignore[assignment]
+
+        with pytest.raises(RuntimeError, match="side-question cancel failed"):
+            await session.dispose()
+        assert agent.prepare_model_call is None
+        with pytest.raises(RuntimeError, match="has been disposed"):
+            _ = session.capability_profile
+
+    asyncio.run(scenario())
+
+
 def test_durable_session_accepts_declared_conformant_custom_stream(tmp_path) -> None:
     @prepared_request_conformant
     async def custom_stream(model, context, options=None):
@@ -397,6 +536,24 @@ def test_durable_session_accepts_declared_conformant_custom_stream(tmp_path) -> 
         )
         session = AgentSession(
             agent=Agent(stream_fn=custom_stream),
+            session_manager=manager,
+        )
+        await session.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_durable_session_accepts_explicit_standard_ai_stream(tmp_path) -> None:
+    from loushang.ai import stream
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd=str(tmp_path),
+            persist=True,
+        )
+        session = AgentSession(
+            agent=Agent(stream_fn=stream),
             session_manager=manager,
         )
         await session.dispose()

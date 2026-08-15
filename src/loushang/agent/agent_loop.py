@@ -8,6 +8,10 @@ from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import Any, TypeVar
 
+from loushang.agent.model_transport import (
+    is_prepared_request_conformant,
+    is_synthetic_model_transport,
+)
 from loushang.agent.tool_output import (
     STRICT_JSON_TOOL_OUTPUT_PROJECTOR,
     ToolOutputProjectionError,
@@ -511,6 +515,16 @@ async def _collect_assistant_response(
     )
 
     call_stream = stream_fn or stream
+    if (
+        config.require_prepared_request_conformance
+        and call_stream is not stream
+        and not is_prepared_request_conformant(call_stream)
+        and not is_synthetic_model_transport(call_stream)
+    ):
+        raise ValueError(
+            "durable Product sessions require the standard AI stream or a "
+            "prepared_request_conformant custom stream"
+        )
     options = replace(
         config.call_options,
         cancellation=signal if signal is not None else config.call_options.cancellation,

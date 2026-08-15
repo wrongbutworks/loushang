@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Protocol, cast
 
@@ -49,6 +50,7 @@ from loushang.harness.runtime.registration import (
     RegistrationDisposalResult,
     RegistrationLease,
     RegistrationOwner,
+    _await_cancellation_atomic,
 )
 from loushang.harness.session.agent_adapter import (
     AgentSessionAdapterMixin,
@@ -70,6 +72,7 @@ from loushang.harness.session.composition import (
     SessionModelCatalogPort,
     SessionProductInputs,
     compose_session_runtime,
+    supports_prepare_model_call,
 )
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.extension_bridge import AgentSessionExtensionBridge
@@ -94,6 +97,15 @@ BranchSummaryExecutor = Callable[..., Awaitable[BranchSummaryOutput]]
 ChangelogProvider = Callable[[str, str], object]
 ClipboardWriter = Callable[[str], object]
 RetrySleeper = Callable[[int, CancellationSignal], Awaitable[None]]
+
+
+def _require_durable_summary_executor(
+    callback: Callable[..., object], *, name: str
+) -> None:
+    if not supports_prepare_model_call(callback):
+        raise ValueError(
+            f"durable Product {name} must accept prepare_model_call"
+        )
 
 
 class FooterDataPort(Protocol):
@@ -176,6 +188,15 @@ class AgentProductSession(AgentSessionAdapterMixin):
             raise ValueError(
                 "Agent Product session owns the model-call preparation boundary"
             )
+        if session_manager.persist:
+            _require_durable_summary_executor(
+                execute_compaction,
+                name="compaction executor",
+            )
+            _require_durable_summary_executor(
+                execute_branch_summary,
+                name="branch-summary executor",
+            )
         self._model_call_runtime = SessionModelCallRuntime(
             transcript=session_manager,
             profile=capability_runtime.profile,
@@ -185,7 +206,12 @@ class AgentProductSession(AgentSessionAdapterMixin):
             ),
             is_current=self._is_current_model_call_session,
         )
-        self.agent.prepare_model_call = self._model_call_runtime.prepare
+        self._previous_agent_prepare_model_call = self.agent.prepare_model_call
+        self._installed_agent_prepare_model_call: object | None = None
+        self._previous_transport_requirement = (
+            self.agent.model_transport_requires_prepared_request_conformance
+        )
+        self._installed_transport_requirement: bool | None = None
         self._extension_tool_registration_leases = []
         self._tool_registry = tool_registry
         self.diagnostics_service = diagnostics_service
@@ -327,6 +353,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             apply_context=self._apply_agent_transcript_context,
             sync_footer=self._sync_footer_available_provider_count,
         )
+        self._install_agent_model_call_boundary()
 
     @property
     def capability_profile(self) -> ResolvedRuntimeProfile:
@@ -481,14 +508,70 @@ class AgentProductSession(AgentSessionAdapterMixin):
         return coordinator.cancel() if coordinator is not None else False
 
     async def _dispose_session_runtime_profile(self) -> None:
-        # Stop the selected Provider before its capability factory is disposed.
+        base_dispose = super()._dispose_session_runtime_profile
+        task = asyncio.create_task(
+            self._dispose_owned_model_call_runtime(base_dispose=base_dispose)
+        )
+        await _await_cancellation_atomic(task)
+
+    async def _dispose_owned_model_call_runtime(
+        self,
+        *,
+        base_dispose: Callable[[], Awaitable[None]],
+    ) -> None:
+        errors: list[BaseException] = []
         coordinator = self._side_question
         if coordinator is not None:
-            await coordinator.cancel_and_wait()
+            try:
+                await coordinator.cancel_and_wait()
+            except BaseException as exc:
+                errors.append(exc)
+        self._restore_agent_model_call_boundary()
         try:
             await self._model_call_runtime.dispose()
-        finally:
-            await super()._dispose_session_runtime_profile()
+        except BaseException as exc:
+            errors.append(exc)
+        try:
+            await base_dispose()
+        except BaseException as exc:
+            errors.append(exc)
+        if errors:
+            primary = errors[0]
+            for cleanup_error in errors[1:]:
+                primary.add_note(
+                    "Additional Session model-call cleanup failure: "
+                    f"{cleanup_error!r}"
+                )
+            raise primary
+
+    def _install_agent_model_call_boundary(self) -> None:
+        prepare = self._model_call_runtime.prepare
+        self.agent.prepare_model_call = prepare
+        self._installed_agent_prepare_model_call = prepare
+        requirement = self._previous_transport_requirement or bool(
+            self.session_manager.persist
+        )
+        self.agent.model_transport_requires_prepared_request_conformance = requirement
+        self._installed_transport_requirement = requirement
+
+    def _restore_agent_model_call_boundary(self) -> None:
+        installed_prepare = self._installed_agent_prepare_model_call
+        if (
+            installed_prepare is not None
+            and self.agent.prepare_model_call is installed_prepare
+        ):
+            self.agent.prepare_model_call = self._previous_agent_prepare_model_call
+        self._installed_agent_prepare_model_call = None
+        installed_requirement = self._installed_transport_requirement
+        if (
+            installed_requirement is not None
+            and self.agent.model_transport_requires_prepared_request_conformance
+            == installed_requirement
+        ):
+            self.agent.model_transport_requires_prepared_request_conformance = (
+                self._previous_transport_requirement
+            )
+        self._installed_transport_requirement = None
 
     async def prepare_model_call_runtime(self) -> None:
         """Commit the candidate-private graph before Session publication."""

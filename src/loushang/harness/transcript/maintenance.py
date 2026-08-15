@@ -270,6 +270,12 @@ class AgentTranscriptCompactionRuntime:
     def abort(self) -> None:
         self._lifecycle.abort()
 
+    async def cancel_and_wait(self) -> None:
+        """Abort and join the active compaction before owner disposal."""
+
+        self.abort()
+        await self._lifecycle.wait()
+
     def clear_overflow_recovery_attempted(self) -> None:
         self._overflow_recovery_attempted = False
 

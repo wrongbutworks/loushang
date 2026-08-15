@@ -9,6 +9,7 @@ compaction, tools, resources, extensions, and command runtimes.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
@@ -1070,13 +1071,40 @@ async def _execute_compaction(
     preparation: CompactionPreparation,
     custom_instructions: str | None,
 ) -> CompactionResult:
-    return await executor(
+    if supports_prepare_model_call(executor):
+        return await executor(
+            preparation=preparation,
+            model=agent.model,
+            headers=None,
+            signal=agent.signal,
+            custom_instructions=custom_instructions,
+            prepare_model_call=agent.prepare_model_call,
+        )
+    legacy_executor = cast(
+        Callable[..., Awaitable[CompactionResult]],
+        executor,
+    )
+    return await legacy_executor(
         preparation=preparation,
         model=agent.model,
         headers=None,
         signal=agent.signal,
         custom_instructions=custom_instructions,
-        prepare_model_call=agent.prepare_model_call,
+    )
+
+
+def supports_prepare_model_call(callback: Callable[..., object]) -> bool:
+    """Return whether a Product summary callback accepts the PR8 seam."""
+
+    try:
+        parameters = inspect.signature(callback).parameters
+    except (TypeError, ValueError):
+        return False
+    parameter = parameters.get("prepare_model_call")
+    if parameter is not None and parameter.kind is not inspect.Parameter.POSITIONAL_ONLY:
+        return True
+    return any(
+        item.kind is inspect.Parameter.VAR_KEYWORD for item in parameters.values()
     )
 
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable
 
+import pytest
+
 from loushang.agent import Agent, ModelCallPreparation
 from loushang.ai import Context, stream
 from loushang.ai.api_registry import get_default_api_registry
@@ -29,6 +31,7 @@ from loushang.harness.transcript import (
     AgentTranscriptSession,
     AgentTranscriptUnitOfWork,
     CompactionPreparation,
+    ModelInputIntegrityError,
     execute_branch_summary,
     execute_transcript_compaction,
 )
@@ -475,6 +478,19 @@ def test_branch_summary_v2_lineage_survives_selected_path_fork_and_reload() -> N
         assert output.error is None
         assert output.summary is not None
         assert len(output.model_input_snapshot_ids) == 1
+        with pytest.raises(ModelInputIntegrityError, match="has purpose"):
+            await source.append_compaction(
+                "wrong lineage",
+                root_id,
+                1,
+                model_input_snapshot_ids=output.model_input_snapshot_ids,
+            )
+        with pytest.raises(ModelInputIntegrityError, match="not uniquely available"):
+            await source.branch_with_summary(
+                root_id,
+                "missing lineage",
+                model_input_snapshot_ids=("missing",),
+            )
         summary_id = await source.branch_with_summary(
             root_id,
             output.summary,

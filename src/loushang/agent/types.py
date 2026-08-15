@@ -601,6 +601,7 @@ class AgentLoopConfig:
         | None
     ) = None
     prepare_model_call: PrepareModelCallFn | None = None
+    require_prepared_request_conformance: bool = False
 
 
 class AgentState:

@@ -367,6 +367,11 @@ class AgentTranscriptUnitOfWork:
         *,
         metadata: Mapping[str, JSONValue] | None = None,
     ) -> AgentTranscriptCommit:
+        self._require_model_input_lineage(
+            checkpoint.model_input_snapshot_ids,
+            purposes={"compaction_history", "compaction_turn_prefix"},
+            owner="compaction checkpoint",
+        )
         return await self.append(
             CONTEXT_COMPACTION_CHECKPOINT_KIND,
             checkpoint,
@@ -379,9 +384,35 @@ class AgentTranscriptUnitOfWork:
         *,
         metadata: Mapping[str, JSONValue] | None = None,
     ) -> AgentTranscriptCommit:
+        self._require_model_input_lineage(
+            summary.model_input_snapshot_ids,
+            purposes={"branch_summary"},
+            owner="branch summary",
+        )
         return await self.append(
             CONTEXT_BRANCH_SUMMARY_KIND, summary, metadata=metadata
         )
+
+    def _require_model_input_lineage(
+        self,
+        snapshot_ids: tuple[str, ...],
+        *,
+        purposes: set[str],
+        owner: str,
+    ) -> None:
+        if not snapshot_ids:
+            return
+        # Local import avoids reversing model_input's UnitOfWork dependency.
+        from loushang.harness.transcript.model_input import rebuild_model_input
+
+        for snapshot_id in snapshot_ids:
+            rebuilt = rebuild_model_input(self, snapshot_id)
+            if rebuilt.snapshot.purpose not in purposes:
+                allowed = ", ".join(sorted(purposes))
+                raise ModelInputIntegrityError(
+                    f"{owner} Model Input lineage {snapshot_id!r} has purpose "
+                    f"{rebuilt.snapshot.purpose!r}; expected one of: {allowed}"
+                )
 
     async def append_application_message(
         self,

@@ -180,3 +180,33 @@ def test_side_question_coordinator_cancels_only_its_active_request() -> None:
         assert coordinator.active is False
 
     asyncio.run(scenario())
+
+
+def test_side_question_cancel_error_still_joins_the_owned_request() -> None:
+    class _Provider:
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+
+        async def ask(self, question: str, *, on_update=None) -> SideQuestionAnswer:
+            del question, on_update
+            self.started.set()
+            await asyncio.Future()
+            raise AssertionError("unreachable")
+
+        def cancel(self) -> None:
+            raise RuntimeError("provider cancel failed")
+
+    async def scenario() -> None:
+        provider = _Provider()
+        coordinator = SideQuestionCoordinator(provider)
+        task = asyncio.create_task(coordinator.ask("question"))
+        await provider.started.wait()
+
+        with pytest.raises(RuntimeError, match="provider cancel failed"):
+            await coordinator.cancel_and_wait()
+        assert task.done()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert coordinator.active is False
+
+    asyncio.run(scenario())

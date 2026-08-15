@@ -170,6 +170,11 @@ records. The new payload references the Model Input snapshot IDs for every
 summary request used to produce the checkpoint or branch summary. Split-turn
 compaction retains both ordered snapshot IDs.
 
+Writers validate every non-empty v2 reference before committing the summary:
+the snapshot must be uniquely reconstructable in the current transcript and
+its purpose must match the compaction or branch-summary operation. A record
+must not claim verifiable derivation merely because it contains a string ID.
+
 Existing v1 compaction and branch-summary records remain readable and
 resumable. They are reported as `derivation-unverifiable`; the reader must not
 invent request lineage, rewrite them during load, or reject an otherwise valid
@@ -187,8 +192,10 @@ legacy Session.
 - Provider retries may append more than one prepared snapshot for one logical
   invocation. Product retries always start a new logical invocation.
 - Shutdown cancels new sampling, waits for owned commit/transport tasks to
-  quiesce, and only then disposes graph/registration state needed by those
-  tasks.
+  quiesce—including manual compaction, branch summary, and side question—and
+  only then disposes graph/registration state needed by those tasks. Cleanup
+  remains cancellation-atomic and continues after an owned Provider's cancel
+  callback fails.
 
 ## Compatibility
 
@@ -196,7 +203,11 @@ legacy Session.
   importing no Harness modules;
 - synthetic Product tests may opt out of durable closure explicitly, but a
   durable Product profile may not silently downgrade because a custom stream
-  was supplied;
+  was supplied; Agent checks the actual transport at every sampling boundary,
+  and Session removes only its own preparation hook during disposal;
+- legacy summary executors remain callable in non-durable Sessions, while a
+  durable Session rejects an executor without the preparation seam during
+  construction rather than failing halfway through a summary;
 - current transcript and compaction wire versions remain readable;
 - Product prompts, retry classification, model selection, compaction policy,
   and presentation remain Product-owned; and

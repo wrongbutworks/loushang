@@ -365,6 +365,75 @@ def test_agent_session_abort_compaction_cancels_public_manual_operation(
     assert compaction_end["result"] is None
 
 
+def test_session_dispose_aborts_and_joins_manual_compaction(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=False,
+        )
+        await manager.append_message(
+            UserMessage(role="user", content="older context", timestamp=0.0)
+        )
+        await manager.append_message(_assistant_text_message("recent reply"))
+        session = AgentSession(
+            agent=Agent(
+                initial_state={
+                    "system_prompt": "",
+                    "model": _model(),
+                    "thinking_level": "off",
+                }
+            ),
+            session_manager=manager,
+            settings_manager=SettingsManager(
+                ControlConfig(
+                    compaction=CompactionSettings(
+                        enabled=True,
+                        reserve_tokens=8_192,
+                        keep_recent_tokens=1,
+                    )
+                )
+            ),
+        )
+        started = asyncio.Event()
+
+        async def _blocking_compact(**kwargs):
+            del kwargs
+            started.set()
+            await asyncio.Future()
+            raise AssertionError("unreachable")
+
+        monkeypatch.setattr(
+            "loushang.coding.session.agent_session._execute_coding_compaction",
+            _blocking_compact,
+        )
+        task = asyncio.create_task(session.compact())
+        await started.wait()
+
+        await session.dispose()
+
+        assert task.done()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert all(
+            entry.kind != "context.compaction_checkpoint"
+            for entry in manager.get_entries()
+        )
+
+    asyncio.run(scenario())
+
+
 def test_agent_session_compact_emits_error_event_on_failure(
     tmp_path, monkeypatch
 ) -> None:
@@ -1433,6 +1502,7 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
         timestamp=1.0,
     )
     continue_runs = 0
+    continued = asyncio.Event()
 
     async def _fake_compact(**kwargs):
         preparation = kwargs["preparation"]
@@ -1442,9 +1512,13 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
             tokens_before=preparation.tokens_before,
         )
 
-    def _continue_run() -> asyncio.Task[None]:
+    def _continue_run(
+        *, model_call_purpose: str = "continuation"
+    ) -> asyncio.Task[None]:
         nonlocal continue_runs
+        assert model_call_purpose == "continuation"
         continue_runs += 1
+        continued.set()
         return asyncio.create_task(asyncio.sleep(0))
 
     monkeypatch.setattr(
@@ -1460,7 +1534,7 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
         await session._composition.session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [assistant]}, session.agent.signal
         )
-        await asyncio.sleep(0)
+        await asyncio.wait_for(continued.wait(), timeout=1)
 
     asyncio.run(scenario())
 
