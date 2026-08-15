@@ -97,7 +97,9 @@ class ModelInputRuntimeReferences:
                 "Model Input requires a committed RegistrationInventorySnapshot"
             )
         if graph.schema_version != 1 or registrations.schema_version != 1:
-            raise ValueError("Model Input does not support this runtime snapshot version")
+            raise ValueError(
+                "Model Input does not support this runtime snapshot version"
+            )
         if (
             registrations.graph_id != graph.graph_id
             or registrations.runtime_id != graph.runtime_id
@@ -139,6 +141,13 @@ class ModelInputCommitResult:
     record_id: str
     source_revision: int
     commit_revision: int
+
+
+@dataclass(frozen=True)
+class _ComponentPlan:
+    name: str
+    content_hash: str
+    content: FrozenModelInputValue = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -227,12 +236,20 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
                 dict[str, JSONValue],
                 thaw_model_input_json(self._context.logical_input),
             )
-            logical_references = await self._materialize_mapping(logical_input)
-            prepared_references = await self._materialize_mapping(prepared_payload)
-            headers_reference = await self._materialize_component(
+            logical_plans = self._plan_mapping(logical_input)
+            prepared_plans = self._plan_mapping(prepared_payload)
+            headers_plan = self._plan_component(
                 "model_visible_headers",
                 model_visible_headers,
             )
+            await self._materialize_components(
+                (*logical_plans, *prepared_plans, headers_plan)
+            )
+            logical_references = tuple(self._reference(plan) for plan in logical_plans)
+            prepared_references = tuple(
+                self._reference(plan) for plan in prepared_plans
+            )
+            headers_reference = self._reference(headers_plan)
             snapshot = ModelInputSnapshot(
                 snapshot_id=str(uuid4()),
                 invocation_id=_prepared_text(request, "invocation_id"),
@@ -292,59 +309,108 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
                 )
             )
 
-    async def _materialize_mapping(
+    def _plan_mapping(
         self,
         value: Mapping[str, JSONValue],
-    ) -> tuple[ModelInputComponentReference, ...]:
-        references: list[ModelInputComponentReference] = []
-        for name, content in value.items():
-            references.append(await self._materialize_component(name, content))
-        return tuple(references)
+    ) -> tuple[_ComponentPlan, ...]:
+        return tuple(
+            self._plan_component(name, content) for name, content in value.items()
+        )
 
-    async def _materialize_component(
+    def _plan_component(
         self,
         name: str,
         content: object,
-    ) -> ModelInputComponentReference:
+    ) -> _ComponentPlan:
         content_hash = hash_model_input_json(content, name=f"Model Input {name}")
-        existing = self._component_records.get(content_hash)
-        if existing is not None:
-            record_id, existing_content = existing
-            if canonical_model_input_json(
-                existing_content,
-                name="stored Model Input component",
-            ) != canonical_model_input_json(content, name=f"Model Input {name}"):
-                raise ModelInputIntegrityError("Model Input component hash collision")
-            return ModelInputComponentReference(
-                name=name,
-                record_id=record_id,
-                content_hash=content_hash,
+        frozen = freeze_model_input_json(content, name=f"Model Input {name}")
+        return _ComponentPlan(
+            name=name,
+            content_hash=content_hash,
+            content=frozen,
+        )
+
+    async def _materialize_components(
+        self,
+        plans: tuple[_ComponentPlan, ...],
+    ) -> None:
+        missing: dict[str, ModelInputComponent] = {}
+        for plan in plans:
+            canonical = canonical_model_input_json(
+                plan.content,
+                name=f"Model Input {plan.name}",
+            )
+            existing = self._component_records.get(plan.content_hash)
+            if existing is not None:
+                _, existing_content = existing
+                if (
+                    canonical_model_input_json(
+                        existing_content,
+                        name="stored Model Input component",
+                    )
+                    != canonical
+                ):
+                    raise ModelInputIntegrityError(
+                        "Model Input component hash collision"
+                    )
+                continue
+            planned = missing.get(plan.content_hash)
+            if planned is not None:
+                if (
+                    canonical_model_input_json(
+                        planned.content,
+                        name="planned Model Input component",
+                    )
+                    != canonical
+                ):
+                    raise ModelInputIntegrityError(
+                        "Model Input component hash collision"
+                    )
+                continue
+            missing[plan.content_hash] = ModelInputComponent(
+                content_hash=plan.content_hash,
+                content=plan.content,
             )
 
-        component = ModelInputComponent(
-            content_hash=content_hash,
-            content=freeze_model_input_json(content, name=f"Model Input {name}"),
-        )
-        commit = await self._transcript.append_model_input_component(
-            component,
+        components = tuple(missing.values())
+        if not components:
+            return
+        commits = await self._transcript.append_model_input_components(
+            components,
             max_encoded_record_bytes=self._max_encoded_record_bytes,
             expected_revision=self._expected_revision,
             expected_leaf_id=self._expected_leaf_id,
         )
-        receipt = commit.receipt
-        if receipt is None:
+        if len(commits) != len(components):
             raise ModelInputIntegrityError(
-                "Model Input component did not reach the authoritative Store"
+                "Model Input component batch returned an invalid commit count"
             )
-        self._advance(commit.record.record_id, receipt.revision)
-        self._component_records[content_hash] = (
-            commit.record.record_id,
-            component.content,
-        )
+        for component, commit in zip(components, commits, strict=True):
+            receipt = commit.receipt
+            if receipt is None:
+                raise ModelInputIntegrityError(
+                    "Model Input component did not reach the authoritative Store"
+                )
+            self._advance(commit.record.record_id, receipt.revision)
+            self._component_records[component.content_hash] = (
+                commit.record.record_id,
+                component.content,
+            )
+
+    def _reference(
+        self,
+        plan: _ComponentPlan,
+    ) -> ModelInputComponentReference:
+        existing = self._component_records.get(plan.content_hash)
+        if existing is None:
+            raise ModelInputIntegrityError(
+                "Model Input component reference was not materialized"
+            )
+        record_id, _ = existing
         return ModelInputComponentReference(
-            name=name,
-            record_id=commit.record.record_id,
-            content_hash=content_hash,
+            name=plan.name,
+            record_id=record_id,
+            content_hash=plan.content_hash,
         )
 
     def _require_current_transcript(self) -> None:
@@ -496,9 +562,8 @@ def _component_content(
         raise ModelInputIntegrityError(
             "Model Input component is outside snapshot ancestry"
         )
-    if (
-        getattr(record, "kind", None) != MODEL_INPUT_COMPONENT_KIND
-        or not isinstance(getattr(record, "payload", None), ModelInputComponent)
+    if getattr(record, "kind", None) != MODEL_INPUT_COMPONENT_KIND or not isinstance(
+        getattr(record, "payload", None), ModelInputComponent
     ):
         raise ModelInputIntegrityError(
             "Model Input component reference does not target a component fact"
@@ -515,9 +580,7 @@ def _validate_rebuilt_logical_input(value: Mapping[str, JSONValue]) -> None:
     if not isinstance(value.get("tools"), list):
         raise ModelInputIntegrityError("Model Input tools must be an array")
     if not isinstance(value.get("request_options"), dict):
-        raise ModelInputIntegrityError(
-            "Model Input request options must be an object"
-        )
+        raise ModelInputIntegrityError("Model Input request options must be an object")
 
 
 def _index_components(
@@ -525,9 +588,10 @@ def _index_components(
 ) -> dict[str, tuple[str, FrozenModelInputValue]]:
     indexed: dict[str, tuple[str, FrozenModelInputValue]] = {}
     for record in records:
-        if (
-            getattr(record, "kind", None) != MODEL_INPUT_COMPONENT_KIND
-            or not isinstance(getattr(record, "payload", None), ModelInputComponent)
+        if getattr(
+            record, "kind", None
+        ) != MODEL_INPUT_COMPONENT_KIND or not isinstance(
+            getattr(record, "payload", None), ModelInputComponent
         ):
             continue
         component = cast(ModelInputComponent, getattr(record, "payload"))
@@ -542,7 +606,9 @@ def _index_components(
             component.content,
             name="stored Model Input component",
         ):
-            raise ModelInputIntegrityError("stored Model Input component hash collision")
+            raise ModelInputIntegrityError(
+                "stored Model Input component hash collision"
+            )
         indexed.setdefault(
             component.content_hash,
             (record_id, component.content),

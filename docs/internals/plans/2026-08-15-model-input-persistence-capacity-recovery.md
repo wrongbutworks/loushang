@@ -133,6 +133,17 @@ error handling leaks no arbitrary exception text.
 Exit gate: the selected primitive does not amplify per-attempt append latency as
 v2 splits large values.
 
+Implementation result (2026-08-15): select both bounded v2 bundles and the
+optional Store batch extension. `FileConversationStore` now appends one ordered
+batch with one exclusive lock, one journal load, one payload write, and one
+sync; the transcript Unit of Work validates and rebuilds the repository once.
+Current v1 Model Input commits batch all missing components, then commit the
+per-attempt prepared snapshot separately. Tests cover stable operation IDs,
+duplicate rejection, lost responses, a durable-prefix retry, cancellation,
+revision continuity, and the one-load/one-write/one-sync boundary. This gate
+does not claim to fix v1 byte growth; tail/root bundles and large-leaf chunks
+remain MIR3 work.
+
 ### MIR3: Model Input Payload Version 2
 
 - Register v1 and v2 codecs/types for the existing Model Input record kinds.

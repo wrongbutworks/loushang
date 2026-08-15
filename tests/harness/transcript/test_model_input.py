@@ -78,6 +78,64 @@ class _BlockingModelInputStore(MemoryConversationStore):
             await self.release.wait()
         return result
 
+    async def append_batch(
+        self,
+        key: ConversationKey,
+        records,
+        *,
+        expected_revision: int,
+        operation_ids,
+    ):
+        result = await super().append_batch(
+            key,
+            records,
+            expected_revision=expected_revision,
+            operation_ids=operation_ids,
+        )
+        if self.block_appends:
+            self.committed.set()
+            await self.release.wait()
+        return result
+
+
+class _CountingModelInputStore(MemoryConversationStore):
+    def __init__(self) -> None:
+        super().__init__(record_id=lambda record: record.record_id)
+        self.append_calls = 0
+        self.batch_sizes: list[int] = []
+
+    async def append(
+        self,
+        key: ConversationKey,
+        record,
+        *,
+        expected_revision: int,
+        operation_id: str,
+    ) -> ConversationCommitResult:
+        self.append_calls += 1
+        return await super().append(
+            key,
+            record,
+            expected_revision=expected_revision,
+            operation_id=operation_id,
+        )
+
+    async def append_batch(
+        self,
+        key: ConversationKey,
+        records,
+        *,
+        expected_revision: int,
+        operation_ids,
+    ):
+        self.batch_sizes.append(len(records))
+        return await super().append_batch(
+            key,
+            records,
+            expected_revision=expected_revision,
+            operation_ids=operation_ids,
+        )
+
 
 def _header(conversation_id: str = "model-input-conversation") -> ConversationHeader:
     return ConversationHeader(
@@ -269,6 +327,35 @@ def test_model_input_records_are_hidden_deduplicated_and_hash_verified() -> None
         assert commit.commit_revision == transcript.revision
         assert rebuilt.commit_revision == commit.commit_revision
         assert rebuilt.snapshot.commit_revision == commit.commit_revision
+
+    asyncio.run(scenario())
+
+
+def test_model_input_materializes_all_missing_components_in_one_store_batch() -> None:
+    async def scenario() -> None:
+        backend = _CountingModelInputStore()
+        transcript = await _memory_transcript(backend)
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        append_calls_before = backend.append_calls
+
+        await committer.commit_prepared_request(_prepared())
+
+        component_count = sum(
+            record.kind == MODEL_INPUT_COMPONENT_KIND for record in transcript.records
+        )
+        assert backend.batch_sizes == [component_count]
+        assert backend.append_calls == append_calls_before + 1
+
+        await committer.commit_prepared_request(
+            _prepared(invocation_id="invocation-1", attempt=2)
+        )
+
+        assert backend.batch_sizes == [component_count]
+        assert backend.append_calls == append_calls_before + 2
 
     asyncio.run(scenario())
 
@@ -481,8 +568,7 @@ def test_model_input_components_remain_reachable_and_reusable_after_fork() -> No
         ).snapshot
         assert fork_snapshot.conversation_id == "model-input-fork"
         assert (
-            fork_snapshot.commit_revision
-            == fork_committer.commits[-1].commit_revision
+            fork_snapshot.commit_revision == fork_committer.commits[-1].commit_revision
         )
 
     asyncio.run(scenario())
@@ -589,9 +675,7 @@ def test_model_input_hard_record_ceiling_cannot_be_bypassed() -> None:
                 transcript=transcript,
                 context=_context(transcript),
                 runtime_references=_runtime_references(),
-                max_encoded_record_bytes=(
-                    MODEL_INPUT_MAX_ENCODED_RECORD_BYTES + 1
-                ),
+                max_encoded_record_bytes=(MODEL_INPUT_MAX_ENCODED_RECORD_BYTES + 1),
             )
 
         content = "x" * MODEL_INPUT_MAX_ENCODED_RECORD_BYTES
@@ -613,9 +697,7 @@ def test_model_input_hard_record_ceiling_cannot_be_bypassed() -> None:
         with pytest.raises(ModelInputRecordSizeError):
             await transcript.commit(record)
 
-        initial_backend = MemoryConversationStore(
-            record_id=lambda item: item.record_id
-        )
+        initial_backend = MemoryConversationStore(record_id=lambda item: item.record_id)
         initial_record = AgentTranscriptRecordFactory().create(
             MODEL_INPUT_COMPONENT_KIND,
             component,

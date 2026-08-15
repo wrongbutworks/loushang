@@ -10,6 +10,7 @@ from loushang.ai.types import Message, UserMessage
 from loushang.foundation.json import JSONValue
 from loushang.harness.conversation import (
     CommitReceipt,
+    ConversationBatchStore,
     ConversationDiagnostic,
     ConversationKey,
     ConversationSourceDiagnostic,
@@ -311,6 +312,15 @@ class AgentTranscriptUnitOfWork:
         async with self._commit_lock:
             return await self._finish_commit_atomically(record)
 
+    async def commit_batch(
+        self,
+        records: Sequence[AgentTranscriptRecord],
+    ) -> tuple[AgentTranscriptCommit, ...]:
+        """Durably append one parent-linked batch, then advance runtime state."""
+
+        async with self._commit_lock:
+            return await self._finish_batch_commit_atomically(records)
+
     async def append(
         self,
         kind: str,
@@ -479,6 +489,38 @@ class AgentTranscriptUnitOfWork:
             expected_leaf_id=expected_leaf_id,
         )
 
+    async def append_model_input_components(
+        self,
+        components: Sequence[ModelInputComponent],
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> tuple[AgentTranscriptCommit, ...]:
+        async with self._commit_lock:
+            if not components:
+                return ()
+            if self.revision != expected_revision or self.leaf_id != expected_leaf_id:
+                raise ModelInputIntegrityError(
+                    "transcript changed outside the Model Input commit sequence"
+                )
+            parent_id = expected_leaf_id
+            records: list[AgentTranscriptRecord] = []
+            for component in components:
+                record = self._record_factory.create(
+                    MODEL_INPUT_COMPONENT_KIND,
+                    component,
+                    parent_id=parent_id,
+                    payload_version=STANDARD_PAYLOAD_VERSION,
+                )
+                self._require_record_size(record, max_encoded_record_bytes)
+                records.append(record)
+                parent_id = record.record_id
+            return await self._finish_batch_commit_atomically(
+                records,
+                propagate_cancellation=True,
+            )
+
     async def append_model_input_snapshot(
         self,
         snapshot: ModelInputSnapshot,
@@ -505,10 +547,7 @@ class AgentTranscriptUnitOfWork:
         expected_leaf_id: str,
     ) -> AgentTranscriptCommit:
         async with self._commit_lock:
-            if (
-                self.revision != expected_revision
-                or self.leaf_id != expected_leaf_id
-            ):
+            if self.revision != expected_revision or self.leaf_id != expected_leaf_id:
                 raise ModelInputIntegrityError(
                     "transcript changed outside the Model Input commit sequence"
                 )
@@ -534,9 +573,7 @@ class AgentTranscriptUnitOfWork:
         async with self._commit_lock:
             selected_id = self.leaf_id if leaf_id is None else leaf_id
             records = (
-                self.records_for_fork(selected_id)
-                if selected_id is not None
-                else ()
+                self.records_for_fork(selected_id) if selected_id is not None else ()
             )
             return await type(self).create(
                 self._backend,
@@ -640,6 +677,77 @@ class AgentTranscriptUnitOfWork:
             diagnostics=commit_result.diagnostics,
         )
 
+    async def _commit_batch_locked(
+        self,
+        records: tuple[AgentTranscriptRecord, ...],
+    ) -> tuple[AgentTranscriptCommit, ...]:
+        if not records:
+            return ()
+        parent_id = self.leaf_id
+        for record in records:
+            if record.parent_id != parent_id:
+                raise ValueError(
+                    "transcript batch records must form one selected parent chain"
+                )
+            parent_id = record.record_id
+        if not self._materialized or not isinstance(
+            self._backend,
+            ConversationBatchStore,
+        ):
+            commits: list[AgentTranscriptCommit] = []
+            for record in records:
+                commits.append(await self._commit_locked(record))
+            return tuple(commits)
+
+        candidate = _create_repository(
+            header=self.header,
+            records=(*self.records, *records),
+            leaf_id=records[-1].record_id,
+        )
+        expected_revision = self._revision
+        operation_ids = tuple(record.record_id for record in records)
+        try:
+            result = await self._backend.append_batch(
+                self._key,
+                records,
+                expected_revision=expected_revision,
+                operation_ids=operation_ids,
+            )
+        except StoreCommitOutcomeUnknown:
+            result = await self._backend.append_batch(
+                self._key,
+                records,
+                expected_revision=expected_revision,
+                operation_ids=operation_ids,
+            )
+        if len(result.receipts) != len(records):
+            raise RuntimeError("conversation backend returned an invalid batch size")
+        batch_commits: list[AgentTranscriptCommit] = []
+        for index, (record, receipt) in enumerate(
+            zip(records, result.receipts, strict=True),
+            start=1,
+        ):
+            expected_receipt_revision = expected_revision + index
+            if receipt.revision != expected_receipt_revision:
+                raise RuntimeError(
+                    "conversation backend returned an invalid batch revision"
+                )
+            if receipt.record_id not in {None, record.record_id}:
+                raise RuntimeError(
+                    "conversation backend returned a different batch record id"
+                )
+            batch_commits.append(
+                AgentTranscriptCommit(
+                    record=record,
+                    receipt=receipt,
+                    diagnostics=(result.diagnostics if index == len(records) else ()),
+                )
+            )
+        self._repository = candidate
+        self._revision = result.receipts[-1].revision
+        self._diagnostics = (*self._diagnostics, *result.diagnostics)
+        return tuple(batch_commits)
+
     async def _finish_commit_atomically(
         self,
         record: AgentTranscriptRecord,
@@ -658,6 +766,38 @@ class AgentTranscriptUnitOfWork:
         self._require_record_model_input_lineage(record)
         _require_model_input_record_size(record, self._profile)
         operation = asyncio.create_task(self._commit_locked(record))
+        caller = asyncio.current_task()
+        cancellation_requested = False
+        while not operation.done():
+            try:
+                await asyncio.shield(operation)
+            except asyncio.CancelledError:
+                if caller is not None and caller.cancelling():
+                    cancellation_requested = True
+                    while caller.cancelling():
+                        caller.uncancel()
+                    continue
+                if operation.done():
+                    break
+                raise
+        result = operation.result()
+        if cancellation_requested and propagate_cancellation:
+            raise asyncio.CancelledError
+        return result
+
+    async def _finish_batch_commit_atomically(
+        self,
+        records: Sequence[AgentTranscriptRecord],
+        *,
+        propagate_cancellation: bool = False,
+    ) -> tuple[AgentTranscriptCommit, ...]:
+        durable_records = tuple(records)
+        if not durable_records:
+            return ()
+        for record in durable_records:
+            self._require_record_model_input_lineage(record)
+            _require_model_input_record_size(record, self._profile)
+        operation = asyncio.create_task(self._commit_batch_locked(durable_records))
         caller = asyncio.current_task()
         cancellation_requested = False
         while not operation.done():
@@ -773,18 +913,20 @@ def _require_encoded_record_size(
     codec = ConversationJsonlRecordCodec(profile.payload_codecs)
     envelope = codec.encode_record(record)
     jsonl_format = DEFAULT_JSONL_FORMAT
-    line = json.dumps(
-        envelope,
-        ensure_ascii=jsonl_format.ensure_ascii,
-        sort_keys=jsonl_format.sort_keys,
-        separators=jsonl_format.separators,
-        allow_nan=False,
-    ) + jsonl_format.newline
+    line = (
+        json.dumps(
+            envelope,
+            ensure_ascii=jsonl_format.ensure_ascii,
+            sort_keys=jsonl_format.sort_keys,
+            separators=jsonl_format.separators,
+            allow_nan=False,
+        )
+        + jsonl_format.newline
+    )
     encoded_size = len(line.encode(jsonl_format.encoding))
     if encoded_size > maximum:
         raise ModelInputRecordSizeError(
-            f"{record.kind} encoded record is {encoded_size} bytes; "
-            f"limit is {maximum}"
+            f"{record.kind} encoded record is {encoded_size} bytes; limit is {maximum}"
         )
 
 

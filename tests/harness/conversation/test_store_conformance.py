@@ -8,11 +8,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 from loushang.harness.conversation import (
+    ConversationBatchStore,
     ConversationKey,
     ConversationStore,
     FileConversationStore,
@@ -184,6 +185,71 @@ def test_append_checks_revision_before_mutation(store_factory: _StoreFactory) ->
         assert loaded.header == _Header("Immutable")
         assert loaded.records == (_Record("record-1", "first"),)
         assert loaded.revision == 1
+
+    asyncio.run(scenario())
+
+
+def test_batch_append_is_contiguous_idempotent_and_single_append_compatible(
+    store_factory: _StoreFactory,
+) -> None:
+    async def scenario() -> None:
+        store = store_factory()
+        assert isinstance(store, ConversationBatchStore)
+        key = ConversationKey("coding", "batch")
+        await store.create(
+            key,
+            _Header("Batch"),
+            operation_id=_operation("create", key),
+        )
+        with pytest.raises(StoreOperationConflictError, match="must be unique"):
+            await store.append_batch(
+                key,
+                (_Record("duplicate", "first"), _Record("duplicate", "second")),
+                expected_revision=0,
+                operation_ids=("duplicate", "duplicate"),
+            )
+        records = (
+            _Record("record-1", "first"),
+            _Record("record-2", "second"),
+            _Record("record-3", "third"),
+        )
+
+        result = await store.append_batch(
+            key,
+            records,
+            expected_revision=0,
+            operation_ids=tuple(record.record_id for record in records),
+        )
+        repeated = await store.append_batch(
+            key,
+            records,
+            expected_revision=0,
+            operation_ids=tuple(record.record_id for record in records),
+        )
+
+        assert [receipt.revision for receipt in result.receipts] == [1, 2, 3]
+        assert [receipt.record_id for receipt in repeated.receipts] == [
+            "record-1",
+            "record-2",
+            "record-3",
+        ]
+        assert (await store.load(key)).snapshot.records == records
+
+        await store.append(
+            key,
+            _Record("record-4", "fourth"),
+            expected_revision=3,
+            operation_id="record-4",
+        )
+        before = (await store.load(key)).snapshot
+        with pytest.raises(StoreConflictError):
+            await store.append_batch(
+                key,
+                (_Record("record-5", "stale"),),
+                expected_revision=0,
+                operation_ids=("record-5",),
+            )
+        assert (await store.load(key)).snapshot == before
 
     asyncio.run(scenario())
 
@@ -390,6 +456,89 @@ def test_file_append_loads_counts_and_appends_inside_one_exclusive_lock(
 
     asyncio.run(scenario())
     assert lock_entries == ["exclusive"]
+
+
+def test_file_batch_append_loads_and_writes_inside_one_exclusive_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    path = tmp_path / "session.jsonl"
+    lock_depth = 0
+    lock_entries: list[str] = []
+
+    @contextmanager
+    def lock_factory(target: Path, mode: str):
+        nonlocal lock_depth
+        assert target == path
+        assert mode == "exclusive"
+        lock_entries.append(mode)
+        lock_depth += 1
+        try:
+            yield
+        finally:
+            lock_depth -= 1
+
+    class LockCheckingCodec(_RecordCodec):
+        def encode_record(self, record: _Record):
+            assert lock_depth == 1
+            return super().encode_record(record)
+
+        def decode_record(self, value):
+            assert lock_depth == 1
+            return super().decode_record(value)
+
+    key = ConversationKey("coding", "session-1")
+    store = FileConversationStore(
+        create_path=lambda ignored: path,
+        resolve_path=lambda ignored: path,
+        scan_paths=lambda ignored: (path,),
+        key_for_path=lambda namespace, ignored: key,
+        journal_factory=lambda target: JsonlJournal(
+            target,
+            header_codec=_HeaderCodec(),
+            record_codec=LockCheckingCodec(),
+            load_policy=JournalLoadPolicy(header="required"),
+            lock_factory=lock_factory,
+        ),
+        record_id=_record_id,
+    )
+
+    store._create_sync(
+        key,
+        _Header("Header"),
+        operation_id=_operation("create", key),
+    )
+    lock_entries.clear()
+    load_unlocked = file_store_module._load_unlocked
+    append_many = file_store_module.append_jsonl_records
+    load_calls = 0
+    append_calls = 0
+
+    def count_load(journal):
+        nonlocal load_calls
+        load_calls += 1
+        return load_unlocked(journal)
+
+    def count_append(*args, **kwargs):
+        nonlocal append_calls
+        append_calls += 1
+        return append_many(*args, **kwargs)
+
+    monkeypatch.setattr(file_store_module, "_load_unlocked", count_load)
+    monkeypatch.setattr(file_store_module, "append_jsonl_records", count_append)
+    records = (_Record("record-1", "first"), _Record("record-2", "second"))
+    store._append_batch_sync(
+        key,
+        records,
+        expected_revision=0,
+        operation_ids=("record-1", "record-2"),
+    )
+
+    assert lock_entries == ["exclusive"]
+    assert load_calls == 1
+    assert append_calls == 1
 
 
 def test_file_maps_corrupted_persistence_to_data_error(tmp_path: Path) -> None:
@@ -633,3 +782,48 @@ def test_file_append_reconciles_a_lost_success_response(
         assert (await store.load(key)).snapshot.records == (record,)
 
     asyncio.run(scenario())
+
+
+def test_file_batch_append_reconciles_a_durable_prefix_after_unknown_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "lost-batch-response")
+    store._create_sync(
+        key,
+        _Header("Header"),
+        operation_id=_operation("create", key),
+    )
+    append_many = file_store_module.append_jsonl_records
+
+    def append_prefix_then_lose_response(path, records, **kwargs):
+        append_many(path, records[:1], **kwargs)
+        raise OSError("response lost after durable prefix")
+
+    records = (_Record("record-1", "first"), _Record("record-2", "second"))
+    monkeypatch.setattr(
+        file_store_module,
+        "append_jsonl_records",
+        append_prefix_then_lose_response,
+    )
+    with pytest.raises(StoreCommitOutcomeUnknown):
+        store._append_batch_sync(
+            key,
+            records,
+            expected_revision=0,
+            operation_ids=("record-1", "record-2"),
+        )
+
+    monkeypatch.setattr(file_store_module, "append_jsonl_records", append_many)
+    reconciled = store._append_batch_sync(
+        key,
+        records,
+        expected_revision=0,
+        operation_ids=("record-1", "record-2"),
+    )
+
+    assert [receipt.revision for receipt in reconciled.receipts] == [1, 2]
+    assert store._load_sync(key).snapshot.records == records

@@ -6,6 +6,7 @@ from typing import Generic, TypeVar
 
 from loushang.harness.conversation.store import (
     CommitReceipt,
+    ConversationBatchCommitResult,
     ConversationCommitResult,
     ConversationHead,
     ConversationKey,
@@ -131,6 +132,113 @@ class MemoryConversationStore(Generic[HeaderT, RecordT]):
         result = ConversationCommitResult(receipt)
         self._append_operations[operation] = (key, record, result)
         return result
+
+    async def append_batch(
+        self,
+        key: ConversationKey,
+        records: Sequence[RecordT],
+        *,
+        expected_revision: int,
+        operation_ids: Sequence[str],
+    ) -> ConversationBatchCommitResult:
+        durable_records = tuple(records)
+        operations = tuple(require_operation_id(value) for value in operation_ids)
+        if not durable_records:
+            raise ValueError("append batch requires at least one record")
+        if len(durable_records) != len(operations):
+            raise ValueError("append batch records and operation ids must align")
+        if len(set(operations)) != len(operations):
+            raise StoreOperationConflictError(
+                "append batch operation ids must be unique"
+            )
+        if self._record_id is None:
+            raise ValueError("append batch requires stable record ids")
+        projected_ids = tuple(self._record_id(record) for record in durable_records)
+        if projected_ids != operations:
+            raise StoreOperationConflictError(
+                "append batch operation ids must match stable record ids"
+            )
+        expected = require_revision(expected_revision, name="expected revision")
+        snapshot = (await self.load(key)).snapshot
+        if snapshot.revision < expected:
+            raise StoreConflictError(
+                f"conversation {key!r} is at revision {snapshot.revision}, "
+                f"not {expected}"
+            )
+
+        previous_results: list[ConversationCommitResult | None] = []
+        for index, (record, operation) in enumerate(
+            zip(durable_records, operations, strict=True)
+        ):
+            previous = self._append_operations.get(operation)
+            if previous is None:
+                previous_results.append(None)
+                continue
+            previous_key, previous_record, previous_result = previous
+            if previous_key != key or previous_record != record:
+                raise StoreOperationConflictError(
+                    f"operation {operation!r} was reused for a different append"
+                )
+            if previous_result.receipt.revision != expected + index + 1:
+                raise StoreOperationConflictError(
+                    f"operation {operation!r} has a different revision"
+                )
+            previous_results.append(previous_result)
+
+        receipts: list[CommitReceipt] = []
+        matched = 0
+        for index, (record, operation) in enumerate(
+            zip(durable_records, operations, strict=True)
+        ):
+            position = expected + index
+            if position >= snapshot.revision:
+                break
+            if snapshot.records[position] != record:
+                raise StoreConflictError(
+                    f"conversation {key!r} diverged inside append batch"
+                )
+            selected_previous = previous_results[index]
+            receipt = (
+                selected_previous.receipt
+                if selected_previous is not None
+                else CommitReceipt(
+                    revision=position + 1,
+                    committed_at=self._clock(),
+                    record_id=operation,
+                )
+            )
+            receipts.append(receipt)
+            matched += 1
+
+        if matched < len(durable_records) and snapshot.revision != expected + matched:
+            raise StoreConflictError(
+                f"conversation {key!r} is at revision {snapshot.revision}, "
+                f"not {expected + matched}"
+            )
+
+        appended = durable_records[matched:]
+        for offset, (record, operation) in enumerate(
+            zip(appended, operations[matched:], strict=True),
+            start=matched,
+        ):
+            receipt = CommitReceipt(
+                revision=expected + offset + 1,
+                committed_at=self._clock(),
+                record_id=operation,
+            )
+            receipts.append(receipt)
+            self._append_operations[operation] = (
+                key,
+                record,
+                ConversationCommitResult(receipt),
+            )
+        if appended:
+            self._snapshots[key] = ConversationSnapshot(
+                header=snapshot.header,
+                records=(*snapshot.records, *appended),
+                revision=snapshot.revision + len(appended),
+            )
+        return ConversationBatchCommitResult(receipts)
 
     async def delete(
         self,
