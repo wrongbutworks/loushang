@@ -28,8 +28,11 @@ from loushang.harness.conversation import (
 from loushang.harness.runtime import RuntimeProfileResolver
 from loushang.harness.session.model_call import SessionModelCallRuntime
 from loushang.harness.transcript import (
+    CONTEXT_BRANCH_SUMMARY_KIND,
+    AgentTranscriptRecordFactory,
     AgentTranscriptSession,
     AgentTranscriptUnitOfWork,
+    BranchContextSummary,
     CompactionPreparation,
     ModelInputIntegrityError,
     execute_branch_summary,
@@ -491,6 +494,26 @@ def test_branch_summary_v2_lineage_survives_selected_path_fork_and_reload() -> N
                 "missing lineage",
                 model_input_snapshot_ids=("missing",),
             )
+        with pytest.raises(ModelInputIntegrityError, match="not uniquely available"):
+            await source_uow.append(
+                CONTEXT_BRANCH_SUMMARY_KIND,
+                BranchContextSummary(
+                    from_record_id=root_id,
+                    summary="generic missing lineage",
+                    model_input_snapshot_ids=("missing",),
+                ),
+            )
+        invalid_record = AgentTranscriptRecordFactory().create(
+            CONTEXT_BRANCH_SUMMARY_KIND,
+            BranchContextSummary(
+                from_record_id=root_id,
+                summary="prebuilt missing lineage",
+                model_input_snapshot_ids=("missing",),
+            ),
+            parent_id=source_uow.leaf_id,
+        )
+        with pytest.raises(ModelInputIntegrityError, match="not uniquely available"):
+            await source_uow.commit(invalid_record)
         summary_id = await source.branch_with_summary(
             root_id,
             output.summary,

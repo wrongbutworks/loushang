@@ -248,6 +248,9 @@ class AgentTranscriptCompactionRuntime:
     def is_compacting(self) -> bool:
         return self._lifecycle.is_compacting
 
+    def owns_current_task(self) -> bool:
+        return self._lifecycle.owns_current_task()
+
     def get_status(self) -> CompactionStatus:
         status = self._lifecycle.get_status()
         return CompactionStatus(

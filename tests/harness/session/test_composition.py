@@ -41,9 +41,13 @@ def test_summary_executor_preparation_compatibility_is_explicit() -> None:
     async def extensible(**kwargs):
         return kwargs
 
+    async def misleading(*prepare_model_call):
+        return prepare_model_call
+
     assert supports_prepare_model_call(legacy) is False
     assert supports_prepare_model_call(current) is True
     assert supports_prepare_model_call(extensible) is True
+    assert supports_prepare_model_call(misleading) is False
 
 
 def test_compaction_capability_fallback_uses_supported_integer_version() -> None:

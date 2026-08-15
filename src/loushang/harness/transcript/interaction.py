@@ -394,6 +394,9 @@ class AgentTranscriptNavigationRuntime:
     def is_summarizing(self) -> bool:
         return self._transaction.is_active
 
+    def owns_current_task(self) -> bool:
+        return self._transaction.owns_current_task()
+
     def abort(self) -> bool:
         return self._transaction.abort()
 
@@ -474,21 +477,23 @@ class AgentTranscriptNavigationRuntime:
         summary_override: BranchSummaryOutput | None,
         summary_runner: BranchSummaryRunner | None,
     ) -> TranscriptNavigationResult:
+        if signal.aborted:
+            return _aborted_navigation_result(plan)
         summary = summary_override
         if summary is None and plan.divergent_records:
             if summary_runner is None:
                 raise RuntimeError("Branch summary requires a Product summary runner")
             summary = await summary_runner(plan.divergent_records, signal)
+        if signal.aborted:
+            return _aborted_navigation_result(plan)
         if summary is not None and summary.aborted:
-            return TranscriptNavigationResult(
-                cancelled=True,
-                aborted=True,
-                editor_text=plan.editor_text,
-            )
+            return _aborted_navigation_result(plan)
         if summary is not None and summary.error:
             raise RuntimeError(summary.error)
         summary_record_id: str | None = None
         if summary is not None and summary.summary is not None:
+            if signal.aborted:
+                return _aborted_navigation_result(plan)
             summary_record_id = await self.session.branch_with_summary(
                 plan.new_leaf_id,
                 summary.summary,
@@ -576,6 +581,16 @@ class AgentTranscriptNavigationRuntime:
                     )
                 )
             )
+
+
+def _aborted_navigation_result(
+    plan: TranscriptNavigationPlan,
+) -> TranscriptNavigationResult:
+    return TranscriptNavigationResult(
+        cancelled=True,
+        aborted=True,
+        editor_text=plan.editor_text,
+    )
 
 
 def user_message_text(message: UserMessage) -> str:

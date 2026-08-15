@@ -237,8 +237,10 @@ class SessionOperations:
                         if asyncio.iscoroutine(result):
                             await result
                     finally:
-                        self.composition.capability_runtime.dispose()
-                        self.ports.finalize_shutdown()
+                        try:
+                            self.composition.capability_runtime.dispose()
+                        finally:
+                            self.ports.finalize_shutdown()
 
     async def _apply_before_tree_hook(
         self,

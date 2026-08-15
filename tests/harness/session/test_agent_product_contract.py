@@ -264,6 +264,40 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
     asyncio.run(scenario())
 
 
+def test_agent_product_finalizes_shutdown_when_capability_disposal_fails(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="failure")
+        capability_runtime = _capability_runtime("failure")
+        session = _ContractProductSession(
+            product_id="failure",
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+
+        def fail_capability_disposal() -> None:
+            raise RuntimeError("capability disposal failed")
+
+        capability_runtime.dispose = fail_capability_disposal  # type: ignore[method-assign]
+
+        try:
+            await session.dispose()
+        except RuntimeError as error:
+            assert str(error) == "capability disposal failed"
+        else:  # pragma: no cover - the injected failure must propagate
+            raise AssertionError("capability disposal failure did not propagate")
+
+        assert session.footer.disposed is True
+        assert disposed_transcripts == ["failure-session"]
+
+    asyncio.run(scenario())
+
+
 def _bind_transcript_factory(disposed: list[str]) -> None:
     async def bind_runtime(context, binding: str):
         assert context.persist is False

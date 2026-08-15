@@ -63,6 +63,10 @@ class NavigationTransactionCoordinator(Generic[A]):
     def is_active(self) -> bool:
         return self._active_scope is not None
 
+    def owns_current_task(self) -> bool:
+        task = asyncio.current_task()
+        return task is not None and self._active_task is task
+
     def abort(self) -> bool:
         scope = self._active_scope
         if scope is None:

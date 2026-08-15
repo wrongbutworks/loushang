@@ -51,6 +51,10 @@ class CompactionCoordinator(Generic[R]):
     def is_compacting(self) -> bool:
         return self._is_compacting
 
+    def owns_current_task(self) -> bool:
+        task = asyncio.current_task()
+        return task is not None and self._active_task is task
+
     def get_status(self) -> CompactionStatus[R]:
         return CompactionStatus(
             is_compacting=self._is_compacting,

@@ -26,6 +26,7 @@ from loushang.harness.extensions.agent.replacement import ExtensionReplacementRu
 from loushang.harness.extensions.context import (
     ReplacedSessionContext,
     SessionBeforeCompactEvent,
+    SessionShutdownEvent,
     SessionStartEvent,
 )
 from loushang.harness.extensions.provider_config import provider_from_extension_config
@@ -506,6 +507,34 @@ class AgentProductSession(AgentSessionAdapterMixin):
     def cancel_side_question(self) -> bool:
         coordinator = self._side_question
         return coordinator.cancel() if coordinator is not None else False
+
+    async def dispose(
+        self,
+        session_shutdown_event: SessionShutdownEvent | None = None,
+    ) -> None:
+        self._require_external_dispose_task()
+        await super().dispose(session_shutdown_event)
+
+    async def _dispose_after_session_shutdown(self) -> None:
+        self._require_external_dispose_task()
+        await super()._dispose_after_session_shutdown()
+
+    def _require_external_dispose_task(self) -> None:
+        owner: str | None = None
+        if self._composition.compaction_runtime.owns_current_task():
+            owner = "compaction"
+        elif self._composition.navigation_runtime.owns_current_task():
+            owner = "branch-summary"
+        else:
+            coordinator = self._side_question
+            owns_current_task = getattr(coordinator, "owns_current_task", None)
+            if callable(owns_current_task) and owns_current_task():
+                owner = "side-question"
+        if owner is not None:
+            raise RuntimeError(
+                "Session disposal cannot run from its active "
+                f"{owner} task; request disposal from the Session host"
+            )
 
     async def _dispose_session_runtime_profile(self) -> None:
         base_dispose = super()._dispose_session_runtime_profile

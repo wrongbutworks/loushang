@@ -434,6 +434,72 @@ def test_session_dispose_aborts_and_joins_manual_compaction(
     asyncio.run(scenario())
 
 
+def test_session_dispose_from_active_compaction_fails_fast(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=False,
+        )
+        await manager.append_message(
+            UserMessage(role="user", content="older context", timestamp=0.0)
+        )
+        await manager.append_message(_assistant_text_message("recent reply"))
+        session = AgentSession(
+            agent=Agent(
+                initial_state={
+                    "system_prompt": "",
+                    "model": _model(),
+                    "thinking_level": "off",
+                }
+            ),
+            session_manager=manager,
+            settings_manager=SettingsManager(
+                ControlConfig(
+                    compaction=CompactionSettings(
+                        enabled=True,
+                        reserve_tokens=8_192,
+                        keep_recent_tokens=1,
+                    )
+                )
+            ),
+        )
+
+        async def _reentrant_compact(**kwargs):
+            with pytest.raises(RuntimeError, match="active compaction task"):
+                await session.dispose()
+            preparation = kwargs["preparation"]
+            return CompactionResult(
+                summary="completed after rejected reentry",
+                first_kept_entry_id=preparation.first_kept_entry_id,
+                tokens_before=preparation.tokens_before,
+            )
+
+        monkeypatch.setattr(
+            "loushang.coding.session.agent_session._execute_coding_compaction",
+            _reentrant_compact,
+        )
+
+        result = await asyncio.wait_for(session.compact(), timeout=2)
+
+        assert result.summary == "completed after rejected reentry"
+        await session.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_agent_session_compact_emits_error_event_on_failure(
     tmp_path, monkeypatch
 ) -> None:

@@ -70,6 +70,10 @@ class SideQuestionCoordinator:
         task = self._active_task
         return task is not None and not task.done()
 
+    def owns_current_task(self) -> bool:
+        task = asyncio.current_task()
+        return task is not None and self._active_task is task
+
     async def ask(
         self,
         question: str,

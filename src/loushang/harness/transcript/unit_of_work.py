@@ -367,11 +367,6 @@ class AgentTranscriptUnitOfWork:
         *,
         metadata: Mapping[str, JSONValue] | None = None,
     ) -> AgentTranscriptCommit:
-        self._require_model_input_lineage(
-            checkpoint.model_input_snapshot_ids,
-            purposes={"compaction_history", "compaction_turn_prefix"},
-            owner="compaction checkpoint",
-        )
         return await self.append(
             CONTEXT_COMPACTION_CHECKPOINT_KIND,
             checkpoint,
@@ -384,14 +379,32 @@ class AgentTranscriptUnitOfWork:
         *,
         metadata: Mapping[str, JSONValue] | None = None,
     ) -> AgentTranscriptCommit:
-        self._require_model_input_lineage(
-            summary.model_input_snapshot_ids,
-            purposes={"branch_summary"},
-            owner="branch summary",
-        )
         return await self.append(
             CONTEXT_BRANCH_SUMMARY_KIND, summary, metadata=metadata
         )
+
+    def _require_record_model_input_lineage(
+        self,
+        record: AgentTranscriptRecord,
+    ) -> None:
+        if record.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND and isinstance(
+            record.payload,
+            ContextCompactionCheckpoint,
+        ):
+            self._require_model_input_lineage(
+                record.payload.model_input_snapshot_ids,
+                purposes={"compaction_history", "compaction_turn_prefix"},
+                owner="compaction checkpoint",
+            )
+        elif record.kind == CONTEXT_BRANCH_SUMMARY_KIND and isinstance(
+            record.payload,
+            BranchContextSummary,
+        ):
+            self._require_model_input_lineage(
+                record.payload.model_input_snapshot_ids,
+                purposes={"branch_summary"},
+                owner="branch summary",
+            )
 
     def _require_model_input_lineage(
         self,
@@ -642,6 +655,7 @@ class AgentTranscriptUnitOfWork:
         not continue with a stale ``Task.cancelling()`` count.
         """
 
+        self._require_record_model_input_lineage(record)
         _require_model_input_record_size(record, self._profile)
         operation = asyncio.create_task(self._commit_locked(record))
         caller = asyncio.current_task()

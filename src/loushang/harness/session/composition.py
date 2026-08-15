@@ -1101,7 +1101,10 @@ def supports_prepare_model_call(callback: Callable[..., object]) -> bool:
     except (TypeError, ValueError):
         return False
     parameter = parameters.get("prepare_model_call")
-    if parameter is not None and parameter.kind is not inspect.Parameter.POSITIONAL_ONLY:
+    if parameter is not None and parameter.kind in {
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    }:
         return True
     return any(
         item.kind is inspect.Parameter.VAR_KEYWORD for item in parameters.values()

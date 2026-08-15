@@ -12,6 +12,7 @@ from loushang.harness.conversation import (
 )
 from loushang.harness.events import BranchSummaryCompleted, BranchSummaryStarted
 from loushang.harness.transcript import (
+    CONTEXT_BRANCH_SUMMARY_KIND,
     AgentTranscriptInspector,
     AgentTranscriptNavigationRuntime,
     AgentTranscriptRecord,
@@ -198,7 +199,7 @@ def test_navigation_runtime_cancel_and_wait_joins_active_summary() -> None:
             started.set()
             while not signal.aborted:
                 await asyncio.sleep(0)
-            return BranchSummaryOutput(aborted=True)
+            return BranchSummaryOutput(summary="must not commit")
 
         task = asyncio.create_task(
             runtime.navigate(plan, summarize=True, summary_runner=summarize)
@@ -212,6 +213,11 @@ def test_navigation_runtime_cancel_and_wait_joins_active_summary() -> None:
         assert result.cancelled is True
         assert result.aborted is True
         assert runtime.is_summarizing is False
+        assert session.get_leaf_id() != target_id
+        assert all(
+            record.kind != CONTEXT_BRANCH_SUMMARY_KIND
+            for record in session.get_entries()
+        )
 
     asyncio.run(scenario())
 
