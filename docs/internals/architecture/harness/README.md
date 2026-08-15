@@ -29,6 +29,9 @@ planning, work event persistence, or AI provider behavior.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   freezes the mutable-surface, compatibility, model-call, package-owner, and
   lifecycle-fault evidence that later convergence PRs must preserve or revise.
+- [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
+  fixes PR8's Session/candidate-graph nesting, per-sampling commit seam, complete
+  model-call inventory, compaction lineage compatibility, and failure policy.
 - [Refactoring Principles](refactoring-principles.md) defines the evidence and
   neutrality gates for moving code into Harness.
 
@@ -61,6 +64,9 @@ description.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   is the executable pre-change inventory for that sequence. It records current
   compatibility and assigns each future contract to one package owner.
+- [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
+  defines the accepted PR8 implementation contract without claiming the
+  all-model-call production wiring is already complete.
 - [Refactoring Principles](refactoring-principles.md) defines what may move
   into harness and how migration slices should be shaped.
 - [Shared Capability Boundaries](shared-capability-boundaries.md) maps tools,

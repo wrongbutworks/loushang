@@ -983,6 +983,9 @@ once, and historical Model Inputs to rebuild after Extension removal.
 
 ### PR8: Session And All-Model-Call Closure
 
+The implementation contract is frozen in
+[Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md).
+
 - define the nesting contract between candidate graph commit and current
   Session publication before integrating Session switch;
 - route main turns, continuations, Tool loops, retries, compaction, branch
