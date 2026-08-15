@@ -529,6 +529,10 @@ completed PR0-PR9 convergence series.
 
 Zero production behavior change.
 
+Tracking issue: [#453](https://github.com/zhnt/loushang/issues/453). The
+executable pre-migration inventory is [Composition Lifecycle Authority CLA0
+Baseline](composition-lifecycle-authority-cla0-baseline.md).
+
 - create or identify the new lifecycle-convergence tracking issue before
   production implementation begins;
 - enumerate every construction, publication, capture, and disposal site for

@@ -6,8 +6,13 @@ Status: generated source projection.
 
 This catalog lists only source-backed, role-complete Capability seams. It is a read-only documentation projection, not a runtime registry, selection authority, or service locator. The accepted future Capability budget remains defined by [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md).
 
-Every listed Provider is bound through the existing `RuntimeCapabilityGraphBinder`; owner-scoped live contributions use `RegistrationScope`. A Capability appears here only after its Definition,
-Provider, requirement, and Consumer symbols all exist in source.
+A Capability appears here only after its Definition, Provider, requirement,
+and Consumer symbols all exist in source. `source-complete` does not imply
+that a Product mounts the seam. `production-mounted` requires a declared
+production composition reference that resolves to a callable source symbol.
+Mounted Providers use the
+existing `RuntimeCapabilityGraphBinder`; owner-scoped live contributions
+use `RegistrationScope`.
 
 Regenerate with:
 
@@ -19,10 +24,10 @@ Verify without writing with `--check`.
 
 ## Source-Backed Capability Seams
 
-| Capability | Contract | Lifecycle | Facets | Definition | Provider | Consumer requirements | Consumer |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `harness.model_input` | v1 / `harness` | `session` / `sealed` / `final` | `prepare` | `src/loushang/harness/capabilities/model_input_contracts.py::MODEL_INPUT_CAPABILITY_DEFINITION` | `src/loushang/harness/session/model_call.py::SessionModelCallRuntime` | `src/loushang/harness/capabilities/model_input_contracts.py::MODEL_INPUT_PREPARATION_REQUIREMENT` | `src/loushang/harness/session/model_call.py::SessionModelCallCapabilityConsumer` |
-| `harness.workspace` | v1 / `harness` | `workspace` / `sealed` / `bootstrap` | `read`<br>`list`<br>`search`<br>`write`<br>`edit`<br>`process.launch` | `src/loushang/harness/capabilities/workspace_contracts.py::WORKSPACE_CAPABILITY_DEFINITION` | `src/loushang/harness/capabilities/workspace_provider.py::workspace_capability_provider_binding` | `src/loushang/harness/capabilities/workspace_contracts.py::WORKSPACE_TOOL_REQUIREMENT`<br>`src/loushang/harness/capabilities/workspace_contracts.py::WORKSPACE_PROCESS_REQUIREMENT` | `src/loushang/harness/capabilities/workspace_tool_consumer.py::WorkspaceToolCapabilityConsumer`<br>`src/loushang/harness/capabilities/workspace_process_consumer.py::WorkspaceProcessCapabilityConsumer` |
+| Capability | Mount status | Contract | Lifecycle | Facets | Definition | Provider | Consumer requirements | Consumer |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `harness.model_input` | `production-mounted`<br>`src/loushang/harness/session/model_call.py::SessionModelCallRuntime` | v1 / `harness` | `session` / `sealed` / `final` | `prepare` | `src/loushang/harness/capabilities/model_input_contracts.py::MODEL_INPUT_CAPABILITY_DEFINITION` | `src/loushang/harness/session/model_call.py::SessionModelCallRuntime` | `src/loushang/harness/capabilities/model_input_contracts.py::MODEL_INPUT_PREPARATION_REQUIREMENT` | `src/loushang/harness/session/model_call.py::SessionModelCallCapabilityConsumer` |
+| `harness.workspace` | `source-complete` | v1 / `harness` | `workspace` / `sealed` / `bootstrap` | `read`<br>`list`<br>`search`<br>`write`<br>`edit`<br>`process.launch` | `src/loushang/harness/capabilities/workspace_contracts.py::WORKSPACE_CAPABILITY_DEFINITION` | `src/loushang/harness/capabilities/workspace_provider.py::workspace_capability_provider_binding` | `src/loushang/harness/capabilities/workspace_contracts.py::WORKSPACE_TOOL_REQUIREMENT`<br>`src/loushang/harness/capabilities/workspace_contracts.py::WORKSPACE_PROCESS_REQUIREMENT` | `src/loushang/harness/capabilities/workspace_tool_consumer.py::WorkspaceToolCapabilityConsumer`<br>`src/loushang/harness/capabilities/workspace_process_consumer.py::WorkspaceProcessCapabilityConsumer` |
 
 ## Coverage Boundary
 
