@@ -421,6 +421,34 @@ class TransformContextFn(Protocol):
     ) -> Awaitable[list[AgentMessage]]: ...
 
 
+@dataclass(frozen=True)
+class ModelCallPreparation:
+    """Final Agent-level model context awaiting caller-owned options binding."""
+
+    purpose: str
+    sequence: int
+    model: Model
+    context: Context
+    options: CallOptions
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.purpose, str) or not self.purpose.strip():
+            raise ValueError("model call purpose must be a non-empty string")
+        if (
+            isinstance(self.sequence, bool)
+            or not isinstance(self.sequence, int)
+            or self.sequence < 1
+        ):
+            raise ValueError("model call sequence must be a positive integer")
+
+
+class PrepareModelCallFn(Protocol):
+    def __call__(
+        self,
+        preparation: ModelCallPreparation,
+    ) -> CallOptions | Awaitable[CallOptions]: ...
+
+
 @runtime_checkable
 class AgentTool(Protocol[TDetails]):
     @property
@@ -572,6 +600,7 @@ class AgentLoopConfig:
         ]
         | None
     ) = None
+    prepare_model_call: PrepareModelCallFn | None = None
 
 
 class AgentState:
@@ -651,6 +680,7 @@ class AgentOptions:
     thinking_budgets: AgentThinkingBudgetMap | None = None
     max_retry_delay_ms: int | None = None
     tool_execution: ToolExecutionMode = "parallel"
+    prepare_model_call: PrepareModelCallFn | None = None
 
 
 class AgentStartEvent(TypedDict):
@@ -842,6 +872,8 @@ __all__ = [
     "CustomAgentMessage",
     "ProxyAssistantMessageEvent",
     "ProxyStreamOptions",
+    "ModelCallPreparation",
+    "PrepareModelCallFn",
     "StreamFn",
     "ThinkingLevel",
     "ToolExecutionMode",

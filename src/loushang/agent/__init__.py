@@ -30,6 +30,8 @@ from loushang.agent.types import (
     BeforeToolCallResult,
     ConvertToLlmFn,
     CustomAgentMessage,
+    ModelCallPreparation,
+    PrepareModelCallFn,
     ProxyAssistantMessageEvent,
     ProxyStreamOptions,
     StreamFn,
@@ -75,10 +77,12 @@ __all__ = [
     "ToolOutputProjector",
     # Function types
     "ConvertToLlmFn",
+    "PrepareModelCallFn",
     "StreamFn",
     "TransformContextFn",
     # Message types
     "CustomAgentMessage",
+    "ModelCallPreparation",
     # Proxy types
     "ProxyAssistantMessageEvent",
     "ProxyStreamOptions",

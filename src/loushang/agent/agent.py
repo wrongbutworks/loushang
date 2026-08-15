@@ -151,6 +151,7 @@ class Agent:
         self.transform_context = options.transform_context
         self.stream_fn = options.stream_fn or _default_stream
         self.call_options = options.call_options or CallOptions()
+        self.prepare_model_call = options.prepare_model_call
         self.before_tool_call = options.before_tool_call
         self.after_tool_call = options.after_tool_call
         self.mailbox_queue = PendingMessageQueue("all")
@@ -448,15 +449,24 @@ class Agent:
         self,
         input: str | AgentMessage | list[AgentMessage],
         images: list[ImagePart] | None = None,
+        *,
+        model_call_purpose: str = "main",
     ) -> None:
         if self._active_run_task is not None:
             raise AgentStateError(
                 "Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."
             )
         messages = self._normalize_prompt_input(input, images)
-        await self._run_prompt_messages(messages)
+        await self._run_prompt_messages(
+            messages,
+            model_call_purpose=model_call_purpose,
+        )
 
-    async def continue_run(self) -> None:
+    async def continue_run(
+        self,
+        *,
+        model_call_purpose: str = "continuation",
+    ) -> None:
         if self._active_run_task is not None:
             raise AgentStateError(
                 "Agent is already processing. Wait for completion before continuing."
@@ -469,27 +479,39 @@ class Agent:
         if getattr(last_message, "role", None) == "assistant":
             queued_mailbox = self.mailbox_queue.drain()
             if queued_mailbox:
-                await self._run_prompt_messages(queued_mailbox)
+                await self._run_prompt_messages(
+                    queued_mailbox,
+                    model_call_purpose=model_call_purpose,
+                )
                 return
 
             queued_steering = self.steering_queue.drain()
             if queued_steering:
                 await self._run_prompt_messages(
-                    queued_steering, skip_initial_steering_poll=True
+                    queued_steering,
+                    skip_initial_steering_poll=True,
+                    model_call_purpose=model_call_purpose,
                 )
                 return
 
             queued_follow_ups = self.follow_up_queue.drain()
             if queued_follow_ups:
-                await self._run_prompt_messages(queued_follow_ups)
+                await self._run_prompt_messages(
+                    queued_follow_ups,
+                    model_call_purpose=model_call_purpose,
+                )
                 return
 
             raise RuntimeError("Cannot continue from message role: assistant")
 
-        await self._run_continuation()
+        await self._run_continuation(model_call_purpose=model_call_purpose)
 
     async def _run_prompt_messages(
-        self, messages: list[AgentMessage], skip_initial_steering_poll: bool = False
+        self,
+        messages: list[AgentMessage],
+        skip_initial_steering_poll: bool = False,
+        *,
+        model_call_purpose: str = "main",
     ) -> None:
         async def executor(signal: AbortSignal) -> None:
             await run_agent_loop(
@@ -501,11 +523,16 @@ class Agent:
                 self._process_event,
                 signal=signal,
                 stream_fn=self.stream_fn,
+                model_call_purpose=model_call_purpose,
             )
 
         await self._run_with_lifecycle(executor)
 
-    async def _run_continuation(self) -> None:
+    async def _run_continuation(
+        self,
+        *,
+        model_call_purpose: str = "continuation",
+    ) -> None:
         async def executor(signal: AbortSignal) -> None:
             await run_agent_loop_continue(
                 self._create_context_snapshot(),
@@ -513,6 +540,7 @@ class Agent:
                 self._process_event,
                 signal=signal,
                 stream_fn=self.stream_fn,
+                model_call_purpose=model_call_purpose,
             )
 
         await self._run_with_lifecycle(executor)
@@ -560,6 +588,7 @@ class Agent:
             tool_execution=self.tool_execution,
             before_tool_call=self.before_tool_call,
             after_tool_call=self.after_tool_call,
+            prepare_model_call=self.prepare_model_call,
             convert_to_llm=self.convert_to_llm,
             transform_context=self.transform_context,
             get_mailbox_messages=get_mailbox_messages,

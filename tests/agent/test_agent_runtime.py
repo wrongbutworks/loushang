@@ -310,6 +310,35 @@ def test_continue_consumes_system_mailbox_from_an_idle_assistant_boundary() -> N
     asyncio.run(scenario())
 
 
+def test_agent_forwards_caller_declared_model_call_purpose_to_preparation() -> None:
+    from loushang.agent import Agent
+
+    preparations: list[tuple[str, int]] = []
+
+    async def prepare_model_call(preparation):
+        preparations.append((preparation.purpose, preparation.sequence))
+        return preparation.options
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        return _stream_with_final_message(_assistant_text_message("retried"))
+
+    async def scenario() -> None:
+        agent = Agent(
+            stream_fn=stream_fn,
+            prepare_model_call=prepare_model_call,
+        )
+        agent.state.messages.append(
+            UserMessage(role="user", content="retry this", timestamp=0.0)
+        )
+
+        await agent.continue_run(model_call_purpose="retry")
+
+    asyncio.run(scenario())
+
+    assert preparations == [("retry", 1)]
+
+
 def test_wait_for_idle_waits_for_agent_end_listener_settlement() -> None:
     from loushang.agent import Agent
 
