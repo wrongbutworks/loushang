@@ -157,7 +157,6 @@ class SessionResourceRefreshRuntime:
             return discovered
         except BaseException as publication_error:
             if not published:
-                await candidate.rollback()
                 if publication_started:
                     try:
                         self.set_resource_bundle(previous_resource)
@@ -166,6 +165,7 @@ class SessionResourceRefreshRuntime:
                         publication_error.add_note(
                             "previous resource bundle view restoration failed"
                         )
+                await candidate.rollback()
             raise
 
     def request_resource_refresh(self) -> None:

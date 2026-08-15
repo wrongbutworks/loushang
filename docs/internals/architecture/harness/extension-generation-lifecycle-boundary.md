@@ -72,8 +72,13 @@ staged-generation seam.
 Candidate activation through publication or rollback, old-generation
 retirement, and shutdown cleanup share one runner-local lifecycle gate.
 Shutdown marks the runner disposed before releasing that gate, so an already
-prepared candidate cannot publish after cleanup. Retryable retired-generation
-cleanup remains owned by the runner until a later attempt succeeds.
+prepared candidate cannot publish after cleanup and all later bind/refresh/API
+mutations fail closed. The whole shutdown and retirement sweep, rather than
+only one disposer, joins cleanup before caller cancellation is re-raised.
+Retryable retired-generation cleanup remains owned by the runner until a later
+attempt succeeds. Publication failure restores the previous resource and view
+after registrations have synchronously rolled back but before asynchronous
+candidate disposal begins.
 
 Generation state and live callbacks are not transcript facts. A prepared model
 request continues to commit canonical prompt, message, Tool-schema, options,

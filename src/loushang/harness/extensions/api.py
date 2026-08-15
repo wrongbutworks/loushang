@@ -55,6 +55,7 @@ class ExtensionContributionAPI:
         ] = {}
         self._diagnostics: list[DiagnosticDraft] = []
         self._runtime_state: object | None = None
+        self._runtime_generation: int | None = None
         self._registrations: RegistrationLeaseCollector | None = None
 
     def on(
@@ -207,6 +208,8 @@ class ExtensionContributionAPI:
         registrations: RegistrationLeaseCollector | None = None,
     ) -> None:
         self._runtime_state = runtime_state
+        generation = getattr(runtime_state, "generation", None)
+        self._runtime_generation = generation if isinstance(generation, int) else None
         self._registrations = registrations
 
     def get_active_tools(self) -> list[str]:
@@ -303,7 +306,14 @@ class ExtensionContributionAPI:
         )
 
     def _runtime_bindings(self) -> object | None:
-        return getattr(self._runtime_state, "bindings", None)
+        runtime_state = self._runtime_state
+        if runtime_state is None:
+            return None
+        generation = self._runtime_generation
+        require = getattr(runtime_state, "require", None)
+        if generation is not None and callable(require):
+            return require(generation=generation)
+        return getattr(runtime_state, "bindings", None)
 
     def _register_runtime_tool(self, definition: ToolDefinition) -> None:
         bindings = self._runtime_bindings()

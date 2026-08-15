@@ -580,6 +580,111 @@ def test_candidate_cannot_publish_after_runtime_shutdown_begins() -> None:
     asyncio.run(scenario())
 
 
+def test_cancelled_shutdown_finishes_retired_and_current_generation_cleanup() -> None:
+    layers: list[str] = []
+    old_disposal_started = asyncio.Event()
+    release_old_disposal = asyncio.Event()
+
+    def bind_tool(
+        value: object,
+        owner: RegistrationOwner | str,
+        source_info: object | None,
+    ) -> RegistrationLease:
+        del source_info
+        assert isinstance(value, ToolDefinition)
+        assert isinstance(owner, RegistrationOwner)
+        marker = value.description
+        layers.append(marker)
+        identity = RegistrationIdentity.create(
+            surface="review-tool",
+            public_key=value.name,
+        )
+
+        async def dispose() -> RegistrationDisposalResult:
+            if marker == "old":
+                old_disposal_started.set()
+                await release_old_disposal.wait()
+            if marker in layers:
+                layers.remove(marker)
+            return RegistrationDisposalResult(state="removed")
+
+        return RegistrationLease(owner=owner, identity=identity, dispose=dispose)
+
+    runtime = ExtensionRunner(
+        [
+            LoadedExtension(
+                name="review",
+                source_path=Path("/tmp/review.py"),
+                tool_definitions=[_tool("lookup", "old")],
+            )
+        ]
+    )
+    bindings = _bindings(bind_tool)
+
+    async def scenario() -> None:
+        await runtime.activate_runtime_generation(bindings)
+        candidate = runtime.prepare_generation(
+            [
+                LoadedExtension(
+                    name="review",
+                    source_path=Path("/tmp/review.py"),
+                    tool_definitions=[_tool("lookup", "new")],
+                )
+            ]
+        )
+        await candidate.activate(bindings)
+        candidate.publish(lambda: None)
+
+        shutdown = asyncio.create_task(runtime.dispose_runtime_generation())
+        await old_disposal_started.wait()
+        shutdown.cancel()
+        release_old_disposal.set()
+        with pytest.raises(asyncio.CancelledError):
+            await shutdown
+
+        assert layers == []
+
+    asyncio.run(scenario())
+
+
+def test_disposed_runner_rejects_rebind_refresh_and_stale_api_mutation() -> None:
+    from loushang.ai.model import Provider
+    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.harness.extensions.agent.api import ExtensionAPI
+    from loushang.harness.model_catalog import ModelCatalog
+
+    catalog = ModelCatalog(AiModelRegistry())
+    api = ExtensionAPI(name="models", source_path=Path("/tmp/models.py"))
+    runtime = ExtensionRunner(
+        [LoadedExtension(name="models", source_path=Path("/tmp/models.py"), api=api)]
+    )
+    bindings = _bindings(lambda *_args: pytest.fail("unexpected Tool bind"))
+    bindings.bind_provider = lambda name, config, owner: catalog.bind_provider(
+        Provider(id=name, name=str(config)),
+        owner=owner,
+    )
+    bindings.stage_provider = lambda name, config, owner: catalog.stage_provider(
+        Provider(id=name, name=str(config)),
+        owner=owner,
+    )
+
+    async def scenario() -> None:
+        await runtime.activate_runtime_generation(bindings)
+        await runtime.dispose_runtime_generation()
+
+        with pytest.raises(RuntimeError, match="disposed"):
+            runtime.bind_runtime(bindings)
+        with pytest.raises(RuntimeError, match="disposed"):
+            await runtime.activate_runtime_generation(bindings)
+        with pytest.raises(RuntimeError, match="disposed"):
+            runtime.refresh_runtime(bindings)
+        with pytest.raises(RuntimeError, match="stale"):
+            api.register_provider("resurrected", "bad")
+        assert catalog.ai_registry.get_provider("resurrected") is None
+
+    asyncio.run(scenario())
+
+
 def test_shutdown_retains_retryable_retired_generation_cleanup() -> None:
     layers: list[str] = []
     old_disposal_attempts = 0

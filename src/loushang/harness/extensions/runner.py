@@ -4,7 +4,7 @@ import asyncio
 import inspect
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from typing import cast
+from typing import TypeVar, cast
 from uuid import uuid4
 
 from loushang.agent.types import (
@@ -64,6 +64,9 @@ class _RunnerContext(UnboundExtensionContext):
 
 class _BoundExtensionContext(BoundExtensionContext):
     pass
+
+
+T = TypeVar("T")
 
 
 class _RunnerRuntimeState(RuntimeBindingState[ExtensionRuntimeBindings]):
@@ -288,6 +291,7 @@ class ExtensionRunner(ExtensionRuntime):
         )
 
     def bind_runtime(self, bindings: ExtensionRuntimeBindings) -> None:
+        self._require_runtime_active()
         self._activate_runtime(
             bindings,
             commit=True,
@@ -298,6 +302,7 @@ class ExtensionRunner(ExtensionRuntime):
         self,
         bindings: ExtensionRuntimeBindings,
     ) -> None:
+        self._require_runtime_active()
         if self._activated_generation:
             self.refresh_runtime(bindings)
             return
@@ -313,6 +318,7 @@ class ExtensionRunner(ExtensionRuntime):
             raise
 
     def refresh_runtime(self, bindings: ExtensionRuntimeBindings) -> None:
+        self._require_runtime_active()
         self._runtime_state.refresh(bindings)
         self._bind_extension_apis()
 
@@ -362,6 +368,13 @@ class ExtensionRunner(ExtensionRuntime):
     async def dispose_runtime_generation(
         self,
     ) -> tuple[ExtensionGenerationDisposalResult, ...]:
+        return await _join_cancellation_atomic(
+            asyncio.create_task(self._dispose_runtime_generation_sweep())
+        )
+
+    async def _dispose_runtime_generation_sweep(
+        self,
+    ) -> tuple[ExtensionGenerationDisposalResult, ...]:
         async with self._generation_lifecycle_lock:
             self._runtime_disposed = True
             self._runtime_state.invalidate(
@@ -383,6 +396,10 @@ class ExtensionRunner(ExtensionRuntime):
             self._retired_generation_registrations = retained
             return tuple(reports)
 
+    def _require_runtime_active(self) -> None:
+        if self._runtime_disposed:
+            raise RuntimeError("Extension runtime is disposed")
+
     async def _begin_generation_operation(self) -> None:
         await self._generation_lifecycle_lock.acquire()
         if self._runtime_disposed:
@@ -401,6 +418,7 @@ class ExtensionRunner(ExtensionRuntime):
         commit: bool,
         staged: bool,
     ) -> None:
+        self._require_runtime_active()
         if not isinstance(bindings, ProductRuntimeBindings):
             raise TypeError("Extension runtime bindings are invalid")
         if self._activated_generation:
@@ -819,6 +837,14 @@ class ExtensionRunner(ExtensionRuntime):
         self,
         registrations: tuple[ExtensionGenerationRegistrations, ...],
     ) -> tuple[ExtensionGenerationDisposalResult, ...]:
+        return await _join_cancellation_atomic(
+            asyncio.create_task(self._retire_registrations_once(registrations))
+        )
+
+    async def _retire_registrations_once(
+        self,
+        registrations: tuple[ExtensionGenerationRegistrations, ...],
+    ) -> tuple[ExtensionGenerationDisposalResult, ...]:
         async with self._generation_lifecycle_lock:
             reports = await dispose_extension_generation_registrations(registrations)
             if not any(report.has_failures for report in reports):
@@ -868,6 +894,22 @@ def _accepts_registration_collector(callback: Callable[..., object]) -> bool:
         parameter.kind == inspect.Parameter.VAR_POSITIONAL
         for parameter in parameters
     )
+
+
+async def _join_cancellation_atomic(task: asyncio.Task[T]) -> T:
+    cancellation: asyncio.CancelledError | None = None
+    caller = asyncio.current_task()
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            if caller is None or caller.cancelling() == 0:
+                return task.result()
+            cancellation = exc
+    result = task.result()
+    if cancellation is not None:
+        raise cancellation
+    return result
 
 
 def _context_from_session(session: object) -> _RunnerContext:

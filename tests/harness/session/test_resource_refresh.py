@@ -77,10 +77,14 @@ class _StagedCandidate:
         *,
         activation_error: BaseException | None = None,
         activation_started: asyncio.Event | None = None,
+        rollback_started: asyncio.Event | None = None,
+        release_rollback: asyncio.Event | None = None,
     ) -> None:
         self.events = events
         self.activation_error = activation_error
         self.activation_started = activation_started
+        self.rollback_started = rollback_started
+        self.release_rollback = release_rollback
 
     async def discover_resources_async(
         self,
@@ -116,6 +120,10 @@ class _StagedCandidate:
 
     async def rollback(self) -> None:
         self.events.append("rollback")
+        if self.rollback_started is not None:
+            self.rollback_started.set()
+        if self.release_rollback is not None:
+            await self.release_rollback.wait()
 
 
 class _StagedExtensionRuntime:
@@ -398,6 +406,46 @@ def test_staged_extension_reload_restores_resource_when_publication_fails() -> N
         "discover:reload",
         "activate",
         "publish",
-        "rollback",
         "restored",
+        "rollback",
     ]
+
+
+def test_failed_publication_restores_old_resource_before_async_candidate_cleanup() -> (
+    None
+):
+    previous = ResourceBundle(cwd=Path("/tmp/old"))
+    current: list[ResourceBundle | None] = [previous]
+    rollback_started = asyncio.Event()
+    release_rollback = asyncio.Event()
+    candidate = _StagedCandidate(
+        [],
+        rollback_started=rollback_started,
+        release_rollback=release_rollback,
+    )
+
+    def rebuild() -> None:
+        if current[0] is not previous:
+            raise RuntimeError("view rebuild failed")
+
+    runtime = SessionResourceRefreshRuntime(
+        get_resource_loader=lambda: _Loader(ResourceBundle(cwd=Path("/tmp/new"))),
+        get_resource_bundle=lambda: current[0],
+        get_cwd=lambda: "/tmp/project",
+        get_extension_runtime=lambda: _StagedExtensionRuntime(candidate),
+        get_settings=lambda: None,
+        set_resource_bundle=lambda bundle: current.__setitem__(0, bundle),
+        rebuild_prompt_and_tools_view=rebuild,
+        record_refresh_failure=lambda error: None,
+        sync_extension_diagnostics=lambda: None,
+    )
+
+    async def scenario() -> None:
+        task = asyncio.create_task(runtime.reload_extension_generation(object()))
+        await rollback_started.wait()
+        assert current == [previous]
+        release_rollback.set()
+        with pytest.raises(RuntimeError, match="view rebuild failed"):
+            await task
+
+    asyncio.run(scenario())
