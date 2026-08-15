@@ -152,6 +152,10 @@ def _payloads():
 def test_all_standard_payloads_round_trip_through_versioned_registry() -> None:
     registry = create_agent_transcript_payload_registry()
 
+    assert registry.required_kinds == (
+        MODEL_INPUT_COMPONENT_KIND,
+        MODEL_INPUT_PREPARED_KIND,
+    )
     assert registry.registered_keys == tuple(
         sorted(
             (kind, STANDARD_PAYLOAD_VERSION) for kind in STANDARD_AGENT_TRANSCRIPT_KINDS

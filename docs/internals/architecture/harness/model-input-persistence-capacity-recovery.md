@@ -200,6 +200,15 @@ Before v2 writes are enabled:
 Changing only the record kind is insufficient because unknown kinds are also
 opaque to the current generic decoder.
 
+Bridge result (2026-08-15): `ConversationPayloadCodecRegistry` now allows a
+profile to mark core payload kinds as requiring a known version. The standard
+Agent transcript profile marks both Model Input kinds required, so an unknown
+Model Input payload version fails with
+`unsupported_required_payload_version`; unknown extension kinds remain opaque.
+Sessions containing v2 facts must not be opened with binaries older than this
+bridge. Strict enforcement by an older binary would still require a future
+Conversation format/minimum-reader boundary or an explicit fork.
+
 ### Content-Addressed Value Shape
 
 V2 uses coarse, typed, domain-separated nodes. It does not create one record per

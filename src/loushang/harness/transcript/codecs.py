@@ -173,6 +173,10 @@ def register_standard_payload_codecs(
         _encode_model_input_snapshot,
         _decode_model_input_snapshot,
     )
+    registry.require_known_payload_versions(
+        MODEL_INPUT_COMPONENT_KIND,
+        MODEL_INPUT_PREPARED_KIND,
+    )
 
 
 def _register(
@@ -282,9 +286,7 @@ def _encode_compaction_checkpoint(payload: object) -> JSONValue:
     }
     if checkpoint.model_input_snapshot_ids:
         encoded["lineageVersion"] = 2
-        encoded["modelInputSnapshotIds"] = list(
-            checkpoint.model_input_snapshot_ids
-        )
+        encoded["modelInputSnapshotIds"] = list(checkpoint.model_input_snapshot_ids)
     return encoded
 
 

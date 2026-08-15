@@ -163,7 +163,11 @@ The conversation codec always validates and decodes the envelope. The profile
 then selects a payload codec by `(kind, payload_version)`:
 
 - an unregistered pair produces the same `ConversationRecord` with an
-  `OpaquePayload` containing a defensive strict-JSON snapshot;
+  `OpaquePayload` containing a defensive strict-JSON snapshot, unless the
+  active profile marks that kind as core and required for reconstruction;
+- an unknown payload version for a required core kind fails closed instead of
+  becoming opaque; the standard Agent profile applies this rule to both Model
+  Input kinds;
 - a registered codec that rejects its payload reports a corrupted known
   record and must not fall back to opaque;
 - opaque records remain part of parent graphs and survive load, selected-path
