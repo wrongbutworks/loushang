@@ -91,11 +91,17 @@ class ProductRuntimeBindings:
     bind_provider: (
         Callable[[str, object, RegistrationOwner], RegistrationLease] | None
     ) = None
+    bind_provider_removal: (
+        Callable[[str, RegistrationOwner], RegistrationLease] | None
+    ) = None
     stage_tool: (
         Callable[[object, RegistrationOwner, object | None], RegistrationLease] | None
     ) = None
     stage_provider: (
         Callable[[str, object, RegistrationOwner], RegistrationLease] | None
+    ) = None
+    stage_provider_removal: (
+        Callable[[str, RegistrationOwner], RegistrationLease] | None
     ) = None
 
 

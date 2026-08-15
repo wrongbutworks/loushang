@@ -285,6 +285,7 @@ def test_tool_registry_live_bindings_restore_the_previous_exact_winner() -> None
         owner=second_owner,
         source_info={"owner": "second"},
     )
+    assert replacement_lease.state == "active"
     assert asyncio.run(first_lease.dispose()).state == "removed"
     assert registry.list_definitions() == [second]
     assert registry.get_source_info("shared") == {"owner": "second"}

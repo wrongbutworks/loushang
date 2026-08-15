@@ -36,7 +36,9 @@ Tool and Provider registries preserve their compatibility facades. The live
 generation path uses exact identities, invisible staged layers, and layered
 winner restoration. `RegistrationScope.commit()` activates staged leases at
 the synchronous publication point; partial activation rolls back in reverse
-order before the error escapes. The
+order before the error escapes. A generation-scoped Provider removal is an
+owner-scoped tombstone layer, not a call to the compatibility facade's global
+name deletion; candidate rollback therefore reveals the previous winner. The
 bootstrap Tool compatibility entry can be adopted in place by generation 1,
 so initial session construction does not register a duplicate Tool. Commands,
 hooks, flags, shortcuts, renderers, and resource declarations remain data in
@@ -66,6 +68,12 @@ invalidate-refresh-bind compatibility path unless they explicitly expose the
 staged-generation seam.
 
 ## Persistence Boundary
+
+Candidate activation through publication or rollback, old-generation
+retirement, and shutdown cleanup share one runner-local lifecycle gate.
+Shutdown marks the runner disposed before releasing that gate, so an already
+prepared candidate cannot publish after cleanup. Retryable retired-generation
+cleanup remains owned by the runner until a later attempt succeeds.
 
 Generation state and live callbacks are not transcript facts. A prepared model
 request continues to commit canonical prompt, message, Tool-schema, options,
@@ -100,5 +108,7 @@ outside this boundary.
   old exact registrations, and repeated retirement is idempotent;
 - resource publication failure restores the previous bundle and runtime;
 - Tool and Provider layer removal cannot clobber the current same-name winner;
-- session shutdown disposes the current Extension generation; and
-- committed Model Input Tool schemas rebuild after Extension source removal.
+- session shutdown excludes concurrent candidate publication and retains
+  retryable cleanup ownership; and
+- Tool schemas loaded through an actual Extension and effective Tool registry
+  rebuild from committed Model Input facts after unload and source removal.

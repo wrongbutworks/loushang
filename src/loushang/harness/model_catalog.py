@@ -38,7 +38,7 @@ log = get_log(__name__).bind(component="ModelCatalog")
 class _ProviderLayer:
     owner: RegistrationOwner
     identity: RegistrationIdentity
-    provider: Provider
+    provider: Provider | None
     published: bool = True
 
 
@@ -166,6 +166,36 @@ class ModelCatalog:
 
         return self._bind_provider(provider, owner=owner, published=False)
 
+    def bind_provider_removal(
+        self,
+        provider_id: str,
+        *,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        """Bind an owner-scoped tombstone without deleting another owner's layer."""
+
+        return self._bind_provider_layer(
+            provider_id,
+            None,
+            owner=owner,
+            published=True,
+        )
+
+    def stage_provider_removal(
+        self,
+        provider_id: str,
+        *,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        """Stage an invisible owner-scoped Provider tombstone."""
+
+        return self._bind_provider_layer(
+            provider_id,
+            None,
+            owner=owner,
+            published=False,
+        )
+
     def _bind_provider(
         self,
         provider: Provider,
@@ -177,7 +207,23 @@ class ModelCatalog:
             raise TypeError("ModelCatalog.bind_provider expects a Provider")
         if not isinstance(owner, RegistrationOwner):
             raise TypeError("ModelCatalog.bind_provider owner must be a RegistrationOwner")
-        provider_id = provider.id
+        return self._bind_provider_layer(
+            provider.id,
+            provider,
+            owner=owner,
+            published=published,
+        )
+
+    def _bind_provider_layer(
+        self,
+        provider_id: str,
+        provider: Provider | None,
+        *,
+        owner: RegistrationOwner,
+        published: bool,
+    ) -> RegistrationLease:
+        if not isinstance(provider_id, str) or not provider_id.strip():
+            raise ValueError("Provider id must be a non-empty string")
         layers = self._provider_layers.get(provider_id)
         if layers is None:
             layers = []
@@ -207,22 +253,22 @@ class ModelCatalog:
                 identity=identity,
             ),
             activate=(
-                lambda: self._set_bound_provider_published(
+                None
+                if published
+                else lambda: self._set_bound_provider_published(
                     owner=owner,
                     identity=identity,
                     published=True,
                 )
-                if not published
-                else None
             ),
             deactivate=(
-                lambda: self._set_bound_provider_published(
+                None
+                if published
+                else lambda: self._set_bound_provider_published(
                     owner=owner,
                     identity=identity,
                     published=False,
                 )
-                if not published
-                else None
             ),
         )
 

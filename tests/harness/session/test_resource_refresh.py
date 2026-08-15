@@ -398,6 +398,6 @@ def test_staged_extension_reload_restores_resource_when_publication_fails() -> N
         "discover:reload",
         "activate",
         "publish",
-        "restored",
         "rollback",
+        "restored",
     ]

@@ -79,6 +79,36 @@ class ExtensionProviderRuntime:
             raise TypeError("staged Provider binding must return a RegistrationLease")
         return lease
 
+    def bind_provider_removal(
+        self,
+        name: str,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        registrar = getattr(self.model_registry, "bind_provider_removal", None)
+        if not callable(registrar):
+            raise RuntimeError(
+                "Model registry does not support owner-scoped Provider removal"
+            )
+        lease = registrar(name, owner=owner)
+        if not isinstance(lease, RegistrationLease):
+            raise TypeError("live Provider removal must return a RegistrationLease")
+        return lease
+
+    def stage_provider_removal(
+        self,
+        name: str,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        registrar = getattr(self.model_registry, "stage_provider_removal", None)
+        if not callable(registrar):
+            raise RuntimeError(
+                "Model registry does not support staged Provider removal"
+            )
+        lease = registrar(name, owner=owner)
+        if not isinstance(lease, RegistrationLease):
+            raise TypeError("staged Provider removal must return a RegistrationLease")
+        return lease
+
     def get_registered_provider(self, name: str) -> Provider | None:
         ai_registry = getattr(self.model_registry, "ai_registry", None)
         getter = getattr(ai_registry, "get_provider", None)

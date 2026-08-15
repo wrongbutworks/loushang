@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import cast
@@ -99,6 +100,7 @@ class PreparedExtensionGeneration:
         self._candidate = candidate
         self._activated = False
         self._published = False
+        self._owns_lifecycle = False
 
     async def discover_resources_async(
         self,
@@ -113,6 +115,8 @@ class PreparedExtensionGeneration:
             raise RuntimeError("Extension generation is already published")
         if self._activated:
             raise RuntimeError("Extension generation is already activated")
+        await self._host._begin_generation_operation()
+        self._owns_lifecycle = True
         try:
             await asyncio.sleep(0)
             self._candidate._activate_runtime(bindings, commit=False, staged=True)
@@ -120,7 +124,10 @@ class PreparedExtensionGeneration:
             if task is not None and task.cancelling():
                 raise asyncio.CancelledError
         except BaseException:
-            await self._candidate._dispose_current_registrations()
+            try:
+                await self._candidate._dispose_current_registrations()
+            finally:
+                self._release_lifecycle()
             raise
         self._activated = True
 
@@ -129,17 +136,29 @@ class PreparedExtensionGeneration:
             raise RuntimeError("Extension generation must be activated before publish")
         if self._published:
             raise RuntimeError("Extension generation is already published")
-        retirement = self._host._publish_generation(
-            self._candidate,
-            commit_resource=commit_resource,
-        )
+        try:
+            retirement = self._host._publish_generation(
+                self._candidate,
+                commit_resource=commit_resource,
+            )
+        finally:
+            self._release_lifecycle()
         self._published = True
         return retirement
 
     async def rollback(self) -> tuple[ExtensionGenerationDisposalResult, ...]:
         if self._published:
             raise RuntimeError("Published Extension generation cannot be rolled back")
-        return await self._candidate._dispose_current_registrations()
+        try:
+            return await self._candidate._dispose_current_registrations()
+        finally:
+            self._release_lifecycle()
+
+    def _release_lifecycle(self) -> None:
+        if not self._owns_lifecycle:
+            return
+        self._owns_lifecycle = False
+        self._host._finish_generation_operation()
 
 
 @dataclass(frozen=True)
@@ -184,6 +203,8 @@ class ExtensionRunner(ExtensionRuntime):
         self._generation = _generation
         self._bootstrap_generation = _bootstrap_generation
         self._activated_generation = False
+        self._runtime_disposed = False
+        self._generation_lifecycle_lock = asyncio.Lock()
         self._retired_generation_registrations: list[
             tuple[ExtensionGenerationRegistrations, ...]
         ] = []
@@ -267,7 +288,11 @@ class ExtensionRunner(ExtensionRuntime):
         )
 
     def bind_runtime(self, bindings: ExtensionRuntimeBindings) -> None:
-        self._activate_runtime(bindings, commit=True, staged=False)
+        self._activate_runtime(
+            bindings,
+            commit=True,
+            staged=self._supports_staged_activation(bindings),
+        )
 
     async def activate_runtime_generation(
         self,
@@ -278,7 +303,11 @@ class ExtensionRunner(ExtensionRuntime):
             return
         try:
             await asyncio.sleep(0)
-            self._activate_runtime(bindings, commit=True, staged=False)
+            self._activate_runtime(
+                bindings,
+                commit=True,
+                staged=self._supports_staged_activation(bindings),
+            )
         except BaseException:
             await self._dispose_current_registrations()
             raise
@@ -291,6 +320,28 @@ class ExtensionRunner(ExtensionRuntime):
         self,
         extensions: Sequence[LoadedExtension | ExtensionDescriptor],
     ) -> PreparedExtensionGeneration:
+        if self._runtime_disposed:
+            raise RuntimeError("Extension runtime is disposed")
+        active_extension_ids = {id(extension) for extension in self._active_extensions}
+        active_api_ids = {
+            id(extension.api)
+            for extension in self._active_extensions
+            if extension.api is not None
+        }
+        if any(
+            isinstance(extension, LoadedExtension)
+            and (
+                id(extension) in active_extension_ids
+                or (
+                    extension.api is not None
+                    and id(extension.api) in active_api_ids
+                )
+            )
+            for extension in extensions
+        ):
+            raise ValueError(
+                "Extension generation cannot reuse an active LoadedExtension or API"
+            )
         candidate = ExtensionRunner(
             extensions,
             loader_factory=self._loader_factory,
@@ -311,20 +362,37 @@ class ExtensionRunner(ExtensionRuntime):
     async def dispose_runtime_generation(
         self,
     ) -> tuple[ExtensionGenerationDisposalResult, ...]:
-        self._runtime_state.invalidate(
-            "Extension context is stale after extension runtime disposal."
-        )
-        current = self._generation_registrations
-        retired = tuple(
-            registrations
-            for generation in self._retired_generation_registrations
-            for registrations in generation
-        )
-        reports = await dispose_extension_generation_registrations(
-            (*retired, *current)
-        )
-        self._retired_generation_registrations.clear()
-        return reports
+        async with self._generation_lifecycle_lock:
+            self._runtime_disposed = True
+            self._runtime_state.invalidate(
+                "Extension context is stale after extension runtime disposal."
+            )
+            reports: list[ExtensionGenerationDisposalResult] = []
+            retained: list[tuple[ExtensionGenerationRegistrations, ...]] = []
+            for generation in self._retired_generation_registrations:
+                generation_reports = (
+                    await dispose_extension_generation_registrations(generation)
+                )
+                reports.extend(generation_reports)
+                if any(report.has_failures for report in generation_reports):
+                    retained.append(generation)
+            current_reports = await dispose_extension_generation_registrations(
+                self._generation_registrations
+            )
+            reports.extend(current_reports)
+            self._retired_generation_registrations = retained
+            return tuple(reports)
+
+    async def _begin_generation_operation(self) -> None:
+        await self._generation_lifecycle_lock.acquire()
+        if self._runtime_disposed:
+            self._generation_lifecycle_lock.release()
+            raise RuntimeError("Extension runtime is disposed")
+
+    def _finish_generation_operation(self) -> None:
+        if not self._generation_lifecycle_lock.locked():
+            raise RuntimeError("Extension generation lifecycle is not active")
+        self._generation_lifecycle_lock.release()
 
     def _activate_runtime(
         self,
@@ -348,6 +416,20 @@ class ExtensionRunner(ExtensionRuntime):
         self._activated_generation = True
 
     @staticmethod
+    def _supports_staged_activation(bindings: ExtensionRuntimeBindings) -> bool:
+        return (
+            (bindings.bind_tool is None or bindings.stage_tool is not None)
+            and (
+                bindings.bind_provider is None
+                or bindings.stage_provider is not None
+            )
+            and (
+                bindings.bind_provider_removal is None
+                or bindings.stage_provider_removal is not None
+            )
+        )
+
+    @staticmethod
     def _bindings_for_activation(
         bindings: ExtensionRuntimeBindings,
         *,
@@ -359,6 +441,13 @@ class ExtensionRunner(ExtensionRuntime):
             raise RuntimeError("Extension Tool binding does not support staging")
         if bindings.bind_provider is not None and bindings.stage_provider is None:
             raise RuntimeError("Extension Provider binding does not support staging")
+        if (
+            bindings.bind_provider_removal is not None
+            and bindings.stage_provider_removal is None
+        ):
+            raise RuntimeError(
+                "Extension Provider removal does not support staging"
+            )
         return replace(
             bindings,
             bind_tool=cast(
@@ -370,6 +459,7 @@ class ExtensionRunner(ExtensionRuntime):
                 bindings.stage_tool,
             ),
             bind_provider=bindings.stage_provider,
+            bind_provider_removal=bindings.stage_provider_removal,
         )
 
     def _bind_declared_tools(self, bindings: ExtensionRuntimeBindings) -> None:
@@ -412,10 +502,11 @@ class ExtensionRunner(ExtensionRuntime):
     def _bind_extension_api(self, extension: LoadedExtension) -> None:
         binder = getattr(extension.api, "bind_runtime_state", None)
         if callable(binder):
-            binder(
-                self._runtime_state,
-                self._registrations_by_extension.get(id(extension)),
-            )
+            registrations = self._registrations_by_extension.get(id(extension))
+            if _accepts_registration_collector(binder):
+                binder(self._runtime_state, registrations)
+            else:
+                binder(self._runtime_state)
 
     def invalidate_contexts(
         self,
@@ -668,6 +759,8 @@ class ExtensionRunner(ExtensionRuntime):
             raise ValueError("Extension candidate generation is stale")
         if not candidate._activated_generation:
             raise RuntimeError("Extension candidate is not activated")
+        if self._runtime_disposed:
+            raise RuntimeError("Extension runtime is disposed")
         previous_state = self._capture_composition_state()
         previous_runtime_state = self._runtime_state
         previous_registrations = self._generation_registrations
@@ -726,14 +819,15 @@ class ExtensionRunner(ExtensionRuntime):
         self,
         registrations: tuple[ExtensionGenerationRegistrations, ...],
     ) -> tuple[ExtensionGenerationDisposalResult, ...]:
-        reports = await dispose_extension_generation_registrations(registrations)
-        if not any(report.has_failures for report in reports):
-            self._retired_generation_registrations = [
-                retained
-                for retained in self._retired_generation_registrations
-                if retained is not registrations
-            ]
-        return reports
+        async with self._generation_lifecycle_lock:
+            reports = await dispose_extension_generation_registrations(registrations)
+            if not any(report.has_failures for report in reports):
+                self._retired_generation_registrations = [
+                    retained
+                    for retained in self._retired_generation_registrations
+                    if retained is not registrations
+                ]
+            return reports
 
     def _emit_runtime_error(
         self,
@@ -752,6 +846,28 @@ class ExtensionRunner(ExtensionRuntime):
                 "error": str(error),
             }
         )
+
+
+def _accepts_registration_collector(callback: Callable[..., object]) -> bool:
+    """Preserve the historical one-argument duck-typed API binding seam."""
+
+    try:
+        parameters = tuple(inspect.signature(callback).parameters.values())
+    except (TypeError, ValueError):
+        return False
+    positional = tuple(
+        parameter
+        for parameter in parameters
+        if parameter.kind
+        in {
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        }
+    )
+    return len(positional) >= 2 or any(
+        parameter.kind == inspect.Parameter.VAR_POSITIONAL
+        for parameter in parameters
+    )
 
 
 def _context_from_session(session: object) -> _RunnerContext:

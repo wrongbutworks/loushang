@@ -709,22 +709,22 @@ class ToolRegistry:
                 identity=identity,
             ),
             activate=(
-                lambda: self._set_bound_tool_published(
+                None
+                if published
+                else lambda: self._set_bound_tool_published(
                     owner=owner,
                     identity=identity,
                     published=True,
                 )
-                if not published
-                else None
             ),
             deactivate=(
-                lambda: self._set_bound_tool_published(
+                None
+                if published
+                else lambda: self._set_bound_tool_published(
                     owner=owner,
                     identity=identity,
                     published=False,
                 )
-                if not published
-                else None
             ),
         )
 

@@ -254,7 +254,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
             register_provider=self._register_provider_from_extension,
             unregister_provider=self._unregister_provider_from_extension,
             bind_provider=self._bind_provider_from_extension,
+            bind_provider_removal=self._bind_provider_removal_from_extension,
             stage_provider=self._stage_provider_from_extension,
+            stage_provider_removal=self._stage_provider_removal_from_extension,
             set_extension_status=self._set_extension_status_from_extension,
             get_footer_data_provider=lambda: self.footer_data_provider,
             compact=self._compact_from_extension,
@@ -507,6 +509,53 @@ class AgentProductSession(AgentSessionAdapterMixin):
             config,
             owner,
         )
+
+        async def dispose_provider() -> RegistrationDisposalResult:
+            result = await lease.dispose()
+            self._sync_footer_available_provider_count()
+            return result
+
+        def activate_provider() -> None:
+            lease.activate()
+            self._sync_footer_available_provider_count()
+
+        def deactivate_provider() -> None:
+            lease.deactivate()
+            self._sync_footer_available_provider_count()
+
+        return RegistrationLease(
+            owner=lease.owner,
+            identity=lease.identity,
+            dispose=dispose_provider,
+            activate=activate_provider,
+            deactivate=deactivate_provider,
+        )
+
+    def _bind_provider_removal_from_extension(
+        self,
+        name: str,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        lease = self._extension_provider_controller.bind_provider_removal(name, owner)
+
+        async def dispose_provider() -> RegistrationDisposalResult:
+            result = await lease.dispose()
+            self._sync_footer_available_provider_count()
+            return result
+
+        self._sync_footer_available_provider_count()
+        return RegistrationLease(
+            owner=lease.owner,
+            identity=lease.identity,
+            dispose=dispose_provider,
+        )
+
+    def _stage_provider_removal_from_extension(
+        self,
+        name: str,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        lease = self._extension_provider_controller.stage_provider_removal(name, owner)
 
         async def dispose_provider() -> RegistrationDisposalResult:
             result = await lease.dispose()

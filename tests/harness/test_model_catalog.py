@@ -98,6 +98,7 @@ def test_model_catalog_bound_provider_removal_preserves_the_current_winner() -> 
         Provider(id="shared", name="Old generation"),
         owner=old_owner,
     )
+    assert old_lease.state == "active"
     new_lease = catalog.stage_provider(
         Provider(id="shared", name="New generation"),
         owner=new_owner,
@@ -118,3 +119,38 @@ def test_model_catalog_bound_provider_removal_preserves_the_current_winner() -> 
     assert current.name == "New generation"
     assert asyncio.run(new_lease.dispose()).state == "removed"
     assert catalog.ai_registry.get_provider("shared") == baseline
+
+
+def test_model_catalog_staged_provider_removal_is_owner_scoped_and_reversible() -> (
+    None
+):
+    import asyncio
+
+    old = Provider(id="shared", name="Old generation")
+    catalog = ModelCatalog(AiModelRegistry())
+    old_owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="models",
+        runtime_id="session-1",
+        generation=1,
+    )
+    new_owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="models",
+        runtime_id="session-1",
+        generation=2,
+    )
+    old_lease = catalog.bind_provider(old, owner=old_owner)
+    removal = catalog.stage_provider_removal("shared", owner=new_owner)
+
+    assert catalog.ai_registry.get_provider("shared") == old
+    scope = RegistrationScope(new_owner)
+    scope.add(removal)
+    scope.commit()
+    assert catalog.ai_registry.get_provider("shared") is None
+
+    scope.rollback_commit()
+    assert catalog.ai_registry.get_provider("shared") == old
+    assert asyncio.run(removal.dispose()).state == "removed"
+    assert catalog.ai_registry.get_provider("shared") == old
+    assert asyncio.run(old_lease.dispose()).state == "removed"

@@ -155,6 +155,16 @@ class ExtensionAPI(ExtensionContributionAPI):
                 return False
             callback(name, config)
             return True
+        registrations = self._registrations
+        remover = getattr(bindings, "bind_provider_removal", None)
+        if callable(remover) and registrations is not None:
+            lease = remover(name, registrations.owner)
+            if not isinstance(lease, RegistrationLease):
+                raise TypeError(
+                    "live provider removal must return a RegistrationLease"
+                )
+            registrations.capture(lease)
+            return True
         callback = getattr(bindings, "unregister_provider", None)
         if not callable(callback):
             return False

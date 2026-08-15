@@ -158,6 +158,7 @@ def _prepared(
     *,
     invocation_id: str = "invocation-1",
     attempt: int = 1,
+    tools: list[dict[str, object]] | None = None,
 ) -> PreparedModelRequest:
     model = _model(api="model-input-test")
     request = ProviderRequest(
@@ -171,7 +172,8 @@ def _prepared(
     return PreparedModelRequest.from_provider_request(
         request,
         payload={
-            "tools": [
+            "tools": tools
+            or [
                 {
                     "name": "lookup",
                     "input_schema": {"type": "object", "properties": {}},
@@ -253,35 +255,139 @@ def test_model_input_retains_extension_tool_schema_after_source_removal(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
+        from loushang.harness.extensions.agent import (
+            ExtensionRunner,
+            ExtensionRuntimeBindings,
+        )
+        from loushang.harness.resources.types import ExtensionDescriptor
+        from loushang.harness.tools.core import ToolRegistry
+
         extension_source = tmp_path / "review_extension.py"
-        extension_source.write_text("# removed extension\n", encoding="utf-8")
+        extension_source.write_text(
+            """
+from loushang.harness.tools.execution import direct_execution
+from loushang.harness.tools.workspace import ToolDefinition
+
+
+async def _execute(tool_call_id, arguments, signal, on_update):
+    return {"value": arguments.get("value")}
+
+
+def register(api):
+    api.register_tool(
+        ToolDefinition(
+            name="extension_lookup",
+            label="Extension Lookup",
+            description="Look up a value from the loaded Extension",
+            parameters={
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+                "required": ["value"],
+            },
+            execution=direct_execution(_execute),
+        )
+    )
+""".strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        runner = ExtensionRunner(
+            [
+                ExtensionDescriptor(
+                    name="review_extension",
+                    source_path=extension_source,
+                    entry_path=extension_source,
+                )
+            ]
+        )
+        registry = ToolRegistry()
+
+        async def ignore_async(*_args: object) -> None:
+            return None
+
+        bindings = ExtensionRuntimeBindings(
+            cwd=str(tmp_path),
+            get_active_tool_names=lambda: ["extension_lookup"],
+            get_model_selection=lambda: None,
+            set_active_tools=ignore_async,
+            set_model=ignore_async,
+            request_resource_refresh=lambda: None,
+            shutdown=lambda: None,
+            record_diagnostic=lambda _diagnostic: None,
+            bind_tool=lambda definition, owner, source_info: registry.bind_tool(
+                definition,
+                owner=owner,
+                source_info=source_info,
+            ),
+            stage_tool=lambda definition, owner, source_info: registry.stage_tool(
+                definition,
+                owner=owner,
+                source_info=source_info,
+            ),
+        )
+        await runner.activate_runtime_generation(bindings)
+        definition = registry.get_definition("extension_lookup")
+        assert definition is not None
+        logical_tool = {
+            "name": definition.name,
+            "description": definition.description,
+            "parameters": definition.parameters,
+        }
+        prepared_tool = {
+            "name": definition.name,
+            "description": definition.description,
+            "input_schema": definition.parameters,
+        }
         transcript = await _memory_transcript()
         committer = ModelInputTranscriptCommitter(
             transcript=transcript,
-            context=_context(transcript),
+            context=_context(
+                transcript,
+                logical_input={
+                    "system_prompt": "system prompt",
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "tools": [logical_tool],
+                    "request_options": {},
+                },
+            ),
             runtime_references=_runtime_references(),
         )
 
-        await committer.commit_prepared_request(_prepared())
+        await committer.commit_prepared_request(_prepared(tools=[prepared_tool]))
         snapshot_id = committer.commits[-1].snapshot_id
+        candidate = runner.prepare_generation([])
+        await candidate.activate(bindings)
+        retirement = candidate.publish(lambda: None)
+        await retirement.retire()
+        assert registry.list_definitions() == []
         extension_source.unlink()
         rebuilt = rebuild_model_input(transcript, snapshot_id)
 
         assert extension_source.exists() is False
         assert rebuilt.logical_input["tools"] == [
             {
-                "name": "lookup",
-                "description": "Look up a value",
-                "parameters": {"type": "object", "properties": {}},
+                "name": "extension_lookup",
+                "description": "Look up a value from the loaded Extension",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                    "required": ["value"],
+                },
             }
         ]
         assert rebuilt.prepared_payload["tools"] == [
             {
-                "name": "lookup",
-                "input_schema": {"type": "object", "properties": {}},
+                "name": "extension_lookup",
+                "description": "Look up a value from the loaded Extension",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"value": {"type": "string"}},
+                    "required": ["value"],
+                },
             }
         ]
         assert verify_model_input(transcript, snapshot_id).verified
+        await runner.dispose_runtime_generation()
 
     asyncio.run(scenario())
 

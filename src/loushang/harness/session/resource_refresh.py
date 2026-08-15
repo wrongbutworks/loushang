@@ -140,21 +140,32 @@ class SessionResourceRefreshRuntime:
             )
         candidate = prepare_generation(resource_bundle.extensions)
         published = False
+        publication_started = False
+        previous_resource = self.get_resource_bundle()
         try:
             discovered = await candidate.discover_resources_async(
                 resource_bundle,
                 reason=reason,
             )
             await candidate.activate(bindings)
+            publication_started = True
             retirement = candidate.publish(
                 lambda: self._commit_resource_generation(discovered)
             )
             published = True
             await retirement.retire()
             return discovered
-        except BaseException:
+        except BaseException as publication_error:
             if not published:
                 await candidate.rollback()
+                if publication_started:
+                    try:
+                        self.set_resource_bundle(previous_resource)
+                        self.rebuild_prompt_and_tools_view()
+                    except BaseException:
+                        publication_error.add_note(
+                            "previous resource bundle view restoration failed"
+                        )
             raise
 
     def request_resource_refresh(self) -> None:
@@ -194,18 +205,7 @@ class SessionResourceRefreshRuntime:
         self.rebuild_prompt_and_tools_view()
 
     def _commit_resource_generation(self, resource_bundle: ResourceBundle) -> None:
-        previous = self.get_resource_bundle()
-        try:
-            self._commit_resource_bundle(resource_bundle)
-        except BaseException as commit_error:
-            try:
-                self.set_resource_bundle(previous)
-                self.rebuild_prompt_and_tools_view()
-            except BaseException:
-                commit_error.add_note(
-                    "previous resource bundle view restoration failed"
-                )
-            raise
+        self._commit_resource_bundle(resource_bundle)
 
 
 __all__ = [

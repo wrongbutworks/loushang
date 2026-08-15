@@ -70,11 +70,17 @@ class ExtensionRuntimeBindingFactory:
     bind_provider: (
         Callable[[str, object, RegistrationOwner], RegistrationLease] | None
     ) = None
+    bind_provider_removal: (
+        Callable[[str, RegistrationOwner], RegistrationLease] | None
+    ) = None
     stage_tool: (
         Callable[[object, RegistrationOwner, object | None], RegistrationLease] | None
     ) = None
     stage_provider: (
         Callable[[str, object, RegistrationOwner], RegistrationLease] | None
+    ) = None
+    stage_provider_removal: (
+        Callable[[str, RegistrationOwner], RegistrationLease] | None
     ) = None
 
     def build(self) -> ExtensionRuntimeBindings:
@@ -131,8 +137,10 @@ class ExtensionRuntimeBindingFactory:
             register_provider=self.register_provider,
             unregister_provider=self.unregister_provider,
             bind_provider=self.bind_provider,
+            bind_provider_removal=self.bind_provider_removal,
             stage_tool=self.stage_tool,
             stage_provider=self.stage_provider,
+            stage_provider_removal=self.stage_provider_removal,
             set_extension_status=self.set_extension_status,
             footer_data_provider=self.get_footer_data_provider(),
             compact=self.compact,
