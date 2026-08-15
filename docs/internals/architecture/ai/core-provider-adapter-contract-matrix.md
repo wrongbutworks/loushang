@@ -18,6 +18,21 @@ Adapters that own non-core validation may additionally implement
 `ProviderRequestValidator.validate_request(request)`, which is checked at
 registration and runs before `invoke_raw(request)`.
 
+The three production adapters also implement `PreparedRequestAdapter`:
+
+- `prepare_request(request)` completes all model-visible protocol mapping and
+  returns an immutable `PreparedModelRequest`;
+- the AI runtime awaits the optional `PreparedRequestCommitter` once per
+  transport attempt; and
+- `invoke_prepared_raw(request, prepared)` sends only the canonical frozen
+  payload and model-visible protocol headers, plus non-model-visible transport
+  metadata.
+
+One invocation keeps a stable `invocation_id`; retries increment `attempt` and
+repeat prepare/commit. A configured committer fails closed for an adapter that
+does not implement this seam. Without a committer, legacy custom adapters keep
+their standalone `invoke_raw(request)` behavior.
+
 ## Core Support Modules
 
 | Module | Role |

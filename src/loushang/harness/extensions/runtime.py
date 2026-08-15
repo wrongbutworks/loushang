@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
@@ -40,6 +41,24 @@ from loushang.harness.tools.core import ToolDefinition
 ExtensionRuntimeContextFactory = Callable[[str, LoadedExtension | None], object]
 ExtensionResourceContextFactory = Callable[[str], object]
 ExtensionRuntimeErrorHandler = Callable[[LoadedExtension, str, Exception], None]
+
+
+@dataclass(frozen=True)
+class _ExtensionRuntimeCompositionState:
+    extensions: tuple[LoadedExtension, ...]
+    active_extensions: tuple[LoadedExtension, ...]
+    route_plan: ExtensionRoutePlan
+    tool_definitions: tuple[ToolDefinition, ...]
+    tool_source_info_by_name: dict[str, SourceInfo[Path]]
+    tool_extension_name_by_name: dict[str, str]
+    command_diagnostics: tuple[DiagnosticDraft, ...]
+    flag_diagnostics: tuple[DiagnosticDraft, ...]
+    shortcut_diagnostics: tuple[DiagnosticDraft, ...]
+    registered_commands: tuple[ResolvedCommand, ...]
+    registered_commands_by_invocation_name: dict[str, ResolvedCommand]
+    resolved_flags: tuple[ResolvedFlag, ...]
+    resolved_shortcuts: tuple[ResolvedShortcut, ...]
+    flag_values: dict[str, bool | str]
 
 
 class ExtensionRuntime:
@@ -76,6 +95,7 @@ class ExtensionRuntime:
         self._runtime_error_handler = runtime_error_handler
         self._tool_definitions: list[ToolDefinition] = []
         self._tool_source_info_by_name: dict[str, SourceInfo[Path]] = {}
+        self._tool_extension_name_by_name: dict[str, str] = {}
         self._command_diagnostics: list[DiagnosticDraft] = []
         self._flag_diagnostics: list[DiagnosticDraft] = []
         self._shortcut_diagnostics: list[DiagnosticDraft] = []
@@ -268,6 +288,9 @@ class ExtensionRuntime:
     def get_tool_source_info(self, name: str) -> SourceInfo[Path] | None:
         return self._tool_source_info_by_name.get(name)
 
+    def get_tool_extension_name(self, name: str) -> str | None:
+        return self._tool_extension_name_by_name.get(name)
+
     def get_message_renderer(self, custom_type: str):
         for extension in self._active_extensions:
             renderer = extension.message_renderers.get(custom_type)
@@ -347,12 +370,69 @@ class ExtensionRuntime:
         for registration in registry.tools:
             source_info = registration.source_info
             self._tool_source_info_by_name[registration.definition.name] = source_info
+            self._tool_extension_name_by_name[registration.definition.name] = (
+                registration.extension_name
+            )
             self._tool_definitions.append(
                 wrap_registered_tool_definition(
                     registration.definition,
                     str(source_info.path.parent),
                 )
             )
+
+    def _capture_composition_state(self) -> _ExtensionRuntimeCompositionState:
+        return _ExtensionRuntimeCompositionState(
+            extensions=self._extensions,
+            active_extensions=self._active_extensions,
+            route_plan=self._route_plan,
+            tool_definitions=tuple(self._tool_definitions),
+            tool_source_info_by_name=dict(self._tool_source_info_by_name),
+            tool_extension_name_by_name=dict(self._tool_extension_name_by_name),
+            command_diagnostics=tuple(self._command_diagnostics),
+            flag_diagnostics=tuple(self._flag_diagnostics),
+            shortcut_diagnostics=tuple(self._shortcut_diagnostics),
+            registered_commands=tuple(self._registered_commands),
+            registered_commands_by_invocation_name=dict(
+                self._registered_commands_by_invocation_name
+            ),
+            resolved_flags=tuple(self._resolved_flags),
+            resolved_shortcuts=tuple(self._resolved_shortcuts),
+            flag_values=dict(self._flag_values),
+        )
+
+    def _install_composition_state(
+        self,
+        state: _ExtensionRuntimeCompositionState,
+    ) -> None:
+        self._extensions = state.extensions
+        self._active_extensions = state.active_extensions
+        self._route_plan = state.route_plan
+        self._tool_definitions = list(state.tool_definitions)
+        self._tool_source_info_by_name = dict(state.tool_source_info_by_name)
+        self._tool_extension_name_by_name = dict(state.tool_extension_name_by_name)
+        self._command_diagnostics = list(state.command_diagnostics)
+        self._flag_diagnostics = list(state.flag_diagnostics)
+        self._shortcut_diagnostics = list(state.shortcut_diagnostics)
+        self._registered_commands = list(state.registered_commands)
+        self._registered_commands_by_invocation_name = dict(
+            state.registered_commands_by_invocation_name
+        )
+        self._resolved_flags = list(state.resolved_flags)
+        self._resolved_shortcuts = list(state.resolved_shortcuts)
+        self._flag_values = dict(state.flag_values)
+        self._router = ExtensionRouter(
+            self._route_plan,
+            diagnostics=self._diagnostics,
+            runtime_error_handler=self._emit_runtime_error,
+            include_route_id_in_error_metadata=False,
+        )
+        self._plain_diagnostic_router = ExtensionRouter(
+            self._route_plan,
+            diagnostics=self._diagnostics,
+            runtime_error_handler=self._emit_runtime_error,
+            include_route_id_in_error_metadata=False,
+            include_provenance_in_error_metadata=False,
+        )
 
     def _dispatcher(self, fallback_cwd: str) -> ExtensionDispatcher:
         return ExtensionDispatcher(

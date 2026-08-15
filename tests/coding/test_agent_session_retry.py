@@ -102,7 +102,8 @@ def test_agent_session_retryable_error_starts_retry_and_removes_error_message(
         del delay_ms, signal
         return None
 
-    async def _fake_continue_run():
+    async def _fake_continue_run(*, model_call_purpose="continuation"):
+        assert model_call_purpose == "retry"
         continued.append("continued")
 
     monkeypatch.setattr(
@@ -174,7 +175,8 @@ def test_agent_session_retry_success_emits_end_event_and_resolves_waiter(
         del delay_ms, signal
         return None
 
-    async def _fake_continue_run():
+    async def _fake_continue_run(*, model_call_purpose="continuation"):
+        assert model_call_purpose == "retry"
         return None
 
     monkeypatch.setattr(
@@ -249,7 +251,8 @@ def test_agent_session_retry_preserves_queued_messages_until_retry_continues(
         del delay_ms, signal
         return None
 
-    async def _fake_continue_run():
+    async def _fake_continue_run(*, model_call_purpose="continuation"):
+        assert model_call_purpose == "retry"
         continued_states.append(
             (session.get_steering_messages(), session.get_follow_up_messages())
         )
@@ -326,7 +329,7 @@ def test_agent_session_abort_retry_ends_retry_with_failure(
             await asyncio.sleep(0)
         raise asyncio.CancelledError
 
-    async def _fake_continue_run():
+    async def _fake_continue_run(*, model_call_purpose="continuation"):
         raise AssertionError("continue_run should not be called after retry abort")
 
     monkeypatch.setattr(
@@ -401,7 +404,8 @@ def test_agent_session_retry_max_retries_emits_final_failure(
         del delay_ms, signal
         return None
 
-    async def _fake_continue_run():
+    async def _fake_continue_run(*, model_call_purpose="continuation"):
+        assert model_call_purpose == "retry"
         return None
 
     monkeypatch.setattr(
@@ -541,7 +545,7 @@ def test_agent_session_overflow_routes_to_compaction_instead_of_retry(
         compaction_calls.append((reason, will_retry, raise_on_error))
         return None
 
-    async def _fake_continue_run():
+    async def _fake_continue_run(*, model_call_purpose="continuation"):
         raise AssertionError("overflow should not trigger retry continue_run")
 
     monkeypatch.setattr(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TypeVar, cast
+from typing import Literal, TypeVar, cast
 
 from loushang.agent.json_codec import AgentMessageJsonCodec, CustomMessageJsonCodec
 from loushang.agent.types import CustomAgentMessage
@@ -33,9 +33,18 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_INPUT_COMPONENT_KIND,
+    MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     THINKING_SELECTION_KIND,
+)
+from loushang.harness.transcript.model_input_types import (
+    FrozenModelInputValue,
+    ModelInputComponent,
+    ModelInputComponentReference,
+    ModelInputSnapshot,
+    thaw_model_input_json,
 )
 from loushang.harness.transcript.types import (
     AnnotationOperation,
@@ -152,6 +161,18 @@ def register_standard_payload_codecs(
         _encode_metadata_patch,
         _decode_metadata_patch,
     )
+    _register(
+        registry,
+        MODEL_INPUT_COMPONENT_KIND,
+        _encode_model_input_component,
+        _decode_model_input_component,
+    )
+    _register(
+        registry,
+        MODEL_INPUT_PREPARED_KIND,
+        _encode_model_input_snapshot,
+        _decode_model_input_snapshot,
+    )
 
 
 def _register(
@@ -252,13 +273,19 @@ def _decode_command_execution(value: JSONValue) -> CommandExecutionRecord:
 
 def _encode_compaction_checkpoint(payload: object) -> JSONValue:
     checkpoint = _instance(payload, ContextCompactionCheckpoint)
-    return {
+    encoded: dict[str, JSONValue] = {
         "summary": checkpoint.summary,
         "firstKeptRecordId": checkpoint.first_kept_record_id,
         "tokensBefore": checkpoint.tokens_before,
         "details": require_json_value(checkpoint.details),
         "fromHook": checkpoint.from_hook,
     }
+    if checkpoint.model_input_snapshot_ids:
+        encoded["lineageVersion"] = 2
+        encoded["modelInputSnapshotIds"] = list(
+            checkpoint.model_input_snapshot_ids
+        )
+    return encoded
 
 
 def _decode_compaction_checkpoint(
@@ -273,38 +300,55 @@ def _decode_compaction_checkpoint(
             "tokensBefore",
             "details",
             "fromHook",
+            "lineageVersion",
+            "modelInputSnapshotIds",
         },
     )
+    lineage = _decode_model_input_lineage(payload, name="context compaction checkpoint")
     return ContextCompactionCheckpoint(
         summary=_string(payload, "summary"),
         first_kept_record_id=_text(payload, "firstKeptRecordId"),
         tokens_before=_non_negative_int(payload, "tokensBefore"),
         details=_field(payload, "details"),
         from_hook=_optional_bool(payload, "fromHook"),
+        model_input_snapshot_ids=lineage,
     )
 
 
 def _encode_branch_summary(payload: object) -> JSONValue:
     summary = _instance(payload, BranchContextSummary)
-    return {
+    encoded: dict[str, JSONValue] = {
         "fromRecordId": summary.from_record_id,
         "summary": summary.summary,
         "details": require_json_value(summary.details),
         "fromHook": summary.from_hook,
     }
+    if summary.model_input_snapshot_ids:
+        encoded["lineageVersion"] = 2
+        encoded["modelInputSnapshotIds"] = list(summary.model_input_snapshot_ids)
+    return encoded
 
 
 def _decode_branch_summary(value: JSONValue) -> BranchContextSummary:
     payload = _payload_object(
         value,
         name="branch context summary",
-        fields={"fromRecordId", "summary", "details", "fromHook"},
+        fields={
+            "fromRecordId",
+            "summary",
+            "details",
+            "fromHook",
+            "lineageVersion",
+            "modelInputSnapshotIds",
+        },
     )
+    lineage = _decode_model_input_lineage(payload, name="branch context summary")
     return BranchContextSummary(
         from_record_id=_text(payload, "fromRecordId"),
         summary=_string(payload, "summary"),
         details=_field(payload, "details"),
         from_hook=_optional_bool(payload, "fromHook"),
+        model_input_snapshot_ids=lineage,
     )
 
 
@@ -460,6 +504,169 @@ def _decode_metadata_patch(value: JSONValue) -> ConversationMetadataPatch:
     )
 
 
+def _encode_model_input_component(payload: object) -> JSONValue:
+    component = _instance(payload, ModelInputComponent)
+    return {
+        "schemaVersion": component.schema_version,
+        "contentHash": component.content_hash,
+        "content": thaw_model_input_json(component.content),
+    }
+
+
+def _decode_model_input_component(value: JSONValue) -> ModelInputComponent:
+    payload = _payload_object(
+        value,
+        name="model input component",
+        fields={"schemaVersion", "contentHash", "content"},
+    )
+    return ModelInputComponent(
+        schema_version=_positive_int(payload, "schemaVersion"),
+        content_hash=_text(payload, "contentHash"),
+        content=cast(FrozenModelInputValue, _field(payload, "content")),
+    )
+
+
+def _encode_model_input_snapshot(payload: object) -> JSONValue:
+    snapshot = _instance(payload, ModelInputSnapshot)
+    return {
+        "schemaVersion": snapshot.schema_version,
+        "projectionVersion": snapshot.projection_version,
+        "snapshotId": snapshot.snapshot_id,
+        "invocationId": snapshot.invocation_id,
+        "attempt": snapshot.attempt,
+        "purpose": snapshot.purpose,
+        "productId": snapshot.product_id,
+        "runtimeId": snapshot.runtime_id,
+        "mountGeneration": snapshot.mount_generation,
+        "profileFingerprint": snapshot.profile_fingerprint,
+        "registrationRevision": snapshot.registration_revision,
+        "conversationId": snapshot.conversation_id,
+        "sourceLeafId": snapshot.source_leaf_id,
+        "sourceRevision": snapshot.source_revision,
+        "commitRevision": snapshot.commit_revision,
+        "providerId": snapshot.provider_id,
+        "modelId": snapshot.model_id,
+        "apiId": snapshot.api_id,
+        "endpointId": snapshot.endpoint_id,
+        "logicalComponents": [
+            _encode_model_input_reference(reference)
+            for reference in snapshot.logical_components
+        ],
+        "preparedPayloadComponents": [
+            _encode_model_input_reference(reference)
+            for reference in snapshot.prepared_payload_components
+        ],
+        "modelVisibleHeadersComponent": _encode_model_input_reference(
+            snapshot.model_visible_headers_component
+        ),
+        "logicalInputHash": snapshot.logical_input_hash,
+        "preparedPayloadHash": snapshot.prepared_payload_hash,
+        "outcome": snapshot.outcome,
+    }
+
+
+def _decode_model_input_snapshot(value: JSONValue) -> ModelInputSnapshot:
+    fields = {
+        "schemaVersion",
+        "projectionVersion",
+        "snapshotId",
+        "invocationId",
+        "attempt",
+        "purpose",
+        "productId",
+        "runtimeId",
+        "mountGeneration",
+        "profileFingerprint",
+        "registrationRevision",
+        "conversationId",
+        "sourceLeafId",
+        "sourceRevision",
+        "commitRevision",
+        "providerId",
+        "modelId",
+        "apiId",
+        "endpointId",
+        "logicalComponents",
+        "preparedPayloadComponents",
+        "modelVisibleHeadersComponent",
+        "logicalInputHash",
+        "preparedPayloadHash",
+        "outcome",
+    }
+    payload = _payload_object(value, name="model input snapshot", fields=fields)
+    outcome = _text(payload, "outcome")
+    if outcome != "prepared":
+        raise ValueError("model input snapshot outcome is invalid")
+    return ModelInputSnapshot(
+        schema_version=_positive_int(payload, "schemaVersion"),
+        projection_version=_text(payload, "projectionVersion"),
+        snapshot_id=_text(payload, "snapshotId"),
+        invocation_id=_text(payload, "invocationId"),
+        attempt=_positive_int(payload, "attempt"),
+        purpose=_text(payload, "purpose"),
+        product_id=_text(payload, "productId"),
+        runtime_id=_text(payload, "runtimeId"),
+        mount_generation=_non_negative_int(payload, "mountGeneration"),
+        profile_fingerprint=_text(payload, "profileFingerprint"),
+        registration_revision=_text(payload, "registrationRevision"),
+        conversation_id=_text(payload, "conversationId"),
+        source_leaf_id=_text(payload, "sourceLeafId"),
+        source_revision=_non_negative_int(payload, "sourceRevision"),
+        commit_revision=_positive_int(payload, "commitRevision"),
+        provider_id=_text(payload, "providerId"),
+        model_id=_text(payload, "modelId"),
+        api_id=_text(payload, "apiId"),
+        endpoint_id=_text(payload, "endpointId"),
+        logical_components=_decode_model_input_references(
+            payload,
+            "logicalComponents",
+        ),
+        prepared_payload_components=_decode_model_input_references(
+            payload,
+            "preparedPayloadComponents",
+        ),
+        model_visible_headers_component=_decode_model_input_reference(
+            _field(payload, "modelVisibleHeadersComponent")
+        ),
+        logical_input_hash=_text(payload, "logicalInputHash"),
+        prepared_payload_hash=_text(payload, "preparedPayloadHash"),
+        outcome=cast(Literal["prepared"], outcome),
+    )
+
+
+def _encode_model_input_reference(
+    reference: ModelInputComponentReference,
+) -> dict[str, JSONValue]:
+    return {
+        "name": reference.name,
+        "recordId": reference.record_id,
+        "contentHash": reference.content_hash,
+    }
+
+
+def _decode_model_input_references(
+    value: Mapping[str, JSONValue],
+    key: str,
+) -> tuple[ModelInputComponentReference, ...]:
+    field = _field(value, key)
+    if not isinstance(field, list):
+        raise TypeError(f"payload field {key!r} must be an array")
+    return tuple(_decode_model_input_reference(item) for item in field)
+
+
+def _decode_model_input_reference(value: object) -> ModelInputComponentReference:
+    payload = _payload_object(
+        value,
+        name="model input component reference",
+        fields={"name", "recordId", "contentHash"},
+    )
+    return ModelInputComponentReference(
+        name=_text(payload, "name"),
+        record_id=_text(payload, "recordId"),
+        content_hash=_text(payload, "contentHash"),
+    )
+
+
 def _instance(value: object, expected: type[PayloadT]) -> PayloadT:
     if not isinstance(value, expected):
         raise TypeError(f"payload must be {expected.__name__}")
@@ -483,6 +690,30 @@ def _payload_object(
             f"{name} contains unknown fields: {', '.join(sorted(unexpected))}"
         )
     return payload
+
+
+def _decode_model_input_lineage(
+    payload: Mapping[str, JSONValue],
+    *,
+    name: str,
+) -> tuple[str, ...]:
+    has_version = "lineageVersion" in payload
+    has_snapshots = "modelInputSnapshotIds" in payload
+    if not has_version and not has_snapshots:
+        return ()
+    if not has_version or not has_snapshots:
+        raise ValueError(f"{name} Model Input lineage fields must appear together")
+    if payload["lineageVersion"] != 2:
+        raise ValueError(f"{name} Model Input lineage version is unsupported")
+    raw_ids = payload["modelInputSnapshotIds"]
+    if not isinstance(raw_ids, list) or not raw_ids:
+        raise ValueError(f"{name} Model Input lineage must be a non-empty list")
+    snapshot_ids = tuple(raw_ids)
+    if any(not isinstance(item, str) or not item.strip() for item in snapshot_ids):
+        raise ValueError(f"{name} Model Input lineage ids must be non-empty strings")
+    if len(set(snapshot_ids)) != len(snapshot_ids):
+        raise ValueError(f"{name} Model Input lineage ids must be unique")
+    return cast(tuple[str, ...], snapshot_ids)
 
 
 def _field(value: Mapping[str, JSONValue], key: str) -> JSONValue:
@@ -550,6 +781,13 @@ def _non_negative_int(value: Mapping[str, JSONValue], key: str) -> int:
     field = _field(value, key)
     if isinstance(field, bool) or not isinstance(field, int) or field < 0:
         raise TypeError(f"payload field {key!r} must be a non-negative integer")
+    return field
+
+
+def _positive_int(value: Mapping[str, JSONValue], key: str) -> int:
+    field = _non_negative_int(value, key)
+    if field < 1:
+        raise ValueError(f"payload field {key!r} must be positive")
     return field
 
 

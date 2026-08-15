@@ -19,6 +19,10 @@ from loushang.harness.extensions.types import (
     RegisteredShortcut,
 )
 from loushang.harness.resources.source import SourceInfo
+from loushang.harness.runtime.registration import (
+    RegistrationLease,
+    RegistrationLeaseCollector,
+)
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
@@ -51,6 +55,8 @@ class ExtensionContributionAPI:
         ] = {}
         self._diagnostics: list[DiagnosticDraft] = []
         self._runtime_state: object | None = None
+        self._runtime_generation: int | None = None
+        self._registrations: RegistrationLeaseCollector | None = None
 
     def on(
         self,
@@ -196,8 +202,15 @@ class ExtensionContributionAPI:
     ) -> None:
         self._message_renderers[custom_type] = renderer
 
-    def bind_runtime_state(self, runtime_state: object) -> None:
+    def bind_runtime_state(
+        self,
+        runtime_state: object,
+        registrations: RegistrationLeaseCollector | None = None,
+    ) -> None:
         self._runtime_state = runtime_state
+        generation = getattr(runtime_state, "generation", None)
+        self._runtime_generation = generation if isinstance(generation, int) else None
+        self._registrations = registrations
 
     def get_active_tools(self) -> list[str]:
         bindings = self._runtime_bindings()
@@ -293,12 +306,31 @@ class ExtensionContributionAPI:
         )
 
     def _runtime_bindings(self) -> object | None:
-        return getattr(self._runtime_state, "bindings", None)
+        runtime_state = self._runtime_state
+        if runtime_state is None:
+            return None
+        generation = self._runtime_generation
+        require = getattr(runtime_state, "require", None)
+        if generation is not None and callable(require):
+            return require(generation=generation)
+        return getattr(runtime_state, "bindings", None)
 
     def _register_runtime_tool(self, definition: ToolDefinition) -> None:
-        callback = getattr(self._runtime_bindings(), "register_tool", None)
+        bindings = self._runtime_bindings()
+        binder = getattr(bindings, "bind_tool", None)
+        source_info = SourceInfo(path=self._entry_path or self._source_path)
+        if callable(binder):
+            registrations = self._registrations
+            owner = registrations.owner if registrations is not None else self._name
+            lease = binder(definition, owner, source_info)
+            if not isinstance(lease, RegistrationLease):
+                raise TypeError("live tool binding must return a RegistrationLease")
+            if registrations is not None:
+                registrations.capture(lease)
+            return
+        callback = getattr(bindings, "register_tool", None)
         if callable(callback):
-            callback(definition, SourceInfo(path=self._entry_path or self._source_path))
+            callback(definition, source_info)
 
     def _register_control_contribution(
         self,

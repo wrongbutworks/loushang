@@ -146,6 +146,13 @@ def compose_agent_session_extensions(
         refresh_resources=lambda: ports.resource_refresh_runtime.refresh_async(
             reason="reload"
         ),
+        reload_generation=(
+            ports.resource_refresh_runtime.reload_extension_generation
+            if callable(
+                getattr(ports.extension_runner, "prepare_generation", None)
+            )
+            else None
+        ),
         record_runtime_diagnostic=ports.record_runtime_diagnostic,
         sync_extension_diagnostics=ports.sync_extension_diagnostics,
     )

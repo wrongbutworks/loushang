@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from loushang.ai.types import TextPart, UserMessage
@@ -13,6 +15,8 @@ from loushang.harness.transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_INPUT_COMPONENT_KIND,
+    MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     STANDARD_AGENT_TRANSCRIPT_KINDS,
@@ -23,15 +27,33 @@ from loushang.harness.transcript import (
     ContextCompactionCheckpoint,
     ConversationMetadataPatch,
     ExtensionData,
+    ModelInputComponent,
+    ModelInputComponentReference,
+    ModelInputSnapshot,
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
     ThinkingSelectionSnapshot,
     create_agent_transcript_message_codec,
     create_agent_transcript_payload_registry,
 )
+from loushang.harness.transcript.model_input_types import hash_model_input_json
 
 
 def _payloads():
+    component_content = {"role": "user", "content": "question"}
+    component_hash = hash_model_input_json(
+        component_content,
+        name="codec Model Input component",
+    )
+    component = ModelInputComponent(
+        content_hash=component_hash,
+        content=component_content,
+    )
+    reference = ModelInputComponentReference(
+        name="messages",
+        record_id="component-record",
+        content_hash=component_hash,
+    )
     return {
         AGENT_MESSAGE_KIND: UserMessage(
             role="user",
@@ -88,6 +110,42 @@ def _payloads():
             values={"title": "Investigation", "count": 2},
             removed_keys=("oldTitle",),
         ),
+        MODEL_INPUT_COMPONENT_KIND: component,
+        MODEL_INPUT_PREPARED_KIND: ModelInputSnapshot(
+            snapshot_id="snapshot-1",
+            invocation_id="invocation-1",
+            attempt=1,
+            purpose="main_turn",
+            product_id="coding",
+            runtime_id="runtime-1",
+            mount_generation=3,
+            profile_fingerprint="a" * 64,
+            registration_revision="b" * 64,
+            conversation_id="conversation-1",
+            source_leaf_id="source-record",
+            source_revision=4,
+            commit_revision=9,
+            provider_id="provider-1",
+            model_id="model-1",
+            api_id="api-1",
+            endpoint_id="endpoint-1",
+            logical_components=tuple(
+                replace(reference, name=name)
+                for name in (
+                    "system_prompt",
+                    "messages",
+                    "tools",
+                    "request_options",
+                )
+            ),
+            prepared_payload_components=(reference,),
+            model_visible_headers_component=replace(
+                reference,
+                name="model_visible_headers",
+            ),
+            logical_input_hash="c" * 64,
+            prepared_payload_hash="d" * 64,
+        ),
     }
 
 
@@ -103,6 +161,41 @@ def test_all_standard_payloads_round_trip_through_versioned_registry() -> None:
         encoded = registry.encode(kind, STANDARD_PAYLOAD_VERSION, payload)
         decoded = registry.decode(kind, STANDARD_PAYLOAD_VERSION, encoded)
         assert decoded == payload
+
+
+@pytest.mark.parametrize(
+    ("kind", "payload"),
+    [
+        (
+            CONTEXT_COMPACTION_CHECKPOINT_KIND,
+            ContextCompactionCheckpoint(
+                summary="summary",
+                first_kept_record_id="kept",
+                tokens_before=3,
+                model_input_snapshot_ids=("snapshot-history", "snapshot-prefix"),
+            ),
+        ),
+        (
+            CONTEXT_BRANCH_SUMMARY_KIND,
+            BranchContextSummary(
+                from_record_id="branch",
+                summary="summary",
+                model_input_snapshot_ids=("snapshot-branch",),
+            ),
+        ),
+    ],
+)
+def test_summary_v2_lineage_round_trips_without_rewriting_v1(kind, payload) -> None:
+    registry = create_agent_transcript_payload_registry()
+
+    encoded = registry.encode(kind, STANDARD_PAYLOAD_VERSION, payload)
+
+    assert encoded["lineageVersion"] == 2
+    assert registry.decode(kind, STANDARD_PAYLOAD_VERSION, encoded) == payload
+    legacy = _payloads()[kind]
+    legacy_encoded = registry.encode(kind, STANDARD_PAYLOAD_VERSION, legacy)
+    assert "lineageVersion" not in legacy_encoded
+    assert legacy.derivation_verifiable is False
 
 
 def test_registered_codec_rejects_corrupted_known_payload() -> None:

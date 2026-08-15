@@ -22,6 +22,19 @@ planning, work event persistence, or AI provider behavior.
 - [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
   defines top-level Capability IDs, dependency direction, Mount identity,
   graph lifecycle, and graph diagnostics.
+- [Capability Runtime Convergence Plan](capability-runtime-convergence-plan.md)
+  records the reviewed delivery plan for owner-scoped reversible registration,
+  Definition/Provider/Consumer separation, composed Profile/Mount/registration
+  projection, and reconstruction of model-visible inputs from committed facts.
+- [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
+  freezes the mutable-surface, compatibility, model-call, package-owner, and
+  lifecycle-fault evidence that later convergence PRs must preserve or revise.
+- [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
+  fixes PR8's Session/candidate-graph nesting, per-sampling commit seam, complete
+  model-call inventory, compaction lineage compatibility, and failure policy.
+- [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
+  fixes PR9's four-clock composed view, explicit skew, explain, JSON, and diff
+  semantics while retaining the existing graph projector as the only projector.
 - [Refactoring Principles](refactoring-principles.md) defines the evidence and
   neutrality gates for moving code into Harness.
 
@@ -46,6 +59,20 @@ description.
   exclusive replacement, protocol injection, composition-root ownership, and
   the invariant enforcement layer that Product and Plugin variation cannot
   bypass.
+- [Capability Runtime Convergence Plan](capability-runtime-convergence-plan.md)
+  joins registration ownership and disposal, Capability role separation,
+  existing graph projection, and durable model-input reconstruction into one
+  reviewed migration sequence. It is a delivery plan and does not override
+  implemented source or accepted boundary documents.
+- [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
+  is the executable pre-change inventory for that sequence. It records current
+  compatibility and assigns each future contract to one package owner.
+- [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
+  defines the implemented PR8 Session graph, per-sampling commit, complete
+  model-call inventory, and compaction-lineage boundary.
+- [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
+  defines PR9's Product-neutral effective runtime diagnostics and clock-skew
+  semantics without introducing another authority.
 - [Refactoring Principles](refactoring-principles.md) defines what may move
   into harness and how migration slices should be shaped.
 - [Shared Capability Boundaries](shared-capability-boundaries.md) maps tools,
@@ -105,6 +132,9 @@ description.
 - [Extension Context Runtime Boundary](extension-context-runtime-boundary.md)
   defines the standard extension context, lifecycle records, generation-bound
   capability injection, and snake_case-only extension UI contract.
+- [Extension And Resource Generation Lifecycle](extension-generation-lifecycle-boundary.md)
+  defines candidate admission, exact owner/generation registrations,
+  synchronous runtime/resource publication, rollback, and reverse unload.
 - [Control Plane Runtime Boundary](control-plane-runtime-boundary.md) defines
   deterministic extension routing, neutral policy subjects and evaluator
   composition, pending approval lifecycle, and the Product adapters that retain

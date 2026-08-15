@@ -96,7 +96,7 @@ def build_agent_session_lifecycle_hooks(
             cancelled=decision is not None and decision.cancel
         )
 
-    def prepare_session(
+    async def prepare_session(
         session: object,
         _previous: object | None,
         _transition: SessionLifecycleTransition,
@@ -105,6 +105,9 @@ def build_agent_session_lifecycle_hooks(
         if callable(stage_approvals):
             stage_approvals()
         _bind_session_runtime_host(session, runtime_host)
+        prepare_model_calls = getattr(session, "prepare_model_call_runtime", None)
+        if callable(prepare_model_calls):
+            await prepare_model_calls()
 
     async def activate_session(
         session: object,

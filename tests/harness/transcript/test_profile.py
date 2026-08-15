@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from loushang.ai.types import ImagePart, TextPart, UserMessage
 from loushang.harness.conversation import (
     CommandExecutionRecord,
@@ -24,11 +26,22 @@ from loushang.harness.transcript import (
     ConversationMetadataPatch,
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
+    RecordSemantics,
     ThinkingSelectionSnapshot,
     application_message_to_user_message,
     context_item_to_model_message,
     context_items_to_model_messages,
 )
+
+
+def test_profile_rejects_duplicate_record_profile_registration() -> None:
+    profile = AgentTranscriptProfile.default()
+    first = RecordSemantics(payload_types=(object,))
+    duplicate_key = RecordSemantics(payload_types=(str,))
+
+    assert profile.register_record_profile("test.record", first) is None
+    with pytest.raises(ValueError, match="already registered"):
+        profile.register_record_profile("test.record", duplicate_key)
 
 
 def _record(record_id: str, parent_id: str | None, kind: str, payload):

@@ -21,9 +21,11 @@ from loushang.harness.extensions.context import (
     SessionShutdownEvent,
 )
 from loushang.harness.runtime import CancellationSignal
+from loushang.harness.runtime.registration import _await_cancellation_atomic
 from loushang.harness.session.composition import (
     SessionComposition,
     SessionExtensionCompositionPort,
+    supports_prepare_model_call,
 )
 from loushang.harness.transcript import (
     BranchSummaryOutput,
@@ -205,16 +207,40 @@ class SessionOperations:
         await self._dispose_runtime()
 
     async def _dispose_runtime(self) -> None:
+        task = asyncio.create_task(self._dispose_runtime_cancellation_atomic())
+        await _await_cancellation_atomic(task)
+
+    async def _dispose_runtime_cancellation_atomic(self) -> None:
         try:
             await self.composition.session_runtime.dispose()
         finally:
             try:
-                result = self.ports.dispose_runtime_profile()
-                if asyncio.iscoroutine(result):
-                    await result
+                await asyncio.gather(
+                    self.composition.compaction_runtime.cancel_and_wait(),
+                    self.composition.navigation_runtime.cancel_and_wait(),
+                )
             finally:
-                self.composition.capability_runtime.dispose()
-                self.ports.finalize_shutdown()
+                try:
+                    extension_runtime = self.ports.extension_runner
+                    dispose_generation = getattr(
+                        extension_runtime,
+                        "dispose_runtime_generation",
+                        None,
+                    )
+                    if callable(dispose_generation):
+                        generation_result = dispose_generation()
+                        if asyncio.iscoroutine(generation_result):
+                            await generation_result
+                finally:
+                    try:
+                        result = self.ports.dispose_runtime_profile()
+                        if asyncio.iscoroutine(result):
+                            await result
+                    finally:
+                        try:
+                            self.composition.capability_runtime.dispose()
+                        finally:
+                            self.ports.finalize_shutdown()
 
     async def _apply_before_tree_hook(
         self,
@@ -266,13 +292,15 @@ class SessionOperations:
             entries: Sequence[object],
             signal: CancellationSignal,
         ) -> BranchSummaryOutput:
-            return await self.ports.execute_branch_summary(
-                entries,
-                model=self.ports.agent.model,
-                signal=signal,
-                custom_instructions=custom_instructions,
-                replace_instructions=replace_instructions,
-            )
+            kwargs: dict[str, object] = {
+                "model": self.ports.agent.model,
+                "signal": signal,
+                "custom_instructions": custom_instructions,
+                "replace_instructions": replace_instructions,
+            }
+            if supports_prepare_model_call(self.ports.execute_branch_summary):
+                kwargs["prepare_model_call"] = self.ports.agent.prepare_model_call
+            return await self.ports.execute_branch_summary(entries, **kwargs)
 
         return run
 __all__ = ["SessionOperations", "SessionOperationsPorts"]

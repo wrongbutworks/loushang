@@ -83,12 +83,13 @@ def start_provider_runtime(
     *,
     options,
     request: ProviderRequest,
+    invocation_id: str | None = None,
     _sleep: Sleep = asyncio.sleep,
     _jitter: Jitter = random.random,
 ) -> AssistantMessageEventStream:
     model = request.model
     stream = AssistantMessageEventStream()
-    call_id = uuid4().hex
+    call_id = invocation_id or uuid4().hex
     assembler = RawAssembler(
         stream=stream,
         api=model.api or "",

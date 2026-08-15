@@ -81,7 +81,11 @@ class SessionAgentPort(Protocol):
         images: list[ImagePart] | None = None,
     ) -> None: ...
 
-    async def continue_run(self) -> None: ...
+    async def continue_run(
+        self,
+        *,
+        model_call_purpose: str = "continuation",
+    ) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -201,7 +205,9 @@ class SessionRuntime:
                 self.after_turn_policy.record_assistant_response_error
             ),
             check_auto_compaction=self.check_auto_compaction,
-            schedule_continue_run=lambda: self.schedule_continue_run(),
+            schedule_continue_run=lambda: self.schedule_continue_run(
+                model_call_purpose="retry"
+            ),
             consume_queued_message=self._queue_controller.mark_message_consumed,
         )
         self.transcript.set_commit_observer(self._schedule_transcript_commit)
@@ -262,9 +268,15 @@ class SessionRuntime:
     async def continue_run(self) -> None:
         await self._host_runtime.run_after_idle(self.agent.continue_run)
 
-    def schedule_continue_run(self) -> asyncio.Task[None]:
+    def schedule_continue_run(
+        self,
+        *,
+        model_call_purpose: str = "continuation",
+    ) -> asyncio.Task[None]:
         return self._host_runtime.defer_run(
-            self.agent.continue_run,
+            lambda: self.agent.continue_run(
+                model_call_purpose=model_call_purpose
+            ),
             key="agent-continue",
         )
 

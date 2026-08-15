@@ -22,23 +22,27 @@ depend on `loushang.coding`, `loushang.harnesswork`, `loushang.work`, `loushang.
 
 | Owner | Owns | Does not own |
 | --- | --- | --- |
-| `runtime` | cancellation, retry/scheduling primitives, runtime-profile declarations, admission, resolution, binding, refresh, disposal | Product capability selection policy or provider behavior |
+| `runtime` | cancellation, retry/scheduling primitives, owner-scoped exact registration lifecycle, runtime-profile declarations, admission, resolution, binding, refresh, disposal | live registry conflict policy, Product capability selection policy, or provider behavior |
 | `config` | layered/scoped configuration mechanics and optional Agent settings types, patch commands, schema codec, and manager lifecycle | Product-only fields, paths, activation effects, credentials, or presentation |
 | `session` | optional Agent-session profile, Product-neutral assembly, turn/lifecycle coordination, command and maintenance bindings, Session facade and inspection | Product prompt content, domain operations, UI state, Work persistence |
 | `conversation` | Product-neutral conversation identity, records, repository/catalog and replay contracts | Agent/AI message schema or Product-specific payload meaning |
-| `transcript` | optional Agent/AI transcript profile, codecs, file/session lifecycle, context rebuild, compaction/retry/navigation mechanisms | Product compaction prompts, semantic summary policy, Product store selection |
+| `transcript` | optional Agent/AI transcript profile, codecs, file/session lifecycle, context rebuild, compaction/retry/navigation mechanisms, and hidden reconstructable Model Input facts | Product compaction prompts, semantic summary policy, Product store selection, or provider transport outcomes |
 | `context` | context items, packing, deterministic budget/accounting records, summary evaluation foundations | Product salience policy or model-specific estimation decisions |
 | `tools` / `approval` / `policy` / `sandbox` | tool authoring and hosted execution mechanics, action policy evaluation, approval lifecycle, effects, execution-scope process-start authorization, and optional containment binding | Product risk defaults, executable/catalog admission, Product approval wording, arbitrary Product commands |
-| `resources` / `extensions` / `capabilities` | resource discovery and precedence, package materialization mechanics, extension runtime, capability composition | Product-owned built-in content, trust decisions, activation policy |
+| `resources` / `extensions` / `capabilities` | resource discovery and precedence, package materialization mechanics, staged Extension/resource generations with exact live-registration retirement, capability composition, and coarse Capability graph contracts, planning, transactional Mount binding, live state, and read-only projection | Product-owned built-in content, trust decisions, activation policy, or Product-specific Provider behavior |
 | `host` / `cli` / `events` / `presentation` | Product-neutral host lifecycle, RPC/JSON projection, runtime event contracts and reusable presentation | AppService tenancy, Channel protocol, Product grammar or final UI composition |
 | `diagnostics` / `continuity` / `workspace` | shared diagnostic records/export, continuity provider composition, one-shot execution, and bounded session-owned process primitives | Product-specific recovery UX, business audit retention, protocol/server selection, Product artifact semantics |
 
-## Accepted Capability Graph Target (Not Yet Implemented)
+## Accepted Capability Graph Target (Mount Runtime Implemented)
 
 The implemented owner table above remains authoritative for current code. The
 accepted [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
-decision adds a coarser target architecture without pretending that its graph
-owners already exist in source.
+decision adds a coarser architecture. Its immutable Definition, Requirement,
+Bundle Provider declaration, pure planner, transactional Binder, live per-graph
+Runtime, and read-only Projector now exist. `harness.workspace` is the first
+Definition / Provider / Consumer slice: Consumers receive only declared
+filesystem facets or the authorized process-launch port, never the graph
+Runtime, raw process host, approval gateway, or sandbox backend.
 
 The initial top-level Harness Capability IDs are `harness.workspace`,
 `harness.resources`, and `harness.session`; current Coding-owned examples are
@@ -47,14 +51,29 @@ Binding Facets rather than additional top-level graph nodes.
 
 | Accepted target responsibility | Current implementation status |
 | --- | --- |
-| plan dependencies, closure, order, and validation | no top-level Capability graph planner yet |
-| bind final nodes transactionally and reuse unchanged binding signatures | current Runtime Profile binding is narrower; graph finalization is not implemented |
-| own live Mounted Capability state, generations, and scope leases | current runtime-profile generations and leases do not yet form a live Mount graph |
-| project read-only graph snapshots, explanations, and impact paths | no Capability graph projector yet |
+| plan dependencies, closure, order, and validation | `RuntimeCapabilityGraphPlanner` is implemented as a pure planner under `loushang.harness.capabilities` |
+| bind final nodes transactionally and reuse unchanged binding signatures | `RuntimeCapabilityGraphBinder` stages Provider values and owner-scoped registrations, atomically publishes successful generations, reuses unchanged signatures, and reverse-retires replaced nodes |
+| own live Mounted Capability state, generations, and scope leases | `RuntimeCapabilityGraphRuntime` owns one Product/runtime graph and issues narrow, generation-scoped Consumer facet leases; it is not global mutable state |
+| project read-only graph snapshots, explanations, and impact paths | `RuntimeCapabilityGraphProjector` exposes the committed `MountGraphSnapshot`, separate registration inventory, explanations, dependency/dependent paths, and impact without live values |
 
-The target responsibility names are conceptual boundaries, not current public
-classes or permission to create a global mutable registry. When implementation
-lands, this map and its architecture gates must be updated in the same change.
+Mount Graph and registration inventory remain separate authorities and clocks.
+The Mount snapshot references the existing Runtime Profile fingerprint rather
+than copying its selections or changing the persisted Session-header contract.
+No global mutable registry, second graph projector, or effective-runtime
+selection authority is introduced.
+
+Extension reload has its own narrower generation clock. One stable
+`ExtensionRunner` stages declaration/resource discovery and owner-scoped live
+bindings, synchronously publishes the selected Extension composition with the
+resource bundle, then reverse-retires the replaced generation. It reuses
+`RegistrationLease` and `RegistrationScope`; it is not a second Capability
+graph or runtime projector. Historical model-visible Tool schemas remain owned
+by committed Model Input facts rather than the current Extension generation.
+
+The initial live Binder supports direct dependency facets. A planned
+`stable_reference` edge fails closed before Provider construction until a
+separate stable-indirection and refresh transaction is implemented; the Binder
+does not satisfy that declaration by leaking a concrete refreshable value.
 
 ## Dependency Direction
 
@@ -185,7 +204,9 @@ policy remains with Host prompt input and the read tool.
 - Product-neutral Harnesstui and shared runtime owners;
 - canonical coarse Capability IDs and Mount terminology in architecture
   documents, without representing Product, Plugin, Package, or Extension
-  identities as graph nodes.
+  identities as graph nodes; and
+- the capability-runtime convergence inventory, exact existence of implemented
+  graph owners, no-second-runtime rule, and narrow graph API parameters.
 
 New boundaries must update this map when they change current ownership. A
 migration ledger alone is not sufficient evidence of the resulting boundary.

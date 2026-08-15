@@ -4,9 +4,13 @@ import asyncio
 
 import pytest
 
+from loushang.harness.resources.source import SourceInfo
 from loushang.harness.runtime import (
     BoundProductRuntimeContext,
     ProductRuntimeBindings,
+    RegistrationIdentity,
+    RegistrationLease,
+    RegistrationOwner,
     RuntimeBindingState,
     UnboundProductRuntimeContext,
 )
@@ -110,6 +114,48 @@ def test_bound_context_reads_refreshes_and_honors_invalidation() -> None:
     state.invalidate()
     with pytest.raises(RuntimeError, match="research session replaced"):
         _ = context.cwd
+
+
+def test_bound_context_prefers_owner_aware_live_tool_binding() -> None:
+    calls: list[tuple[object, str, object | None]] = []
+    owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="demo",
+        runtime_id="session-1",
+        generation=0,
+    )
+
+    def bind_tool(
+        tool: object,
+        owner_id: str,
+        source_info: object | None,
+    ) -> RegistrationLease:
+        calls.append((tool, owner_id, source_info))
+        return RegistrationLease(
+            owner=owner,
+            identity=RegistrationIdentity.create(
+                surface="tool",
+                public_key="dynamic",
+            ),
+            dispose=lambda: None,
+        )
+
+    bindings = _research_bindings(cwd="/tmp/research", active_tools=[], calls=[])
+    bindings.bind_tool = bind_tool
+    bindings.register_tool = lambda _tool, _source_info: pytest.fail(
+        "legacy tool registration must not be used"
+    )
+    source_info = SourceInfo(path="<inline:demo>")
+    context = BoundProductRuntimeContext(
+        RuntimeBindingState(bindings).capture(),
+        source_info,
+        tool_owner_id="demo",
+    )
+    tool = object()
+
+    context.register_tool(tool)
+
+    assert calls == [(tool, "demo", source_info)]
 
 
 def test_unbound_context_has_conservative_defaults() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,6 +16,7 @@ from loushang.harness.conversation import (
     ConversationStore,
     StoreCommitOutcomeUnknown,
 )
+from loushang.harness.conversation.jsonl_codec import ConversationJsonlRecordCodec
 from loushang.harness.conversation.repository import ConversationRepository
 from loushang.harness.conversation.types import (
     BranchDelta,
@@ -22,6 +24,7 @@ from loushang.harness.conversation.types import (
     ConversationHeader,
     ConversationTreeNode,
 )
+from loushang.harness.journal import DEFAULT_JSONL_FORMAT
 from loushang.harness.transcript.codecs import STANDARD_PAYLOAD_VERSION
 from loushang.harness.transcript.kinds import (
     AGENT_MESSAGE_KIND,
@@ -31,9 +34,18 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_INPUT_COMPONENT_KIND,
+    MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     THINKING_SELECTION_KIND,
+)
+from loushang.harness.transcript.model_input_types import (
+    MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
+    ModelInputComponent,
+    ModelInputIntegrityError,
+    ModelInputRecordSizeError,
+    ModelInputSnapshot,
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import (
@@ -129,6 +141,7 @@ class AgentTranscriptUnitOfWork:
     ) -> AgentTranscriptUnitOfWork:
         _require_matching_identity(key, header)
         initial_records = tuple(records)
+        resolved_profile = profile or AgentTranscriptProfile.default()
         repository = _create_repository(
             header=header,
             records=initial_records,
@@ -150,11 +163,13 @@ class AgentTranscriptUnitOfWork:
                     clock=resolved_clock,
                     id_factory=id_factory,
                 ),
-                profile=profile,
+                profile=resolved_profile,
                 materialized=False,
                 materialization_policy=materialization_policy,
                 clock=resolved_clock,
             )
+        for record in initial_records:
+            _require_model_input_record_size(record, resolved_profile)
         snapshot = await backend.create(
             key,
             header,
@@ -177,7 +192,7 @@ class AgentTranscriptUnitOfWork:
                 clock=resolved_clock,
                 id_factory=id_factory,
             ),
-            profile=profile,
+            profile=resolved_profile,
             diagnostics=repository.diagnostics,
             materialization_policy=materialization_policy,
             clock=resolved_clock,
@@ -368,6 +383,50 @@ class AgentTranscriptUnitOfWork:
             CONTEXT_BRANCH_SUMMARY_KIND, summary, metadata=metadata
         )
 
+    def _require_record_model_input_lineage(
+        self,
+        record: AgentTranscriptRecord,
+    ) -> None:
+        if record.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND and isinstance(
+            record.payload,
+            ContextCompactionCheckpoint,
+        ):
+            self._require_model_input_lineage(
+                record.payload.model_input_snapshot_ids,
+                purposes={"compaction_history", "compaction_turn_prefix"},
+                owner="compaction checkpoint",
+            )
+        elif record.kind == CONTEXT_BRANCH_SUMMARY_KIND and isinstance(
+            record.payload,
+            BranchContextSummary,
+        ):
+            self._require_model_input_lineage(
+                record.payload.model_input_snapshot_ids,
+                purposes={"branch_summary"},
+                owner="branch summary",
+            )
+
+    def _require_model_input_lineage(
+        self,
+        snapshot_ids: tuple[str, ...],
+        *,
+        purposes: set[str],
+        owner: str,
+    ) -> None:
+        if not snapshot_ids:
+            return
+        # Local import avoids reversing model_input's UnitOfWork dependency.
+        from loushang.harness.transcript.model_input import rebuild_model_input
+
+        for snapshot_id in snapshot_ids:
+            rebuilt = rebuild_model_input(self, snapshot_id)
+            if rebuilt.snapshot.purpose not in purposes:
+                allowed = ", ".join(sorted(purposes))
+                raise ModelInputIntegrityError(
+                    f"{owner} Model Input lineage {snapshot_id!r} has purpose "
+                    f"{rebuilt.snapshot.purpose!r}; expected one of: {allowed}"
+                )
+
     async def append_application_message(
         self,
         message: ApplicationMessage,
@@ -404,6 +463,67 @@ class AgentTranscriptUnitOfWork:
             metadata=metadata,
         )
 
+    async def append_model_input_component(
+        self,
+        component: ModelInputComponent,
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> AgentTranscriptCommit:
+        return await self._append_model_input_fact(
+            MODEL_INPUT_COMPONENT_KIND,
+            component,
+            max_encoded_record_bytes=max_encoded_record_bytes,
+            expected_revision=expected_revision,
+            expected_leaf_id=expected_leaf_id,
+        )
+
+    async def append_model_input_snapshot(
+        self,
+        snapshot: ModelInputSnapshot,
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> AgentTranscriptCommit:
+        return await self._append_model_input_fact(
+            MODEL_INPUT_PREPARED_KIND,
+            snapshot,
+            max_encoded_record_bytes=max_encoded_record_bytes,
+            expected_revision=expected_revision,
+            expected_leaf_id=expected_leaf_id,
+        )
+
+    async def _append_model_input_fact(
+        self,
+        kind: str,
+        payload: ModelInputComponent | ModelInputSnapshot,
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> AgentTranscriptCommit:
+        async with self._commit_lock:
+            if (
+                self.revision != expected_revision
+                or self.leaf_id != expected_leaf_id
+            ):
+                raise ModelInputIntegrityError(
+                    "transcript changed outside the Model Input commit sequence"
+                )
+            record = self._record_factory.create(
+                kind,
+                payload,
+                parent_id=expected_leaf_id,
+                payload_version=STANDARD_PAYLOAD_VERSION,
+            )
+            self._require_record_size(record, max_encoded_record_bytes)
+            return await self._finish_commit_atomically(
+                record,
+                propagate_cancellation=True,
+            )
+
     async def fork(
         self,
         target_key: ConversationKey,
@@ -413,16 +533,57 @@ class AgentTranscriptUnitOfWork:
     ) -> AgentTranscriptUnitOfWork:
         async with self._commit_lock:
             selected_id = self.leaf_id if leaf_id is None else leaf_id
-            records = self.records_to(selected_id) if selected_id is not None else ()
+            records = (
+                self.records_for_fork(selected_id)
+                if selected_id is not None
+                else ()
+            )
             return await type(self).create(
                 self._backend,
                 target_key,
                 header,
                 records=records,
-                leaf_id=records[-1].record_id if records else None,
+                leaf_id=selected_id,
                 record_factory=self._record_factory,
                 profile=self._profile,
             )
+
+    def records_for_fork(
+        self,
+        leaf_id: str,
+    ) -> tuple[AgentTranscriptRecord, ...]:
+        """Return one selected path plus explicitly referenced derivation facts."""
+
+        selected = self.records_to(leaf_id)
+        included_ids = {record.record_id for record in selected}
+        pending_snapshot_ids = list(_summary_lineage_ids(selected))
+        resolved_snapshot_ids: set[str] = set()
+        while pending_snapshot_ids:
+            snapshot_id = pending_snapshot_ids.pop()
+            if snapshot_id in resolved_snapshot_ids:
+                continue
+            matches = [
+                record
+                for record in self.records
+                if record.kind == MODEL_INPUT_PREPARED_KIND
+                and isinstance(record.payload, ModelInputSnapshot)
+                and record.payload.snapshot_id == snapshot_id
+            ]
+            if len(matches) != 1:
+                raise ModelInputIntegrityError(
+                    f"fork Model Input lineage {snapshot_id!r} is not uniquely available"
+                )
+            dependency_path = self.records_to(matches[0].record_id)
+            included_ids.update(record.record_id for record in dependency_path)
+            resolved_snapshot_ids.add(snapshot_id)
+            pending_snapshot_ids.extend(
+                lineage_id
+                for lineage_id in _summary_lineage_ids(dependency_path)
+                if lineage_id not in resolved_snapshot_ids
+            )
+        return tuple(
+            record for record in self.records if record.record_id in included_ids
+        )
 
     async def _commit_locked(
         self,
@@ -482,6 +643,8 @@ class AgentTranscriptUnitOfWork:
     async def _finish_commit_atomically(
         self,
         record: AgentTranscriptRecord,
+        *,
+        propagate_cancellation: bool = False,
     ) -> AgentTranscriptCommit:
         """Finish an accepted commit before releasing the lock.
 
@@ -492,20 +655,27 @@ class AgentTranscriptUnitOfWork:
         not continue with a stale ``Task.cancelling()`` count.
         """
 
+        self._require_record_model_input_lineage(record)
+        _require_model_input_record_size(record, self._profile)
         operation = asyncio.create_task(self._commit_locked(record))
         caller = asyncio.current_task()
+        cancellation_requested = False
         while not operation.done():
             try:
                 await asyncio.shield(operation)
             except asyncio.CancelledError:
                 if caller is not None and caller.cancelling():
+                    cancellation_requested = True
                     while caller.cancelling():
                         caller.uncancel()
                     continue
                 if operation.done():
                     break
                 raise
-        return operation.result()
+        result = operation.result()
+        if cancellation_requested and propagate_cancellation:
+            raise asyncio.CancelledError
+        return result
 
     async def _materialize_locked(
         self,
@@ -558,6 +728,64 @@ class AgentTranscriptUnitOfWork:
     def _require_idle_commit(self, operation: str) -> None:
         if self._commit_lock.locked():
             raise RuntimeError(f"cannot {operation} while a commit is in progress")
+
+    def _require_record_size(
+        self,
+        record: AgentTranscriptRecord,
+        maximum: int,
+    ) -> None:
+        _require_encoded_record_size(record, maximum, self._profile)
+
+
+def _require_model_input_record_size(
+    record: AgentTranscriptRecord,
+    profile: AgentTranscriptProfile,
+) -> None:
+    if record.kind in {MODEL_INPUT_COMPONENT_KIND, MODEL_INPUT_PREPARED_KIND}:
+        _require_encoded_record_size(
+            record,
+            MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
+            profile,
+        )
+
+
+def _summary_lineage_ids(
+    records: Sequence[AgentTranscriptRecord],
+) -> tuple[str, ...]:
+    return tuple(
+        snapshot_id
+        for record in records
+        if isinstance(
+            record.payload,
+            ContextCompactionCheckpoint | BranchContextSummary,
+        )
+        for snapshot_id in record.payload.model_input_snapshot_ids
+    )
+
+
+def _require_encoded_record_size(
+    record: AgentTranscriptRecord,
+    maximum: int,
+    profile: AgentTranscriptProfile,
+) -> None:
+    if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 1:
+        raise ValueError("maximum encoded record bytes must be positive")
+    codec = ConversationJsonlRecordCodec(profile.payload_codecs)
+    envelope = codec.encode_record(record)
+    jsonl_format = DEFAULT_JSONL_FORMAT
+    line = json.dumps(
+        envelope,
+        ensure_ascii=jsonl_format.ensure_ascii,
+        sort_keys=jsonl_format.sort_keys,
+        separators=jsonl_format.separators,
+        allow_nan=False,
+    ) + jsonl_format.newline
+    encoded_size = len(line.encode(jsonl_format.encoding))
+    if encoded_size > maximum:
+        raise ModelInputRecordSizeError(
+            f"{record.kind} encoded record is {encoded_size} bytes; "
+            f"limit is {maximum}"
+        )
 
 
 def _create_repository(

@@ -45,6 +45,8 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_INPUT_COMPONENT_KIND,
+    MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     STANDARD_AGENT_TRANSCRIPT_KINDS,
@@ -59,6 +61,8 @@ from loushang.harness.transcript.types import (
     ContextCompactionCheckpoint,
     ConversationMetadataPatch,
     ExtensionData,
+    ModelInputComponent,
+    ModelInputSnapshot,
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
     ThinkingSelectionSnapshot,
@@ -378,6 +382,14 @@ class AgentTranscriptProfile:
                 payload_types=(ConversationMetadataPatch,),
                 reduce_state=_reduce_metadata_patch,
             ),
+        )
+        self.register_record_profile(
+            MODEL_INPUT_COMPONENT_KIND,
+            RecordSemantics(payload_types=(ModelInputComponent,)),
+        )
+        self.register_record_profile(
+            MODEL_INPUT_PREPARED_KIND,
+            RecordSemantics(payload_types=(ModelInputSnapshot,)),
         )
 
 

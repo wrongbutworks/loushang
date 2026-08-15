@@ -310,6 +310,35 @@ def test_continue_consumes_system_mailbox_from_an_idle_assistant_boundary() -> N
     asyncio.run(scenario())
 
 
+def test_agent_forwards_caller_declared_model_call_purpose_to_preparation() -> None:
+    from loushang.agent import Agent
+
+    preparations: list[tuple[str, int]] = []
+
+    async def prepare_model_call(preparation):
+        preparations.append((preparation.purpose, preparation.sequence))
+        return preparation.options
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        return _stream_with_final_message(_assistant_text_message("retried"))
+
+    async def scenario() -> None:
+        agent = Agent(
+            stream_fn=stream_fn,
+            prepare_model_call=prepare_model_call,
+        )
+        agent.state.messages.append(
+            UserMessage(role="user", content="retry this", timestamp=0.0)
+        )
+
+        await agent.continue_run(model_call_purpose="retry")
+
+    asyncio.run(scenario())
+
+    assert preparations == [("retry", 1)]
+
+
 def test_wait_for_idle_waits_for_agent_end_listener_settlement() -> None:
     from loushang.agent import Agent
 
@@ -557,6 +586,57 @@ def test_default_agent_stream_preserves_canonical_options(
     assert not hasattr(options, "max_retry_delay_ms")
     assert not hasattr(options, "on_payload")
     assert not hasattr(options, "on_response")
+
+
+def test_default_agent_stream_remains_standalone_without_committer() -> None:
+    from loushang.agent import Agent
+    from loushang.ai.api_registry import get_default_api_registry
+
+    class _StandaloneAdapter:
+        api = "agent-standalone-prepared-barrier-test"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def invoke_raw(self, request):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            assert request.options is not None
+            assert request.options.prepared_request_committer is None
+            yield {"type": "response_start", "response_id": "standalone-1"}
+            yield {"type": "text_delta", "text": "standalone"}
+            yield {"type": "stop_reason", "stop_reason": "stop"}
+            yield {"type": "response_done"}
+
+    adapter = _StandaloneAdapter()
+    registry = get_default_api_registry()
+    source_id = "test-agent-standalone-prepared-barrier"
+    registry.register_api_adapter(adapter, source_id=source_id)
+    model = Model(
+        id="standalone-model",
+        provider="standalone-provider",
+        endpoint="standalone-endpoint",
+        api=adapter.api,
+        base_url="https://provider.test/v1",
+        auth=Auth(kind="none"),
+        capabilities=Capabilities(input=("text",), output=("text",), stream=True),
+    )
+
+    async def scenario() -> None:
+        agent = Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": model,
+                "thinking_level": "off",
+            }
+        )
+        await agent.prompt("hi")
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        registry.unregister_api_adapters(source_id)
+
+    assert adapter.calls == 1
 
 
 def test_abort_marks_run_as_aborted_and_sets_error_message() -> None:

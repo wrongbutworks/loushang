@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Iterable, Mapping
-from contextlib import suppress
 from dataclasses import dataclass
 from typing import Literal
 
@@ -18,6 +18,7 @@ from loushang.harness.runtime._profile_types import (
     _require_nonempty_string,
 )
 from loushang.harness.runtime.bindings import RuntimeBindingLease, RuntimeBindingState
+from loushang.harness.runtime.registration import _await_cancellation_atomic
 
 RuntimeCapabilityFactory = Callable[
     [RuntimeCapabilitySelection, object | None], object | Awaitable[object]
@@ -160,6 +161,9 @@ class RuntimeProfileBinding:
         self._state = state
         self._bound = dict(bound)
         self._closed = False
+        self._dispose_task: (
+            asyncio.Task[tuple[RuntimeCapabilityBindingError, ...]] | None
+        ) = None
 
     @property
     def profile(self) -> ResolvedRuntimeProfile:
@@ -298,60 +302,92 @@ class RuntimeProfileBinder:
                 )
                 replacements[capability.slot.key] = entries
                 created.extend(entries)
-        except Exception:
-            await self._dispose_entries_reversing(created, context=binding._context)
+        except asyncio.CancelledError as exc:
+            errors = await self._dispose_entries_cancellation_atomic(
+                created,
+                context=binding._context,
+            )
+            _annotate_cleanup_errors(exc, errors)
+            raise
+        except Exception as exc:
+            errors = await self._dispose_entries_cancellation_atomic(
+                created,
+                context=binding._context,
+            )
+            _annotate_cleanup_errors(exc, errors)
             raise
 
-        try:
-            for key in reversed(changed_keys):
-                await self._dispose_entries(
-                    binding._bound.get(key, ()), context=binding._context
-                )
-        except Exception:
-            await self._dispose_entries_reversing(created, context=binding._context)
-            raise
-
+        retired = tuple(
+            entry
+            for key, entries in binding._bound.items()
+            if key in changed_keys
+            for entry in entries
+        )
         updated = dict(binding._bound)
         for key in changed_keys:
             updated.pop(key, None)
         updated.update(replacements)
+        try:
+            binding._require_open()
+        except RuntimeError as exc:
+            errors = await self._dispose_entries_cancellation_atomic(
+                created,
+                context=binding._context,
+            )
+            _annotate_cleanup_errors(exc, errors)
+            raise
         binding._replace(profile=profile, bound=updated)
+        errors = await self._dispose_entries_cancellation_atomic(
+            retired,
+            context=binding._context,
+        )
+        _raise_disposal_errors(
+            errors,
+            note="replacement generation was published before retirement failed",
+        )
 
     async def dispose(self, binding: RuntimeProfileBinding) -> None:
-        if binding._closed:
+        task = binding._dispose_task
+        if task is not None and task.done():
             return
-        errors: list[Exception] = []
-        for capability in reversed(binding.profile.capabilities):
-            try:
-                await self._dispose_entries(
-                    binding._bound.get(capability.slot.key, ()),
+        if task is None:
+            if binding._closed:
+                return
+            entries = tuple(
+                entry for bound in binding._bound.values() for entry in bound
+            )
+            binding._closed = True
+            binding._state.invalidate("runtime profile binding was disposed")
+            task = asyncio.create_task(
+                self._dispose_entries_collecting(
+                    entries,
                     context=binding._context,
                 )
-            except Exception as exc:
-                errors.append(exc)
-        binding._closed = True
-        binding._state.invalidate("runtime profile binding was disposed")
-        if errors:
-            raise errors[0]
+            )
+            binding._dispose_task = task
+        errors = await self._await_disposal_task(task)
+        _raise_disposal_errors(errors)
 
     def dispose_sync(self, binding: RuntimeProfileBinding) -> None:
         """Dispose a binding created from synchronous factories."""
 
+        task = binding._dispose_task
+        if task is not None and task.done():
+            return
+        if task is not None:
+            raise RuntimeError(
+                "runtime profile binding disposal is already asynchronous"
+            )
         if binding._closed:
             return
-        errors: list[Exception] = []
-        for capability in reversed(binding.profile.capabilities):
-            try:
-                self._dispose_entries_sync(
-                    binding._bound.get(capability.slot.key, ()),
-                    context=binding._context,
-                )
-            except Exception as exc:
-                errors.append(exc)
+        entries = tuple(entry for bound in binding._bound.values() for entry in bound)
         binding._closed = True
         binding._state.invalidate("runtime profile binding was disposed")
-        if errors:
-            raise errors[0]
+        errors = self._dispose_entries_collecting_sync(
+            entries,
+            context=binding._context,
+        )
+        _raise_disposal_errors(errors)
 
     def _create_profile_sync(
         self,
@@ -367,8 +403,9 @@ class RuntimeProfileBinder:
                 if entries:
                     bound[capability.slot.key] = entries
                     created.extend(entries)
-        except Exception:
-            self._dispose_entries_reversing_sync(created, context=context)
+        except Exception as exc:
+            errors = self._dispose_entries_collecting_sync(created, context=context)
+            _annotate_cleanup_errors(exc, errors)
             raise
         return bound
 
@@ -396,18 +433,21 @@ class RuntimeProfileBinder:
                         value=value,
                     )
                 )
-        except RuntimeCapabilityBindingError:
-            self._dispose_entries_reversing_sync(created, context=context)
+        except RuntimeCapabilityBindingError as exc:
+            errors = self._dispose_entries_collecting_sync(created, context=context)
+            _annotate_cleanup_errors(exc, errors)
             raise
         except Exception as exc:
-            self._dispose_entries_reversing_sync(created, context=context)
             selection = capability.selections[len(created)].selection
-            raise RuntimeCapabilityBindingError(
+            error = RuntimeCapabilityBindingError(
                 "capability factory failed",
                 slot=selection.slot,
                 implementation=selection.implementation,
                 implementation_version=selection.implementation_version,
-            ) from exc
+            )
+            errors = self._dispose_entries_collecting_sync(created, context=context)
+            _annotate_cleanup_errors(error, errors)
+            raise error from exc
         return tuple(created)
 
     async def _create_profile(
@@ -424,8 +464,19 @@ class RuntimeProfileBinder:
                 if entries:
                     bound[capability.slot.key] = entries
                     created.extend(entries)
-        except Exception:
-            await self._dispose_entries_reversing(created, context=context)
+        except asyncio.CancelledError as exc:
+            errors = await self._dispose_entries_cancellation_atomic(
+                created,
+                context=context,
+            )
+            _annotate_cleanup_errors(exc, errors)
+            raise
+        except Exception as exc:
+            errors = await self._dispose_entries_cancellation_atomic(
+                created,
+                context=context,
+            )
+            _annotate_cleanup_errors(exc, errors)
             raise
         return bound
 
@@ -449,54 +500,85 @@ class RuntimeProfileBinder:
                         value=value,
                     )
                 )
-        except RuntimeCapabilityBindingError:
-            await self._dispose_entries_reversing(created, context=context)
+        except asyncio.CancelledError as exc:
+            errors = await self._dispose_entries_cancellation_atomic(
+                created,
+                context=context,
+            )
+            _annotate_cleanup_errors(exc, errors)
+            raise
+        except RuntimeCapabilityBindingError as exc:
+            errors = await self._dispose_entries_cancellation_atomic(
+                created,
+                context=context,
+            )
+            _annotate_cleanup_errors(exc, errors)
             raise
         except Exception as exc:
-            await self._dispose_entries_reversing(created, context=context)
             selection = capability.selections[len(created)].selection
-            raise RuntimeCapabilityBindingError(
+            error = RuntimeCapabilityBindingError(
                 "capability factory failed",
                 slot=selection.slot,
                 implementation=selection.implementation,
                 implementation_version=selection.implementation_version,
-            ) from exc
+            )
+            errors = await self._dispose_entries_cancellation_atomic(
+                created,
+                context=context,
+            )
+            _annotate_cleanup_errors(error, errors)
+            raise error from exc
         return tuple(created)
 
-    async def _dispose_entries(
+    async def _dispose_entries_cancellation_atomic(
         self,
         entries: Iterable[_BoundRuntimeCapability],
         *,
         context: object | None,
-    ) -> None:
+    ) -> tuple[RuntimeCapabilityBindingError, ...]:
+        task = asyncio.create_task(
+            self._dispose_entries_collecting(entries, context=context)
+        )
+        return await self._await_disposal_task(task)
+
+    async def _await_disposal_task(
+        self,
+        task: asyncio.Task[tuple[RuntimeCapabilityBindingError, ...]],
+    ) -> tuple[RuntimeCapabilityBindingError, ...]:
+        try:
+            return await _await_cancellation_atomic(task)
+        except asyncio.CancelledError as exc:
+            _annotate_cleanup_errors(exc, task.result())
+            raise
+
+    async def _dispose_entries_collecting(
+        self,
+        entries: Iterable[_BoundRuntimeCapability],
+        *,
+        context: object | None,
+    ) -> tuple[RuntimeCapabilityBindingError, ...]:
+        errors: list[RuntimeCapabilityBindingError] = []
         for entry in reversed(tuple(entries)):
             if entry.implementation.dispose is None:
                 continue
             try:
                 await _await_result(entry.implementation.dispose(entry.value, context))
+                # Attribute cancellation requested synchronously by this
+                # disposer to this entry before advancing to the next one.
+                await asyncio.sleep(0)
+            except asyncio.CancelledError as exc:
+                errors.append(_disposal_error(entry, cause=exc))
             except Exception as exc:
-                raise RuntimeCapabilityBindingError(
-                    "capability disposer failed",
-                    slot=entry.resolved.selection.slot,
-                    implementation=entry.resolved.selection.implementation,
-                    implementation_version=entry.resolved.selection.implementation_version,
-                ) from exc
+                errors.append(_disposal_error(entry, cause=exc))
+        return tuple(errors)
 
-    async def _dispose_entries_reversing(
+    def _dispose_entries_collecting_sync(
         self,
         entries: Iterable[_BoundRuntimeCapability],
         *,
         context: object | None,
-    ) -> None:
-        with suppress(Exception):
-            await self._dispose_entries(entries, context=context)
-
-    def _dispose_entries_sync(
-        self,
-        entries: Iterable[_BoundRuntimeCapability],
-        *,
-        context: object | None,
-    ) -> None:
+    ) -> tuple[RuntimeCapabilityBindingError, ...]:
+        errors: list[RuntimeCapabilityBindingError] = []
         for entry in reversed(tuple(entries)):
             if entry.implementation.dispose is None:
                 continue
@@ -508,24 +590,49 @@ class RuntimeProfileBinder:
                     implementation_version=entry.resolved.selection.implementation_version,
                     action="disposer",
                 )
-            except RuntimeCapabilityBindingError:
-                raise
+            except RuntimeCapabilityBindingError as exc:
+                errors.append(exc)
             except Exception as exc:
-                raise RuntimeCapabilityBindingError(
-                    "capability disposer failed",
-                    slot=entry.resolved.selection.slot,
-                    implementation=entry.resolved.selection.implementation,
-                    implementation_version=entry.resolved.selection.implementation_version,
-                ) from exc
+                errors.append(_disposal_error(entry, cause=exc))
+        return tuple(errors)
 
-    def _dispose_entries_reversing_sync(
-        self,
-        entries: Iterable[_BoundRuntimeCapability],
-        *,
-        context: object | None,
-    ) -> None:
-        with suppress(Exception):
-            self._dispose_entries_sync(entries, context=context)
+
+def _disposal_error(
+    entry: _BoundRuntimeCapability,
+    *,
+    cause: BaseException,
+) -> RuntimeCapabilityBindingError:
+    error = RuntimeCapabilityBindingError(
+        "capability disposer failed",
+        slot=entry.resolved.selection.slot,
+        implementation=entry.resolved.selection.implementation,
+        implementation_version=entry.resolved.selection.implementation_version,
+    )
+    error.__cause__ = cause
+    return error
+
+
+def _annotate_cleanup_errors(
+    primary: BaseException,
+    errors: Iterable[RuntimeCapabilityBindingError],
+) -> None:
+    for error in errors:
+        primary.add_note(f"rollback cleanup also failed: {error}")
+
+
+def _raise_disposal_errors(
+    errors: tuple[RuntimeCapabilityBindingError, ...],
+    *,
+    note: str | None = None,
+) -> None:
+    if not errors:
+        return
+    first = errors[0]
+    if note is not None:
+        first.add_note(note)
+    for additional in errors[1:]:
+        first.add_note(f"additional disposal failure: {additional}")
+    raise first
 
 
 async def _await_result(value: object | Awaitable[object]) -> object:

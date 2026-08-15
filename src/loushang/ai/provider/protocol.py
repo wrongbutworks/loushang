@@ -27,6 +27,8 @@ class ProviderRequest:
     reasoning_effort: str | None = None
     reasoning_enabled: bool | None = None
     temperature: float | int | None = None
+    invocation_id: str | None = None
+    attempt: int = 1
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
@@ -50,6 +52,16 @@ class ProviderRequest:
             )
         if not isinstance(self.context, NormalizedContext):
             raise TypeError("ProviderRequest.context must be NormalizedContext")
+        if self.invocation_id is not None and (
+            not isinstance(self.invocation_id, str) or not self.invocation_id
+        ):
+            raise ValueError("ProviderRequest.invocation_id must be non-empty or None")
+        if (
+            isinstance(self.attempt, bool)
+            or not isinstance(self.attempt, int)
+            or self.attempt < 1
+        ):
+            raise ValueError("ProviderRequest.attempt must be a positive integer")
         if (
             not self.model.provider_id
             or not self.model.endpoint_id

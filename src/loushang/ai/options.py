@@ -14,6 +14,7 @@ from loushang.ai.auth.credentials import (
     OAuthBearerAuth,
     OAuthCredential,
 )
+from loushang.ai.prepared_request import PreparedRequestCommitter
 from loushang.ai.structured import StructuredOutputOptions
 
 PairingMode = Literal["strict", "repair"]
@@ -98,6 +99,10 @@ class CallOptions:
     reasoning: ReasoningOptions | None = None
     tool_choice: ToolChoice | None = None
     output: StructuredOutputOptions | None = None
+    prepared_request_committer: PreparedRequestCommitter | None = field(
+        default=None,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if self.auth is not None and not isinstance(
@@ -153,6 +158,14 @@ class CallOptions:
             self.reasoning, ReasoningOptions
         ):
             raise TypeError("reasoning must be ReasoningOptions")
+        if self.prepared_request_committer is not None and not isinstance(
+            self.prepared_request_committer,
+            PreparedRequestCommitter,
+        ):
+            raise TypeError(
+                "prepared_request_committer must implement "
+                "commit_prepared_request"
+            )
         _validate_tool_choice(self.tool_choice)
 
 

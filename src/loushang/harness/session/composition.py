@@ -9,13 +9,14 @@ compaction, tools, resources, extensions, and command runtimes.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from loushang.agent import Agent
+from loushang.agent import Agent, PrepareModelCallFn
 from loushang.ai.api_registry import APIRegistry
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import AssistantMessage
@@ -134,6 +135,7 @@ class ProductCompactionExecutor(Protocol):
         headers: Mapping[str, str] | None,
         signal: object | None,
         custom_instructions: str | None = None,
+        prepare_model_call: PrepareModelCallFn | None = None,
     ) -> CompactionResult: ...
 
 
@@ -220,7 +222,7 @@ class SessionFoundationInputs:
     get_resource_watch_paths: Callable[[], list[Path]]
     prepare_resource_refresh: Callable[[], None]
     rebuild_prompt_and_tools_view: Callable[[], None]
-    set_resource_bundle: Callable[[ResourceBundle], None]
+    set_resource_bundle: Callable[[ResourceBundle | None], None]
     record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
 
 
@@ -664,7 +666,7 @@ def _build_foundation_runtimes(
         on_change=lambda: _reload_resources_from_watch(
             resource_refresh_runtime,
             product.extension_runner,
-            lambda: resource_refresh_runtime.refresh_async(reason="reload"),
+            lambda: product.extension_bridge.bind(reason="reload"),
         ),
     )
     navigation_runtime = AgentTranscriptNavigationRuntime(
@@ -1069,12 +1071,43 @@ async def _execute_compaction(
     preparation: CompactionPreparation,
     custom_instructions: str | None,
 ) -> CompactionResult:
-    return await executor(
+    if supports_prepare_model_call(executor):
+        return await executor(
+            preparation=preparation,
+            model=agent.model,
+            headers=None,
+            signal=agent.signal,
+            custom_instructions=custom_instructions,
+            prepare_model_call=agent.prepare_model_call,
+        )
+    legacy_executor = cast(
+        Callable[..., Awaitable[CompactionResult]],
+        executor,
+    )
+    return await legacy_executor(
         preparation=preparation,
         model=agent.model,
         headers=None,
         signal=agent.signal,
         custom_instructions=custom_instructions,
+    )
+
+
+def supports_prepare_model_call(callback: Callable[..., object]) -> bool:
+    """Return whether a Product summary callback accepts the PR8 seam."""
+
+    try:
+        parameters = inspect.signature(callback).parameters
+    except (TypeError, ValueError):
+        return False
+    parameter = parameters.get("prepare_model_call")
+    if parameter is not None and parameter.kind in {
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    }:
+        return True
+    return any(
+        item.kind is inspect.Parameter.VAR_KEYWORD for item in parameters.values()
     )
 
 
@@ -1135,11 +1168,12 @@ async def _set_session_name(
 async def _reload_resources_from_watch(
     refresh_runtime: SessionResourceRefreshRuntime,
     extension_runner: SessionExtensionCompositionPort | None,
-    refresh_async: Callable[[], Awaitable[None]],
+    reload_extensions: Callable[[], Awaitable[None]],
 ) -> None:
-    await refresh_runtime.refresh_async(reason="watch")
     if extension_runner is not None:
-        await refresh_async()
+        await reload_extensions()
+        return
+    await refresh_runtime.refresh_async(reason="watch")
 
 
 def _last_assistant_message(
