@@ -220,7 +220,7 @@ def test_usage_inspect_example_marks_unknown_cost(
 
 @pytest.mark.skipif(
     sys.platform == "darwin",
-    reason="macOS env-sensitive golden/smoke; may hide a real macOS product bug — tracked separately (see issue 'macOS 环境不适配测试失败')",
+    reason="macOS env-sensitive golden/smoke; may hide a real macOS product bug — tracked separately as issue #455",
 )
 def test_runtime_capability_replacement_extension_example_runs_offline() -> None:
     completed = subprocess.run(

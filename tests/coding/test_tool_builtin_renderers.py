@@ -10,7 +10,7 @@ from loushang.ai.types import TextPart
 
 @pytest.mark.skipif(
     sys.platform == "darwin",
-    reason="macOS env-sensitive golden/smoke; may hide a real macOS product bug — tracked separately (see issue 'macOS 环境不适配测试失败')",
+    reason="macOS env-sensitive golden/smoke; may hide a real macOS product bug — tracked separately as issue #455",
 )
 def test_builtin_tool_definitions_expose_renderers_for_streaming_views() -> None:
     from loushang.harness.tools.workspace import create_all_tool_definitions

@@ -22,7 +22,7 @@ def _play_rpc_wire(
 
 @pytest.mark.skipif(
     sys.platform == "darwin",
-    reason="macOS env-sensitive golden/smoke; may hide a real macOS product bug — tracked separately (see issue 'macOS 环境不适配测试失败')",
+    reason="macOS env-sensitive golden/smoke; may hide a real macOS product bug — tracked separately as issue #455",
 )
 def test_rpc_wire_playback_preserves_cross_group_success_golden() -> None:
     session = FakeSession(

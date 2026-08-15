@@ -34,7 +34,7 @@ _MACOS_ENV_SENSITIVE_EXAMPLES = frozenset(
 )
 _MACOS_ENV_SENSITIVE_REASON = (
     "macOS env-sensitive golden/smoke; may hide a real macOS product bug — "
-    "tracked separately (see issue 'macOS 环境不适配测试失败')"
+    "tracked separately as issue #455"
 )
 
 
