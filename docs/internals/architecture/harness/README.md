@@ -43,6 +43,10 @@ planning, work event persistence, or AI provider behavior.
 - [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
   fixes PR8's Session/candidate-graph nesting, per-sampling commit seam, complete
   model-call inventory, compaction lineage compatibility, and failure policy.
+- [Model Input Persistence And Capacity Recovery](model-input-persistence-capacity-recovery.md)
+  is the proposed corrective boundary for incremental Model Input persistence,
+  typed invocation outcomes, capability-safe model selection, Provider request
+  budgets, and bounded overflow recovery after PR #451.
 - [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
   fixes PR9's four-clock composed view, explicit skew, explain, JSON, and diff
   semantics while retaining the existing graph projector as the only projector.
@@ -94,6 +98,9 @@ description.
 - [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
   defines the implemented PR8 Session graph, per-sampling commit, complete
   model-call inventory, and compaction-lineage boundary.
+- [Model Input Persistence And Capacity Recovery](model-input-persistence-capacity-recovery.md)
+  proposes a v1-compatible Model Input v2 representation and the selection,
+  error, capacity, and recovery boundaries required before it is implemented.
 - [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
   defines PR9's Product-neutral effective runtime diagnostics and clock-skew
   semantics without introducing another authority.
