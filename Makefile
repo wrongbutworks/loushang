@@ -105,6 +105,7 @@ CODING_TUI_PRODUCT_TEST_PATHS := \
 HARNESS_SOURCES := src/loushang/harness
 HARNESS_TEST_PATHS := \
 	tests/harness \
+	tests/coding/test_agent_session_model_input.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/architecture/test_capability_runtime_convergence_pr0.py \
 	tests/architecture/test_session_model_call_closure_contract.py

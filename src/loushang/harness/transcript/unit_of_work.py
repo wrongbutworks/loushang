@@ -489,16 +489,57 @@ class AgentTranscriptUnitOfWork:
     ) -> AgentTranscriptUnitOfWork:
         async with self._commit_lock:
             selected_id = self.leaf_id if leaf_id is None else leaf_id
-            records = self.records_to(selected_id) if selected_id is not None else ()
+            records = (
+                self.records_for_fork(selected_id)
+                if selected_id is not None
+                else ()
+            )
             return await type(self).create(
                 self._backend,
                 target_key,
                 header,
                 records=records,
-                leaf_id=records[-1].record_id if records else None,
+                leaf_id=selected_id,
                 record_factory=self._record_factory,
                 profile=self._profile,
             )
+
+    def records_for_fork(
+        self,
+        leaf_id: str,
+    ) -> tuple[AgentTranscriptRecord, ...]:
+        """Return one selected path plus explicitly referenced derivation facts."""
+
+        selected = self.records_to(leaf_id)
+        included_ids = {record.record_id for record in selected}
+        pending_snapshot_ids = list(_summary_lineage_ids(selected))
+        resolved_snapshot_ids: set[str] = set()
+        while pending_snapshot_ids:
+            snapshot_id = pending_snapshot_ids.pop()
+            if snapshot_id in resolved_snapshot_ids:
+                continue
+            matches = [
+                record
+                for record in self.records
+                if record.kind == MODEL_INPUT_PREPARED_KIND
+                and isinstance(record.payload, ModelInputSnapshot)
+                and record.payload.snapshot_id == snapshot_id
+            ]
+            if len(matches) != 1:
+                raise ModelInputIntegrityError(
+                    f"fork Model Input lineage {snapshot_id!r} is not uniquely available"
+                )
+            dependency_path = self.records_to(matches[0].record_id)
+            included_ids.update(record.record_id for record in dependency_path)
+            resolved_snapshot_ids.add(snapshot_id)
+            pending_snapshot_ids.extend(
+                lineage_id
+                for lineage_id in _summary_lineage_ids(dependency_path)
+                if lineage_id not in resolved_snapshot_ids
+            )
+        return tuple(
+            record for record in self.records if record.record_id in included_ids
+        )
 
     async def _commit_locked(
         self,
@@ -661,6 +702,20 @@ def _require_model_input_record_size(
             MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
             profile,
         )
+
+
+def _summary_lineage_ids(
+    records: Sequence[AgentTranscriptRecord],
+) -> tuple[str, ...]:
+    return tuple(
+        snapshot_id
+        for record in records
+        if isinstance(
+            record.payload,
+            ContextCompactionCheckpoint | BranchContextSummary,
+        )
+        for snapshot_id in record.payload.model_input_snapshot_ids
+    )
 
 
 def _require_encoded_record_size(

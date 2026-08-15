@@ -25,6 +25,15 @@ from loushang.harness.transcript.committer import (
     TranscriptCommitter,
 )
 from loushang.harness.transcript.kinds import RECORD_ANNOTATION_PATCH_KIND
+from loushang.harness.transcript.model_input import (
+    ModelInputCommitContext as _ModelInputCommitContext,
+)
+from loushang.harness.transcript.model_input import (
+    ModelInputRuntimeReferences,
+    ModelInputTranscriptCommitter,
+    RebuiltModelInput,
+    rebuild_model_input,
+)
 from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptRecord,
@@ -160,6 +169,7 @@ class AgentTranscriptSession:
         summary: str,
         details: object | None = None,
         from_hook: bool | None = None,
+        model_input_snapshot_ids: tuple[str, ...] = (),
     ) -> str:
         if branch_from_id is not None and self._transcript.get(branch_from_id) is None:
             raise ValueError(f"Entry {branch_from_id} not found")
@@ -176,6 +186,7 @@ class AgentTranscriptSession:
                             name="branch_summary.details",
                         ),
                         from_hook=from_hook,
+                        model_input_snapshot_ids=model_input_snapshot_ids,
                     )
                 )
             )
@@ -242,6 +253,7 @@ class AgentTranscriptSession:
         tokens_before: int,
         details: object | None = None,
         from_hook: bool | None = None,
+        model_input_snapshot_ids: tuple[str, ...] = (),
     ) -> str:
         return self._complete_commit(
             await self._transcript.append_compaction_checkpoint(
@@ -251,6 +263,7 @@ class AgentTranscriptSession:
                     tokens_before=tokens_before,
                     details=require_json_value(details, name="compaction.details"),
                     from_hook=from_hook,
+                    model_input_snapshot_ids=model_input_snapshot_ids,
                 )
             )
         )
@@ -316,6 +329,36 @@ class AgentTranscriptSession:
 
     def build_context(self) -> AgentTranscriptContext:
         return self._transcript.replay_context()
+
+    def create_model_input_committer(
+        self,
+        *,
+        purpose: str,
+        logical_input: dict[str, object],
+        runtime_references: ModelInputRuntimeReferences,
+    ) -> ModelInputTranscriptCommitter:
+        """Capture one fresh Model Input boundary without exposing the Store."""
+
+        source_leaf_id = self._transcript.leaf_id
+        if source_leaf_id is None:
+            raise RuntimeError(
+                "Model Input requires committed logical facts in the transcript"
+            )
+        return ModelInputTranscriptCommitter(
+            transcript=self._transcript,
+            context=_ModelInputCommitContext(
+                purpose=purpose,
+                source_leaf_id=source_leaf_id,
+                source_revision=self._transcript.revision,
+                logical_input=logical_input,
+            ),
+            runtime_references=runtime_references,
+        )
+
+    def rebuild_model_input(self, snapshot_id: str) -> RebuiltModelInput:
+        """Reconstruct one committed request through the Session boundary."""
+
+        return rebuild_model_input(self._transcript, snapshot_id)
 
     def _complete_commit(self, commit: AgentTranscriptCommit) -> str:
         result = CommitResult(

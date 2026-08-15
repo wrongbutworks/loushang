@@ -163,6 +163,41 @@ def test_all_standard_payloads_round_trip_through_versioned_registry() -> None:
         assert decoded == payload
 
 
+@pytest.mark.parametrize(
+    ("kind", "payload"),
+    [
+        (
+            CONTEXT_COMPACTION_CHECKPOINT_KIND,
+            ContextCompactionCheckpoint(
+                summary="summary",
+                first_kept_record_id="kept",
+                tokens_before=3,
+                model_input_snapshot_ids=("snapshot-history", "snapshot-prefix"),
+            ),
+        ),
+        (
+            CONTEXT_BRANCH_SUMMARY_KIND,
+            BranchContextSummary(
+                from_record_id="branch",
+                summary="summary",
+                model_input_snapshot_ids=("snapshot-branch",),
+            ),
+        ),
+    ],
+)
+def test_summary_v2_lineage_round_trips_without_rewriting_v1(kind, payload) -> None:
+    registry = create_agent_transcript_payload_registry()
+
+    encoded = registry.encode(kind, STANDARD_PAYLOAD_VERSION, payload)
+
+    assert encoded["lineageVersion"] == 2
+    assert registry.decode(kind, STANDARD_PAYLOAD_VERSION, encoded) == payload
+    legacy = _payloads()[kind]
+    legacy_encoded = registry.encode(kind, STANDARD_PAYLOAD_VERSION, legacy)
+    assert "lineageVersion" not in legacy_encoded
+    assert legacy.derivation_verifiable is False
+
+
 def test_registered_codec_rejects_corrupted_known_payload() -> None:
     registry = create_agent_transcript_payload_registry()
 

@@ -7,6 +7,10 @@ from dataclasses import replace
 from typing import Any
 
 from loushang.agent.agent_loop import run_agent_loop, run_agent_loop_continue
+from loushang.agent.model_transport import (
+    is_prepared_request_conformant,
+    is_synthetic_model_transport,
+)
 from loushang.agent.types import (
     AfterToolCallContext,
     AfterToolCallResult,
@@ -150,6 +154,14 @@ class Agent:
         self.convert_to_llm = options.convert_to_llm or _default_convert_to_llm
         self.transform_context = options.transform_context
         self.stream_fn = options.stream_fn or _default_stream
+        self.model_transport_is_prepared_request_conformant = (
+            options.stream_fn is None
+            or is_prepared_request_conformant(options.stream_fn)
+        )
+        self.model_transport_is_explicitly_synthetic = (
+            options.stream_fn is not None
+            and is_synthetic_model_transport(options.stream_fn)
+        )
         self.call_options = options.call_options or CallOptions()
         self.prepare_model_call = options.prepare_model_call
         self.before_tool_call = options.before_tool_call

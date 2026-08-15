@@ -58,6 +58,7 @@ class AgentSideQuestionProvider:
             transform_context=parent.transform_context,
             stream_fn=parent.stream_fn,
             call_options=parent.call_options,
+            prepare_model_call=parent.prepare_model_call,
             before_tool_call=_block_side_question_tool_call,
             steering_mode=parent.steering_mode,
             follow_up_mode=parent.follow_up_mode,
@@ -72,7 +73,8 @@ class AgentSideQuestionProvider:
         )
         try:
             await child.prompt(
-                _side_question_prompt(self._boundary_prompt, question)
+                _side_question_prompt(self._boundary_prompt, question),
+                model_call_purpose="side_question",
             )
             message = _last_assistant_message(child)
             if message.stop_reason in {"aborted", "error"}:

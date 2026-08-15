@@ -398,7 +398,7 @@ def test_agent_session_abort_mid_stream_cleans_run_state_and_keeps_queued_messag
 def test_persisted_session_abort_tool_then_prompt_and_resume_keeps_revision_chain(
     tmp_path,
 ) -> None:
-    from loushang.agent import Agent
+    from loushang.agent import Agent, synthetic_model_transport
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import ToolResultMessage
     from loushang.coding.session import AgentSession
@@ -428,6 +428,7 @@ def test_persisted_session_abort_tool_then_prompt_and_resume_keeps_revision_chai
         )
     )
 
+    @synthetic_model_transport
     async def stream_fn(model, context, options=None):
         del model, options
         last = context.messages[-1]

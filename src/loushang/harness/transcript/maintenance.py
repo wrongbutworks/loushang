@@ -57,6 +57,20 @@ class CompactionResult:
     first_kept_entry_id: str
     tokens_before: int
     details: object | None = None
+    model_input_snapshot_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.model_input_snapshot_ids, tuple) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in self.model_input_snapshot_ids
+        ):
+            raise TypeError(
+                "compaction Model Input snapshot ids must be non-empty strings"
+            )
+        if len(set(self.model_input_snapshot_ids)) != len(
+            self.model_input_snapshot_ids
+        ):
+            raise ValueError("compaction Model Input snapshot ids must be unique")
 
 
 class CompactionAborted(RuntimeError):
@@ -142,6 +156,7 @@ class TranscriptCompactionStore(Protocol):
         tokens_before: int,
         details: object | None = None,
         from_hook: bool | None = None,
+        model_input_snapshot_ids: tuple[str, ...] = (),
     ) -> str: ...
 
 
@@ -453,7 +468,7 @@ class AgentTranscriptCompactionRuntime:
 
         await self._dispatch_compaction_completed(
             reason=reason,
-            result=asdict(result),
+            result=_compaction_result_payload(result),
             aborted=False,
             will_retry=will_retry,
             policy=policy,
@@ -558,6 +573,7 @@ class AgentTranscriptCompactionRuntime:
             result.tokens_before,
             details=result.details,
             from_hook=from_hook,
+            model_input_snapshot_ids=result.model_input_snapshot_ids,
         )
         return result, record_id, from_hook
 
@@ -619,6 +635,13 @@ def _entry_timestamp_ms(timestamp: str) -> float | None:
 
 def _snapshot_payload(snapshot: ContextUsageSnapshot) -> dict[str, Any]:
     return asdict(snapshot)
+
+
+def _compaction_result_payload(result: CompactionResult) -> dict[str, Any]:
+    payload = asdict(result)
+    if not result.model_input_snapshot_ids:
+        payload.pop("model_input_snapshot_ids")
+    return payload
 
 
 def _usage_tokens(usage: Mapping[str, object]) -> int | None:

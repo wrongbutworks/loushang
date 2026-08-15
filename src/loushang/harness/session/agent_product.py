@@ -73,6 +73,7 @@ from loushang.harness.session.composition import (
 )
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.extension_bridge import AgentSessionExtensionBridge
+from loushang.harness.session.model_call import SessionModelCallRuntime
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.side_question import (
@@ -162,6 +163,29 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
         self._extension_bridge = AgentSessionExtensionBridge()
+        if (
+            session_manager.persist
+            and not agent.model_transport_is_prepared_request_conformant
+            and not agent.model_transport_is_explicitly_synthetic
+        ):
+            raise ValueError(
+                "durable Product sessions require the standard AI stream or a "
+                "prepared_request_conformant custom stream"
+            )
+        if self.agent.prepare_model_call is not None:
+            raise ValueError(
+                "Agent Product session owns the model-call preparation boundary"
+            )
+        self._model_call_runtime = SessionModelCallRuntime(
+            transcript=session_manager,
+            profile=capability_runtime.profile,
+            runtime_id=(
+                "session:"
+                + str(self.session_manager.get_session_record().session_id)
+            ),
+            is_current=self._is_current_model_call_session,
+        )
+        self.agent.prepare_model_call = self._model_call_runtime.prepare
         self._extension_tool_registration_leases = []
         self._tool_registry = tool_registry
         self.diagnostics_service = diagnostics_service
@@ -458,8 +482,24 @@ class AgentProductSession(AgentSessionAdapterMixin):
 
     async def _dispose_session_runtime_profile(self) -> None:
         # Stop the selected Provider before its capability factory is disposed.
-        self.cancel_side_question()
-        await super()._dispose_session_runtime_profile()
+        coordinator = self._side_question
+        if coordinator is not None:
+            await coordinator.cancel_and_wait()
+        try:
+            await self._model_call_runtime.dispose()
+        finally:
+            await super()._dispose_session_runtime_profile()
+
+    async def prepare_model_call_runtime(self) -> None:
+        """Commit the candidate-private graph before Session publication."""
+
+        await self._model_call_runtime.bind()
+
+    def _is_current_model_call_session(self) -> bool:
+        runtime_host = self._extension_bridge.runtime_host
+        if runtime_host is None:
+            return True
+        return getattr(runtime_host, "current_session", None) is self
 
     def _finalize_after_session_shutdown(self) -> None:
         self.cancel_side_question()
@@ -649,6 +689,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 signal=signal,
                 custom_instructions=custom_instructions,
                 replace_instructions=replace_instructions,
+                prepare_model_call=self.agent.prepare_model_call,
             )
 
         return run

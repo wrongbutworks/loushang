@@ -284,6 +284,7 @@ class SessionOperations:
                 signal=signal,
                 custom_instructions=custom_instructions,
                 replace_instructions=replace_instructions,
+                prepare_model_call=self.ports.agent.prepare_model_call,
             )
 
         return run

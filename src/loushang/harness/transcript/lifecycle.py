@@ -261,12 +261,12 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
     ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
         """Create a new transcript containing only one selected source path."""
 
-        records = source.records_to(leaf_id)
+        records = source.records_for_fork(leaf_id)
         return await self.create(
             context,
             binding_input,
             records=records,
-            leaf_id=records[-1].record_id if records else None,
+            leaf_id=leaf_id,
         )
 
 

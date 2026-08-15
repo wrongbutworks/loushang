@@ -158,7 +158,8 @@ def test_session_runtime_schedules_explicit_auto_compaction_continuation() -> No
             tokens_before=100,
         )
 
-        async def continue_run() -> None:
+        async def continue_run(*, model_call_purpose="continuation") -> None:
+            assert model_call_purpose == "continuation"
             continued.append(True)
 
         async def check_auto_compaction(message: object) -> AutoCompactionOutcome:

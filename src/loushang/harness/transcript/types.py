@@ -42,6 +42,17 @@ def _require_optional_text(value: object, *, name: str) -> str | None:
     return _require_text(value, name=name)
 
 
+def _model_input_lineage(value: object) -> tuple[str, ...]:
+    if not isinstance(value, tuple):
+        raise TypeError("Model Input snapshot lineage must be a tuple")
+    normalized = tuple(
+        _require_text(item, name="Model Input snapshot lineage id") for item in value
+    )
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("Model Input snapshot lineage ids must be unique")
+    return normalized
+
+
 def _require_non_negative_int(value: object, *, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError(f"{name} must be a non-negative integer")
@@ -92,6 +103,7 @@ class ContextCompactionCheckpoint:
     tokens_before: int
     details: JSONValue = None
     from_hook: bool | None = None
+    model_input_snapshot_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.summary, str):
@@ -108,9 +120,18 @@ class ContextCompactionCheckpoint:
             raise TypeError("compaction from_hook must be a boolean or None")
         object.__setattr__(
             self,
+            "model_input_snapshot_ids",
+            _model_input_lineage(self.model_input_snapshot_ids),
+        )
+        object.__setattr__(
+            self,
             "details",
             require_json_value(self.details, name="compaction details"),
         )
+
+    @property
+    def derivation_verifiable(self) -> bool:
+        return bool(self.model_input_snapshot_ids)
 
 
 @dataclass(frozen=True)
@@ -119,6 +140,7 @@ class BranchContextSummary:
     summary: str
     details: JSONValue = None
     from_hook: bool | None = None
+    model_input_snapshot_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _require_text(self.from_record_id, name="branch summary source record id")
@@ -128,9 +150,18 @@ class BranchContextSummary:
             raise TypeError("branch summary from_hook must be a boolean or None")
         object.__setattr__(
             self,
+            "model_input_snapshot_ids",
+            _model_input_lineage(self.model_input_snapshot_ids),
+        )
+        object.__setattr__(
+            self,
             "details",
             require_json_value(self.details, name="branch summary details"),
         )
+
+    @property
+    def derivation_verifiable(self) -> bool:
+        return bool(self.model_input_snapshot_ids)
 
 
 @dataclass(frozen=True)

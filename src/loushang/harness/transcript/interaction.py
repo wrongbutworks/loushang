@@ -76,6 +76,7 @@ class BranchSummaryOutput:
     from_hook: bool = False
     aborted: bool = False
     error: str | None = None
+    model_input_snapshot_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -83,6 +84,17 @@ class BranchSummaryOutput:
             "details",
             require_json_value(self.details, name="branch_summary.details"),
         )
+        if not isinstance(self.model_input_snapshot_ids, tuple) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in self.model_input_snapshot_ids
+        ):
+            raise TypeError(
+                "branch summary Model Input snapshot ids must be non-empty strings"
+            )
+        if len(set(self.model_input_snapshot_ids)) != len(
+            self.model_input_snapshot_ids
+        ):
+            raise ValueError("branch summary Model Input snapshot ids must be unique")
 
 
 @dataclass(frozen=True)
@@ -476,6 +488,7 @@ class AgentTranscriptNavigationRuntime:
                 summary.summary,
                 details=summary.details,
                 from_hook=summary.from_hook,
+                model_input_snapshot_ids=summary.model_input_snapshot_ids,
             )
             if label:
                 await self.session.append_label(summary_record_id, label)

@@ -15,7 +15,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from loushang.agent import Agent
+from loushang.agent import Agent, PrepareModelCallFn
 from loushang.ai.api_registry import APIRegistry
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import AssistantMessage
@@ -134,6 +134,7 @@ class ProductCompactionExecutor(Protocol):
         headers: Mapping[str, str] | None,
         signal: object | None,
         custom_instructions: str | None = None,
+        prepare_model_call: PrepareModelCallFn | None = None,
     ) -> CompactionResult: ...
 
 
@@ -1075,6 +1076,7 @@ async def _execute_compaction(
         headers=None,
         signal=agent.signal,
         custom_instructions=custom_instructions,
+        prepare_model_call=agent.prepare_model_call,
     )
 
 

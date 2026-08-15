@@ -86,10 +86,12 @@ class _ContractProductSession(AgentProductSession):
             headers: Mapping[str, str] | None,
             signal: object | None,
             custom_instructions: str | None = None,
+            prepare_model_call: object | None = None,
         ) -> CompactionResult:
             assert getattr(model, "id", None) == f"{product_id}-model"
             assert headers is None
             assert signal is self.agent.signal
+            assert callable(prepare_model_call)
             self.executor_calls.append((product_id, custom_instructions))
             return CompactionResult(
                 summary=f"{product_id} summary",

@@ -16,6 +16,7 @@ from loushang.ai.types import (
     TextPart,
     Tool,
     ToolCall,
+    ToolResultMessage,
     Usage,
     UserMessage,
 )
@@ -300,6 +301,39 @@ def test_model_call_options_resolver_observes_final_context_before_transport() -
     assert events == ["transform", "prepare", "transport"]
 
 
+def test_model_call_options_resolver_cannot_drop_agent_cancellation() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    marker = object()
+
+    async def prepare_model_call(preparation):
+        return replace(preparation.options, cancellation=None)
+
+    async def stream_fn(model, context: Context, options=None):
+        del model, context
+        assert isinstance(options, CallOptions)
+        assert options.cancellation is marker
+        return _stream_with_final_message(_assistant_text_message("done"))
+
+    async def emit(event):
+        del event
+
+    asyncio.run(
+        run_agent_loop(
+            [UserMessage(role="user", content="hello", timestamp=0.0)],
+            AgentContext(system_prompt="system", messages=[]),
+            replace(
+                _config(stream_fn),
+                call_options=CallOptions(cancellation=marker),
+                prepare_model_call=prepare_model_call,
+            ),
+            emit,
+            signal=marker,
+            stream_fn=stream_fn,
+        )
+    )
+
+
 def test_model_call_options_resolver_failure_prevents_transport() -> None:
     from loushang.agent.agent_loop import run_agent_loop
 
@@ -460,6 +494,39 @@ def test_run_agent_loop_executes_tool_and_continues_with_following_turn() -> Non
     assert isinstance(new_messages[-1], AssistantMessage)
     assert new_messages[-1].content[0].text == "done"
     assert preparations == [("main", 1), ("tool_continuation", 2)]
+
+
+def test_tool_result_commit_failure_prevents_following_model_sample() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    stream_calls = 0
+
+    async def stream_fn(model, context: Context, options=None):
+        nonlocal stream_calls
+        del model, context, options
+        stream_calls += 1
+        if stream_calls == 1:
+            return _stream_with_final_message(_assistant_tool_call_message())
+        return _stream_with_final_message(_assistant_text_message("unexpected"))
+
+    async def emit(event):
+        if event["type"] == "message_end" and isinstance(
+            event["message"], ToolResultMessage
+        ):
+            raise OSError("Tool result transcript commit failed")
+
+    with pytest.raises(OSError, match="Tool result transcript commit failed"):
+        asyncio.run(
+            run_agent_loop(
+                [UserMessage(role="user", content="calculate", timestamp=0.0)],
+                AgentContext(system_prompt="system", messages=[], tools=[FakeTool()]),
+                _config(stream_fn),
+                emit,
+                stream_fn=stream_fn,
+            )
+        )
+
+    assert stream_calls == 1
 
 
 def test_agent_loop_turns_projection_failure_into_structured_tool_error() -> None:

@@ -104,6 +104,15 @@ class SideQuestionCoordinator:
             task.cancel()
         return True
 
+    async def cancel_and_wait(self) -> bool:
+        """Cancel the owned request and join it before its Session is disposed."""
+
+        task = self._active_task
+        cancelled = self.cancel()
+        if task is not None and task is not asyncio.current_task():
+            await asyncio.gather(task, return_exceptions=True)
+        return cancelled
+
 
 __all__ = [
     "SideQuestionAnswer",

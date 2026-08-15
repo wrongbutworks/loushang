@@ -65,8 +65,8 @@ description.
   is the executable pre-change inventory for that sequence. It records current
   compatibility and assigns each future contract to one package owner.
 - [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
-  defines the accepted PR8 implementation contract without claiming the
-  all-model-call production wiring is already complete.
+  defines the implemented PR8 Session graph, per-sampling commit, complete
+  model-call inventory, and compaction-lineage boundary.
 - [Refactoring Principles](refactoring-principles.md) defines what may move
   into harness and how migration slices should be shaped.
 - [Shared Capability Boundaries](shared-capability-boundaries.md) maps tools,

@@ -87,6 +87,15 @@ from loushang.harness.capabilities.graph_runtime import (
 from loushang.harness.capabilities.graph_runtime import (
     RuntimeCapabilityGraphRuntime as RuntimeCapabilityGraphRuntime,
 )
+from loushang.harness.capabilities.model_input_contracts import (
+    MODEL_INPUT_CAPABILITY_DEFINITION as MODEL_INPUT_CAPABILITY_DEFINITION,
+)
+from loushang.harness.capabilities.model_input_contracts import (
+    MODEL_INPUT_PREPARATION_FACET as MODEL_INPUT_PREPARATION_FACET,
+)
+from loushang.harness.capabilities.model_input_contracts import (
+    MODEL_INPUT_PREPARATION_REQUIREMENT as MODEL_INPUT_PREPARATION_REQUIREMENT,
+)
 from loushang.harness.capabilities.packs import CapabilityPack as CapabilityPack
 from loushang.harness.capabilities.packs import (
     CapabilityPackComposer as CapabilityPackComposer,
@@ -166,6 +175,9 @@ __all__ = [
     "MountGraphSnapshot",
     "MountNodeSnapshot",
     "MountRequirementSnapshot",
+    "MODEL_INPUT_CAPABILITY_DEFINITION",
+    "MODEL_INPUT_PREPARATION_FACET",
+    "MODEL_INPUT_PREPARATION_REQUIREMENT",
     "RegistrationInventoryEntry",
     "RegistrationInventorySnapshot",
     "RuntimeCapabilityGraphBinder",

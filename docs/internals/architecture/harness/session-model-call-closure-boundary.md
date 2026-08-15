@@ -2,8 +2,17 @@
 
 ## Status
 
-Status: accepted implementation contract for PR8. Production closure remains
-pending until the acceptance matrix in this document passes.
+Status: implemented PR8 boundary. The acceptance matrix is enforced by the
+Session Model Input, Agent-loop, transcript lineage, lifecycle, and architecture
+tests referenced below.
+
+The implementation uses the Session-scoped `harness.model_input` Definition,
+Provider, and Consumer; Agent's per-sampling `prepare_model_call` seam; and AI's
+existing prepared-request committer. Compaction and branch-summary v2 payloads
+carry ordered `modelInputSnapshotIds`, while v1 payloads remain readable and
+report `derivation_verifiable == False`. Durable custom streams must use
+`prepared_request_conformant`; tests and simulations may make a visible
+`synthetic_model_transport` opt-out.
 
 This boundary defines how one current Product Session, its committed Capability
 graph, its authoritative transcript, and every Harness-managed model call fit

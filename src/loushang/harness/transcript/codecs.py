@@ -273,13 +273,19 @@ def _decode_command_execution(value: JSONValue) -> CommandExecutionRecord:
 
 def _encode_compaction_checkpoint(payload: object) -> JSONValue:
     checkpoint = _instance(payload, ContextCompactionCheckpoint)
-    return {
+    encoded: dict[str, JSONValue] = {
         "summary": checkpoint.summary,
         "firstKeptRecordId": checkpoint.first_kept_record_id,
         "tokensBefore": checkpoint.tokens_before,
         "details": require_json_value(checkpoint.details),
         "fromHook": checkpoint.from_hook,
     }
+    if checkpoint.model_input_snapshot_ids:
+        encoded["lineageVersion"] = 2
+        encoded["modelInputSnapshotIds"] = list(
+            checkpoint.model_input_snapshot_ids
+        )
+    return encoded
 
 
 def _decode_compaction_checkpoint(
@@ -294,38 +300,55 @@ def _decode_compaction_checkpoint(
             "tokensBefore",
             "details",
             "fromHook",
+            "lineageVersion",
+            "modelInputSnapshotIds",
         },
     )
+    lineage = _decode_model_input_lineage(payload, name="context compaction checkpoint")
     return ContextCompactionCheckpoint(
         summary=_string(payload, "summary"),
         first_kept_record_id=_text(payload, "firstKeptRecordId"),
         tokens_before=_non_negative_int(payload, "tokensBefore"),
         details=_field(payload, "details"),
         from_hook=_optional_bool(payload, "fromHook"),
+        model_input_snapshot_ids=lineage,
     )
 
 
 def _encode_branch_summary(payload: object) -> JSONValue:
     summary = _instance(payload, BranchContextSummary)
-    return {
+    encoded: dict[str, JSONValue] = {
         "fromRecordId": summary.from_record_id,
         "summary": summary.summary,
         "details": require_json_value(summary.details),
         "fromHook": summary.from_hook,
     }
+    if summary.model_input_snapshot_ids:
+        encoded["lineageVersion"] = 2
+        encoded["modelInputSnapshotIds"] = list(summary.model_input_snapshot_ids)
+    return encoded
 
 
 def _decode_branch_summary(value: JSONValue) -> BranchContextSummary:
     payload = _payload_object(
         value,
         name="branch context summary",
-        fields={"fromRecordId", "summary", "details", "fromHook"},
+        fields={
+            "fromRecordId",
+            "summary",
+            "details",
+            "fromHook",
+            "lineageVersion",
+            "modelInputSnapshotIds",
+        },
     )
+    lineage = _decode_model_input_lineage(payload, name="branch context summary")
     return BranchContextSummary(
         from_record_id=_text(payload, "fromRecordId"),
         summary=_string(payload, "summary"),
         details=_field(payload, "details"),
         from_hook=_optional_bool(payload, "fromHook"),
+        model_input_snapshot_ids=lineage,
     )
 
 
@@ -667,6 +690,30 @@ def _payload_object(
             f"{name} contains unknown fields: {', '.join(sorted(unexpected))}"
         )
     return payload
+
+
+def _decode_model_input_lineage(
+    payload: Mapping[str, JSONValue],
+    *,
+    name: str,
+) -> tuple[str, ...]:
+    has_version = "lineageVersion" in payload
+    has_snapshots = "modelInputSnapshotIds" in payload
+    if not has_version and not has_snapshots:
+        return ()
+    if not has_version or not has_snapshots:
+        raise ValueError(f"{name} Model Input lineage fields must appear together")
+    if payload["lineageVersion"] != 2:
+        raise ValueError(f"{name} Model Input lineage version is unsupported")
+    raw_ids = payload["modelInputSnapshotIds"]
+    if not isinstance(raw_ids, list) or not raw_ids:
+        raise ValueError(f"{name} Model Input lineage must be a non-empty list")
+    snapshot_ids = tuple(raw_ids)
+    if any(not isinstance(item, str) or not item.strip() for item in snapshot_ids):
+        raise ValueError(f"{name} Model Input lineage ids must be non-empty strings")
+    if len(set(snapshot_ids)) != len(snapshot_ids):
+        raise ValueError(f"{name} Model Input lineage ids must be unique")
+    return cast(tuple[str, ...], snapshot_ids)
 
 
 def _field(value: Mapping[str, JSONValue], key: str) -> JSONValue:

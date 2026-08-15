@@ -529,7 +529,9 @@ async def _collect_assistant_response(
         )
         if not isinstance(prepared_options, CallOptions):
             raise TypeError("prepare_model_call must return CallOptions")
-        options = prepared_options
+        # The preparation seam may add durable commit state, but it must not
+        # detach the in-flight Agent cancellation authority.
+        options = replace(prepared_options, cancellation=options.cancellation)
 
     if _is_aborted(signal):
         raise RuntimeError("Request aborted by user")
