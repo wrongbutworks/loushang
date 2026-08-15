@@ -8,8 +8,9 @@ This catalog lists only source-backed, role-complete Capability seams. It is a r
 
 A Capability appears here only after its Definition, Provider, requirement,
 and Consumer symbols all exist in source. `source-complete` does not imply
-that a Product mounts the seam. `production-mounted` requires a separate,
-source-verified composition-owner reference. Mounted Providers use the
+that a Product mounts the seam. `production-mounted` requires a declared
+production composition reference that resolves to a callable source symbol.
+Mounted Providers use the
 existing `RuntimeCapabilityGraphBinder`; owner-scoped live contributions
 use `RegistrationScope`.
 

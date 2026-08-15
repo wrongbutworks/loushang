@@ -115,13 +115,21 @@ owners. CLA2 and CLA4 intentionally update the corresponding allowlist in the
 same change that moves authority; adding a peer site without updating this
 baseline fails.
 
+The gate intentionally rejects renamed imports, assignment aliases, and
+subclasses of guarded constructors, even when an alias is not invoked. Lambda
+bodies receive their own scope so lazy construction cannot inherit an
+allowlisted outer owner accidentally. This is a reviewability constraint, not
+a claim to prove arbitrary reflective or dynamic Python data flow.
+
 ## Capability Catalog Status
 
 The generated catalog uses two statuses:
 
 - `source-complete`: Definition, Provider, requirement, and Consumer exist, but
-  no production composition owner is source-verified; and
-- `production-mounted`: a source-verified production owner mounts the seam.
+  no production composition reference is declared; and
+- `production-mounted`: the generator declares a production composition
+  reference and verifies that it resolves to a callable source symbol. The
+  construction allowlist independently verifies the current mount owner.
 
 At this baseline, `harness.workspace` is `source-complete` and
 `harness.model_input` is `production-mounted`. Catalog status is documentation

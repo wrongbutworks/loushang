@@ -4,6 +4,7 @@ import ast
 import re
 import subprocess
 import sys
+from collections import Counter
 from functools import cache
 from pathlib import Path
 
@@ -74,7 +75,7 @@ EXPECTED_CONSTRUCTION_SITES = {
 EXPECTED_COMPOSITION_BIND_CALLERS = {
     (
         Path("src/loushang/coding/bootstrap.py"),
-        "<module>",
+        "<lambda>",
     ),
     (
         Path("src/loushang/coding/runtime_capability_admission.py"),
@@ -92,7 +93,7 @@ TRACKED_CALL_SYMBOLS = frozenset(
         "_publish_generation",
     }
 )
-GUARDED_IMPORT_SYMBOLS = frozenset(
+GUARDED_CONSTRUCTION_SYMBOLS = frozenset(
     {*EXPECTED_CONSTRUCTION_SITES, "bind_capability_composition_runtime"}
 )
 
@@ -135,6 +136,11 @@ class _ScopedCallVisitor(ast.NodeVisitor):
         self.generic_visit(node)
         self._scope.pop()
 
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        self._scope.append("<lambda>")
+        self.generic_visit(node)
+        self._scope.pop()
+
     def visit_Call(self, node: ast.Call) -> None:
         symbol = _call_name(node.func)
         if symbol in self.sites:
@@ -143,9 +149,9 @@ class _ScopedCallVisitor(ast.NodeVisitor):
 
 
 @cache
-def _tracked_call_sites() -> dict[str, set[tuple[Path, str]]]:
-    sites: dict[str, set[tuple[Path, str]]] = {
-        symbol: set() for symbol in TRACKED_CALL_SYMBOLS
+def _tracked_call_sites() -> dict[str, Counter[tuple[Path, str]]]:
+    sites: dict[str, Counter[tuple[Path, str]]] = {
+        symbol: Counter() for symbol in TRACKED_CALL_SYMBOLS
     }
     for path, tree in _source_trees().items():
         visitor = _ScopedCallVisitor()
@@ -155,8 +161,47 @@ def _tracked_call_sites() -> dict[str, set[tuple[Path, str]]]:
     return sites
 
 
-def _construction_sites(symbol: str) -> set[tuple[Path, str]]:
+def _construction_sites(symbol: str) -> Counter[tuple[Path, str]]:
     return _tracked_call_sites()[symbol]
+
+
+def _guarded_alias_violations(
+    path: Path,
+    tree: ast.Module,
+) -> set[tuple[Path, str, str]]:
+    violations: set[tuple[Path, str, str]] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            violations.update(
+                (path, "renamed_import", f"{alias.name} as {alias.asname}")
+                for alias in node.names
+                if alias.name in GUARDED_CONSTRUCTION_SYMBOLS
+                and alias.asname not in {None, alias.name}
+            )
+            continue
+
+        if isinstance(node, ast.Assign):
+            value_name = _call_name(node.value)
+            if value_name in GUARDED_CONSTRUCTION_SYMBOLS:
+                violations.update(
+                    (path, "constructor_alias", ast.unparse(target))
+                    for target in node.targets
+                )
+            continue
+
+        if isinstance(node, ast.AnnAssign):
+            value_name = None if node.value is None else _call_name(node.value)
+            if value_name in GUARDED_CONSTRUCTION_SYMBOLS:
+                violations.add(
+                    (path, "constructor_alias", ast.unparse(node.target))
+                )
+            continue
+
+        if isinstance(node, ast.ClassDef) and any(
+            _call_name(base) in GUARDED_CONSTRUCTION_SYMBOLS for base in node.bases
+        ):
+            violations.add((path, "guarded_subclass", node.name))
+    return violations
 
 
 def _method_node(
@@ -175,6 +220,18 @@ def _method_node(
         for node in class_node.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name == method_name
+    )
+
+
+def _function_node(
+    path: Path,
+    function_name: str,
+) -> ast.FunctionDef | ast.AsyncFunctionDef:
+    return next(
+        node
+        for node in _source_trees()[path].body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == function_name
     )
 
 
@@ -211,29 +268,65 @@ def test_cla0_baseline_is_linked_from_plan_and_harness_index() -> None:
 
 
 def test_graph_and_profile_construction_sites_match_cla0_allowlist() -> None:
-    aliased_imports = {
-        (path, alias.name, alias.asname)
+    alias_violations = {
+        violation
         for path, tree in _source_trees().items()
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-        for alias in node.names
-        if alias.name in GUARDED_IMPORT_SYMBOLS
-        and alias.asname not in {None, alias.name}
+        for violation in _guarded_alias_violations(path, tree)
     }
-    assert aliased_imports == set()
+    assert alias_violations == set()
 
     for symbol, expected in EXPECTED_CONSTRUCTION_SITES.items():
-        assert _construction_sites(symbol) == expected
+        assert _construction_sites(symbol) == Counter(expected)
 
 
 def test_composition_binding_entrypoint_families_match_cla0_allowlist() -> None:
     assert (
         _construction_sites("bind_capability_composition_runtime")
-        == EXPECTED_COMPOSITION_BIND_CALLERS
+        == Counter(EXPECTED_COMPOSITION_BIND_CALLERS)
     )
 
 
+def test_cla0_ast_gate_tracks_lambda_scope_and_rejects_constructor_aliases() -> None:
+    path = Path("synthetic.py")
+    tree = ast.parse(
+        """
+from package import RuntimeProfileBinder as Binder
+Alias = RuntimeCapabilityGraphRuntime
+
+class Peer(RuntimeCapabilityGraphProjector):
+    pass
+
+def owner():
+    RuntimeProfileBinder()
+    deferred = lambda: RuntimeProfileBinder()
+"""
+    )
+    visitor = _ScopedCallVisitor()
+    visitor.visit(tree)
+
+    assert Counter(visitor.sites["RuntimeProfileBinder"]) == Counter(
+        {"owner": 1, "owner.<lambda>": 1}
+    )
+    assert _guarded_alias_violations(path, tree) == {
+        (path, "renamed_import", "RuntimeProfileBinder as Binder"),
+        (path, "constructor_alias", "Alias"),
+        (path, "guarded_subclass", "Peer"),
+    }
+
+
 def test_current_entrypoint_construction_counts_are_frozen() -> None:
+    composition = _function_node(
+        Path("src/loushang/harness/capabilities/composition_runtime.py"),
+        "bind_capability_composition_runtime",
+    )
+    composition_calls = [
+        _call_name(node.func)
+        for node in ast.walk(composition)
+        if isinstance(node, ast.Call)
+    ]
+    assert composition_calls.count("RuntimeProfileBinder") == 1
+    assert composition_calls.count("CapabilityCompositionRuntime") == 1
+
     managed = _method_node(
         Path("src/loushang/harness/session/bootstrap_construction.py"),
         "AgentProductConstructionBinding",
@@ -252,7 +345,7 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
         "AgentSession",
         "__init__",
     )
-    fallback = next(
+    fallback_matches = [
         node
         for node in ast.walk(direct)
         if isinstance(node, ast.IfExp)
@@ -265,8 +358,8 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
             "bind_coding_capability_composition_runtime",
             "bind_capability_composition_runtime",
         }
-    )
-    assert isinstance(fallback, ast.IfExp)
+    ]
+    assert len(fallback_matches) == 1
 
     model_call = _method_node(
         Path("src/loushang/harness/session/model_call.py"),
@@ -295,12 +388,14 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
 
 
 def test_extension_generation_has_one_private_publication_entrypoint() -> None:
-    assert _construction_sites("_publish_generation") == {
-        (
-            Path("src/loushang/harness/extensions/runner.py"),
-            "PreparedExtensionGeneration.publish",
-        )
-    }
+    assert _construction_sites("_publish_generation") == Counter(
+        {
+            (
+                Path("src/loushang/harness/extensions/runner.py"),
+                "PreparedExtensionGeneration.publish",
+            )
+        }
+    )
     publish = _method_node(
         Path("src/loushang/harness/extensions/runner.py"),
         "ExtensionRunner",
