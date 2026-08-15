@@ -29,6 +29,10 @@ planning, work event persistence, or AI provider behavior.
   records the completed PR0-PR9 delivery for owner-scoped reversible registration,
   Definition/Provider/Consumer separation, composed Profile/Mount/registration
   projection, and reconstruction of model-visible inputs from committed facts.
+- [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md)
+  proposes the next-stage convergence of Profile, Mount, Registration, and
+  Extension/Resource construction authority around one publisher per owned live
+  object while preserving independent fact clocks.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   freezes the mutable-surface, compatibility, model-call, package-owner, and
   lifecycle-fault evidence that later convergence PRs must preserve or revise.
@@ -70,6 +74,13 @@ description.
   and disposal, Capability role separation, graph projection, and durable
   model-input reconstruction. It does not override implemented source or
   accepted boundary documents.
+- [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md)
+  is the proposed follow-on delivery plan for a Session-owned graph, the
+  `harness.resources` vertical slice, and contraction of duplicate live
+  construction paths; workspace production mounting remains an independent
+  follow-up. Its
+  [independent review brief](composition-lifecycle-authority-review-brief.md)
+  can be given to reviewers without prior conversation context.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   is the executable pre-change inventory for that sequence. It records current
   compatibility and assigns each future contract to one package owner.
