@@ -215,6 +215,9 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
             "loushang.ai.api_registry",
             "loushang.ai.json_codec",
             "loushang.ai.model",
+            "loushang.ai.options",
+            "loushang.ai.prepared_request",
+            "loushang.ai.structured",
             "loushang.ai.types",
             "loushang.ai.utils",
             "loushang.agent",
@@ -278,6 +281,21 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
             offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
+
+
+def test_model_input_uses_only_the_ai_prepared_request_contract() -> None:
+    path = Path("src/loushang/harness/transcript/model_input.py")
+    ai_imports = {
+        imported
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, ("loushang.ai",))
+    }
+
+    assert ai_imports
+    assert all(
+        _matches_any(imported, ("loushang.ai.prepared_request",))
+        for imported in ai_imports
+    )
 
 
 def test_extension_agent_profile_has_no_session_or_product_dependency() -> None:
@@ -5076,12 +5094,56 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
     assert capability_symbols.isdisjoint(set(harness.__all__))
     assert set(capabilities.__all__) == {
         "CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION",
+        "CapabilityBundleProvider",
+        "CapabilityBundleProviderBinding",
+        "CapabilityBundleValue",
         "CapabilityCompositionRuntime",
+        "CapabilityContractRange",
+        "CapabilityDefinition",
+        "CapabilityDependencyBinding",
+        "CapabilityFacetBinding",
+        "CapabilityFacetSet",
+        "CapabilityGraphBindResult",
+        "CapabilityGraphBindingAttempt",
+        "CapabilityGraphBindingError",
+        "CapabilityGraphDiagnostic",
+        "CapabilityGraphExplanation",
+        "CapabilityGraphPlanRequest",
+        "CapabilityGraphPlanningError",
         "CapabilityPack",
         "CapabilityPackComposer",
         "CapabilityPackComposition",
         "CapabilityPackSource",
         "CapabilityPackTraceEntry",
+        "CapabilityPhase",
+        "CapabilityProviderContext",
+        "CapabilityRegistrationCollector",
+        "CapabilityRequirement",
+        "CapabilityRequirementBinding",
+        "EffectiveRuntimeClocks",
+        "EffectiveRuntimeDiff",
+        "EffectiveRuntimeSkew",
+        "EffectiveRuntimeView",
+        "ModelSurfaceReference",
+        "PlannedCapability",
+        "MountGraphSnapshot",
+        "MountNodeSnapshot",
+        "MountRequirementSnapshot",
+        "MODEL_INPUT_CAPABILITY_DEFINITION",
+        "MODEL_INPUT_PREPARATION_FACET",
+        "MODEL_INPUT_PREPARATION_REQUIREMENT",
+        "RegistrationInventoryEntry",
+        "RegistrationInventorySnapshot",
+        "RegistrationExplanation",
+        "RuntimeCapabilityGraphBinder",
+        "RuntimeCapabilityGraphPlan",
+        "RuntimeCapabilityGraphPlanner",
+        "RuntimeCapabilityGraphProjector",
+        "RuntimeCapabilityGraphRuntime",
+        "RuntimeProfileSlotExplanation",
+        "WORKSPACE_CAPABILITY_DEFINITION",
+        "WORKSPACE_PROCESS_REQUIREMENT",
+        "WORKSPACE_TOOL_REQUIREMENT",
         "bind_capability_composition_runtime",
         "compose_capability_packs",
         "standard_capability_composition_plan",

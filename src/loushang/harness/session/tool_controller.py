@@ -13,6 +13,7 @@ from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.runtime.registration import RegistrationLease, RegistrationOwner
 from loushang.harness.session.tool_runtime import (
     AgentToolPort,
     SessionToolRuntime,
@@ -306,8 +307,52 @@ class SessionToolController:
     def register_runtime_tool(
         self, tool: object, *, source_info: object | None = None
     ) -> ToolDefinition:
+        """Compatibility path; owner-aware live callers use ``bind_runtime_tool``."""
+
         self.ensure_tool_registry()
         return self._runtime.register_runtime_tool(tool, source_info=source_info)
+
+    def bind_runtime_tool(
+        self,
+        tool: object,
+        *,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        self.ensure_tool_registry()
+        return self._runtime.bind_runtime_tool(
+            tool,
+            owner=owner,
+            source_info=source_info,
+        )
+
+    def stage_runtime_tool(
+        self,
+        tool: object,
+        *,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        self.ensure_tool_registry()
+        return self._runtime.stage_runtime_tool(
+            tool,
+            owner=owner,
+            source_info=source_info,
+        )
+
+    def adopt_runtime_tool(
+        self,
+        tool: object,
+        *,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease | None:
+        self.ensure_tool_registry()
+        return self._runtime.adopt_runtime_tool(
+            tool,
+            owner=owner,
+            source_info=source_info,
+        )
 
     def rebuild_prompt_and_tools_view(self) -> None:
         self._runtime.rebuild_prompt_and_tools_view()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from loushang.ai.model.domain import (
@@ -24,8 +24,22 @@ from loushang.ai.model.registry import (
 )
 from loushang.ai.model.selection import ModelSelection
 from loushang.foundation.observability import get_log
+from loushang.harness.runtime.registration import (
+    RegistrationDisposalResult,
+    RegistrationIdentity,
+    RegistrationLease,
+    RegistrationOwner,
+)
 
 log = get_log(__name__).bind(component="ModelCatalog")
+
+
+@dataclass(frozen=True)
+class _ProviderLayer:
+    owner: RegistrationOwner
+    identity: RegistrationIdentity
+    provider: Provider | None
+    published: bool = True
 
 
 def _registry_provider_snapshot(
@@ -46,6 +60,8 @@ class ModelCatalog:
         self._ai_registry = (
             ai_registry if ai_registry is not None else get_default_model_registry()
         )
+        self._provider_layers: dict[str, list[_ProviderLayer]] = {}
+        self._provider_baselines: dict[str, Provider | None] = {}
 
     @property
     def ai_registry(self) -> AiModelRegistry:
@@ -67,6 +83,8 @@ class ModelCatalog:
                     (str(path), load_model_registry_from_directory(path).providers)
                 )
         self._replace_ai_registry(_combine_model_registries(sources))
+        self._provider_layers.clear()
+        self._provider_baselines.clear()
 
     def reload_if_project_layer(
         self,
@@ -115,13 +133,247 @@ class ModelCatalog:
         self._replace_ai_registry(AiModelRegistry.from_providers(providers))
 
     def register_provider(self, provider: Provider) -> None:
+        self._provider_layers.pop(provider.id, None)
+        self._provider_baselines.pop(provider.id, None)
         providers = _registry_provider_snapshot(self._ai_registry)
         providers[provider.id] = provider
         self._replace_ai_registry(AiModelRegistry.from_providers(providers))
 
     def unregister_provider(self, provider_id: str) -> None:
+        self._provider_layers.pop(provider_id, None)
+        self._provider_baselines.pop(provider_id, None)
         providers = _registry_provider_snapshot(self._ai_registry)
         providers.pop(provider_id, None)
+        self._replace_ai_registry(AiModelRegistry.from_providers(providers))
+
+    def bind_provider(
+        self,
+        provider: Provider,
+        *,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        """Bind one exact Provider layer and restore the prior winner on removal."""
+
+        return self._bind_provider(provider, owner=owner, published=True)
+
+    def stage_provider(
+        self,
+        provider: Provider,
+        *,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        """Add an invisible Provider layer activated by its registration scope."""
+
+        return self._bind_provider(provider, owner=owner, published=False)
+
+    def bind_provider_removal(
+        self,
+        provider_id: str,
+        *,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        """Bind an owner-scoped tombstone without deleting another owner's layer."""
+
+        return self._bind_provider_layer(
+            provider_id,
+            None,
+            owner=owner,
+            published=True,
+        )
+
+    def stage_provider_removal(
+        self,
+        provider_id: str,
+        *,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        """Stage an invisible owner-scoped Provider tombstone."""
+
+        return self._bind_provider_layer(
+            provider_id,
+            None,
+            owner=owner,
+            published=False,
+        )
+
+    def _bind_provider(
+        self,
+        provider: Provider,
+        *,
+        owner: RegistrationOwner,
+        published: bool,
+    ) -> RegistrationLease:
+        if not isinstance(provider, Provider):
+            raise TypeError("ModelCatalog.bind_provider expects a Provider")
+        if not isinstance(owner, RegistrationOwner):
+            raise TypeError("ModelCatalog.bind_provider owner must be a RegistrationOwner")
+        return self._bind_provider_layer(
+            provider.id,
+            provider,
+            owner=owner,
+            published=published,
+        )
+
+    def _bind_provider_layer(
+        self,
+        provider_id: str,
+        provider: Provider | None,
+        *,
+        owner: RegistrationOwner,
+        published: bool,
+    ) -> RegistrationLease:
+        if not isinstance(provider_id, str) or not provider_id.strip():
+            raise ValueError("Provider id must be a non-empty string")
+        layers = self._provider_layers.get(provider_id)
+        if layers is None:
+            layers = []
+            self._provider_layers[provider_id] = layers
+            self._provider_baselines[provider_id] = self._ai_registry.get_provider(
+                provider_id
+            )
+        identity = RegistrationIdentity.create(
+            surface="model_provider",
+            public_key=provider_id,
+        )
+        layers.append(
+            _ProviderLayer(
+                owner=owner,
+                identity=identity,
+                provider=provider,
+                published=published,
+            )
+        )
+        if published:
+            self._publish_provider(provider_id, provider)
+        return RegistrationLease(
+            owner=owner,
+            identity=identity,
+            dispose=lambda: self._remove_bound_provider(
+                owner=owner,
+                identity=identity,
+            ),
+            activate=(
+                None
+                if published
+                else lambda: self._set_bound_provider_published(
+                    owner=owner,
+                    identity=identity,
+                    published=True,
+                )
+            ),
+            deactivate=(
+                None
+                if published
+                else lambda: self._set_bound_provider_published(
+                    owner=owner,
+                    identity=identity,
+                    published=False,
+                )
+            ),
+            rollback=lambda: self._remove_bound_provider(
+                owner=owner,
+                identity=identity,
+            ),
+        )
+
+    def get_owner_provider_state(
+        self,
+        provider_id: str,
+        *,
+        owner: RegistrationOwner,
+    ) -> tuple[bool, Provider | None]:
+        """Return the last staged or published action for one exact owner."""
+
+        layers = self._provider_layers.get(provider_id, ())
+        for layer in reversed(layers):
+            if layer.owner == owner:
+                return True, layer.provider
+        return False, None
+
+    def _remove_bound_provider(
+        self,
+        *,
+        owner: RegistrationOwner,
+        identity: RegistrationIdentity,
+    ) -> RegistrationDisposalResult:
+        provider_id = identity.public_key
+        if identity.surface != "model_provider" or provider_id is None:
+            return RegistrationDisposalResult(
+                state="failed_terminal",
+                diagnostic_code="provider_registration_identity_invalid",
+            )
+        layers = self._provider_layers.get(provider_id)
+        if layers is None:
+            return RegistrationDisposalResult(state="already_removed")
+        for index, layer in enumerate(layers):
+            if layer.identity.registration_id != identity.registration_id:
+                continue
+            if layer.owner != owner:
+                return RegistrationDisposalResult(
+                    state="failed_terminal",
+                    diagnostic_code="provider_registration_owner_mismatch",
+                )
+            layers.pop(index)
+            published_layer = next(
+                (item for item in reversed(layers) if item.published),
+                None,
+            )
+            if published_layer is not None:
+                self._publish_provider(provider_id, published_layer.provider)
+            else:
+                baseline = self._provider_baselines.get(provider_id)
+                if not layers:
+                    self._provider_baselines.pop(provider_id, None)
+                    self._provider_layers.pop(provider_id, None)
+                self._publish_provider(provider_id, baseline)
+            return RegistrationDisposalResult(state="removed")
+        return RegistrationDisposalResult(state="already_removed")
+
+    def _set_bound_provider_published(
+        self,
+        *,
+        owner: RegistrationOwner,
+        identity: RegistrationIdentity,
+        published: bool,
+    ) -> None:
+        provider_id = identity.public_key
+        layers = self._provider_layers.get(provider_id or "")
+        if identity.surface != "model_provider" or provider_id is None or layers is None:
+            raise RuntimeError("staged Provider registration is unavailable")
+        for index, layer in enumerate(layers):
+            if layer.identity.registration_id != identity.registration_id:
+                continue
+            if layer.owner != owner:
+                raise RuntimeError("staged Provider registration owner changed")
+            layers[index] = _ProviderLayer(
+                owner=layer.owner,
+                identity=layer.identity,
+                provider=layer.provider,
+                published=published,
+            )
+            effective = next(
+                (item for item in reversed(layers) if item.published),
+                None,
+            )
+            self._publish_provider(
+                provider_id,
+                effective.provider
+                if effective is not None
+                else self._provider_baselines.get(provider_id),
+            )
+            return
+        raise RuntimeError("staged Provider registration was removed")
+
+    def _publish_provider(
+        self,
+        provider_id: str,
+        provider: Provider | None,
+    ) -> None:
+        providers = _registry_provider_snapshot(self._ai_registry)
+        if provider is None:
+            providers.pop(provider_id, None)
+        else:
+            providers[provider_id] = provider
         self._replace_ai_registry(AiModelRegistry.from_providers(providers))
 
     def get_model(self, name: str) -> ModelSelection | None:

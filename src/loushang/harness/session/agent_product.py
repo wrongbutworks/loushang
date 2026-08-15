@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from loushang.agent import Agent
 from loushang.ai.api_registry import (
@@ -11,8 +12,17 @@ from loushang.ai.api_registry import (
     get_default_api_registry,
 )
 from loushang.ai.model import ModelSelection
+from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
-from loushang.harness.capabilities import CapabilityCompositionRuntime
+from loushang.harness.capabilities import (
+    CapabilityCompositionRuntime,
+    CapabilityGraphExplanation,
+    EffectiveRuntimeDiff,
+    EffectiveRuntimeView,
+    RegistrationExplanation,
+    RegistrationInventoryEntry,
+    RuntimeProfileSlotExplanation,
+)
 from loushang.harness.config.agent import (
     CompactionSettings,
     RetrySettings,
@@ -25,6 +35,7 @@ from loushang.harness.extensions.agent.replacement import ExtensionReplacementRu
 from loushang.harness.extensions.context import (
     ReplacedSessionContext,
     SessionBeforeCompactEvent,
+    SessionShutdownEvent,
     SessionStartEvent,
 )
 from loushang.harness.extensions.provider_config import provider_from_extension_config
@@ -44,6 +55,12 @@ from loushang.harness.runtime import (
     SideQuestionAnswer,
     SideQuestionCoordinator,
     SideQuestionUpdate,
+)
+from loushang.harness.runtime.registration import (
+    RegistrationDisposalResult,
+    RegistrationLease,
+    RegistrationOwner,
+    _await_cancellation_atomic,
 )
 from loushang.harness.session.agent_adapter import (
     AgentSessionAdapterMixin,
@@ -65,9 +82,11 @@ from loushang.harness.session.composition import (
     SessionModelCatalogPort,
     SessionProductInputs,
     compose_session_runtime,
+    supports_prepare_model_call,
 )
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.extension_bridge import AgentSessionExtensionBridge
+from loushang.harness.session.model_call import SessionModelCallRuntime
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.side_question import (
@@ -88,6 +107,15 @@ BranchSummaryExecutor = Callable[..., Awaitable[BranchSummaryOutput]]
 ChangelogProvider = Callable[[str, str], object]
 ClipboardWriter = Callable[[str], object]
 RetrySleeper = Callable[[int, CancellationSignal], Awaitable[None]]
+
+
+def _require_durable_summary_executor(
+    callback: Callable[..., object], *, name: str
+) -> None:
+    if not supports_prepare_model_call(callback):
+        raise ValueError(
+            f"durable Product {name} must accept prepare_model_call"
+        )
 
 
 class FooterDataPort(Protocol):
@@ -157,6 +185,45 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
         self._extension_bridge = AgentSessionExtensionBridge()
+        if (
+            session_manager.persist
+            and not agent.model_transport_is_prepared_request_conformant
+            and not agent.model_transport_is_explicitly_synthetic
+        ):
+            raise ValueError(
+                "durable Product sessions require the standard AI stream or a "
+                "prepared_request_conformant custom stream"
+            )
+        if self.agent.prepare_model_call is not None:
+            raise ValueError(
+                "Agent Product session owns the model-call preparation boundary"
+            )
+        if session_manager.persist:
+            _require_durable_summary_executor(
+                execute_compaction,
+                name="compaction executor",
+            )
+            _require_durable_summary_executor(
+                execute_branch_summary,
+                name="branch-summary executor",
+            )
+        self._model_call_runtime = SessionModelCallRuntime(
+            transcript=session_manager,
+            profile=capability_runtime.profile,
+            runtime_id=(
+                "session:"
+                + str(self.session_manager.get_session_record().session_id)
+            ),
+            is_current=self._is_current_model_call_session,
+            registration_entries_provider=self._effective_registration_entries,
+        )
+        self._previous_agent_prepare_model_call = self.agent.prepare_model_call
+        self._installed_agent_prepare_model_call: object | None = None
+        self._previous_transport_requirement = (
+            self.agent.model_transport_requires_prepared_request_conformance
+        )
+        self._installed_transport_requirement: bool | None = None
+        self._extension_tool_registration_leases = []
         self._tool_registry = tool_registry
         self.diagnostics_service = diagnostics_service
         self._package_materializer = package_materializer
@@ -225,6 +292,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
             set_active_tools=self._set_active_tools_from_extension,
             set_model=self._set_model_from_extension,
             register_tool=self._register_extension_runtime_tool,
+            bind_tool=self._bind_extension_runtime_tool,
+            adopt_tool=self._adopt_extension_runtime_tool,
+            stage_tool=self._stage_extension_runtime_tool,
             append_entry=self._append_extension_entry,
             send_message=self._send_message_from_extension,
             send_user_message=self._send_user_message_from_extension_async,
@@ -244,6 +314,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
             set_thinking_level=self.set_thinking_level,
             register_provider=self._register_provider_from_extension,
             unregister_provider=self._unregister_provider_from_extension,
+            bind_provider=self._bind_provider_from_extension,
+            bind_provider_removal=self._bind_provider_removal_from_extension,
+            stage_provider=self._stage_provider_from_extension,
+            stage_provider_removal=self._stage_provider_removal_from_extension,
             set_extension_status=self._set_extension_status_from_extension,
             get_footer_data_provider=lambda: self.footer_data_provider,
             compact=self._compact_from_extension,
@@ -290,6 +364,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             apply_context=self._apply_agent_transcript_context,
             sync_footer=self._sync_footer_available_provider_count,
         )
+        self._install_agent_model_call_boundary()
 
     @property
     def capability_profile(self) -> ResolvedRuntimeProfile:
@@ -299,6 +374,128 @@ class AgentProductSession(AgentSessionAdapterMixin):
         if runtime is None:
             raise RuntimeError("Session capability profile has been disposed.")
         return runtime.profile
+
+    def get_effective_runtime_view(
+        self,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> EffectiveRuntimeView:
+        """Compose current runtime facts without claiming one atomic clock."""
+
+        return self._model_call_runtime.effective_view(
+            self.capability_profile.snapshot(),
+            model_input_snapshot_id=model_input_snapshot_id,
+        )
+
+    def explain_runtime_capability(
+        self,
+        capability_id: str,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> CapabilityGraphExplanation:
+        return self._model_call_runtime.explain_capability(
+            self.capability_profile.snapshot(),
+            capability_id,
+            model_input_snapshot_id=model_input_snapshot_id,
+        )
+
+    def explain_runtime_profile_slot(
+        self,
+        slot: str,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> RuntimeProfileSlotExplanation:
+        return self._model_call_runtime.explain_profile_slot(
+            self.capability_profile.snapshot(),
+            slot,
+            model_input_snapshot_id=model_input_snapshot_id,
+        )
+
+    def explain_runtime_registration(
+        self,
+        registration_id: str,
+        *,
+        model_input_snapshot_id: str | None = None,
+    ) -> RegistrationExplanation:
+        return self._model_call_runtime.explain_registration(
+            self.capability_profile.snapshot(),
+            registration_id,
+            model_input_snapshot_id=model_input_snapshot_id,
+        )
+
+    def diff_effective_runtime(
+        self,
+        before: EffectiveRuntimeView,
+        after: EffectiveRuntimeView,
+    ) -> EffectiveRuntimeDiff:
+        return self._model_call_runtime.diff(before, after)
+
+    def effective_runtime_to_json(
+        self,
+        value: EffectiveRuntimeView
+        | EffectiveRuntimeDiff
+        | CapabilityGraphExplanation
+        | RuntimeProfileSlotExplanation
+        | RegistrationExplanation,
+    ) -> dict[str, JSONValue]:
+        return self._model_call_runtime.to_json(value)
+
+    def _effective_registration_entries(
+        self,
+    ) -> tuple[RegistrationInventoryEntry, ...]:
+        tool_registry = self._tool_registry
+        if tool_registry is None:
+            tool_registry = self._composition.tool_controller.tool_registry
+        raw = [
+            (*item, "effective")
+            for item in (
+                tool_registry.registration_inventory
+                if tool_registry is not None
+                else ()
+            )
+        ]
+        raw.extend(
+            (*item, "effective")
+            for item in getattr(
+                self._extension_runner,
+                "registration_inventory",
+                (),
+            )
+        )
+        raw.extend(
+            (*item, "pending_retirement")
+            for item in getattr(
+                self._extension_runner,
+                "retired_registration_inventory",
+                (),
+            )
+        )
+        entries: dict[str, RegistrationInventoryEntry] = {}
+        for owner, identity, state, attachment in raw:
+            if state == "disposed":
+                continue
+            entry = RegistrationInventoryEntry(
+                registration_id=identity.registration_id,
+                surface=identity.surface,
+                public_key=identity.public_key,
+                owner_kind=owner.owner_kind,
+                owner_id=owner.owner_id,
+                runtime_id=owner.runtime_id,
+                owner_generation=owner.generation,
+                attachment=cast(
+                    Literal["effective", "pending_retirement"], attachment
+                ),
+                state=state,
+            )
+            existing = entries.get(entry.registration_id)
+            if existing is not None and not _same_registration_identity(
+                existing, entry
+            ):
+                raise RuntimeError(
+                    "registration id maps to conflicting Session inventory entries"
+                )
+            entries[entry.registration_id] = entry
+        return tuple(entries.values())
 
     def _composition_ports(
         self,
@@ -443,10 +640,110 @@ class AgentProductSession(AgentSessionAdapterMixin):
         coordinator = self._side_question
         return coordinator.cancel() if coordinator is not None else False
 
+    async def dispose(
+        self,
+        session_shutdown_event: SessionShutdownEvent | None = None,
+    ) -> None:
+        self._require_external_dispose_task()
+        await super().dispose(session_shutdown_event)
+
+    async def _dispose_after_session_shutdown(self) -> None:
+        self._require_external_dispose_task()
+        await super()._dispose_after_session_shutdown()
+
+    def _require_external_dispose_task(self) -> None:
+        owner: str | None = None
+        if self._composition.compaction_runtime.owns_current_task():
+            owner = "compaction"
+        elif self._composition.navigation_runtime.owns_current_task():
+            owner = "branch-summary"
+        else:
+            coordinator = self._side_question
+            owns_current_task = getattr(coordinator, "owns_current_task", None)
+            if callable(owns_current_task) and owns_current_task():
+                owner = "side-question"
+        if owner is not None:
+            raise RuntimeError(
+                "Session disposal cannot run from its active "
+                f"{owner} task; request disposal from the Session host"
+            )
+
     async def _dispose_session_runtime_profile(self) -> None:
-        # Stop the selected Provider before its capability factory is disposed.
-        self.cancel_side_question()
-        await super()._dispose_session_runtime_profile()
+        base_dispose = super()._dispose_session_runtime_profile
+        task = asyncio.create_task(
+            self._dispose_owned_model_call_runtime(base_dispose=base_dispose)
+        )
+        await _await_cancellation_atomic(task)
+
+    async def _dispose_owned_model_call_runtime(
+        self,
+        *,
+        base_dispose: Callable[[], Awaitable[None]],
+    ) -> None:
+        errors: list[BaseException] = []
+        coordinator = self._side_question
+        if coordinator is not None:
+            try:
+                await coordinator.cancel_and_wait()
+            except BaseException as exc:
+                errors.append(exc)
+        self._restore_agent_model_call_boundary()
+        try:
+            await self._model_call_runtime.dispose()
+        except BaseException as exc:
+            errors.append(exc)
+        try:
+            await base_dispose()
+        except BaseException as exc:
+            errors.append(exc)
+        if errors:
+            primary = errors[0]
+            for cleanup_error in errors[1:]:
+                primary.add_note(
+                    "Additional Session model-call cleanup failure: "
+                    f"{cleanup_error!r}"
+                )
+            raise primary
+
+    def _install_agent_model_call_boundary(self) -> None:
+        prepare = self._model_call_runtime.prepare
+        self.agent.prepare_model_call = prepare
+        self._installed_agent_prepare_model_call = prepare
+        requirement = self._previous_transport_requirement or bool(
+            self.session_manager.persist
+        )
+        self.agent.model_transport_requires_prepared_request_conformance = requirement
+        self._installed_transport_requirement = requirement
+
+    def _restore_agent_model_call_boundary(self) -> None:
+        installed_prepare = self._installed_agent_prepare_model_call
+        if (
+            installed_prepare is not None
+            and self.agent.prepare_model_call is installed_prepare
+        ):
+            self.agent.prepare_model_call = self._previous_agent_prepare_model_call
+        self._installed_agent_prepare_model_call = None
+        installed_requirement = self._installed_transport_requirement
+        if (
+            installed_requirement is not None
+            and self.agent.model_transport_requires_prepared_request_conformance
+            == installed_requirement
+        ):
+            self.agent.model_transport_requires_prepared_request_conformance = (
+                self._previous_transport_requirement
+            )
+        self._installed_transport_requirement = None
+
+    async def prepare_model_call_runtime(self) -> None:
+        """Commit the candidate-private graph before Session publication."""
+
+        await self._model_call_runtime.bind()
+
+    def _is_current_model_call_session(self) -> bool:
+        runtime_host = self._extension_bridge.runtime_host
+        if runtime_host is None:
+            return True
+        return getattr(runtime_host, "current_session", None) is self
 
     def _finalize_after_session_shutdown(self) -> None:
         self.cancel_side_question()
@@ -464,6 +761,130 @@ class AgentProductSession(AgentSessionAdapterMixin):
     def _register_provider_from_extension(self, name: str, config: object) -> None:
         self._extension_provider_controller.register_provider(name, config)
         self._sync_footer_available_provider_count()
+
+    def _bind_provider_from_extension(
+        self,
+        name: str,
+        config: object,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        lease = self._extension_provider_controller.bind_provider(name, config, owner)
+
+        async def dispose_provider() -> RegistrationDisposalResult:
+            result = await lease.dispose()
+            self._sync_footer_available_provider_count()
+            return result
+
+        def rollback_provider() -> RegistrationDisposalResult:
+            result = lease.rollback_registration()
+            self._sync_footer_available_provider_count()
+            return result
+
+        self._sync_footer_available_provider_count()
+        return RegistrationLease(
+            owner=lease.owner,
+            identity=lease.identity,
+            dispose=dispose_provider,
+            rollback=rollback_provider,
+        )
+
+    def _stage_provider_from_extension(
+        self,
+        name: str,
+        config: object,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        lease = self._extension_provider_controller.stage_provider(
+            name,
+            config,
+            owner,
+        )
+
+        async def dispose_provider() -> RegistrationDisposalResult:
+            result = await lease.dispose()
+            self._sync_footer_available_provider_count()
+            return result
+
+        def activate_provider() -> None:
+            lease.activate()
+            self._sync_footer_available_provider_count()
+
+        def deactivate_provider() -> None:
+            lease.deactivate()
+            self._sync_footer_available_provider_count()
+
+        def rollback_provider() -> RegistrationDisposalResult:
+            result = lease.rollback_registration()
+            self._sync_footer_available_provider_count()
+            return result
+
+        return RegistrationLease(
+            owner=lease.owner,
+            identity=lease.identity,
+            dispose=dispose_provider,
+            activate=activate_provider,
+            deactivate=deactivate_provider,
+            rollback=rollback_provider,
+        )
+
+    def _bind_provider_removal_from_extension(
+        self,
+        name: str,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        lease = self._extension_provider_controller.bind_provider_removal(name, owner)
+
+        async def dispose_provider() -> RegistrationDisposalResult:
+            result = await lease.dispose()
+            self._sync_footer_available_provider_count()
+            return result
+
+        def rollback_provider() -> RegistrationDisposalResult:
+            result = lease.rollback_registration()
+            self._sync_footer_available_provider_count()
+            return result
+
+        self._sync_footer_available_provider_count()
+        return RegistrationLease(
+            owner=lease.owner,
+            identity=lease.identity,
+            dispose=dispose_provider,
+            rollback=rollback_provider,
+        )
+
+    def _stage_provider_removal_from_extension(
+        self,
+        name: str,
+        owner: RegistrationOwner,
+    ) -> RegistrationLease:
+        lease = self._extension_provider_controller.stage_provider_removal(name, owner)
+
+        async def dispose_provider() -> RegistrationDisposalResult:
+            result = await lease.dispose()
+            self._sync_footer_available_provider_count()
+            return result
+
+        def activate_provider() -> None:
+            lease.activate()
+            self._sync_footer_available_provider_count()
+
+        def deactivate_provider() -> None:
+            lease.deactivate()
+            self._sync_footer_available_provider_count()
+
+        def rollback_provider() -> RegistrationDisposalResult:
+            result = lease.rollback_registration()
+            self._sync_footer_available_provider_count()
+            return result
+
+        return RegistrationLease(
+            owner=lease.owner,
+            identity=lease.identity,
+            dispose=dispose_provider,
+            activate=activate_provider,
+            deactivate=deactivate_provider,
+            rollback=rollback_provider,
+        )
 
     def _get_extension_model_selection(self) -> ModelSelection | None:
         return cast(ModelSelection | None, self.get_model_selection())
@@ -512,6 +933,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 signal=signal,
                 custom_instructions=custom_instructions,
                 replace_instructions=replace_instructions,
+                prepare_model_call=self.agent.prepare_model_call,
             )
 
         return run
@@ -558,6 +980,29 @@ class AgentProductSession(AgentSessionAdapterMixin):
             },
             cwd=self.session_manager.get_cwd(),
         )
+
+
+def _same_registration_identity(
+    left: RegistrationInventoryEntry,
+    right: RegistrationInventoryEntry,
+) -> bool:
+    return (
+        left.registration_id,
+        left.surface,
+        left.public_key,
+        left.owner_kind,
+        left.owner_id,
+        left.runtime_id,
+        left.owner_generation,
+    ) == (
+        right.registration_id,
+        right.surface,
+        right.public_key,
+        right.owner_kind,
+        right.owner_id,
+        right.runtime_id,
+        right.owner_generation,
+    )
 
 
 __all__ = ["AgentProductSession"]

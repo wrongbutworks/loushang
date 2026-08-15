@@ -62,7 +62,29 @@ def test_call_options_is_the_single_public_call_contract() -> None:
 
 
 def test_call_options_fields_are_canonical_and_consumed() -> None:
-    field_names = {field.name for field in fields(CallOptions)}
+    field_order = tuple(field.name for field in fields(CallOptions))
+    field_names = set(field_order)
+
+    assert field_order == (
+        "cancellation",
+        "auth",
+        "credential",
+        "credential_file",
+        "headers",
+        "cache_retention",
+        "cache_key",
+        "max_output_tokens",
+        "temperature",
+        "timeout_seconds",
+        "idle_timeout_seconds",
+        "retry",
+        "trace",
+        "pairing_mode",
+        "reasoning",
+        "tool_choice",
+        "output",
+        "prepared_request_committer",
+    )
 
     assert field_names == {
         "cancellation",
@@ -78,6 +100,7 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "idle_timeout_seconds",
         "retry",
         "trace",
+        "prepared_request_committer",
         "pairing_mode",
         "reasoning",
         "tool_choice",

@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import replace
 from typing import Any
+from uuid import uuid4
 
 from loushang.ai.context import NormalizedContext
+from loushang.ai.prepared_request import (
+    PreparedRequestAdapter,
+    invoke_prepared_request,
+)
 from loushang.ai.provider.protocol import ProviderRequest, ProviderRequestValidator
 from loushang.ai.provider.runtime import start_provider_runtime
 
@@ -84,11 +90,41 @@ async def call_api_adapter_stream(
         raise TypeError("API adapter missing required invoke_raw method")
     if not isinstance(request.context, NormalizedContext):
         raise TypeError("ProviderRequest.context must be NormalizedContext")
+    if request.attempt != 1:
+        raise ValueError("ProviderRequest initial attempt must be 1")
+    committer = (
+        request.options.prepared_request_committer
+        if request.options is not None
+        else None
+    )
+    uses_prepared_barrier = isinstance(adapter, PreparedRequestAdapter)
+    if committer is not None and not uses_prepared_barrier:
+        raise TypeError(
+            f"API adapter {adapter.api!r} does not implement the prepared-request barrier"
+        )
+
+    invocation_id = request.invocation_id or uuid4().hex
+    attempt = request.attempt - 1
+
+    def _raw_parts():
+        nonlocal attempt
+        attempt += 1
+        attempt_request = (
+            request
+            if request.invocation_id == invocation_id and request.attempt == attempt
+            else replace(
+                request,
+                invocation_id=invocation_id,
+                attempt=attempt,
+            )
+        )
+        if committer is not None:
+            return invoke_prepared_request(adapter, attempt_request)
+        return _call_adapter_raw_parts(adapter, attempt_request)
+
     return start_provider_runtime(
-        lambda: _call_adapter_raw_parts(
-            adapter,
-            request,
-        ),
+        _raw_parts,
         options=request.options,
         request=request,
+        invocation_id=invocation_id,
     )

@@ -44,6 +44,10 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.packages.session import SessionPackageController
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.runtime.registration import (
+    RegistrationLease,
+    RegistrationOwner,
+)
 from loushang.harness.session.agent_product_runtime import (
     AgentProductSessionRuntime as AgentProductSessionRuntime,
 )
@@ -115,6 +119,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     _extension_provider_controller: ExtensionProviderRuntime
     _extension_replacement_controller: ExtensionReplacementRuntime
     _extension_runner: SessionExtensionCompositionPort | None
+    _extension_tool_registration_leases: list[RegistrationLease]
     _extension_bridge: AgentSessionExtensionBridge
     _operations: SessionOperations
     _package_controller: SessionPackageController
@@ -452,6 +457,60 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         if definition.name in self.get_active_tool_names():
             self._extension_bridge.refresh_bindings()
 
+    def _bind_extension_runtime_tool(
+        self,
+        tool: object,
+        owner: RegistrationOwner | str,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        session_id = str(self.session_manager.get_session_record().session_id)
+        resolved_owner = (
+            owner
+            if isinstance(owner, RegistrationOwner)
+            else RegistrationOwner(
+                owner_kind="extension",
+                owner_id=owner,
+                runtime_id=session_id,
+                generation=0,
+            )
+        )
+        lease = self._composition.tool_controller.bind_runtime_tool(
+            tool,
+            owner=resolved_owner,
+            source_info=source_info,
+        )
+        if self._tool_registry is None:
+            self._tool_registry = self._composition.tool_controller.tool_registry
+        if isinstance(owner, str):
+            self._extension_tool_registration_leases.append(lease)
+        if lease.identity.public_key in self.get_active_tool_names():
+            self._extension_bridge.refresh_bindings()
+        return lease
+
+    def _adopt_extension_runtime_tool(
+        self,
+        tool: object,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease | None:
+        return self._composition.tool_controller.adopt_runtime_tool(
+            tool,
+            owner=owner,
+            source_info=source_info,
+        )
+
+    def _stage_extension_runtime_tool(
+        self,
+        tool: object,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        return self._composition.tool_controller.stage_runtime_tool(
+            tool,
+            owner=owner,
+            source_info=source_info,
+        )
+
     def _rebuild_prompt_and_tools_view(self) -> None:
         self._composition.tool_controller.rebuild_prompt_and_tools_view()
 
@@ -465,7 +524,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
             "context_files": [],
         }
 
-    def _set_resource_bundle(self, resource_bundle: ResourceBundle) -> None:
+    def _set_resource_bundle(self, resource_bundle: ResourceBundle | None) -> None:
         self.resource_bundle = resource_bundle
 
     def _refresh_resources_for_extension_runtime(self) -> None:

@@ -9,6 +9,7 @@ from loushang.agent import Agent
 from loushang.agent.types import AgentToolResult
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.runtime import RegistrationOwner
 from loushang.harness.session.tool_controller import ToolController
 from loushang.harness.tools.core import tool
 from loushang.harness.tools.execution import direct_execution
@@ -45,6 +46,40 @@ def _tool_definition(
         execution=direct_execution(_execute_noop),
         prompt_snippet=prompt_snippet,
     )
+
+
+def _active_runtime_tool_controller() -> tuple[
+    ToolController,
+    ToolRegistry,
+    Agent,
+    ToolDefinition,
+    ToolDefinition,
+]:
+    registry = ToolRegistry()
+    original = _tool_definition(
+        "runtime_tool",
+        description="Original runtime tool",
+        prompt_snippet="- runtime_tool: original behavior",
+    )
+    replacement = _tool_definition(
+        "runtime_tool",
+        description="Replacement runtime tool",
+        prompt_snippet="- runtime_tool: replacement behavior",
+    )
+    registry.register_tool(original)
+    agent = Agent(initial_state={"system_prompt": "stale", "tools": []})
+    controller = ToolController(
+        agent=agent,
+        get_cwd=lambda: "/tmp/project",
+        tool_registry=registry,
+        allowed_tool_names=None,
+        initial_active_tool_names=["runtime_tool"],
+        base_prompt="Base prompt.",
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+    )
+    controller.apply_active_tools(["runtime_tool"])
+    return controller, registry, agent, original, replacement
 
 
 def test_tool_controller_materializes_active_registry_tools_and_rebuilds_prompt(
@@ -142,6 +177,7 @@ def test_tool_controller_rejects_raw_runtime_tools_when_registry_is_absent(
     tmp_path,
 ) -> None:
     del tmp_path
+
     class RuntimeTool:
         name = "runtime_tool"
         label = "Runtime Tool"
@@ -382,6 +418,104 @@ def test_tool_controller_rebinds_active_same_name_runtime_replacement(tmp_path) 
     assert [tool.description for tool in agent.tools] == ["Replacement runtime tool"]
     assert "- runtime_tool: replacement behavior" in agent.system_prompt
     assert "- runtime_tool: original behavior" not in agent.system_prompt
+
+
+def test_tool_controller_live_binding_restores_active_tool_and_prompt(
+    tmp_path,
+) -> None:
+    del tmp_path
+    controller, _registry, agent, _original, replacement = (
+        _active_runtime_tool_controller()
+    )
+
+    lease = controller.bind_runtime_tool(
+        replacement,
+        owner=RegistrationOwner(
+            owner_kind="extension",
+            owner_id="demo",
+            runtime_id="session-1",
+            generation=0,
+        ),
+        source_info={"source": "runtime"},
+    )
+
+    assert [tool.description for tool in agent.tools] == ["Replacement runtime tool"]
+    assert "- runtime_tool: replacement behavior" in agent.system_prompt
+
+    assert asyncio.run(lease.dispose()).state == "removed"
+    assert controller.get_active_tool_names() == ["runtime_tool"]
+    assert [tool.description for tool in agent.tools] == ["Original runtime tool"]
+    assert "- runtime_tool: original behavior" in agent.system_prompt
+    assert "- runtime_tool: replacement behavior" not in agent.system_prompt
+
+
+def test_tool_controller_live_bind_rolls_back_when_view_rebind_fails() -> None:
+    controller, registry, agent, original, replacement = (
+        _active_runtime_tool_controller()
+    )
+    stable_prompt = agent.system_prompt
+    rebuild_prompt = controller._runtime.rebuild_prompt
+    failures_remaining = 1
+
+    def fail_once(definitions: list[ToolDefinition] | None) -> None:
+        nonlocal failures_remaining
+        if failures_remaining:
+            failures_remaining -= 1
+            raise RuntimeError("injected prompt failure")
+        rebuild_prompt(definitions)
+
+    controller._runtime.rebuild_prompt = fail_once
+    with pytest.raises(RuntimeError, match="injected prompt failure"):
+        controller.bind_runtime_tool(
+            replacement,
+            owner=RegistrationOwner(
+                owner_kind="extension",
+                owner_id="demo",
+                runtime_id="session-1",
+                generation=0,
+            ),
+        )
+
+    assert registry.list_definitions() == [original]
+    assert [tool.description for tool in agent.tools] == ["Original runtime tool"]
+    assert agent.system_prompt == stable_prompt
+
+
+def test_tool_controller_live_dispose_retries_view_rebind_after_exact_removal() -> (
+    None
+):
+    controller, registry, agent, original, replacement = (
+        _active_runtime_tool_controller()
+    )
+    lease = controller.bind_runtime_tool(
+        replacement,
+        owner=RegistrationOwner(
+            owner_kind="extension",
+            owner_id="demo",
+            runtime_id="session-1",
+            generation=0,
+        ),
+    )
+    rebuild_prompt = controller._runtime.rebuild_prompt
+    failures_remaining = 1
+
+    def fail_once(definitions: list[ToolDefinition] | None) -> None:
+        nonlocal failures_remaining
+        if failures_remaining:
+            failures_remaining -= 1
+            raise RuntimeError("injected prompt failure")
+        rebuild_prompt(definitions)
+
+    controller._runtime.rebuild_prompt = fail_once
+
+    assert asyncio.run(lease.dispose()).state == "failed_retryable"
+    assert registry.list_definitions() == [original]
+    assert [tool.description for tool in agent.tools] == ["Original runtime tool"]
+    assert "- runtime_tool: replacement behavior" in agent.system_prompt
+
+    assert asyncio.run(lease.dispose()).state == "already_removed"
+    assert "- runtime_tool: original behavior" in agent.system_prompt
+    assert "- runtime_tool: replacement behavior" not in agent.system_prompt
 
 
 def test_tool_controller_runtime_registration_preserves_default_activation(

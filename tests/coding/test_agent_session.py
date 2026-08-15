@@ -398,7 +398,7 @@ def test_agent_session_abort_mid_stream_cleans_run_state_and_keeps_queued_messag
 def test_persisted_session_abort_tool_then_prompt_and_resume_keeps_revision_chain(
     tmp_path,
 ) -> None:
-    from loushang.agent import Agent
+    from loushang.agent import Agent, synthetic_model_transport
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import ToolResultMessage
     from loushang.coding.session import AgentSession
@@ -428,6 +428,7 @@ def test_persisted_session_abort_tool_then_prompt_and_resume_keeps_revision_chai
         )
     )
 
+    @synthetic_model_transport
     async def stream_fn(model, context, options=None):
         del model, options
         last = context.messages[-1]
@@ -4263,6 +4264,7 @@ def test_agent_session_reload_extensions_refreshes_resources_before_session_star
         LoadedExtension,
     )
     from loushang.harness.resources.types import (
+        ExtensionDescriptor,
         PromptFragmentDescriptor,
         ResourceBundle,
     )
@@ -4286,10 +4288,31 @@ def test_agent_session_reload_extensions_refreshes_resources_before_session_star
             ]
         )
 
+    session_ref: list[AgentSession] = []
+
+    class _ReloadedExtension:
+        def session_start(self, event):
+            del event
+            seen.append(session_ref[0].agent.system_prompt.splitlines())
+
+        def resources_discover(self, event):
+            del event
+            return _resources_discover(None, None)
+
     class _ReloadingLoader(DefaultResourceLoader):
         def reload_resources(self, cwd):
             reload_calls.append(str(cwd))
-            return ResourceBundle(cwd=Path(cwd), prompt_fragments=["reloaded prompt"])
+            return ResourceBundle(
+                cwd=Path(cwd),
+                prompt_fragments=["reloaded prompt"],
+                extensions=[
+                    ExtensionDescriptor(
+                        name="demo",
+                        source_path=Path("/tmp/demo.py"),
+                        metadata={"extension": _ReloadedExtension()},
+                    )
+                ],
+            )
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -4317,6 +4340,7 @@ def test_agent_session_reload_extensions_refreshes_resources_before_session_star
         ),
         resource_loader=_ReloadingLoader(),
     )
+    session_ref.append(session)
 
     seen.clear()
     asyncio.run(session.reload_extension_runtime())
@@ -5019,7 +5043,9 @@ def test_agent_session_records_reload_failures_as_diagnostics(tmp_path) -> None:
     assert records[0].type == "error"
 
 
-def test_agent_session_records_bind_failures_as_diagnostics(tmp_path) -> None:
+def test_agent_session_records_candidate_bind_failures_as_diagnostics(tmp_path) -> (
+    None
+):
     from pathlib import Path
 
     from loushang.agent import Agent
@@ -5039,17 +5065,22 @@ def test_agent_session_records_bind_failures_as_diagnostics(tmp_path) -> None:
         ResourceBundle,
     )
 
-    class _BrokenBindRunner(ExtensionRunner):
-        def __init__(self, extensions) -> None:
-            super().__init__(extensions)
-            self._bind_calls = 0
+    class _BrokenBindCandidate:
+        async def discover_resources_async(self, bundle, *, reason):
+            del reason
+            return bundle
 
-        def bind_runtime(self, bindings) -> None:
-            self._bind_calls += 1
-            if self._bind_calls == 1:
-                return super().bind_runtime(bindings)
+        async def activate(self, bindings) -> None:
             del bindings
             raise RuntimeError("bind boom")
+
+        async def rollback(self) -> None:
+            return None
+
+    class _BrokenBindRunner(ExtensionRunner):
+        def prepare_generation(self, extensions):
+            del extensions
+            return _BrokenBindCandidate()
 
     class _ReloadingLoader(DefaultResourceLoader):
         def reload_resources(self, cwd):
@@ -5099,7 +5130,7 @@ def test_agent_session_records_bind_failures_as_diagnostics(tmp_path) -> None:
     records = [
         record
         for record in session.get_last_diagnostics()
-        if record.code == "extension_runtime_bind_failed"
+        if record.code == "extension_resource_refresh_failed"
     ]
 
     assert len(records) == 1

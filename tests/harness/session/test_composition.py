@@ -18,6 +18,7 @@ from loushang.harness.session.composition import (
     SessionProductInputs,
     _compaction_policy,
     _resolve_compaction_capability,
+    supports_prepare_model_call,
 )
 from loushang.harness.transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
@@ -28,6 +29,25 @@ from loushang.harness.transcript import (
 
 def test_product_compaction_executor_is_a_public_session_contract() -> None:
     assert ProductCompactionExecutor is CompositionProductCompactionExecutor
+
+
+def test_summary_executor_preparation_compatibility_is_explicit() -> None:
+    async def legacy(*, preparation):
+        return preparation
+
+    async def current(*, preparation, prepare_model_call=None):
+        return preparation, prepare_model_call
+
+    async def extensible(**kwargs):
+        return kwargs
+
+    async def misleading(*prepare_model_call):
+        return prepare_model_call
+
+    assert supports_prepare_model_call(legacy) is False
+    assert supports_prepare_model_call(current) is True
+    assert supports_prepare_model_call(extensible) is True
+    assert supports_prepare_model_call(misleading) is False
 
 
 def test_compaction_capability_fallback_uses_supported_integer_version() -> None:

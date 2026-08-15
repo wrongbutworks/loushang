@@ -62,6 +62,15 @@ from loushang.harness.runtime.profile import (
     standard_capability_composition_slots,
     standard_runtime_capability_slots,
 )
+from loushang.harness.runtime.registration import (
+    RegistrationDisposalOutcome,
+    RegistrationDisposalResult,
+    RegistrationIdentity,
+    RegistrationLease,
+    RegistrationOwner,
+    RegistrationScope,
+    RegistrationScopeDisposalResult,
+)
 from loushang.harness.runtime.retry import RetryCoordinator, RetryPolicy
 from loushang.harness.runtime.scheduling import CoalescingScheduler
 from loushang.harness.runtime.session_operations import (
@@ -118,6 +127,13 @@ __all__ = [
     "ProductRuntimeBindings",
     "ProductRuntimePlan",
     "QueueMode",
+    "RegistrationDisposalOutcome",
+    "RegistrationDisposalResult",
+    "RegistrationIdentity",
+    "RegistrationLease",
+    "RegistrationOwner",
+    "RegistrationScope",
+    "RegistrationScopeDisposalResult",
     "ReplacementCallbackFailure",
     "ResolvedRuntimeCapability",
     "ResolvedRuntimeProfile",

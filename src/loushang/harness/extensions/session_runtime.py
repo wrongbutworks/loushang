@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Generic, Protocol, TypeVar
 
@@ -46,6 +46,7 @@ class ExtensionSessionRuntime(Generic[BindingT]):
     refresh_resources: RefreshResources
     record_runtime_diagnostic: RecordRuntimeDiagnostic
     sync_extension_diagnostics: SyncExtensionDiagnostics
+    reload_generation: Callable[[BindingT], object | Awaitable[object]] | None = None
     _coordinator: (
         ExtensionRuntimeCoordinator[BindingT, SessionStartEvent, SessionRefreshEvent]
         | None
@@ -65,6 +66,7 @@ class ExtensionSessionRuntime(Generic[BindingT]):
             record_failure=self._record_failure,
             sync_diagnostics=lambda: self.sync_extension_diagnostics(phase="runtime"),
             invalidate_contexts_driver=extension_runtime.invalidate_contexts,
+            reload_generation=self.reload_generation,
         )
 
     @property

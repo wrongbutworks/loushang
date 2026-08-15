@@ -4,7 +4,10 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
+
+import pytest
 
 from loushang.agent import Agent
 from loushang.ai.model import Capabilities, Model
@@ -21,7 +24,12 @@ from loushang.harness.config.agent import (
     SettingsManager,
 )
 from loushang.harness.conversation import ConversationKey, MemoryConversationStore
-from loushang.harness.runtime import CancellationSignal, RuntimeProfileResolver
+from loushang.harness.runtime import (
+    CancellationSignal,
+    RegistrationIdentity,
+    RegistrationOwner,
+    RuntimeProfileResolver,
+)
 from loushang.harness.session import AgentProductSession
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
@@ -86,10 +94,12 @@ class _ContractProductSession(AgentProductSession):
             headers: Mapping[str, str] | None,
             signal: object | None,
             custom_instructions: str | None = None,
+            prepare_model_call: object | None = None,
         ) -> CompactionResult:
             assert getattr(model, "id", None) == f"{product_id}-model"
             assert headers is None
             assert signal is self.agent.signal
+            assert callable(prepare_model_call)
             self.executor_calls.append((product_id, custom_instructions))
             return CompactionResult(
                 summary=f"{product_id} summary",
@@ -158,6 +168,37 @@ class _ContractProductSession(AgentProductSession):
         self.hook_calls.append(("after", result.summary, (record_id, from_hook)))
 
 
+def test_session_registration_inventory_keeps_retirement_retry_facts() -> None:
+    owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="review",
+        runtime_id="session:review",
+        generation=1,
+    )
+    identity = RegistrationIdentity(
+        surface="tool",
+        public_key="review_lookup",
+        registration_id="review-tool-v1",
+    )
+    session = object.__new__(AgentProductSession)
+    session._tool_registry = SimpleNamespace(  # type: ignore[attr-defined]
+        registration_inventory=((owner, identity, "active"),)
+    )
+    session._extension_runner = SimpleNamespace(  # type: ignore[attr-defined]
+        registration_inventory=(),
+        retired_registration_inventory=(
+            (owner, identity, "failed_retryable"),
+        ),
+    )
+
+    entries = session._effective_registration_entries()
+
+    assert len(entries) == 1
+    assert entries[0].registration_id == identity.registration_id
+    assert entries[0].attachment == "pending_retirement"
+    assert entries[0].state == "failed_retryable"
+
+
 def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
     tmp_path: Path,
 ) -> None:
@@ -192,6 +233,8 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         design_events: list[dict[str, object]] = []
         research.subscribe(research_events.append)
         design.subscribe(design_events.append)
+        await research.prepare_model_call_runtime()
+        effective_runtime = research.get_effective_runtime_view()
 
         assert research.session_control is research
         assert design.session_control is design
@@ -199,6 +242,15 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert design.session_id == "design-session"
         assert research.get_active_tool_names() == []
         assert design.get_active_tool_names() == []
+        assert effective_runtime.product_id == "research"
+        assert effective_runtime.clocks.model_surface is None
+        assert effective_runtime.skew == ()
+        assert research.explain_runtime_capability(
+            "harness.model_input"
+        ).clocks.mount == effective_runtime.clocks.mount
+        assert research.effective_runtime_to_json(effective_runtime)[
+            "runtime_id"
+        ] == effective_runtime.runtime_id
         _assert_no_composed_runtime_mirrors(research)
         _assert_no_composed_runtime_mirrors(design)
 
@@ -235,6 +287,17 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert research_capabilities.binding.is_closed is True
         assert design_capabilities.binding.is_closed is False
         assert disposed_transcripts == ["research-session"]
+        with pytest.raises(RuntimeError, match="disposed"):
+            research.get_effective_runtime_view()
+        assert research.effective_runtime_to_json(effective_runtime)[
+            "runtime_id"
+        ] == effective_runtime.runtime_id
+        detached_diff = research.diff_effective_runtime(
+            effective_runtime,
+            effective_runtime,
+        )
+        assert detached_diff.profile_changed is False
+        assert detached_diff.registration_revision_changed is False
 
         design_result = await design.compact("design-only")
 
@@ -258,6 +321,40 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert design.footer.disposed is True
         assert design_capabilities.binding.is_closed is True
         assert disposed_transcripts == ["research-session", "design-session"]
+
+    asyncio.run(scenario())
+
+
+def test_agent_product_finalizes_shutdown_when_capability_disposal_fails(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="failure")
+        capability_runtime = _capability_runtime("failure")
+        session = _ContractProductSession(
+            product_id="failure",
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+
+        def fail_capability_disposal() -> None:
+            raise RuntimeError("capability disposal failed")
+
+        capability_runtime.dispose = fail_capability_disposal  # type: ignore[method-assign]
+
+        try:
+            await session.dispose()
+        except RuntimeError as error:
+            assert str(error) == "capability disposal failed"
+        else:  # pragma: no cover - the injected failure must propagate
+            raise AssertionError("capability disposal failure did not propagate")
+
+        assert session.footer.disposed is True
+        assert disposed_transcripts == ["failure-session"]
 
     asyncio.run(scenario())
 

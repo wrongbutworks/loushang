@@ -76,6 +76,7 @@ class BranchSummaryOutput:
     from_hook: bool = False
     aborted: bool = False
     error: str | None = None
+    model_input_snapshot_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -83,6 +84,17 @@ class BranchSummaryOutput:
             "details",
             require_json_value(self.details, name="branch_summary.details"),
         )
+        if not isinstance(self.model_input_snapshot_ids, tuple) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in self.model_input_snapshot_ids
+        ):
+            raise TypeError(
+                "branch summary Model Input snapshot ids must be non-empty strings"
+            )
+        if len(set(self.model_input_snapshot_ids)) != len(
+            self.model_input_snapshot_ids
+        ):
+            raise ValueError("branch summary Model Input snapshot ids must be unique")
 
 
 @dataclass(frozen=True)
@@ -382,8 +394,17 @@ class AgentTranscriptNavigationRuntime:
     def is_summarizing(self) -> bool:
         return self._transaction.is_active
 
+    def owns_current_task(self) -> bool:
+        return self._transaction.owns_current_task()
+
     def abort(self) -> bool:
         return self._transaction.abort()
+
+    async def cancel_and_wait(self) -> None:
+        """Abort and join the active summary transaction before disposal."""
+
+        self.abort()
+        await self._transaction.wait()
 
     def prepare(self, target_id: str) -> TranscriptNavigationPlan | None:
         old_leaf_id = self.session.get_leaf_id()
@@ -456,26 +477,29 @@ class AgentTranscriptNavigationRuntime:
         summary_override: BranchSummaryOutput | None,
         summary_runner: BranchSummaryRunner | None,
     ) -> TranscriptNavigationResult:
+        if signal.aborted:
+            return _aborted_navigation_result(plan)
         summary = summary_override
         if summary is None and plan.divergent_records:
             if summary_runner is None:
                 raise RuntimeError("Branch summary requires a Product summary runner")
             summary = await summary_runner(plan.divergent_records, signal)
+        if signal.aborted:
+            return _aborted_navigation_result(plan)
         if summary is not None and summary.aborted:
-            return TranscriptNavigationResult(
-                cancelled=True,
-                aborted=True,
-                editor_text=plan.editor_text,
-            )
+            return _aborted_navigation_result(plan)
         if summary is not None and summary.error:
             raise RuntimeError(summary.error)
         summary_record_id: str | None = None
         if summary is not None and summary.summary is not None:
+            if signal.aborted:
+                return _aborted_navigation_result(plan)
             summary_record_id = await self.session.branch_with_summary(
                 plan.new_leaf_id,
                 summary.summary,
                 details=summary.details,
                 from_hook=summary.from_hook,
+                model_input_snapshot_ids=summary.model_input_snapshot_ids,
             )
             if label:
                 await self.session.append_label(summary_record_id, label)
@@ -557,6 +581,16 @@ class AgentTranscriptNavigationRuntime:
                     )
                 )
             )
+
+
+def _aborted_navigation_result(
+    plan: TranscriptNavigationPlan,
+) -> TranscriptNavigationResult:
+    return TranscriptNavigationResult(
+        cancelled=True,
+        aborted=True,
+        editor_text=plan.editor_text,
+    )
 
 
 def user_message_text(message: UserMessage) -> str:

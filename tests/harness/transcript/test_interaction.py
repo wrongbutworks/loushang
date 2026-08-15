@@ -12,6 +12,7 @@ from loushang.harness.conversation import (
 )
 from loushang.harness.events import BranchSummaryCompleted, BranchSummaryStarted
 from loushang.harness.transcript import (
+    CONTEXT_BRANCH_SUMMARY_KIND,
     AgentTranscriptInspector,
     AgentTranscriptNavigationRuntime,
     AgentTranscriptRecord,
@@ -170,6 +171,53 @@ def test_navigation_runtime_owns_branch_selection_summary_and_events() -> None:
         assert session.get_label("summary-1") == "kept"
         assert isinstance(events[0], BranchSummaryStarted)
         assert isinstance(events[1], BranchSummaryCompleted)
+
+    asyncio.run(scenario())
+
+
+def test_navigation_runtime_cancel_and_wait_joins_active_summary() -> None:
+    async def scenario() -> None:
+        session = await _session()
+        await session.append_message(
+            UserMessage(role="user", content="root", timestamp=1.0)
+        )
+        target_id = await session.append_message(_assistant("target"))
+        await session.append_message(
+            UserMessage(role="user", content="divergent", timestamp=2.0)
+        )
+        await session.append_message(_assistant("leaf"))
+        runtime = AgentTranscriptNavigationRuntime(
+            session=session,
+            apply_context=lambda: None,
+        )
+        plan = runtime.prepare(target_id)
+        assert plan is not None
+        started = asyncio.Event()
+
+        async def summarize(records, signal):
+            assert records
+            started.set()
+            while not signal.aborted:
+                await asyncio.sleep(0)
+            return BranchSummaryOutput(summary="must not commit")
+
+        task = asyncio.create_task(
+            runtime.navigate(plan, summarize=True, summary_runner=summarize)
+        )
+        await started.wait()
+
+        await runtime.cancel_and_wait()
+
+        assert task.done()
+        result = await task
+        assert result.cancelled is True
+        assert result.aborted is True
+        assert runtime.is_summarizing is False
+        assert session.get_leaf_id() != target_id
+        assert all(
+            record.kind != CONTEXT_BRANCH_SUMMARY_KIND
+            for record in session.get_entries()
+        )
 
     asyncio.run(scenario())
 

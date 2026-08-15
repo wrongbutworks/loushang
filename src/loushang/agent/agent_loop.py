@@ -8,6 +8,10 @@ from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import Any, TypeVar
 
+from loushang.agent.model_transport import (
+    is_prepared_request_conformant,
+    is_synthetic_model_transport,
+)
 from loushang.agent.tool_output import (
     STRICT_JSON_TOOL_OUTPUT_PROJECTOR,
     ToolOutputProjectionError,
@@ -22,10 +26,12 @@ from loushang.agent.types import (
     AgentToolCall,
     AgentToolResult,
     BeforeToolCallContext,
+    ModelCallPreparation,
     StreamFn,
 )
 from loushang.ai.api import stream
 from loushang.ai.event_stream import EventStream
+from loushang.ai.options import CallOptions
 from loushang.ai.tool.validation import validate_tool_arguments
 from loushang.ai.types import (
     AssistantMessage,
@@ -55,6 +61,7 @@ def agent_loop(
     config: AgentLoopConfig,
     signal: object | None = None,
     stream_fn: StreamFn | None = None,
+    model_call_purpose: str = "main",
 ) -> AgentEventStream:
     stream = _create_agent_stream()
 
@@ -67,6 +74,7 @@ def agent_loop(
                 stream.push,
                 signal=signal,
                 stream_fn=stream_fn,
+                model_call_purpose=model_call_purpose,
             )
         except Exception as error:
             stream.fail(
@@ -82,6 +90,7 @@ def agent_loop_continue(
     config: AgentLoopConfig,
     signal: object | None = None,
     stream_fn: StreamFn | None = None,
+    model_call_purpose: str = "continuation",
 ) -> EventStream[AgentEvent, list[AgentMessage]]:
     if not context.messages:
         raise ValueError("Cannot continue: no messages in context")
@@ -99,6 +108,7 @@ def agent_loop_continue(
                 stream.push,
                 signal=signal,
                 stream_fn=stream_fn,
+                model_call_purpose=model_call_purpose,
             )
         except Exception as error:
             stream.fail(
@@ -123,6 +133,7 @@ async def run_agent_loop(
     emit: AgentEventSink,
     signal: object | None = None,
     stream_fn: StreamFn | None = None,
+    model_call_purpose: str = "main",
 ) -> list[AgentMessage]:
     new_messages: list[AgentMessage] = list(prompts)
     current_context = AgentContext(
@@ -138,7 +149,13 @@ async def run_agent_loop(
         await _emit(emit, {"type": "message_end", "message": prompt})
 
     await _run_loop(
-        current_context, new_messages, config, emit, signal=signal, stream_fn=stream_fn
+        current_context,
+        new_messages,
+        config,
+        emit,
+        signal=signal,
+        stream_fn=stream_fn,
+        initial_model_call_purpose=model_call_purpose,
     )
     return new_messages
 
@@ -149,6 +166,7 @@ async def run_agent_loop_continue(
     emit: AgentEventSink,
     signal: object | None = None,
     stream_fn: StreamFn | None = None,
+    model_call_purpose: str = "continuation",
 ) -> list[AgentMessage]:
     if not context.messages:
         raise ValueError("Cannot continue: no messages in context")
@@ -166,7 +184,13 @@ async def run_agent_loop_continue(
     await _emit(emit, {"type": "agent_start"})
     await _emit(emit, {"type": "turn_start"})
     await _run_loop(
-        current_context, new_messages, config, emit, signal=signal, stream_fn=stream_fn
+        current_context,
+        new_messages,
+        config,
+        emit,
+        signal=signal,
+        stream_fn=stream_fn,
+        initial_model_call_purpose=model_call_purpose,
     )
     return new_messages
 
@@ -179,8 +203,11 @@ async def _run_loop(
     *,
     signal: object | None,
     stream_fn: StreamFn | None,
+    initial_model_call_purpose: str,
 ) -> None:
     first_turn = True
+    model_call_purpose = initial_model_call_purpose
+    model_call_sequence = 0
     pending_messages = await _poll_immediate_inputs(config)
 
     while True:
@@ -221,12 +248,15 @@ async def _run_loop(
                 return
 
             try:
+                model_call_sequence += 1
                 assistant_message = await _stream_assistant_response(
                     current_context,
                     config,
                     emit,
                     signal=signal,
                     stream_fn=stream_fn,
+                    model_call_purpose=model_call_purpose,
+                    model_call_sequence=model_call_sequence,
                 )
             except _ExecutionAborted:
                 await _emit_aborted_turn(
@@ -391,22 +421,27 @@ async def _run_loop(
                     new_messages,
                     tool_results,
                 )
+                model_call_purpose = "tool_continuation"
 
             await _emit_tool_turn_end(emit, assistant_message, tool_results)
             if terminate_after_tool_batch:
                 await _emit(emit, {"type": "agent_end", "messages": new_messages})
                 return
             pending_messages = await _poll_immediate_inputs(config)
+            if not has_more_tool_calls and pending_messages:
+                model_call_purpose = "continuation"
 
         mailbox_messages = await _maybe_call(config.get_mailbox_messages, default=[])
         if mailbox_messages:
             pending_messages = mailbox_messages
+            model_call_purpose = "continuation"
             continue
         follow_up_messages = await _maybe_call(
             config.get_follow_up_messages, default=[]
         )
         if follow_up_messages:
             pending_messages = follow_up_messages
+            model_call_purpose = "continuation"
             continue
 
         break
@@ -429,6 +464,8 @@ async def _stream_assistant_response(
     *,
     signal: object | None,
     stream_fn: StreamFn | None,
+    model_call_purpose: str,
+    model_call_sequence: int,
 ) -> AssistantMessage:
     if _is_aborted(signal):
         raise RuntimeError("Request aborted by user")
@@ -440,6 +477,8 @@ async def _stream_assistant_response(
             emit,
             signal=signal,
             stream_fn=stream_fn,
+            model_call_purpose=model_call_purpose,
+            model_call_sequence=model_call_sequence,
         ),
         signal,
     )
@@ -459,6 +498,8 @@ async def _collect_assistant_response(
     *,
     signal: object | None,
     stream_fn: StreamFn | None,
+    model_call_purpose: str,
+    model_call_sequence: int,
 ) -> tuple[AssistantMessage, bool]:
     """Collect provider output without owning its durable message boundary."""
 
@@ -474,10 +515,37 @@ async def _collect_assistant_response(
     )
 
     call_stream = stream_fn or stream
+    if (
+        config.require_prepared_request_conformance
+        and call_stream is not stream
+        and not is_prepared_request_conformant(call_stream)
+        and not is_synthetic_model_transport(call_stream)
+    ):
+        raise ValueError(
+            "durable Product sessions require the standard AI stream or a "
+            "prepared_request_conformant custom stream"
+        )
     options = replace(
         config.call_options,
         cancellation=signal if signal is not None else config.call_options.cancellation,
     )
+    if config.prepare_model_call is not None:
+        prepared_options = await _resolve(
+            config.prepare_model_call(
+                ModelCallPreparation(
+                    purpose=model_call_purpose,
+                    sequence=model_call_sequence,
+                    model=config.model,
+                    context=llm_context,
+                    options=options,
+                )
+            )
+        )
+        if not isinstance(prepared_options, CallOptions):
+            raise TypeError("prepare_model_call must return CallOptions")
+        # The preparation seam may add durable commit state, but it must not
+        # detach the in-flight Agent cancellation authority.
+        options = replace(prepared_options, cancellation=options.cancellation)
 
     if _is_aborted(signal):
         raise RuntimeError("Request aborted by user")

@@ -8,12 +8,17 @@ code-file activity; it does not reimplement the transcript algorithm.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import cast
 
-from loushang.agent.types import AgentMessage
+from loushang.agent.types import (
+    AgentMessage,
+    ModelCallPreparation,
+    PrepareModelCallFn,
+)
 from loushang.ai import ApiKeyAuth, CallOptions, Context, Model, complete, stream
 from loushang.ai.trace import emit_trace
 from loushang.ai.types import AssistantMessage, TextPart, UserMessage
@@ -208,6 +213,12 @@ class BranchSummaryDelta:
     common_ancestor_id: str | None
 
 
+@dataclass(frozen=True)
+class _SummaryCallResult:
+    text: str
+    model_input_snapshot_ids: tuple[str, ...] = ()
+
+
 def default_summary_completer(
     model: object,
     context: Context,
@@ -230,11 +241,12 @@ async def execute_transcript_compaction(
     custom_instructions: str | None = None,
     completer: SummaryCompleter = default_summary_completer,
     decorate: SummaryDecorator | None = None,
+    prepare_model_call: PrepareModelCallFn | None = None,
 ) -> CompactionResult:
     """Execute a standard transcript-compaction plan with Product prompt policy."""
 
     if preparation.is_split_turn and preparation.turn_prefix_messages:
-        history_summary = (
+        history_result = (
             await _summarize_messages(
                 preparation=preparation,
                 model=model,
@@ -244,11 +256,14 @@ async def execute_transcript_compaction(
                 signal=signal,
                 custom_instructions=custom_instructions,
                 completer=completer,
+                model_call_purpose="compaction_history",
+                model_call_sequence=1,
+                prepare_model_call=prepare_model_call,
             )
             if preparation.messages_to_summarize
-            else "No prior history."
+            else _SummaryCallResult("No prior history.")
         )
-        turn_prefix_summary = await _summarize_turn_prefix(
+        turn_prefix_result = await _summarize_turn_prefix(
             messages=preparation.turn_prefix_messages,
             model=model,
             profile=turn_prefix_profile,
@@ -256,13 +271,19 @@ async def execute_transcript_compaction(
             headers=headers,
             signal=signal,
             completer=completer,
+            model_call_sequence=(2 if preparation.messages_to_summarize else 1),
+            prepare_model_call=prepare_model_call,
         )
         summary = (
-            f"{history_summary}\n\n---\n\n**Turn Context (split turn):**\n\n"
-            f"{turn_prefix_summary}"
+            f"{history_result.text}\n\n---\n\n"
+            f"**Turn Context (split turn):**\n\n{turn_prefix_result.text}"
+        )
+        model_input_snapshot_ids = (
+            *history_result.model_input_snapshot_ids,
+            *turn_prefix_result.model_input_snapshot_ids,
         )
     else:
-        summary = await _summarize_messages(
+        result = await _summarize_messages(
             preparation=preparation,
             model=model,
             profile=compaction_profile,
@@ -271,7 +292,12 @@ async def execute_transcript_compaction(
             signal=signal,
             custom_instructions=custom_instructions,
             completer=completer,
+            model_call_purpose="compaction_history",
+            model_call_sequence=1,
+            prepare_model_call=prepare_model_call,
         )
+        summary = result.text
+        model_input_snapshot_ids = result.model_input_snapshot_ids
 
     messages = (
         *preparation.messages_to_summarize,
@@ -288,6 +314,7 @@ async def execute_transcript_compaction(
         first_kept_entry_id=preparation.first_kept_entry_id,
         tokens_before=preparation.tokens_before,
         details=decoration.details,
+        model_input_snapshot_ids=model_input_snapshot_ids,
     )
 
 
@@ -363,6 +390,7 @@ def normalize_branch_summary_output(
     details = getattr(value, "details", None)
     aborted = getattr(value, "aborted", False)
     error = getattr(value, "error", None)
+    model_input_snapshot_ids = getattr(value, "model_input_snapshot_ids", ())
     if summary is not None and not isinstance(summary, str):
         raise TypeError("branch summary must be a string or None")
     if not isinstance(aborted, bool):
@@ -375,6 +403,7 @@ def normalize_branch_summary_output(
         from_hook=from_hook,
         aborted=aborted,
         error=error,
+        model_input_snapshot_ids=tuple(model_input_snapshot_ids),
     )
 
 
@@ -392,6 +421,7 @@ async def execute_branch_summary(
     preamble: str = DEFAULT_BRANCH_SUMMARY_PREAMBLE,
     completer: SummaryCompleter = default_summary_completer,
     decorate: SummaryDecorator | None = None,
+    prepare_model_call: PrepareModelCallFn | None = None,
 ) -> BranchSummaryOutput:
     """Generate one normalized branch summary without mutating a transcript."""
 
@@ -412,20 +442,25 @@ async def execute_branch_summary(
                 else None
             ),
         )
-        summary = await completer(
-            model,
-            Context(
-                system_prompt=prompt.system_prompt,
-                messages=[
-                    UserMessage(
-                        role="user",
-                        content=[TextPart(type="text", text=prompt.user_prompt)],
-                        timestamp=0.0,
-                    )
-                ],
-            ),
-            _call_options(api_key=api_key, headers=headers, signal=signal),
+        context = Context(
+            system_prompt=prompt.system_prompt,
+            messages=[
+                UserMessage(
+                    role="user",
+                    content=[TextPart(type="text", text=prompt.user_prompt)],
+                    timestamp=0.0,
+                )
+            ],
         )
+        options = await _prepare_summary_options(
+            model,
+            context,
+            _call_options(api_key=api_key, headers=headers, signal=signal),
+            purpose="branch_summary",
+            sequence=1,
+            prepare_model_call=prepare_model_call,
+        )
+        summary = await completer(model, context, options)
         if _is_aborted(signal):
             return BranchSummaryOutput(aborted=True)
         decoration = (
@@ -434,6 +469,7 @@ async def execute_branch_summary(
         return BranchSummaryOutput(
             summary=f"{preamble}{summary or 'No summary generated'}{decoration.suffix}",
             details=decoration.details,
+            model_input_snapshot_ids=_model_input_snapshot_ids(options),
         )
     except Exception as exc:
         return BranchSummaryOutput(error=str(exc))
@@ -449,7 +485,10 @@ async def _summarize_messages(
     signal: object | None,
     custom_instructions: str | None,
     completer: SummaryCompleter,
-) -> str:
+    model_call_purpose: str,
+    model_call_sequence: int,
+    prepare_model_call: PrepareModelCallFn | None,
+) -> _SummaryCallResult:
     mode = "update" if preparation.previous_summary else "initial"
     prompt = build_summary_prompt(
         profile,
@@ -460,10 +499,18 @@ async def _summarize_messages(
         previous_summary=preparation.previous_summary,
         custom_instructions=custom_instructions,
     )
-    return await completer(
+    context = _summary_context(prompt.system_prompt, prompt.user_prompt)
+    options = await _prepare_summary_options(
         model,
-        _summary_context(prompt.system_prompt, prompt.user_prompt),
+        context,
         _call_options(api_key=api_key, headers=headers, signal=signal),
+        purpose=model_call_purpose,
+        sequence=model_call_sequence,
+        prepare_model_call=prepare_model_call,
+    )
+    return _SummaryCallResult(
+        text=await completer(model, context, options),
+        model_input_snapshot_ids=_model_input_snapshot_ids(options),
     )
 
 
@@ -476,17 +523,64 @@ async def _summarize_turn_prefix(
     headers: Mapping[str, str] | None,
     signal: object | None,
     completer: SummaryCompleter,
-) -> str:
+    model_call_sequence: int,
+    prepare_model_call: PrepareModelCallFn | None,
+) -> _SummaryCallResult:
     prompt = build_summary_prompt(
         profile,
         serialize_agent_conversation(_model_messages(messages)),
         mode="turn-prefix",
     )
-    return await completer(
+    context = _summary_context(prompt.system_prompt, prompt.user_prompt)
+    options = await _prepare_summary_options(
         model,
-        _summary_context(prompt.system_prompt, prompt.user_prompt),
+        context,
         _call_options(api_key=api_key, headers=headers, signal=signal),
+        purpose="compaction_turn_prefix",
+        sequence=model_call_sequence,
+        prepare_model_call=prepare_model_call,
     )
+    return _SummaryCallResult(
+        text=await completer(model, context, options),
+        model_input_snapshot_ids=_model_input_snapshot_ids(options),
+    )
+
+
+async def _prepare_summary_options(
+    model: object,
+    context: Context,
+    options: CallOptions,
+    *,
+    purpose: str,
+    sequence: int,
+    prepare_model_call: PrepareModelCallFn | None,
+) -> CallOptions:
+    if prepare_model_call is None:
+        return options
+    result = prepare_model_call(
+        ModelCallPreparation(
+            purpose=purpose,
+            sequence=sequence,
+            model=cast(Model, model),
+            context=context,
+            options=options,
+        )
+    )
+    if inspect.isawaitable(result):
+        result = await result
+    if not isinstance(result, CallOptions):
+        raise TypeError("prepare_model_call must return CallOptions")
+    return result
+
+
+def _model_input_snapshot_ids(options: CallOptions) -> tuple[str, ...]:
+    committer = options.prepared_request_committer
+    raw = getattr(committer, "model_input_snapshot_ids", ())
+    if not isinstance(raw, tuple) or any(
+        not isinstance(item, str) or not item.strip() for item in raw
+    ):
+        raise TypeError("prepared-request committer returned invalid Model Input lineage")
+    return raw
 
 
 async def _complete_text(

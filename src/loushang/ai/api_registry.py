@@ -10,6 +10,7 @@ from loushang.ai.provider.protocol import APIAdapter
 
 __all__ = [
     "APIRegistry",
+    "DetachedAPIAdapters",
     "get_default_api_registry",
 ]
 
@@ -52,15 +53,57 @@ class APIRegistry:
     def unregister_api_adapters(self, source_id: str) -> None:
         """Unregister adapters registered with the given source identifier."""
 
-        to_delete: list[str] = []
-        for api, (_adapter, sid) in self._adapters.items():
-            if sid == source_id:
-                to_delete.append(api)
-        for api in to_delete:
+        self.detach_api_adapters(source_id)
+
+    def detach_api_adapters(self, source_id: str) -> DetachedAPIAdapters:
+        """Detach one source's exact adapters for reversible lifecycle masking."""
+
+        detached = tuple(
+            (index, api, adapter, sid)
+            for index, (api, (adapter, sid)) in enumerate(self._adapters.items())
+            if sid == source_id
+        )
+        for _index, api, _adapter, _sid in detached:
             del self._adapters[api]
+        return DetachedAPIAdapters(self, detached)
 
     def clear_api_adapters(self) -> None:
         self._adapters.clear()
+
+
+class DetachedAPIAdapters:
+    """Opaque, one-shot restoration token for exact API adapter entries."""
+
+    def __init__(
+        self,
+        registry: APIRegistry,
+        entries: tuple[tuple[int, str, APIAdapter, str | None], ...],
+    ) -> None:
+        self._registry = registry
+        self._entries = entries
+        self._restored = False
+
+    @property
+    def count(self) -> int:
+        return len(self._entries)
+
+    def restore(self) -> None:
+        if self._restored:
+            return
+        collisions = [
+            api for _index, api, _adapter, _sid in self._entries
+            if api in self._registry._adapters
+        ]
+        if collisions:
+            raise RuntimeError("detached API adapter slot is already occupied")
+        restored = list(self._registry._adapters.items())
+        for index, api, adapter, source_id in self._entries:
+            restored.insert(min(index, len(restored)), (api, (adapter, source_id)))
+        self._registry._adapters = dict(restored)
+        self._restored = True
+
+    def __repr__(self) -> str:
+        return f"DetachedAPIAdapters(count={self.count}, restored={self._restored})"
 
 
 _default_api_registry: APIRegistry | None = None

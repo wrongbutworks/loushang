@@ -5,6 +5,7 @@ from typing import NamedTuple
 
 from loushang.ai.api_registry import APIRegistry
 from loushang.ai.bootstrap import register_builtin_api_adapters
+from loushang.ai.prepared_request import PreparedRequestAdapter
 from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
 from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
 from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
@@ -31,6 +32,13 @@ def test_core_adapters_implement_invoke_raw_contract() -> None:
         assert provider.api == case.api
         assert callable(provider.invoke_raw)
         assert list(inspect.signature(provider.invoke_raw).parameters) == ["request"]
+        assert isinstance(provider, PreparedRequestAdapter)
+        assert list(inspect.signature(provider.prepare_request).parameters) == [
+            "request"
+        ]
+        assert list(
+            inspect.signature(provider.invoke_prepared_raw).parameters
+        ) == ["request", "prepared"]
         assert not hasattr(provider, "stream_simple")
 
 

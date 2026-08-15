@@ -10,12 +10,13 @@ from loushang.ai.errors import AIProviderProtocolError
 from loushang.ai.event_stream.raw_parts import RawPart, UsageDeltaPart
 from loushang.ai.model.domain import OpenAICompletionsConfig
 from loushang.ai.output_budget import resolve_output_token_budget
+from loushang.ai.prepared_request import invoke_prepared_request
 from loushang.ai.protocols._helpers import (
     canonicalize_sdk_headers,
     close_provider_stream,
 )
 from loushang.ai.protocols._openai_sdk import OPENAI_SDK_API_KEY_PLACEHOLDER
-from loushang.ai.provider import ProviderRequest
+from loushang.ai.provider import PreparedModelRequest, ProviderRequest
 from loushang.ai.provider.errors import (
     provider_error_part,
     provider_error_part_from_raw,
@@ -36,6 +37,10 @@ class OpenAIChatCompletionsAdapter:
         self._client = client
 
     async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
+        async for part in invoke_prepared_request(self, request):
+            yield part
+
+    def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
         model = request.model
         options = request.options
         resolved = request
@@ -51,32 +56,6 @@ class OpenAIChatCompletionsAdapter:
         thinking_format = adapter_config.reasoning_format
         reasoning_effort_map = dict(adapter_config.reasoning_effort_map)
         supports_reasoning_effort = adapter_config.reasoning_effort
-
-        # OpenAI Python SDK
-        try:
-            from openai import AsyncOpenAI, Omit  # type: ignore
-        except Exception as e:  # pragma: no cover
-            raise RuntimeError(
-                "openai SDK is not installed. Install via `pip install openai`"
-            ) from e
-
-        headers = resolved.headers or {}
-        default_headers = canonicalize_sdk_headers(headers)
-
-        client_kwargs: dict[str, Any] = {
-            "api_key": OPENAI_SDK_API_KEY_PLACEHOLDER,
-            "base_url": resolved.base_url,
-        }
-        client = self._client or AsyncOpenAI(**client_kwargs)  # type: ignore[call-arg]
-        _debug(
-            "client",
-            {
-                "api": model.api,
-                "provider": model.provider_id,
-                "endpoint": model.endpoint_id,
-                "model": model.id,
-            },
-        )
 
         capabilities = model.capabilities
         messages_param = _build_messages(
@@ -142,12 +121,51 @@ class OpenAIChatCompletionsAdapter:
                 "tool_count": len(tools_param or []),
             },
         )
+        return PreparedModelRequest.from_provider_request(request, payload=params)
+
+    async def invoke_prepared_raw(
+        self,
+        request: ProviderRequest,
+        prepared: PreparedModelRequest,
+    ) -> AsyncIterator[RawPart]:
+        model = request.model
+        options = request.options
+        resolved = request
+
+        def _debug(event: str, data: dict | None = None) -> None:
+            _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
+
+        try:
+            from openai import AsyncOpenAI, Omit  # type: ignore
+        except Exception as e:  # pragma: no cover
+            raise RuntimeError(
+                "openai SDK is not installed. Install via `pip install openai`"
+            ) from e
+
+        default_headers = canonicalize_sdk_headers(resolved.headers or {})
+        client_kwargs: dict[str, Any] = {
+            "api_key": OPENAI_SDK_API_KEY_PLACEHOLDER,
+            "base_url": resolved.base_url,
+        }
+        client = self._client or AsyncOpenAI(**client_kwargs)  # type: ignore[call-arg]
+        _debug(
+            "client",
+            {
+                "api": model.api,
+                "provider": model.provider_id,
+                "endpoint": model.endpoint_id,
+                "model": model.id,
+            },
+        )
+
+        params: dict[str, Any] = prepared.payload_for_transport()
         params["extra_headers"] = {
             "Authorization": Omit(),
             "X-Api-Key": Omit(),
             **default_headers,
         }
 
+        is_stream_request = getattr(resolved, "mode", "stream") == "stream"
         try:
             response = await client.chat.completions.create(**params)
         except Exception as e:

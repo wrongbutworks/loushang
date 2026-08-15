@@ -5,13 +5,15 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.runtime.registration import RegistrationLease, RegistrationOwner
 from loushang.harness.workspace.exec import ExecResult
 
 B = TypeVar("B")
 
 
-def _ignore_tool(tool: object, source_info: object | None = None) -> None:
+def _unbound_tool(tool: object, source_info: object | None = None) -> None:
     del tool, source_info
+    raise RuntimeError("live tool registration is not bound")
 
 
 async def _ignore_entry(custom_type: str, data: object | None = None) -> None:
@@ -42,7 +44,7 @@ class ProductRuntimeBindings:
     request_resource_refresh: Callable[[], None]
     shutdown: Callable[[], None]
     record_diagnostic: Callable[[DiagnosticDraft], None]
-    register_tool: Callable[[object, object | None], None] = _ignore_tool
+    register_tool: Callable[[object, object | None], None] = _unbound_tool
     get_all_tools: Callable[[], list[object]] = lambda: []
     session_manager: object | None = None
     model_registry: object | None = None
@@ -79,6 +81,32 @@ class ProductRuntimeBindings:
     exec_command: Callable[..., Awaitable[ExecResult]] | None = None
     ui_context: object | None = None
     on_error: Callable[[dict[str, object]], None] | None = None
+    bind_tool: (
+        Callable[[object, RegistrationOwner | str, object | None], RegistrationLease]
+        | None
+    ) = None
+    adopt_tool: (
+        Callable[
+            [object, RegistrationOwner, object | None],
+            RegistrationLease | None,
+        ]
+        | None
+    ) = None
+    bind_provider: (
+        Callable[[str, object, RegistrationOwner], RegistrationLease] | None
+    ) = None
+    bind_provider_removal: (
+        Callable[[str, RegistrationOwner], RegistrationLease] | None
+    ) = None
+    stage_tool: (
+        Callable[[object, RegistrationOwner, object | None], RegistrationLease] | None
+    ) = None
+    stage_provider: (
+        Callable[[str, object, RegistrationOwner], RegistrationLease] | None
+    ) = None
+    stage_provider_removal: (
+        Callable[[str, RegistrationOwner], RegistrationLease] | None
+    ) = None
 
 
 class RuntimeBindingState(Generic[B]):

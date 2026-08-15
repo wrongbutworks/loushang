@@ -249,6 +249,12 @@ if TYPE_CHECKING:
     from loushang.harness.session.lifecycle_adapter import (
         SessionLifecycleOperationAdapter,
     )
+    from loushang.harness.session.model_call import (
+        CurrentSessionPredicate,
+        SessionModelCallCapabilityConsumer,
+        SessionModelCallPreparer,
+        SessionModelCallRuntime,
+    )
     from loushang.harness.session.model_preferences import (
         PreferredModel,
         available_model_details,
@@ -452,6 +458,10 @@ _EXPORT_MODULES = {
     "scoped_models_from_patterns": "loushang.harness.session.model_resolution",
     "available_model_details": "loushang.harness.session.model_preferences",
     "ModelCandidates": "loushang.harness.session.model_selection",
+    "CurrentSessionPredicate": "loushang.harness.session.model_call",
+    "SessionModelCallCapabilityConsumer": "loushang.harness.session.model_call",
+    "SessionModelCallPreparer": "loushang.harness.session.model_call",
+    "SessionModelCallRuntime": "loushang.harness.session.model_call",
     "ModelChoiceData": "loushang.harness.session.model_selection",
     "ModelIdentityData": "loushang.harness.session.model_selection",
     "ModelSelectionApplyResult": "loushang.harness.session.model_selection",
