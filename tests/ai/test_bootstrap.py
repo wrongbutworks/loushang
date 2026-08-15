@@ -71,6 +71,41 @@ def test_api_registry_manages_adapters_by_source() -> None:
     assert registry.list_api_adapters() == []
 
 
+def test_api_registry_detaches_and_restores_exact_source_entries() -> None:
+    registry = APIRegistry()
+    first = _Adapter()
+    retained = _Adapter()
+    retained.api = "retained"
+    second = _Adapter()
+    second.api = "second"
+    registry.register_api_adapter(first, source_id="provider:proxy")
+    registry.register_api_adapter(retained, source_id="other")
+    registry.register_api_adapter(second, source_id="provider:proxy")
+
+    detached = registry.detach_api_adapters("provider:proxy")
+
+    assert registry.list_api_adapters() == [retained]
+    assert "_Adapter" not in repr(detached)
+    assert "count=2" in repr(detached)
+    detached.restore()
+    detached.restore()
+    assert registry.list_api_adapters() == [first, retained, second]
+
+
+def test_api_registry_detached_restore_fails_closed_on_collision() -> None:
+    registry = APIRegistry()
+    original = _Adapter()
+    registry.register_api_adapter(original, source_id="provider:proxy")
+    detached = registry.detach_api_adapters("provider:proxy")
+    replacement = _Adapter()
+    registry.register_api_adapter(replacement, source_id="other")
+
+    with pytest.raises(RuntimeError, match="slot is already occupied"):
+        detached.restore()
+
+    assert registry.get_api_adapter("custom") is replacement
+
+
 def test_api_registry_duplicate_and_source_scope_compatibility_baseline() -> None:
     registry = APIRegistry()
     first = _Adapter()

@@ -12,6 +12,7 @@ from loushang.harness.extensions.provider_config import (
     provider_from_extension_config,
 )
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
+from loushang.harness.runtime import RegistrationOwner, RegistrationScope
 
 
 class _APIAdapter:
@@ -163,3 +164,125 @@ def test_extension_provider_controller_rejects_pi_style_provider_config() -> Non
                 "models": [{"id": "proxy-model"}],
             },
         )
+
+
+def test_staged_provider_updates_reduce_in_same_owner_call_order() -> None:
+    model_registry = ModelRegistry(ai_registry=AiModelRegistry())
+
+    def merge_provider(
+        name: str,
+        config: object,
+        *,
+        existing_provider: Provider | None,
+    ) -> Provider:
+        assert isinstance(config, dict)
+        return Provider(
+            id=name,
+            name=str(config.get("name") or getattr(existing_provider, "name", "")),
+            website=str(
+                config.get("website") or getattr(existing_provider, "website", "")
+            ),
+        )
+
+    controller = ExtensionProviderRuntime(
+        model_registry=model_registry,
+        api_registry=APIRegistry(),
+        provider_factory=merge_provider,
+    )
+    owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="models",
+        runtime_id="session-1",
+        generation=1,
+    )
+    first = controller.stage_provider("proxy", {"name": "First"}, owner)
+    second = controller.stage_provider(
+        "proxy",
+        {"website": "https://proxy.example.com"},
+        owner,
+    )
+    scope = RegistrationScope(owner)
+    scope.add(first)
+    scope.add(second)
+    scope.commit()
+
+    provider = model_registry.ai_registry.get_provider("proxy")
+    assert provider is not None
+    assert provider.name == "First"
+    assert provider.website == "https://proxy.example.com"
+
+
+def test_staged_provider_register_after_removal_starts_from_empty_state() -> None:
+    baseline = Provider(id="proxy", name="Baseline")
+    model_registry = ModelRegistry(
+        ai_registry=AiModelRegistry.from_providers({"proxy": baseline})
+    )
+    inherited: list[Provider | None] = []
+
+    def replace_provider(
+        name: str,
+        config: object,
+        *,
+        existing_provider: Provider | None,
+    ) -> Provider:
+        assert isinstance(config, dict)
+        inherited.append(existing_provider)
+        return Provider(id=name, name=str(config["name"]))
+
+    controller = ExtensionProviderRuntime(
+        model_registry=model_registry,
+        api_registry=APIRegistry(),
+        provider_factory=replace_provider,
+    )
+    owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="models",
+        runtime_id="session-1",
+        generation=1,
+    )
+    removal = controller.stage_provider_removal("proxy", owner)
+    replacement = controller.stage_provider("proxy", {"name": "Replacement"}, owner)
+    scope = RegistrationScope(owner)
+    scope.add(removal)
+    scope.add(replacement)
+    scope.commit()
+
+    assert inherited == [None]
+    assert model_registry.ai_registry.get_provider("proxy") == Provider(
+        id="proxy",
+        name="Replacement",
+    )
+
+
+def test_staged_provider_removal_masks_and_restores_source_api_adapters() -> None:
+    baseline = Provider(id="proxy", name="Baseline")
+    model_registry = ModelRegistry(
+        ai_registry=AiModelRegistry.from_providers({"proxy": baseline})
+    )
+    api_registry = APIRegistry()
+    adapter = _APIAdapter()
+    api_registry.register_api_adapter(adapter, source_id="provider:proxy")
+    controller = ExtensionProviderRuntime(
+        model_registry=model_registry,
+        api_registry=api_registry,
+        provider_factory=provider_from_extension_config,
+    )
+    owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="models",
+        runtime_id="session-1",
+        generation=1,
+    )
+    removal = controller.stage_provider_removal("proxy", owner)
+
+    assert api_registry.list_api_adapters() == [adapter]
+    removal.activate()
+    assert model_registry.ai_registry.get_provider("proxy") is None
+    assert api_registry.list_api_adapters() == []
+    removal.deactivate()
+    assert model_registry.ai_registry.get_provider("proxy") == baseline
+    assert api_registry.list_api_adapters() == [adapter]
+    removal.activate()
+    assert removal.rollback_registration().state == "removed"
+    assert model_registry.ai_registry.get_provider("proxy") == baseline
+    assert api_registry.list_api_adapters() == [adapter]

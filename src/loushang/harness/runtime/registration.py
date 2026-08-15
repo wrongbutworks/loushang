@@ -124,6 +124,7 @@ RegistrationDisposer = Callable[
     None | RegistrationDisposalResult | Awaitable[None | RegistrationDisposalResult],
 ]
 RegistrationActivation = Callable[[], None]
+RegistrationRollback = Callable[[], None | RegistrationDisposalResult]
 
 
 class RegistrationLease:
@@ -137,6 +138,7 @@ class RegistrationLease:
         dispose: RegistrationDisposer,
         activate: RegistrationActivation | None = None,
         deactivate: RegistrationActivation | None = None,
+        rollback: RegistrationRollback | None = None,
     ) -> None:
         if not isinstance(owner, RegistrationOwner):
             raise TypeError("registration owner must be a RegistrationOwner")
@@ -152,11 +154,14 @@ class RegistrationLease:
             raise TypeError("registration activator must be callable")
         if deactivate is not None and not callable(deactivate):
             raise TypeError("registration deactivator must be callable")
+        if rollback is not None and not callable(rollback):
+            raise TypeError("registration rollback must be callable")
         self._owner = owner
         self._identity = identity
         self._dispose: RegistrationDisposer | None = dispose
         self._activate = activate
         self._deactivate = deactivate
+        self._rollback = rollback
         self._state: RegistrationLeaseState = (
             "staged" if activate is not None else "active"
         )
@@ -213,6 +218,49 @@ class RegistrationLease:
         self._deactivate()
         self._state = "staged"
 
+    def rollback_registration(self) -> RegistrationDisposalResult:
+        """Synchronously remove an uncommitted admission mutation exactly once."""
+
+        if self._state == "disposed":
+            return RegistrationDisposalResult(state="already_removed")
+        if self._state not in {"staged", "active"}:
+            raise RuntimeError("registration lease cannot be rolled back")
+        rollback = self._rollback
+        if rollback is None:
+            return RegistrationDisposalResult(
+                state="failed_retryable",
+                diagnostic_code="registration_rollback_unavailable",
+            )
+        try:
+            result = rollback()
+            if result is None:
+                result = RegistrationDisposalResult(state="removed")
+            elif not isinstance(result, RegistrationDisposalResult):
+                raise TypeError(
+                    "registration rollback must return a disposal result or None"
+                )
+        except Exception:
+            result = RegistrationDisposalResult(
+                state="failed_retryable",
+                diagnostic_code="registration_rollback_failed",
+            )
+        self._last_result = result
+        if result.state in {"removed", "already_removed"}:
+            self._state = "disposed"
+            self._dispose = None
+            self._activate = None
+            self._deactivate = None
+            self._rollback = None
+        elif result.state == "failed_retryable":
+            self._state = "failed_retryable"
+        else:
+            self._state = "failed_terminal"
+            self._dispose = None
+            self._activate = None
+            self._deactivate = None
+            self._rollback = None
+        return result
+
     async def dispose(self) -> RegistrationDisposalResult:
         """Remove the exact entry once and join cleanup before cancellation wins."""
 
@@ -263,6 +311,7 @@ class RegistrationLease:
             self._dispose = None
             self._activate = None
             self._deactivate = None
+            self._rollback = None
         elif result.state == "failed_retryable":
             self._state = "failed_retryable"
             self._dispose_task = None
@@ -271,6 +320,7 @@ class RegistrationLease:
             self._dispose = None
             self._activate = None
             self._deactivate = None
+            self._rollback = None
         return result
 
 
@@ -385,6 +435,29 @@ class RegistrationScope:
             if lease.state == "active" and lease.can_deactivate:
                 lease.deactivate()
         self._state = "open"
+
+    def rollback_admission(self) -> RegistrationScopeDisposalResult:
+        """Synchronously discard an open scope before it becomes authoritative."""
+
+        if self._state != "open":
+            raise RuntimeError("registration scope admission cannot be rolled back")
+        outcomes = tuple(
+            RegistrationDisposalOutcome(
+                identity=lease.identity,
+                result=lease.rollback_registration(),
+            )
+            for lease in reversed(self._leases)
+        )
+        report = RegistrationScopeDisposalResult(outcomes=outcomes)
+        self._last_result = report
+        states = {outcome.result.state for outcome in outcomes}
+        if "failed_retryable" in states:
+            self._state = "failed_retryable"
+        elif "failed_terminal" in states:
+            self._state = "failed_terminal"
+        else:
+            self._state = "disposed"
+        return report
 
     async def dispose(self) -> RegistrationScopeDisposalResult:
         if self._state in {"disposed", "failed_terminal"}:

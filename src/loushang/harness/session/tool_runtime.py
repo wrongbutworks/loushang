@@ -86,9 +86,10 @@ class ToolRegistryPort(Protocol):
 
     def adopt_compatibility_tool(
         self,
-        name: str,
+        tool: ToolDefinition,
         *,
         owner: RegistrationOwner,
+        source_info: object | None = None,
     ) -> RegistrationLease | None: ...
 
 
@@ -260,13 +261,17 @@ class SessionToolRuntime:
 
     def adopt_runtime_tool(
         self,
-        name: str,
+        tool: object,
         *,
         owner: RegistrationOwner,
+        source_info: object | None = None,
     ) -> RegistrationLease | None:
+        if not isinstance(tool, ToolDefinition):
+            raise TypeError("runtime Tool adoption requires a ToolDefinition")
         registry_lease = self.tool_registry.adopt_compatibility_tool(
-            name,
+            tool,
             owner=owner,
+            source_info=source_info,
         )
         if registry_lease is None:
             return None
@@ -299,12 +304,19 @@ class SessionToolRuntime:
             registry_lease.deactivate()
             self._sync_available(activate_new=False, rebind=True)
 
+        def rollback_runtime_binding() -> RegistrationDisposalResult:
+            result = registry_lease.rollback_registration()
+            if result.state in {"removed", "already_removed"}:
+                self._sync_available(activate_new=False, rebind=True)
+            return result
+
         return RegistrationLease(
             owner=registry_lease.owner,
             identity=registry_lease.identity,
             dispose=dispose_runtime_binding,
             activate=activate_runtime_binding if staged else None,
             deactivate=deactivate_runtime_binding if staged else None,
+            rollback=rollback_runtime_binding,
         )
 
     def _sync_available(self, *, activate_new: bool, rebind: bool) -> None:

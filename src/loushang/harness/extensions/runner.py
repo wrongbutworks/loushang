@@ -292,11 +292,16 @@ class ExtensionRunner(ExtensionRuntime):
 
     def bind_runtime(self, bindings: ExtensionRuntimeBindings) -> None:
         self._require_runtime_active()
-        self._activate_runtime(
-            bindings,
-            commit=True,
-            staged=self._supports_staged_activation(bindings),
-        )
+        try:
+            self._activate_runtime(
+                bindings,
+                commit=True,
+                staged=self._supports_staged_activation(bindings),
+            )
+            self._commit_api_admission()
+        except BaseException as admission_error:
+            self._rollback_initial_admission(admission_error)
+            raise
 
     async def activate_runtime_generation(
         self,
@@ -313,6 +318,7 @@ class ExtensionRunner(ExtensionRuntime):
                 commit=True,
                 staged=self._supports_staged_activation(bindings),
             )
+            self._commit_api_admission()
         except BaseException:
             await self._dispose_current_registrations()
             raise
@@ -498,12 +504,18 @@ class ExtensionRunner(ExtensionRuntime):
             if extension is None:
                 continue
             registrations = self._registrations_by_extension[id(extension)]
-            lease = (
-                adopter(definition.name, registrations.owner)
-                if adopter is not None
-                else None
-            )
-            if lease is None:
+            if adopter is not None:
+                lease = adopter(
+                    definition,
+                    registrations.owner,
+                    self.get_tool_source_info(definition.name),
+                )
+                if lease is None:
+                    # Bootstrap composition already resolved Product/Extension
+                    # conflicts. A missing exact match means this declaration
+                    # was intentionally not admitted and must stay skipped.
+                    continue
+            else:
                 lease = binder(
                     definition,
                     registrations.owner,
@@ -512,6 +524,32 @@ class ExtensionRunner(ExtensionRuntime):
             if not isinstance(lease, RegistrationLease):
                 raise TypeError("live tool binding must return a RegistrationLease")
             registrations.capture(lease)
+
+    def _rollback_initial_admission(self, error: BaseException) -> None:
+        for extension in self._active_extensions:
+            rollback = getattr(extension.api, "_rollback_runtime_admission", None)
+            if callable(rollback):
+                try:
+                    rollback()
+                except BaseException:
+                    error.add_note("Extension API admission rollback failed")
+        for registrations in reversed(self._generation_registrations):
+            try:
+                report = registrations.rollback_admission()
+            except BaseException:
+                error.add_note("Extension admission rollback failed")
+                continue
+            if report.has_failures:
+                error.add_note("Extension admission rollback was incomplete")
+        self._runtime_state.invalidate(
+            "Extension context is stale after failed extension admission."
+        )
+
+    def _commit_api_admission(self) -> None:
+        for extension in self._active_extensions:
+            commit = getattr(extension.api, "_commit_runtime_admission", None)
+            if callable(commit):
+                commit()
 
     def _bind_extension_apis(self) -> None:
         for extension in self._active_extensions:
@@ -788,6 +826,7 @@ class ExtensionRunner(ExtensionRuntime):
         try:
             for registrations in candidate._generation_registrations:
                 registrations.commit()
+            candidate._commit_api_admission()
             self._install_composition_state(candidate._capture_composition_state())
             self._runtime_state = candidate._runtime_state
             self._generation_registrations = candidate._generation_registrations

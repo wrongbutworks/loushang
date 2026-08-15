@@ -319,7 +319,9 @@ def test_tool_registry_adopts_bootstrap_tool_into_exact_generation_ownership() -
         )
 
     registry = ToolRegistry()
-    registry.register_tool(definition("Bootstrap"))
+    bootstrap = definition("Bootstrap")
+    source_info = object()
+    registry.register_tool(bootstrap, source_info=source_info)
     old_owner = RegistrationOwner(
         owner_kind="extension",
         owner_id="tools",
@@ -333,7 +335,11 @@ def test_tool_registry_adopts_bootstrap_tool_into_exact_generation_ownership() -
         generation=2,
     )
 
-    old_lease = registry.adopt_compatibility_tool("shared", owner=old_owner)
+    old_lease = registry.adopt_compatibility_tool(
+        bootstrap,
+        owner=old_owner,
+        source_info=source_info,
+    )
     assert old_lease is not None
     new_definition = definition("New generation")
     new_lease = registry.stage_tool(new_definition, owner=new_owner)
@@ -348,6 +354,92 @@ def test_tool_registry_adopts_bootstrap_tool_into_exact_generation_ownership() -
     assert registry.list_definitions() == [new_definition]
     assert asyncio.run(new_lease.dispose()).state == "removed"
     assert registry.list_definitions() == []
+
+
+def test_tool_registry_adoption_requires_exact_bootstrap_provenance() -> None:
+    import asyncio
+
+    from loushang.agent.types import AgentToolResult
+    from loushang.harness.runtime import RegistrationOwner
+    from loushang.harness.tools.core import ToolDefinition, ToolRegistry
+
+    async def execute(tool_call_id, params, signal=None, on_update=None):
+        del tool_call_id, params, signal, on_update
+        return AgentToolResult(content=[], details={})
+
+    def definition(label: str) -> ToolDefinition:
+        return ToolDefinition(
+            name="shared",
+            label=label,
+            description=label,
+            parameters={"type": "object"},
+            execution=direct_execution(execute),
+        )
+
+    registry = ToolRegistry()
+    product = definition("Product")
+    extension = definition("Extension")
+    registry.register_tool(product, source_info="product")
+    owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="tools",
+        runtime_id="session-1",
+        generation=1,
+    )
+
+    assert (
+        registry.adopt_compatibility_tool(
+            extension,
+            owner=owner,
+            source_info="extension",
+        )
+        is None
+    )
+    lease = registry.stage_tool(extension, owner=owner, source_info="extension")
+    lease.activate()
+    assert registry.get_definition("shared") is extension
+    assert asyncio.run(lease.dispose()).state == "removed"
+    assert registry.get_definition("shared") is product
+
+
+def test_tool_registry_adoption_rollback_restores_compatibility_entry() -> None:
+    from loushang.agent.types import AgentToolResult
+    from loushang.harness.runtime import RegistrationOwner
+    from loushang.harness.tools.core import ToolDefinition, ToolRegistry
+
+    async def execute(tool_call_id, params, signal=None, on_update=None):
+        del tool_call_id, params, signal, on_update
+        return AgentToolResult(content=[], details={})
+
+    definition = ToolDefinition(
+        name="shared",
+        label="Bootstrap",
+        description="Bootstrap",
+        parameters={"type": "object"},
+        execution=direct_execution(execute),
+    )
+    registry = ToolRegistry()
+    registry.register_tool(definition, source_info="extension")
+    owner = RegistrationOwner(
+        owner_kind="extension",
+        owner_id="tools",
+        runtime_id="session-1",
+        generation=1,
+    )
+    adopted = registry.adopt_compatibility_tool(
+        definition,
+        owner=owner,
+        source_info="extension",
+    )
+    assert adopted is not None
+
+    assert adopted.rollback_registration().state == "removed"
+    readopted = registry.adopt_compatibility_tool(
+        definition,
+        owner=owner,
+        source_info="extension",
+    )
+    assert readopted is not None
 
 
 def test_registry_rejects_decorated_plain_return_tools() -> None:

@@ -270,7 +270,25 @@ class ModelCatalog:
                     published=False,
                 )
             ),
+            rollback=lambda: self._remove_bound_provider(
+                owner=owner,
+                identity=identity,
+            ),
         )
+
+    def get_owner_provider_state(
+        self,
+        provider_id: str,
+        *,
+        owner: RegistrationOwner,
+    ) -> tuple[bool, Provider | None]:
+        """Return the last staged or published action for one exact owner."""
+
+        layers = self._provider_layers.get(provider_id, ())
+        for layer in reversed(layers):
+            if layer.owner == owner:
+                return True, layer.provider
+        return False, None
 
     def _remove_bound_provider(
         self,

@@ -89,6 +89,16 @@ class ExtensionGenerationRegistrations:
         self._setup.rollback_commit()
         self._published = False
 
+    def rollback_admission(self) -> RegistrationScopeDisposalResult:
+        """Discard setup mutations after synchronous initial admission fails."""
+
+        if self._published:
+            raise RuntimeError("published Extension admission cannot be rolled back")
+        report = self._setup.rollback_admission()
+        if not report.has_failures:
+            self._setup = RegistrationScope(self._owner)
+        return report
+
     async def dispose(self) -> ExtensionGenerationDisposalResult:
         if self._last_result is not None and not self._last_result.has_failures:
             return self._last_result

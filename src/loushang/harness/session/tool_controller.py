@@ -342,12 +342,17 @@ class SessionToolController:
 
     def adopt_runtime_tool(
         self,
-        name: str,
+        tool: object,
         *,
         owner: RegistrationOwner,
+        source_info: object | None = None,
     ) -> RegistrationLease | None:
         self.ensure_tool_registry()
-        return self._runtime.adopt_runtime_tool(name, owner=owner)
+        return self._runtime.adopt_runtime_tool(
+            tool,
+            owner=owner,
+            source_info=source_info,
+        )
 
     def rebuild_prompt_and_tools_view(self) -> None:
         self._runtime.rebuild_prompt_and_tools_view()

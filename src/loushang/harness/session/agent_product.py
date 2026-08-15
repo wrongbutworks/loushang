@@ -491,11 +491,17 @@ class AgentProductSession(AgentSessionAdapterMixin):
             self._sync_footer_available_provider_count()
             return result
 
+        def rollback_provider() -> RegistrationDisposalResult:
+            result = lease.rollback_registration()
+            self._sync_footer_available_provider_count()
+            return result
+
         self._sync_footer_available_provider_count()
         return RegistrationLease(
             owner=lease.owner,
             identity=lease.identity,
             dispose=dispose_provider,
+            rollback=rollback_provider,
         )
 
     def _stage_provider_from_extension(
@@ -523,12 +529,18 @@ class AgentProductSession(AgentSessionAdapterMixin):
             lease.deactivate()
             self._sync_footer_available_provider_count()
 
+        def rollback_provider() -> RegistrationDisposalResult:
+            result = lease.rollback_registration()
+            self._sync_footer_available_provider_count()
+            return result
+
         return RegistrationLease(
             owner=lease.owner,
             identity=lease.identity,
             dispose=dispose_provider,
             activate=activate_provider,
             deactivate=deactivate_provider,
+            rollback=rollback_provider,
         )
 
     def _bind_provider_removal_from_extension(
@@ -543,11 +555,17 @@ class AgentProductSession(AgentSessionAdapterMixin):
             self._sync_footer_available_provider_count()
             return result
 
+        def rollback_provider() -> RegistrationDisposalResult:
+            result = lease.rollback_registration()
+            self._sync_footer_available_provider_count()
+            return result
+
         self._sync_footer_available_provider_count()
         return RegistrationLease(
             owner=lease.owner,
             identity=lease.identity,
             dispose=dispose_provider,
+            rollback=rollback_provider,
         )
 
     def _stage_provider_removal_from_extension(
@@ -570,12 +588,18 @@ class AgentProductSession(AgentSessionAdapterMixin):
             lease.deactivate()
             self._sync_footer_available_provider_count()
 
+        def rollback_provider() -> RegistrationDisposalResult:
+            result = lease.rollback_registration()
+            self._sync_footer_available_provider_count()
+            return result
+
         return RegistrationLease(
             owner=lease.owner,
             identity=lease.identity,
             dispose=dispose_provider,
             activate=activate_provider,
             deactivate=deactivate_provider,
+            rollback=rollback_provider,
         )
 
     def _get_extension_model_selection(self) -> ModelSelection | None:

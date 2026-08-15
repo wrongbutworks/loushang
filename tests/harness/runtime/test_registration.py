@@ -549,3 +549,30 @@ def test_uncommitted_registration_scope_rolls_back_on_context_exit() -> None:
     asyncio.run(scenario())
 
     assert calls == ["removed"]
+
+
+def test_registration_scope_rolls_back_admission_exactly_in_reverse_order() -> None:
+    owner = _owner()
+    calls: list[str] = []
+    scope = RegistrationScope(owner)
+    for name in ("first", "second"):
+        scope.add(
+            RegistrationLease(
+                owner=owner,
+                identity=RegistrationIdentity.create(
+                    surface="test",
+                    public_key=name,
+                ),
+                dispose=lambda: pytest.fail("async disposer must not run"),
+                rollback=lambda name=name: calls.append(name),
+            )
+        )
+
+    report = scope.rollback_admission()
+
+    assert calls == ["second", "first"]
+    assert [outcome.result.state for outcome in report.outcomes] == [
+        "removed",
+        "removed",
+    ]
+    assert scope.state == "disposed"

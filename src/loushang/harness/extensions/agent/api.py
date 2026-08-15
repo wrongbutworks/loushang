@@ -29,6 +29,7 @@ class ExtensionAPI(ExtensionContributionAPI):
             entry_path=entry_path,
         )
         self._pending_provider_actions: list[tuple[str, str, object | None]] = []
+        self._admission_provider_actions: list[tuple[str, str, object | None]] = []
 
     def bind_runtime_state(
         self,
@@ -129,9 +130,28 @@ class ExtensionAPI(ExtensionContributionAPI):
             return
         pending = list(self._pending_provider_actions)
         self._pending_provider_actions.clear()
-        for action, name, config in pending:
-            if not self._apply_provider_action(action, name, config):
-                self._pending_provider_actions.append((action, name, config))
+        for index, (action, name, config) in enumerate(pending):
+            try:
+                applied = self._apply_provider_action(action, name, config)
+            except BaseException:
+                self._pending_provider_actions.extend(pending[index:])
+                raise
+            if not applied:
+                self._pending_provider_actions.extend(pending[index:])
+                return
+            self._admission_provider_actions.append((action, name, config))
+
+    def _rollback_runtime_admission(self) -> None:
+        """Replay declarative Provider actions after initial admission rollback."""
+
+        self._pending_provider_actions = [
+            *self._admission_provider_actions,
+            *self._pending_provider_actions,
+        ]
+        self._admission_provider_actions.clear()
+
+    def _commit_runtime_admission(self) -> None:
+        self._admission_provider_actions.clear()
 
     def _apply_provider_action(
         self, action: str, name: str, config: object | None

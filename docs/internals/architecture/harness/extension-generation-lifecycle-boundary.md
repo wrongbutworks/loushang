@@ -39,19 +39,27 @@ the synchronous publication point; partial activation rolls back in reverse
 order before the error escapes. A generation-scoped Provider removal is an
 owner-scoped tombstone layer, not a call to the compatibility facade's global
 name deletion; candidate rollback therefore reveals the previous winner. The
-bootstrap Tool compatibility entry can be adopted in place by generation 1,
-so initial session construction does not register a duplicate Tool. Commands,
-hooks, flags, shortcuts, renderers, and resource declarations remain data in
-the immutable Extension composition; publication swaps that composition rather
+bootstrap Tool compatibility entry can be adopted in place by generation 1
+only when both the exact `ToolDefinition` and source provenance match. A
+same-name Product Tool rejected during bootstrap conflict resolution is not
+adopted or rebound by the Extension runtime. Provider actions from one owner
+reduce in call order, including staged register/register and
+unregister/register sequences. Owner-scoped Provider tombstones temporarily
+detach associated source-scoped API adapters through an opaque AI-owned
+restoration token, so rollback restores both surfaces exactly. Commands, hooks,
+flags, shortcuts, renderers, and resource declarations remain data in the
+immutable Extension composition; publication swaps that composition rather
 than inventing live registry tokens for every declaration.
 
 ## Publication And Failure Semantics
 
 Before publication, staged Tool/Provider layers are not effective winners.
-Failure or cancellation invalidates only the candidate binding state and
-reverses every candidate registration. The old runner state,
-resource bundle, registrations, and previously issued context leases remain
-authoritative and usable.
+Synchronous initial admission failure uses each lease's exact non-awaiting
+rollback and resets the setup scope, so retry cannot inherit hidden staged
+entries. Failure or cancellation of an asynchronous candidate invalidates only
+the candidate binding state and reverses every candidate registration. The old
+runner state, resource bundle, registrations, and previously issued context
+leases remain authoritative and usable.
 
 Publication performs no await. The runner composition and resource bundle are
 changed in the same synchronous call. If resource commit or view rebuild fails,
@@ -113,6 +121,10 @@ outside this boundary.
   old exact registrations, and repeated retirement is idempotent;
 - resource publication failure restores the previous bundle and runtime;
 - Tool and Provider layer removal cannot clobber the current same-name winner;
+- bootstrap Tool adoption verifies definition and source provenance, initial
+  admission retry has no hidden leases, and same-owner Provider actions retain
+  call order across tombstones;
+- owner-scoped Provider removal masks and restores associated API adapters;
 - session shutdown excludes concurrent candidate publication and retains
   retryable cleanup ownership; and
 - Tool schemas loaded through an actual Extension and effective Tool registry

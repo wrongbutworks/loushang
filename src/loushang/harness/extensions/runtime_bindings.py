@@ -65,7 +65,11 @@ class ExtensionRuntimeBindingFactory:
         | None
     ) = None
     adopt_tool: (
-        Callable[[str, RegistrationOwner], RegistrationLease | None] | None
+        Callable[
+            [object, RegistrationOwner, object | None],
+            RegistrationLease | None,
+        ]
+        | None
     ) = None
     bind_provider: (
         Callable[[str, object, RegistrationOwner], RegistrationLease] | None

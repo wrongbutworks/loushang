@@ -489,12 +489,14 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
 
     def _adopt_extension_runtime_tool(
         self,
-        name: str,
+        tool: object,
         owner: RegistrationOwner,
+        source_info: object | None = None,
     ) -> RegistrationLease | None:
         return self._composition.tool_controller.adopt_runtime_tool(
-            name,
+            tool,
             owner=owner,
+            source_info=source_info,
         )
 
     def _stage_extension_runtime_tool(

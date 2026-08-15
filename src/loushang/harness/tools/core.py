@@ -726,18 +726,25 @@ class ToolRegistry:
                     published=False,
                 )
             ),
+            rollback=lambda: self._remove_bound_tool(
+                owner=owner,
+                identity=identity,
+            ),
         )
 
     def adopt_compatibility_tool(
         self,
-        name: str,
+        tool: ToolDefinition,
         *,
         owner: RegistrationOwner,
+        source_info: object | None = None,
     ) -> RegistrationLease | None:
         """Move one bootstrap compatibility entry under an exact live owner."""
 
+        definition = self._require_definition(tool, operation="adopt_tool")
         if not isinstance(owner, RegistrationOwner):
             raise TypeError("ToolRegistry adoption owner must be a RegistrationOwner")
+        name = definition.name
         registration_id = self._legacy_registration_ids.get(name)
         layers = self._tools.get(name)
         if registration_id is None or layers is None:
@@ -745,6 +752,11 @@ class ToolRegistry:
         for index, registered in enumerate(layers):
             if registered.identity.registration_id != registration_id:
                 continue
+            if (
+                registered.definition is not definition
+                or registered.source_info != source_info
+            ):
+                return None
             identity = RegistrationIdentity.create(surface="tool", public_key=name)
             layers[index] = _RegisteredTool(
                 owner=owner,
@@ -763,10 +775,33 @@ class ToolRegistry:
                     identity=resolved_identity,
                 )
 
+            def rollback_adoption(
+                resolved_identity: RegistrationIdentity = identity,
+                original: _RegisteredTool = registered,
+            ) -> RegistrationDisposalResult:
+                current_layers = self._tools.get(name)
+                if current_layers is None:
+                    return RegistrationDisposalResult(state="already_removed")
+                for current_index, current in enumerate(current_layers):
+                    if current.identity.registration_id != resolved_identity.registration_id:
+                        continue
+                    if current.owner != owner:
+                        return RegistrationDisposalResult(
+                            state="failed_terminal",
+                            diagnostic_code="tool_registration_owner_mismatch",
+                        )
+                    current_layers[current_index] = original
+                    self._legacy_registration_ids[name] = (
+                        original.identity.registration_id
+                    )
+                    return RegistrationDisposalResult(state="removed")
+                return RegistrationDisposalResult(state="already_removed")
+
             return RegistrationLease(
                 owner=owner,
                 identity=identity,
                 dispose=dispose_adopted,
+                rollback=rollback_adoption,
             )
         return None
 

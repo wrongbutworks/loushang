@@ -443,12 +443,18 @@ def test_initial_generation_binding_failure_never_publishes_partial_tools() -> N
             raise RuntimeError("second Tool failed")
         return registry.bind_tool(value, owner=owner, source_info=source_info)
 
+    reject_second = True
+
     def stage_tool(
         value: object,
         owner: RegistrationOwner,
         source_info: object | None,
     ) -> RegistrationLease:
-        if isinstance(value, ToolDefinition) and value.name == "second":
+        if (
+            reject_second
+            and isinstance(value, ToolDefinition)
+            and value.name == "second"
+        ):
             raise RuntimeError("second Tool failed")
         return registry.stage_tool(value, owner=owner, source_info=source_info)
 
@@ -456,10 +462,129 @@ def test_initial_generation_binding_failure_never_publishes_partial_tools() -> N
     bindings.stage_tool = stage_tool
 
     async def scenario() -> None:
+        nonlocal reject_second
         with pytest.raises(RuntimeError, match="second Tool failed"):
             runner.bind_runtime(bindings)
         assert registry.list_definitions() == []
+        reject_second = False
+        runner.bind_runtime(bindings)
+        assert [item.name for item in registry.list_definitions()] == [
+            "first",
+            "second",
+        ]
+        assert len(runner.registration_inventory) == 2
         await runner.dispose_runtime_generation()
+
+    asyncio.run(scenario())
+
+
+def test_bootstrap_tool_conflict_does_not_adopt_or_replace_product_tool() -> None:
+    from loushang.harness.tools.core import ToolRegistry
+
+    registry = ToolRegistry()
+    product = _tool("shared", "product")
+    extension = _tool("shared", "extension")
+    registry.register_tool(product, source_info="product")
+    runner = ExtensionRunner(
+        [
+            LoadedExtension(
+                name="review",
+                source_path=Path("/tmp/review.py"),
+                tool_definitions=[extension],
+            )
+        ]
+    )
+    bindings = _bindings(
+        lambda value, owner, source_info: registry.bind_tool(
+            value,
+            owner=owner,
+            source_info=source_info,
+        )
+    )
+    bindings.stage_tool = lambda value, owner, source_info: registry.stage_tool(
+        value,
+        owner=owner,
+        source_info=source_info,
+    )
+    bindings.adopt_tool = lambda value, owner, source_info: (
+        registry.adopt_compatibility_tool(
+            value,
+            owner=owner,
+            source_info=source_info,
+        )
+    )
+
+    async def scenario() -> None:
+        runner.bind_runtime(bindings)
+        assert registry.get_definition("shared") is product
+        assert runner.registration_inventory == ()
+        await runner.dispose_runtime_generation()
+        assert registry.get_definition("shared") is product
+
+    asyncio.run(scenario())
+
+
+def test_initial_admission_retry_replays_rolled_back_provider_declarations() -> None:
+    from loushang.ai.model import Provider
+    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+    from loushang.harness.extensions.agent.api import ExtensionAPI
+    from loushang.harness.model_catalog import ModelCatalog
+    from loushang.harness.tools.core import ToolRegistry
+
+    registry = ToolRegistry()
+    catalog = ModelCatalog(AiModelRegistry())
+    api = ExtensionAPI(name="review", source_path=Path("/tmp/review.py"))
+    api.register_provider("proxy", {"name": "Proxy"})
+    runner = ExtensionRunner(
+        [
+            LoadedExtension(
+                name="review",
+                source_path=Path("/tmp/review.py"),
+                api=api,
+                tool_definitions=[_tool("first", "first"), _tool("second", "second")],
+            )
+        ]
+    )
+    reject_second = True
+
+    def stage_tool(value, owner, source_info):
+        if reject_second and value.name == "second":
+            raise RuntimeError("second Tool failed")
+        return registry.stage_tool(value, owner=owner, source_info=source_info)
+
+    bindings = _bindings(
+        lambda value, owner, source_info: registry.bind_tool(
+            value,
+            owner=owner,
+            source_info=source_info,
+        )
+    )
+    bindings.stage_tool = stage_tool
+    bindings.bind_provider = lambda name, config, owner: catalog.bind_provider(
+        Provider(id=name, name=str(config["name"])),
+        owner=owner,
+    )
+    bindings.stage_provider = lambda name, config, owner: catalog.stage_provider(
+        Provider(id=name, name=str(config["name"])),
+        owner=owner,
+    )
+
+    async def scenario() -> None:
+        nonlocal reject_second
+        with pytest.raises(RuntimeError, match="second Tool failed"):
+            runner.bind_runtime(bindings)
+        assert catalog.ai_registry.get_provider("proxy") is None
+        assert registry.list_definitions() == []
+
+        reject_second = False
+        runner.bind_runtime(bindings)
+        assert catalog.ai_registry.get_provider("proxy") == Provider(
+            id="proxy",
+            name="Proxy",
+        )
+        assert len(runner.registration_inventory) == 3
+        await runner.dispose_runtime_generation()
+        assert catalog.ai_registry.get_provider("proxy") is None
 
     asyncio.run(scenario())
 
