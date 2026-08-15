@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -235,9 +237,30 @@ def test_command_normalization_exposes_shell_stdin_payload(
         (("bash", "../proc/thread-self/fd/0"), "/tmp"),
         (("bash", "/proc/self/root/dev/stdin"), "/tmp"),
         (("bash", "/proc/thread-self/root/dev/stdin"), "/tmp"),
-        (("bash", "/proc/self/root/../dev/stdin"), "/tmp"),
-        (("bash", "/proc/thread-self/root/../dev/stdin"), "/tmp"),
-        (("bash", "/proc/self/root/../../dev/stdin"), "/tmp"),
+        pytest.param(
+            ("bash", "/proc/self/root/../dev/stdin"),
+            "/tmp",
+            marks=pytest.mark.skipif(
+                Path("/tmp").is_symlink(),
+                reason="macOS /tmp is a symlink to /private/tmp; lexical /tmp path equivalence does not hold",
+            ),
+        ),
+        pytest.param(
+            ("bash", "/proc/thread-self/root/../dev/stdin"),
+            "/tmp",
+            marks=pytest.mark.skipif(
+                Path("/tmp").is_symlink(),
+                reason="macOS /tmp is a symlink to /private/tmp; lexical /tmp path equivalence does not hold",
+            ),
+        ),
+        pytest.param(
+            ("bash", "/proc/self/root/../../dev/stdin"),
+            "/tmp",
+            marks=pytest.mark.skipif(
+                Path("/tmp").is_symlink(),
+                reason="macOS /tmp is a symlink to /private/tmp; lexical /tmp path equivalence does not hold",
+            ),
+        ),
         (("fish", "stdin"), "/dev"),
         (("fish", "--", "../proc/self/fd/0"), "/tmp"),
     ],
@@ -449,6 +472,10 @@ def test_command_normalization_marks_wrapper_with_arbitrary_basename_incomplete(
     assert subject.normalization_complete is False
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS sandbox denies copying /bin/bash (Operation not permitted)",
+)
 def test_command_normalization_fails_safe_for_independent_shell_copies(
     tmp_path,
 ) -> None:
@@ -917,6 +944,10 @@ def test_evaluate_policy_propagates_cancellation() -> None:
         asyncio.run(evaluate_policy(CancelledEvaluator(), CustomPolicySubject("demo")))
 
 
+@pytest.mark.skipif(
+    Path("/tmp").is_symlink(),
+    reason="asserts resolved paths under /tmp; macOS /tmp is a symlink to /private/tmp",
+)
 def test_workspace_policy_adapter_accepts_async_subject_evaluator() -> None:
     from loushang.harness.policy import PolicyDecision, ToolPolicySubject
     from loushang.harness.tools.workspace.policy import (

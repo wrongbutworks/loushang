@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -132,6 +133,10 @@ def test_linux_backend_probe_reports_enforcement_capabilities(tmp_path: Path) ->
     )
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="asserts the Linux-only bubblewrap backend command shape",
+)
 def test_linux_scope_wraps_the_materialized_request_and_common_exec_backend(
     tmp_path: Path,
 ) -> None:
