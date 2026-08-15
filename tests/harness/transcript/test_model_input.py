@@ -544,8 +544,10 @@ def test_record_limit_and_revision_conflict_fail_before_transport() -> None:
             max_encoded_record_bytes=512,
         )
 
-        with pytest.raises(ModelInputRecordSizeError):
+        with pytest.raises(ModelInputRecordSizeError) as exc_info:
             await committer.commit_prepared_request(_prepared())
+
+        assert exc_info.value.info.code.value == "request_validation"
 
         report = await run_prepared_request_barrier_conformance(committer)
 

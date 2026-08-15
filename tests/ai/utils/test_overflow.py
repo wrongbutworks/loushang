@@ -40,6 +40,26 @@ def test_error_message_overflow_detected() -> None:
     assert is_context_overflow(msg, context_window=128000) is True
 
 
+def test_typed_context_overflow_does_not_depend_on_public_message() -> None:
+    msg = _assistant(
+        stop_reason="error",
+        error_message="Provider request failed.",
+    )
+    object.__setattr__(
+        msg,
+        "error_info",
+        {
+            "code": "context_overflow",
+            "message": "Provider request failed.",
+            "source": "provider",
+            "retryable": False,
+            "details": {},
+        },
+    )
+
+    assert is_context_overflow(msg, context_window=128000) is True
+
+
 def test_error_message_no_overflow() -> None:
     msg = _assistant(
         stop_reason="error",

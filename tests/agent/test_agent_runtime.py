@@ -6,6 +6,7 @@ import pytest
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
+from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions, ReasoningOptions, RetryOptions
@@ -662,6 +663,59 @@ def test_abort_marks_run_as_aborted_and_sets_error_message() -> None:
         assert agent.state.streaming_message is None
         assert agent.state.messages[-1].stop_reason == "aborted"
         assert agent.state.error_message == "Request aborted by user"
+
+    asyncio.run(scenario())
+
+
+def test_non_ai_run_failure_does_not_expose_exception_text() -> None:
+    from loushang.agent import Agent
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        raise RuntimeError("Authorization: Bearer secret-token")
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn, initial_state=agent_state_seed())
+
+        await agent.prompt("hi")
+
+        assert agent.state.messages[-1].stop_reason == "error"
+        assert agent.state.error_message == "Agent run failed."
+        assert agent.state.messages[-1].error_info is not None
+        assert agent.state.messages[-1].error_info["code"] == "stream"
+        assert agent.state.messages[-1].error_info["details"] == {
+            "exceptionType": "RuntimeError"
+        }
+        assert "secret-token" not in repr(agent.state.messages)
+
+    asyncio.run(scenario())
+
+
+def test_ai_run_failure_preserves_safe_public_message() -> None:
+    from loushang.agent import Agent
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        raise UnsupportedCapabilityError(
+            "Model 'text-only' does not support image input",
+            model="text-only",
+            details={"capability": "image_input"},
+        )
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn, initial_state=agent_state_seed())
+
+        await agent.prompt("hi")
+
+        assert agent.state.messages[-1].stop_reason == "error"
+        assert (
+            agent.state.error_message
+            == "Model 'text-only' does not support image input"
+        )
+        assert agent.state.messages[-1].error_info is not None
+        assert agent.state.messages[-1].error_info["code"] == (
+            "unsupported_capability"
+        )
 
     asyncio.run(scenario())
 

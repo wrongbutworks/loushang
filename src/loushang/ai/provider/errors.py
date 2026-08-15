@@ -40,6 +40,18 @@ _ERROR_CLASS_BY_CODE: dict[
     AIErrorCode.PROVIDER: AIProviderError,
 }
 
+_LOCAL_AI_ERROR_CODES = frozenset(
+    {
+        AIErrorCode.CONFIGURATION,
+        AIErrorCode.MODEL_NOT_FOUND,
+        AIErrorCode.AMBIGUOUS_MODEL,
+        AIErrorCode.UNSUPPORTED_CAPABILITY,
+        AIErrorCode.REQUEST_VALIDATION,
+        AIErrorCode.TOOL_VALIDATION,
+        AIErrorCode.CANCELLED,
+    }
+)
+
 _PROVIDER_RESPONSE_SUMMARY_MAX_CHARS = 512
 _PROVIDER_DIAGNOSTIC_KEYS = frozenset({"code", "detail", "error", "message", "type"})
 _SENSITIVE_KEY_PATTERN = re.compile(
@@ -131,6 +143,8 @@ def normalize_provider_error(
     source: str = "provider",
 ) -> AIError:
     if isinstance(error, AIError):
+        if error.info.code in _LOCAL_AI_ERROR_CODES:
+            return ai_error_from_info(error.info)
         info = _canonicalize_provider_error_info(error.info)
         return ai_error_from_info(info)
     status_code = _provider_status_code(error)
@@ -197,6 +211,8 @@ def _canonicalize_provider_error_info(
 ) -> AIErrorInfo:
     resolved_status_code = info.status_code if status_code is None else status_code
     code = cast(AIErrorCode, info.code)
+    if resolved_status_code is None and code in _LOCAL_AI_ERROR_CODES:
+        return info
     if resolved_status_code is not None:
         code = _provider_error_code_from_status(resolved_status_code)
     is_authentication_error = (

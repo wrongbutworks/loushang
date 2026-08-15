@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, TypeAlias, cast
 
+from loushang.ai import AIError, AIErrorCode
 from loushang.foundation.json import JSONValue, dump_json_value
 
 MODEL_INPUT_SCHEMA_VERSION = 1
@@ -29,8 +30,11 @@ FrozenModelInputValue: TypeAlias = (
 ModelInputOutcome: TypeAlias = Literal["prepared"]
 
 
-class ModelInputRecordSizeError(ValueError):
+class ModelInputRecordSizeError(AIError, ValueError):
     """A Model Input fact cannot fit inside the declared record ceiling."""
+
+    default_code = AIErrorCode.REQUEST_VALIDATION
+    default_source = "loushang.harness.transcript"
 
 
 class ModelInputIntegrityError(RuntimeError):

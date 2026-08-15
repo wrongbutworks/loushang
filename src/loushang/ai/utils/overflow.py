@@ -37,6 +37,9 @@ _CEREBRAS_PATTERN: Pattern[str] = re.compile(
 def is_context_overflow(
     message: AssistantMessage, context_window: int | None = None
 ) -> bool:
+    error_info = getattr(message, "error_info", None)
+    if isinstance(error_info, dict) and error_info.get("code") == "context_overflow":
+        return True
     # 情况 1：错误型溢出：根据 error_message 文案匹配
     if getattr(message, "stop_reason", None) == "error":
         error_message = getattr(message, "error_message", None)

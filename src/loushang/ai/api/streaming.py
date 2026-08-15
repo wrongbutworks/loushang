@@ -34,22 +34,7 @@ from loushang.ai.structured import (
     parse_structured_output,
     with_structured_output_options,
 )
-from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
-
-
-def _has_image_input(normalized_context: NormalizedContext) -> bool:
-    for message in normalized_context.messages:
-        if (
-            isinstance(message, UserMessage)
-            and isinstance(message.content, list)
-            and any(isinstance(part, ImagePart) for part in message.content)
-        ):
-            return True
-        if isinstance(message, ToolResultMessage) and any(
-            isinstance(part, ImagePart) for part in message.content
-        ):
-            return True
-    return False
+from loushang.ai.utils.capabilities import context_has_image_input
 
 
 def _has_tools(normalized_context: NormalizedContext) -> bool:
@@ -178,7 +163,7 @@ def _validate_capability(
         )
 
     supports_image_input = bool(getattr(capabilities, "supports_image_input", False))
-    if _has_image_input(normalized_context) and not supports_image_input:
+    if context_has_image_input(normalized_context.messages) and not supports_image_input:
         raise UnsupportedCapabilityError(
             f"Model {model.id!r} does not support image input",
             model=getattr(model, "id", None),

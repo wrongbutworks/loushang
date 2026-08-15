@@ -43,6 +43,34 @@ def test_retry_runtime_owns_identity_free_retry_lifecycle() -> None:
     asyncio.run(scenario())
 
 
+def test_retry_runtime_prefers_typed_retryability_over_public_message() -> None:
+    retryable = _assistant_error("opaque public error")
+    object.__setattr__(
+        retryable,
+        "error_info",
+        {"code": "provider", "retryable": True},
+    )
+    non_retryable = _assistant_error("503 service unavailable")
+    object.__setattr__(
+        non_retryable,
+        "error_info",
+        {"code": "authentication", "retryable": False},
+    )
+    runtime = AgentTranscriptRetryRuntime(
+        get_policy=lambda: RetryPolicy(enabled=True),
+        get_messages=list,
+        set_messages=lambda messages: None,
+        get_context_window=lambda: 100,
+        dispatch_event=lambda event: _append([], event),
+        record_runtime_exception=lambda **kwargs: None,
+        sleep_for_retry=lambda delay_ms, signal: _sleep(delay_ms, signal),
+        is_context_overflow_fn=lambda message, context_window: False,
+    )
+
+    assert runtime.is_retryable_error(retryable) is True
+    assert runtime.is_retryable_error(non_retryable) is False
+
+
 def _assistant_error(error_message: str) -> AssistantMessage:
     return AssistantMessage(
         endpoint="test-endpoint",

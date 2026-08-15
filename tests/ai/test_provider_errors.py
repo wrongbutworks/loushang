@@ -153,6 +153,21 @@ def test_normalize_provider_error_does_not_retain_raw_exception_text() -> None:
     assert "secret-token" not in repr(normalized)
 
 
+def test_normalize_provider_error_preserves_local_typed_validation_error() -> None:
+    from loushang.ai.errors import AIRequestValidationError
+
+    original = AIRequestValidationError(
+        "Prepared Model Input exceeds the durable record limit.",
+        source="loushang.harness.transcript",
+        details={"limitBytes": 1_048_576},
+    )
+
+    normalized = normalize_provider_error(original, source="openai-responses")
+
+    assert isinstance(normalized, AIRequestValidationError)
+    assert normalized.info == original.info
+
+
 def test_normalize_provider_error_preserves_request_id_from_headers() -> None:
     normalized = normalize_provider_error(
         _HttpErrorWithHeaders("rate limited", 429),

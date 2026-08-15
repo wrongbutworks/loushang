@@ -21,6 +21,7 @@ from loushang.ai.api_registry import APIRegistry
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
+from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities import CapabilityCompositionRuntime
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -782,10 +783,11 @@ def _build_product_bindings(
         *,
         source: str = "set",
     ) -> None:
-        await _set_model(
+        await apply_agent_session_model_selection(
             selection_runtime,
             selection,
             agent,
+            session_runtime,
             product.extension_runner,
             refresh_extension_runtime,
             session.get_cwd,
@@ -1128,29 +1130,36 @@ async def _compact_manual(
     return result
 
 
-async def _set_model(
+async def apply_agent_session_model_selection(
     selection_runtime: AgentTranscriptSelectionRuntime,
     selection: object,
     agent: Agent,
+    session_runtime: SessionRuntime,
     extension_runner: ExtensionEventPort | None,
     refresh_extension_runtime: Callable[[str], Awaitable[None]],
     get_cwd: Callable[[], str],
     source: str = "set",
 ) -> None:
-    resolved = selection_runtime.resolve_model(cast(Model | ModelSelection, selection))
-    previous = agent.model
-    await selection_runtime.apply_model(resolved)
-    await refresh_extension_runtime("model_selection_changed")
-    if extension_runner is not None and previous != resolved:
-        await extension_runner.emit_agent_event(
-            {
-                "type": "model_select",
-                "model": resolved,
-                "previous_model": previous,
-                "source": source,
-            },
-            cwd=get_cwd(),
+    async def apply_selection() -> None:
+        resolved = selection_runtime.resolve_model(
+            cast(Model | ModelSelection, selection)
         )
+        validate_image_input_compatibility(resolved, agent.state.messages)
+        previous = agent.model
+        await selection_runtime.apply_model(resolved)
+        await refresh_extension_runtime("model_selection_changed")
+        if extension_runner is not None and previous != resolved:
+            await extension_runner.emit_agent_event(
+                {
+                    "type": "model_select",
+                    "model": resolved,
+                    "previous_model": previous,
+                    "source": source,
+                },
+                cwd=get_cwd(),
+            )
+
+    await session_runtime.host_runtime.run_after_idle(apply_selection)
 
 
 async def _set_session_name(
@@ -1192,6 +1201,7 @@ __all__ = [
     "SessionFoundationInputs",
     "SessionMaintenanceInputs",
     "SessionProductInputs",
+    "apply_agent_session_model_selection",
     "compose_session_runtime",
     "sleep_for_retry",
 ]

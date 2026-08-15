@@ -69,6 +69,7 @@ class AssistantMessage:
     error_message: str | None
     timestamp: float
     response_model: str | None = None
+    error_info: dict[str, JSONValue] | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("api", "provider", "endpoint", "model"):

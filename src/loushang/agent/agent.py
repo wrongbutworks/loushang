@@ -28,6 +28,7 @@ from loushang.agent.types import (
     ToolExecutionMode,
 )
 from loushang.ai.api import stream
+from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.messages import canonicalize_user_message
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.registry import resolve_model_api
@@ -40,8 +41,38 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
+from loushang.foundation.json import JSONValue
 
 _ABORT_EXECUTION_CANCEL_DELAY_S = 0.05
+
+
+def _public_run_failure_message(error: Exception, *, aborted: bool) -> str:
+    if aborted:
+        return "Request aborted by user"
+    if isinstance(error, AIError):
+        return error.info.message
+    return "Agent run failed."
+
+
+def _run_failure_error_info(
+    error: Exception,
+    *,
+    aborted: bool,
+    model: Model,
+) -> dict[str, JSONValue]:
+    if isinstance(error, AIError):
+        return error.info.to_dict()
+    message = _public_run_failure_message(error, aborted=aborted)
+    return AIErrorInfo(
+        code=AIErrorCode.CANCELLED if aborted else AIErrorCode.STREAM,
+        message=message,
+        source="loushang.agent",
+        retryable=False,
+        provider=model.provider_id,
+        endpoint=model.endpoint_id,
+        model=model.id,
+        details={"exceptionType": error.__class__.__name__},
+    ).to_dict()
 
 
 class AgentStateError(RuntimeError):
@@ -679,6 +710,12 @@ class Agent:
             raise asyncio.CancelledError
 
     async def _handle_run_failure(self, error: Exception, *, aborted: bool) -> None:
+        error_message = _public_run_failure_message(error, aborted=aborted)
+        error_info = _run_failure_error_info(
+            error,
+            aborted=aborted,
+            model=self._state.model,
+        )
         failure_message = AssistantMessage(
             role="assistant",
             content=[TextPart(type="text", text="")],
@@ -689,8 +726,9 @@ class Agent:
             response_id=None,
             usage=_empty_usage(),
             stop_reason="aborted" if aborted else "error",
-            error_message=str(error),
+            error_message=error_message,
             timestamp=time.time() * 1000,
+            error_info=error_info,
         )
         self._state.messages.append(failure_message)
         self._state.error_message = failure_message.error_message
