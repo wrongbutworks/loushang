@@ -716,6 +716,133 @@ def test_runner_keeps_single_argument_runtime_api_compatibility() -> None:
     assert len(calls) == 1
 
 
+def test_cancelled_failed_publication_holds_gate_and_retries_candidate_cleanup() -> (
+    None
+):
+    layers: list[str] = []
+    disposal_counts: dict[str, int] = {}
+    candidate_disposal_started = asyncio.Event()
+    release_candidate_disposal = asyncio.Event()
+    old_disposal_started = asyncio.Event()
+    release_old_disposal = asyncio.Event()
+
+    def bind_tool(
+        value: object,
+        owner: RegistrationOwner | str,
+        source_info: object | None,
+    ) -> RegistrationLease:
+        del source_info
+        assert isinstance(value, ToolDefinition)
+        assert isinstance(owner, RegistrationOwner)
+        marker = value.description
+        layers.append(marker)
+        identity = RegistrationIdentity.create(
+            surface="review-tool",
+            public_key=value.name,
+        )
+
+        async def dispose() -> RegistrationDisposalResult:
+            disposal_counts[marker] = disposal_counts.get(marker, 0) + 1
+            if marker == "new":
+                if disposal_counts[marker] == 1:
+                    candidate_disposal_started.set()
+                    await release_candidate_disposal.wait()
+                    return RegistrationDisposalResult(state="failed_retryable")
+            elif marker == "old":
+                old_disposal_started.set()
+                await release_old_disposal.wait()
+            if marker in layers:
+                layers.remove(marker)
+            return RegistrationDisposalResult(state="removed")
+
+        return RegistrationLease(owner=owner, identity=identity, dispose=dispose)
+
+    runtime = ExtensionRunner(
+        [
+            LoadedExtension(
+                name="review",
+                source_path=Path("/tmp/review.py"),
+                tool_definitions=[_tool("lookup", "old")],
+            )
+        ]
+    )
+    bindings = _bindings(bind_tool)
+
+    async def scenario() -> None:
+        publication: asyncio.Task[None] | None = None
+        shutdown: asyncio.Task[object] | None = None
+        try:
+            await runtime.activate_runtime_generation(bindings)
+            old_context = runtime.create_command_context()
+            candidate = runtime.prepare_generation(
+                [
+                    LoadedExtension(
+                        name="review",
+                        source_path=Path("/tmp/review.py"),
+                        tool_definitions=[_tool("lookup", "new")],
+                    )
+                ]
+            )
+            await candidate.activate(bindings)
+
+            def fail_publication() -> None:
+                raise RuntimeError("resource publication failed")
+
+            async def publish_and_rollback() -> None:
+                try:
+                    candidate.publish(fail_publication)
+                except BaseException:
+                    await candidate.rollback()
+                    raise
+
+            publication = asyncio.create_task(publish_and_rollback())
+            await candidate_disposal_started.wait()
+
+            assert runtime.generation == 1
+            assert old_context.cwd == "/tmp/project"
+
+            shutdown = asyncio.create_task(runtime.dispose_runtime_generation())
+            try:
+                await asyncio.wait_for(old_disposal_started.wait(), timeout=0.05)
+            except TimeoutError:
+                old_disposal_started_early = False
+            else:
+                old_disposal_started_early = True
+
+            publication.cancel()
+            release_candidate_disposal.set()
+            with pytest.raises(asyncio.CancelledError):
+                await publication
+
+            await old_disposal_started.wait()
+            assert disposal_counts["new"] == 2
+            assert not shutdown.done()
+            release_old_disposal.set()
+            await shutdown
+
+            assert layers == []
+            assert runtime.retired_registration_inventory == ()
+            assert not old_disposal_started_early
+        finally:
+            release_candidate_disposal.set()
+            release_old_disposal.set()
+            tasks = tuple(
+                task for task in (publication, shutdown) if task is not None
+            )
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def bounded_scenario() -> None:
+        await asyncio.wait_for(scenario(), timeout=2.0)
+
+    asyncio.run(bounded_scenario())
+
+    assert disposal_counts == {"new": 2, "old": 1}
+
+
 def test_candidate_cannot_publish_after_runtime_shutdown_begins() -> None:
     layers: list[str] = []
     old_disposal_started = asyncio.Event()
