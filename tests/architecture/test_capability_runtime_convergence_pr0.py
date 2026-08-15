@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
+import sys
 from collections import defaultdict
 from functools import cache
 from pathlib import Path
@@ -13,6 +15,18 @@ PLAN_PATH = Path(
     "docs/internals/architecture/harness/capability-runtime-convergence-plan.md"
 )
 README_PATH = Path("docs/internals/architecture/harness/README.md")
+CAPABILITY_CATALOG_PATH = Path(
+    "docs/internals/architecture/harness/capability-catalog.md"
+)
+CAPABILITY_LIFECYCLE_PATH = Path(
+    "docs/internals/architecture/harness/capability-dependency-and-mount-lifecycle.md"
+)
+CAPABILITY_VARIATION_PATH = Path(
+    "docs/internals/architecture/harness/capability-variation-and-replacement-boundary.md"
+)
+CAPABILITY_CATALOG_GENERATOR_PATH = Path(
+    "scripts/generate_harness_capability_catalog.py"
+)
 SOURCE_ROOT = Path("src/loushang")
 HARNESS_ROOT = Path("src/loushang/harness")
 CAPABILITIES_ROOT = HARNESS_ROOT / "capabilities"
@@ -102,6 +116,10 @@ IMPLEMENTED_GRAPH_API_SYMBOLS = GRAPH_API_SYMBOLS
 
 BROAD_PARAMETER_NAMES = frozenset(
     {"context", "runtime", "bindings", "services", "container"}
+)
+
+EXPECTED_SOURCE_BACKED_CAPABILITY_IDS = frozenset(
+    {"harness.model_input", "harness.workspace"}
 )
 
 
@@ -234,6 +252,36 @@ def test_pr0_baseline_is_linked_from_the_plan_and_harness_catalog() -> None:
     link = "capability-runtime-convergence-pr0-baseline.md"
     assert link in PLAN_PATH.read_text(encoding="utf-8")
     assert link in README_PATH.read_text(encoding="utf-8")
+
+
+def test_source_backed_capability_catalog_is_complete_and_current() -> None:
+    result = subprocess.run(
+        [sys.executable, str(CAPABILITY_CATALOG_GENERATOR_PATH), "--check"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    catalog = CAPABILITY_CATALOG_PATH.read_text(encoding="utf-8")
+    source_backed_ids = frozenset(
+        re.findall(r"^\| `([\w.]+)` \|", catalog, re.MULTILINE)
+    )
+    assert source_backed_ids == EXPECTED_SOURCE_BACKED_CAPABILITY_IDS
+
+    catalog_link = "capability-catalog.md"
+    assert catalog_link in README_PATH.read_text(encoding="utf-8")
+    assert catalog_link in CAPABILITY_LIFECYCLE_PATH.read_text(encoding="utf-8")
+    assert catalog_link in CAPABILITY_VARIATION_PATH.read_text(encoding="utf-8")
+
+
+def test_capability_authority_docs_do_not_claim_the_graph_is_unimplemented() -> None:
+    lifecycle = CAPABILITY_LIFECYCLE_PATH.read_text(encoding="utf-8")
+    variation = CAPABILITY_VARIATION_PATH.read_text(encoding="utf-8")
+
+    assert "top-level Capability dependency planner" not in lifecycle
+    assert "until the top-level planner exists" not in lifecycle
+    assert "while the top-level planner and live Mount graph do not" not in variation
 
 
 def test_accepted_graph_contracts_have_one_declared_package_owner() -> None:

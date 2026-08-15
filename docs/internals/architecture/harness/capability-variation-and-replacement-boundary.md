@@ -164,8 +164,10 @@ visible in the resolved profile and diagnostics.
 The accepted target top-level Harness Capability IDs are `harness.workspace`,
 `harness.resources`, and `harness.session`. The accepted target Coding-specific
 mountable Capability IDs are `coding.lsp` and `coding.arch`; matching Coding
-constants already exist, while the top-level planner and live Mount graph do
-not.
+constants already exist. The generic Planner, Binder, live Mount Runtime, and
+Projector are implemented, while the generated
+[Harness Capability Catalog](capability-catalog.md) records which target Bundles
+currently have complete source-backed Definition / Provider / Consumer seams.
 
 The accepted target Capability dependency graph intentionally stays coarser
 than the current Runtime Profile inventory:

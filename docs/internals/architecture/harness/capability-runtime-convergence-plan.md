@@ -2,11 +2,11 @@
 
 ## Status
 
-Reviewed convergence plan, approved as an implementation basis. This document
-records the delivery shape for four related Harness improvements. It does not
-claim that the described contracts or migrations are implemented. Current
-source and accepted boundary documents remain authoritative until each
-delivery gate is closed.
+Completed delivery record. PR0 through PR9 were integrated by PR `#451`; this
+document retains their reviewed dependency order, compatibility decisions, and
+acceptance gates. Current source, the generated
+[Harness Capability Catalog](capability-catalog.md), and implemented boundary
+documents are authoritative for present behavior.
 
 PR0 is tracked by issue `#450`. Its executable pre-change inventory is
 [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md).

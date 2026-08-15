@@ -2,10 +2,15 @@
 
 ## Status
 
-Accepted target architecture. The current Runtime Profile and standard slot
-inventory remain implemented at a finer binding granularity; the top-level
-Capability dependency planner and incremental mount finalization described here
-are not yet implemented.
+Implemented Mount-runtime boundary with staged rollout. The Definition,
+Requirement, Bundle Provider, pure Planner, transactional Binder, live Runtime,
+and read-only Projector described here are implemented. The generated
+[Harness Capability Catalog](capability-catalog.md) is the source-backed record
+of complete Definition / Provider / Consumer seams. `harness.workspace` is the
+first accepted top-level Bundle in that catalog; `harness.resources`,
+`harness.session`, `coding.lsp`, and `coding.arch` remain rollout targets rather
+than claimed runtime nodes. Runtime Profile slots remain the implemented finer
+binding layer inside those future Bundles.
 
 Canonical Product, Capability, Mount, Package, Plugin, and Extension terms are
 defined in the
@@ -72,10 +77,12 @@ The accepted target top-level Harness Capability IDs are:
 | `harness.resources` | Resource discovery, activation, and capability-item composition | resource runtime, prompt sections, skill activation, tool packs, command packs |
 | `harness.session` | Product-neutral Session, transcript, context, interaction, and continuity mechanics | conversation store, transcript profile, compaction, side question, continuity providers |
 
-This is an accepted target Capability budget, not a current public runtime API
-and not a prohibition on focused Harness modules. A fourth top-level Harness
-Capability requires an independently owned lifecycle and a demonstrated need
-that cannot be expressed as a facet or contribution of an existing Capability.
+This is the accepted top-level Capability budget, not a claim that every row is
+already source-backed and not a prohibition on focused Harness modules. The
+generated Capability catalog records current role-complete seams. A fourth
+top-level Harness Capability requires an independently owned lifecycle and a
+demonstrated need that cannot be expressed as a facet or contribution of an
+existing Capability.
 
 The accepted target Coding-specific mountable Capability IDs, already
 represented by current Coding constants, are:
@@ -109,8 +116,9 @@ coding.arch -. optional .-> coding.lsp
 
 `harness.session` consumes the admitted resource composition and workspace
 facets used by the Session runtime, so both Harness edges are required in the
-accepted target plan. Current Session assembly wires those dependencies
-directly until the top-level planner exists.
+accepted target plan. Current Session assembly wires the not-yet-migrated
+Bundle dependencies directly until their complete seams enter the implemented
+Planner and Binder.
 
 The optional `coding.arch -> coding.lsp` edge is a permitted future shape, not
 part of the initial target. `coding.arch` must remain independently usable

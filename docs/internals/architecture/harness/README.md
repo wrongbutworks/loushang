@@ -22,8 +22,11 @@ planning, work event persistence, or AI provider behavior.
 - [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
   defines top-level Capability IDs, dependency direction, Mount identity,
   graph lifecycle, and graph diagnostics.
+- [Harness Capability Catalog](capability-catalog.md) is the generated,
+  source-backed inventory of role-complete Capability Definition / Provider /
+  Consumer seams and their lifecycle metadata.
 - [Capability Runtime Convergence Plan](capability-runtime-convergence-plan.md)
-  records the reviewed delivery plan for owner-scoped reversible registration,
+  records the completed PR0-PR9 delivery for owner-scoped reversible registration,
   Definition/Provider/Consumer separation, composed Profile/Mount/registration
   projection, and reconstruction of model-visible inputs from committed facts.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
@@ -54,16 +57,19 @@ description.
   separates static Capability Plan nodes from live Mounted Capabilities,
   fixes `A -> B` as "A depends on B", and defines graph planning, incremental
   binding, disposal, diagnostics, and multi-Product observation.
+- [Harness Capability Catalog](capability-catalog.md) is regenerated from
+  source-backed seam metadata and fails verification when an implemented
+  Definition, Provider, requirement, or Consumer drifts.
 - [Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md)
   defines aggregate contribution, ordered interception and decoration,
   exclusive replacement, protocol injection, composition-root ownership, and
   the invariant enforcement layer that Product and Plugin variation cannot
   bypass.
 - [Capability Runtime Convergence Plan](capability-runtime-convergence-plan.md)
-  joins registration ownership and disposal, Capability role separation,
-  existing graph projection, and durable model-input reconstruction into one
-  reviewed migration sequence. It is a delivery plan and does not override
-  implemented source or accepted boundary documents.
+  records the completed migration sequence that joined registration ownership
+  and disposal, Capability role separation, graph projection, and durable
+  model-input reconstruction. It does not override implemented source or
+  accepted boundary documents.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   is the executable pre-change inventory for that sequence. It records current
   compatibility and assigns each future contract to one package owner.
