@@ -985,8 +985,10 @@ once, and historical Model Inputs to rebuild after Extension removal.
 
 The implementation contract is frozen in
 [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md).
-PR8 is implemented on the Harness lane; PR9 remains a separate diagnostics
-slice.
+PR8 and the PR9 effective-runtime diagnostics slice are implemented on the
+Harness lane. Evidence-gated DOT, multi-Product aggregation, and long-running
+operational measurements remain explicit follow-up work rather than implicit
+convergence-closure requirements.
 
 - define the nesting contract between candidate graph commit and current
   Session publication before integrating Session switch;
