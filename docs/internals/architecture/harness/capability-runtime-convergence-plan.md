@@ -1004,6 +1004,9 @@ send when a required durable commit is unavailable.
 
 ### PR9: Product Projection And Operational Diagnostics
 
+The implementation contract is frozen in
+[Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md).
+
 - extend the existing Projector with composed effective views, explain, JSON,
   and diff;
 - let Product adapters own CLI, RPC, TUI, and Web presentation;

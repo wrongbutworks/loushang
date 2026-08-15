@@ -32,6 +32,9 @@ planning, work event persistence, or AI provider behavior.
 - [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
   fixes PR8's Session/candidate-graph nesting, per-sampling commit seam, complete
   model-call inventory, compaction lineage compatibility, and failure policy.
+- [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
+  fixes PR9's four-clock composed view, explicit skew, explain, JSON, and diff
+  semantics while retaining the existing graph projector as the only projector.
 - [Refactoring Principles](refactoring-principles.md) defines the evidence and
   neutrality gates for moving code into Harness.
 
@@ -67,6 +70,9 @@ description.
 - [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
   defines the implemented PR8 Session graph, per-sampling commit, complete
   model-call inventory, and compaction-lineage boundary.
+- [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
+  defines PR9's Product-neutral effective runtime diagnostics and clock-skew
+  semantics without introducing another authority.
 - [Refactoring Principles](refactoring-principles.md) defines what may move
   into harness and how migration slices should be shaped.
 - [Shared Capability Boundaries](shared-capability-boundaries.md) maps tools,
