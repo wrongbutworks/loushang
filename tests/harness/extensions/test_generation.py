@@ -478,6 +478,89 @@ def test_initial_generation_binding_failure_never_publishes_partial_tools() -> N
     asyncio.run(scenario())
 
 
+def test_initial_admission_rolls_back_committed_extension_owners() -> None:
+    staged: list[str] = []
+    visible: list[str] = []
+    reject_second = True
+    runner = ExtensionRunner(
+        [
+            LoadedExtension(
+                name="one",
+                source_path=Path("/tmp/one.py"),
+                tool_definitions=[_tool("first", "first")],
+            ),
+            LoadedExtension(
+                name="two",
+                source_path=Path("/tmp/two.py"),
+                tool_definitions=[_tool("second", "second")],
+            ),
+        ]
+    )
+
+    def stage_tool(
+        value: object,
+        owner: RegistrationOwner | str,
+        source_info: object | None,
+    ) -> RegistrationLease:
+        del source_info
+        assert isinstance(value, ToolDefinition)
+        assert isinstance(owner, RegistrationOwner)
+        name = value.name
+        staged.append(name)
+        identity = RegistrationIdentity.create(
+            surface="review-tool",
+            public_key=name,
+        )
+
+        def activate() -> None:
+            if name == "second" and reject_second:
+                raise RuntimeError("second activation failed")
+            staged.remove(name)
+            visible.append(name)
+
+        def deactivate() -> None:
+            if name in visible:
+                visible.remove(name)
+            if name not in staged:
+                staged.append(name)
+
+        def remove() -> RegistrationDisposalResult:
+            if name in visible:
+                visible.remove(name)
+            if name in staged:
+                staged.remove(name)
+            return RegistrationDisposalResult(state="removed")
+
+        return RegistrationLease(
+            owner=owner,
+            identity=identity,
+            dispose=remove,
+            activate=activate,
+            deactivate=deactivate,
+            rollback=remove,
+        )
+
+    bindings = _bindings(stage_tool)
+
+    async def scenario() -> None:
+        nonlocal reject_second
+        with pytest.raises(RuntimeError, match="second activation failed"):
+            runner.bind_runtime(bindings)
+        assert staged == []
+        assert visible == []
+        assert runner.registration_inventory == ()
+
+        reject_second = False
+        runner.bind_runtime(bindings)
+        assert staged == []
+        assert visible == ["first", "second"]
+        assert len(runner.registration_inventory) == 2
+        await runner.dispose_runtime_generation()
+        assert visible == []
+
+    asyncio.run(scenario())
+
+
 def test_bootstrap_tool_conflict_does_not_adopt_or_replace_product_tool() -> None:
     from loushang.harness.tools.core import ToolRegistry
 

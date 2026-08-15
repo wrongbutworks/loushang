@@ -435,8 +435,20 @@ class ExtensionRunner(ExtensionRuntime):
         self._bind_extension_apis()
         self._bind_declared_tools(resolved_bindings)
         if commit:
-            for registrations in self._generation_registrations:
-                registrations.commit()
+            committed: list[ExtensionGenerationRegistrations] = []
+            try:
+                for registrations in self._generation_registrations:
+                    registrations.commit()
+                    committed.append(registrations)
+            except BaseException as commit_error:
+                for registrations in reversed(committed):
+                    try:
+                        registrations.rollback_publication()
+                    except BaseException:
+                        commit_error.add_note(
+                            "Extension registration commit rollback failed"
+                        )
+                raise
         self._activated_generation = True
 
     @staticmethod
