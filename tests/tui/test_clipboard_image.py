@@ -97,7 +97,11 @@ def test_clipboard_image_reads_wayland_with_xclip_fallback() -> None:
             return CommandResult(ok=True, stdout=b"PNG")
         return CommandResult(ok=False)
 
-    image = read_clipboard_image(env={"WAYLAND_DISPLAY": "wayland-0"}, runner=runner)
+    image = read_clipboard_image(
+        env={"WAYLAND_DISPLAY": "wayland-0"},
+        runner=runner,
+        platform_name="linux",
+    )
 
     assert image is not None
     assert image.bytes == b"PNG"
@@ -119,7 +123,11 @@ def test_clipboard_image_converts_wayland_bmp_to_png() -> None:
             return CommandResult(ok=True, stdout=_tiny_bmp_1x1_red())
         return CommandResult(ok=False)
 
-    image = read_clipboard_image(env={"WAYLAND_DISPLAY": "wayland-0"}, runner=runner)
+    image = read_clipboard_image(
+        env={"WAYLAND_DISPLAY": "wayland-0"},
+        runner=runner,
+        platform_name="linux",
+    )
 
     assert image is not None
     assert image.mime_type == "image/png"
@@ -139,7 +147,7 @@ def test_clipboard_image_xclip_tries_supported_mimes_when_targets_fail() -> None
             return CommandResult(ok=True, stdout=b"PNG")
         return CommandResult(ok=False)
 
-    image = read_clipboard_image(env={}, runner=runner)
+    image = read_clipboard_image(env={}, runner=runner, platform_name="linux")
 
     assert image is not None
     assert image.bytes == b"PNG"
@@ -168,7 +176,11 @@ def test_clipboard_image_uses_wsl_powershell_fallback(tmp_path) -> None:
             return CommandResult(ok=True, stdout=b"ok\n")
         return CommandResult(ok=False)
 
-    image = read_clipboard_image(env={"WSL_DISTRO_NAME": "Ubuntu"}, runner=runner)
+    image = read_clipboard_image(
+        env={"WSL_DISTRO_NAME": "Ubuntu"},
+        runner=runner,
+        platform_name="linux",
+    )
 
     assert image is not None
     assert image.bytes == png_payload
