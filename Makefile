@@ -115,6 +115,7 @@ HARNESS_TEST_PATHS := \
 .PHONY: test-sandbox test-host-runtime
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
 .PHONY: check-harness lint-harness typecheck-harness test-harness
+.PHONY: check-architecture-docs
 .PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
 .PHONY: lane-status
 
@@ -161,6 +162,11 @@ typecheck-harness:
 
 test-harness:
 	uv --cache-dir .uv-cache run --extra dev pytest $(HARNESS_TEST_PATHS) -q
+
+check-architecture-docs:
+	.venv/bin/ruff check scripts/architecture/render_current_package_dependencies.py tests/architecture/test_architecture_documentation.py
+	.venv/bin/python scripts/architecture/render_current_package_dependencies.py --check
+	.venv/bin/python -m pytest tests/architecture/test_architecture_documentation.py -q
 
 check-harnesstui: lint-harnesstui typecheck-harnesstui test-harnesstui
 
