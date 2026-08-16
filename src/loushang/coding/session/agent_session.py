@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 from loushang.agent import Agent, PrepareModelCallFn
+from loushang.ai import PreparedRequestLimits
 from loushang.ai.api_registry import APIRegistry
 from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
@@ -82,6 +83,7 @@ async def _execute_coding_compaction_runtime(
     signal: object | None,
     custom_instructions: str | None = None,
     prepare_model_call: PrepareModelCallFn | None = None,
+    request_limits: PreparedRequestLimits | None = None,
 ) -> CompactionResult:
     return await _execute_coding_compaction(
         preparation=preparation,
@@ -90,6 +92,7 @@ async def _execute_coding_compaction_runtime(
         signal=signal,
         custom_instructions=custom_instructions,
         prepare_model_call=prepare_model_call,
+        request_limits=request_limits,
     )
 
 

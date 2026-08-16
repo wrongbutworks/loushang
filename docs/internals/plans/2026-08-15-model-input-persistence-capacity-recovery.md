@@ -229,6 +229,17 @@ now retain that stable category instead of collapsing to generic Provider
 failure. Bounded summary planning, endpoint/account limit resolution, and
 one-shot recovery remain pending.
 
+Implementation result, safety floor (2026-08-16): compaction and branch-summary
+calls now apply a 512 KiB internal canonical-request ceiling while preserving
+any stricter caller limit. The active Agent's explicit request limits flow into
+Product compaction without breaking older callback signatures. Summary input
+no longer drops images silently: the default policy replaces each image with a
+deterministic MIME/base64-length placeholder and persists an `image_omitted`
+degradation count; an explicit `refuse` policy stops before a model call. An
+oversized single summary request now fails before Model Input snapshot and
+transport with a typed terminal outcome. Turn-safe batching and bounded partial
+merge remain the next slice.
+
 ### MIR6: Optional Physical Reclamation
 
 Deferred to a separate accepted Store boundary. Evaluate only:

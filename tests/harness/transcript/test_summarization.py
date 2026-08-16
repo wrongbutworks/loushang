@@ -5,10 +5,24 @@ import asyncio
 import pytest
 
 import loushang.harness.transcript.summarization as summary_module
-from loushang.ai import CallOptions, Context
+from loushang.ai import CallOptions, Context, PreparedRequestLimits
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.types import AssistantMessage, TextPart, Usage
-from loushang.harness.transcript.summarization import default_summary_completer
+from loushang.ai.types import (
+    AssistantMessage,
+    ImagePart,
+    TextPart,
+    Usage,
+    UserMessage,
+)
+from loushang.harness.context import SummaryProfile
+from loushang.harness.transcript.maintenance import CompactionPreparation
+from loushang.harness.transcript.summarization import (
+    SUMMARY_MAX_CANONICAL_BYTES,
+    SummaryImagePolicyError,
+    default_summary_completer,
+    execute_transcript_compaction,
+    serialize_agent_conversation,
+)
 
 
 def _model(*, supports_stream: bool) -> Model:
@@ -46,6 +60,18 @@ def _message(text: str) -> AssistantMessage:
         stop_reason="stop",
         error_message=None,
         timestamp=0,
+    )
+
+
+def _summary_profile() -> SummaryProfile:
+    return SummaryProfile(
+        profile_id="summary-test",
+        system_prompt="Summarize safely.",
+        prompts={
+            "initial": "Create a summary.",
+            "update": "Update a summary.",
+            "turn-prefix": "Summarize the turn prefix.",
+        },
     )
 
 
@@ -100,3 +126,112 @@ def test_default_summary_completer_traces_selected_invocation_mode(
             },
         }
     ]
+
+
+def test_compaction_uses_bounded_request_and_explicit_image_placeholder() -> None:
+    captured: dict[str, object] = {}
+    image_data = "cHJpdmF0ZS1pbWFnZQ=="
+
+    async def completer(
+        model: object,
+        context: Context,
+        options: CallOptions | None,
+    ) -> str:
+        del model
+        captured["context"] = context
+        captured["options"] = options
+        return "safe summary"
+
+    result = asyncio.run(
+        execute_transcript_compaction(
+            preparation=CompactionPreparation(
+                first_kept_entry_id="kept",
+                messages_to_summarize=[
+                    UserMessage(
+                        role="user",
+                        content=[
+                            TextPart(type="text", text="inspect this image"),
+                            ImagePart(
+                                type="image",
+                                data=image_data,
+                                mime_type="image/png",
+                            ),
+                        ],
+                        timestamp=0.0,
+                    )
+                ],
+                turn_prefix_messages=[],
+                is_split_turn=False,
+                tokens_before=10,
+            ),
+            model=object(),
+            compaction_profile=_summary_profile(),
+            turn_prefix_profile=_summary_profile(),
+            completer=completer,
+            request_limits=PreparedRequestLimits(max_canonical_bytes=600_000),
+        )
+    )
+
+    context = captured["context"]
+    options = captured["options"]
+    assert isinstance(context, Context)
+    assert isinstance(options, CallOptions)
+    assert options.request_limits is not None
+    assert (
+        options.request_limits.max_canonical_bytes
+        == SUMMARY_MAX_CANONICAL_BYTES
+    )
+    prompt = context.messages[0].content[0].text
+    assert image_data not in prompt
+    assert (
+        "[Image omitted from summary input: mime_type=image/png; "
+        "base64_characters=20]"
+    ) in prompt
+    assert result.details == {
+        "degradations": [{"code": "image_omitted", "count": 1}]
+    }
+
+
+def test_summary_image_refusal_is_explicit_and_skips_model_call() -> None:
+    calls = 0
+    messages = [
+        UserMessage(
+            role="user",
+            content=[
+                ImagePart(type="image", data="aW1hZ2U=", mime_type="image/png")
+            ],
+            timestamp=0.0,
+        )
+    ]
+
+    async def completer(
+        model: object,
+        context: Context,
+        options: CallOptions | None,
+    ) -> str:
+        del model, context, options
+        nonlocal calls
+        calls += 1
+        return "unreachable"
+
+    with pytest.raises(SummaryImagePolicyError, match="image policy is 'refuse'"):
+        asyncio.run(
+            execute_transcript_compaction(
+                preparation=CompactionPreparation(
+                    first_kept_entry_id="kept",
+                    messages_to_summarize=messages,
+                    turn_prefix_messages=[],
+                    is_split_turn=False,
+                    tokens_before=10,
+                ),
+                model=object(),
+                compaction_profile=_summary_profile(),
+                turn_prefix_profile=_summary_profile(),
+                completer=completer,
+                image_policy="refuse",
+            )
+        )
+
+    assert calls == 0
+    with pytest.raises(SummaryImagePolicyError):
+        serialize_agent_conversation(messages, image_policy="refuse")

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 from loushang.agent import Agent, PrepareModelCallFn
 from loushang.ai.api_registry import APIRegistry
 from loushang.ai.model import Model, ModelSelection
+from loushang.ai.prepared_request import PreparedRequestLimits
 from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
@@ -137,6 +138,7 @@ class ProductCompactionExecutor(Protocol):
         signal: object | None,
         custom_instructions: str | None = None,
         prepare_model_call: PrepareModelCallFn | None = None,
+        request_limits: PreparedRequestLimits | None = None,
     ) -> CompactionResult: ...
 
 
@@ -1074,6 +1076,16 @@ async def _execute_compaction(
     custom_instructions: str | None,
 ) -> CompactionResult:
     if supports_prepare_model_call(executor):
+        if _supports_keyword(executor, "request_limits"):
+            return await executor(
+                preparation=preparation,
+                model=agent.model,
+                headers=None,
+                signal=agent.signal,
+                custom_instructions=custom_instructions,
+                prepare_model_call=agent.prepare_model_call,
+                request_limits=agent.call_options.request_limits,
+            )
         return await executor(
             preparation=preparation,
             model=agent.model,
@@ -1098,11 +1110,15 @@ async def _execute_compaction(
 def supports_prepare_model_call(callback: Callable[..., object]) -> bool:
     """Return whether a Product summary callback accepts the PR8 seam."""
 
+    return _supports_keyword(callback, "prepare_model_call")
+
+
+def _supports_keyword(callback: Callable[..., object], name: str) -> bool:
     try:
         parameters = inspect.signature(callback).parameters
     except (TypeError, ValueError):
         return False
-    parameter = parameters.get("prepare_model_call")
+    parameter = parameters.get(name)
     if parameter is not None and parameter.kind in {
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
         inspect.Parameter.KEYWORD_ONLY,

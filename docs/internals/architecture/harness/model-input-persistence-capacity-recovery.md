@@ -530,6 +530,12 @@ store one merged summary and the complete ordered snapshot lineage; durable
 partial plans/results are required only if mid-compaction crash-resume becomes
 an accepted requirement.
 
+The implemented safety floor uses the placeholder mode by default, records an
+`image_omitted` degradation count, and caps each summary request's canonical
+prepared envelope at 512 KiB (or a stricter caller limit). Until turn-safe
+batching lands, input that cannot fit this bound fails before snapshot and
+transport instead of issuing an unbounded Provider request.
+
 ## Cancellation, Crash, And Orphan Semantics
 
 | Last durable fact | Transport possible | Replay interpretation |

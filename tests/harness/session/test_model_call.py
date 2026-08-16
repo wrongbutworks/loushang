@@ -9,6 +9,7 @@ import pytest
 from loushang.agent import Agent, ModelCallPreparation
 from loushang.ai import Context, stream
 from loushang.ai.api_registry import get_default_api_registry
+from loushang.ai.errors import AIRequestTooLargeError
 from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions, RetryOptions
@@ -764,6 +765,59 @@ def test_compaction_v2_records_and_rebuilds_summary_model_input() -> None:
         checkpoint = session.get_entries()[-1].payload
         assert checkpoint.derivation_verifiable is True
         assert checkpoint.model_input_snapshot_ids == result.model_input_snapshot_ids
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_oversized_compaction_request_fails_before_snapshot_and_transport() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        source_id = session.get_entries()[0].record_id
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        adapter = _PreparedAdapter()
+        registry = get_default_api_registry()
+        adapter_source = "session-model-call-oversized-compaction-test"
+        registry.register_api_adapter(adapter, source_id=adapter_source)
+        try:
+            with pytest.raises(AIRequestTooLargeError) as exc_info:
+                await execute_transcript_compaction(
+                    preparation=CompactionPreparation(
+                        first_kept_entry_id=source_id,
+                        messages_to_summarize=[
+                            UserMessage(
+                                role="user",
+                                content="x" * 600_000,
+                                timestamp=1.0,
+                            )
+                        ],
+                        turn_prefix_messages=[],
+                        is_split_turn=False,
+                        tokens_before=150_000,
+                    ),
+                    model=_model(api=adapter.api),
+                    compaction_profile=CODING_COMPACTION_SUMMARY_PROFILE,
+                    turn_prefix_profile=CODING_TURN_PREFIX_SUMMARY_PROFILE,
+                    prepare_model_call=runtime.prepare,
+                )
+        finally:
+            registry.unregister_api_adapters(adapter_source)
+
+        error = exc_info.value
+        assert error.info.code.value == "request_too_large"
+        assert adapter.transport_calls == 0
+        assert all(
+            entry.kind != "model.input.prepared" for entry in session.get_entries()
+        )
+        outcomes = [
+            entry.payload
+            for entry in session.get_entries()
+            if isinstance(entry.payload, ModelCallOutcome)
+        ]
+        assert len(outcomes) == 1
+        assert outcomes[0].model_input_snapshot_ids == ()
+        assert outcomes[0].failure is not None
+        assert outcomes[0].failure.code == "request_too_large"
         await runtime.dispose()
 
     asyncio.run(scenario())

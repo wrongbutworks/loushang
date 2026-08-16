@@ -12,14 +12,22 @@ import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import cast
+from typing import Literal, TypeAlias, cast
 
 from loushang.agent.types import (
     AgentMessage,
     ModelCallPreparation,
     PrepareModelCallFn,
 )
-from loushang.ai import ApiKeyAuth, CallOptions, Context, Model, complete, stream
+from loushang.ai import (
+    ApiKeyAuth,
+    CallOptions,
+    Context,
+    Model,
+    PreparedRequestLimits,
+    complete,
+    stream,
+)
 from loushang.ai.trace import emit_trace
 from loushang.ai.types import AssistantMessage, TextPart, UserMessage
 from loushang.foundation.json import JSONValue, require_json_value
@@ -41,12 +49,18 @@ from loushang.harness.transcript.profile import (
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
 TOOL_RESULT_MAX_CHARS = 2_000
+SUMMARY_MAX_CANONICAL_BYTES = 512 * 1024
 DEFAULT_BRANCH_SUMMARY_PREAMBLE = """The user explored a different conversation branch before returning here.
 Summary of that exploration:
 
 """
 
 SummaryCompleter = Callable[[object, Context, CallOptions | None], Awaitable[str]]
+SummaryImagePolicy: TypeAlias = Literal["placeholder", "refuse"]
+
+
+class SummaryImagePolicyError(ValueError):
+    """Summary input contains an image forbidden by the selected policy."""
 
 
 @dataclass(frozen=True)
@@ -242,6 +256,8 @@ async def execute_transcript_compaction(
     completer: SummaryCompleter = default_summary_completer,
     decorate: SummaryDecorator | None = None,
     prepare_model_call: PrepareModelCallFn | None = None,
+    request_limits: PreparedRequestLimits | None = None,
+    image_policy: SummaryImagePolicy = "placeholder",
 ) -> CompactionResult:
     """Execute a standard transcript-compaction plan with Product prompt policy."""
 
@@ -259,6 +275,8 @@ async def execute_transcript_compaction(
                 model_call_purpose="compaction_history",
                 model_call_sequence=1,
                 prepare_model_call=prepare_model_call,
+                request_limits=request_limits,
+                image_policy=image_policy,
             )
             if preparation.messages_to_summarize
             else _SummaryCallResult("No prior history.")
@@ -273,6 +291,8 @@ async def execute_transcript_compaction(
             completer=completer,
             model_call_sequence=(2 if preparation.messages_to_summarize else 1),
             prepare_model_call=prepare_model_call,
+            request_limits=request_limits,
+            image_policy=image_policy,
         )
         summary = (
             f"{history_result.text}\n\n---\n\n"
@@ -295,6 +315,8 @@ async def execute_transcript_compaction(
             model_call_purpose="compaction_history",
             model_call_sequence=1,
             prepare_model_call=prepare_model_call,
+            request_limits=request_limits,
+            image_policy=image_policy,
         )
         summary = result.text
         model_input_snapshot_ids = result.model_input_snapshot_ids
@@ -304,6 +326,11 @@ async def execute_transcript_compaction(
         *preparation.turn_prefix_messages,
     )
     existing_details = _json_details(preparation.details)
+    existing_details = _with_image_omission_diagnostic(
+        existing_details,
+        messages,
+        image_policy=image_policy,
+    )
     decoration = (
         decorate(messages, existing_details)
         if decorate is not None
@@ -422,6 +449,8 @@ async def execute_branch_summary(
     completer: SummaryCompleter = default_summary_completer,
     decorate: SummaryDecorator | None = None,
     prepare_model_call: PrepareModelCallFn | None = None,
+    request_limits: PreparedRequestLimits | None = None,
+    image_policy: SummaryImagePolicy = "placeholder",
 ) -> BranchSummaryOutput:
     """Generate one normalized branch summary without mutating a transcript."""
 
@@ -433,7 +462,10 @@ async def execute_branch_summary(
             return BranchSummaryOutput(summary="No content to summarize")
         prompt = build_summary_prompt(
             profile,
-            serialize_agent_conversation(_model_messages(messages)),
+            serialize_agent_conversation(
+                _model_messages(messages),
+                image_policy=image_policy,
+            ),
             mode="branch",
             custom_instructions=(None if replace_instructions else custom_instructions),
             prompt_override=(
@@ -455,7 +487,12 @@ async def execute_branch_summary(
         options = await _prepare_summary_options(
             model,
             context,
-            _call_options(api_key=api_key, headers=headers, signal=signal),
+            _call_options(
+                api_key=api_key,
+                headers=headers,
+                signal=signal,
+                request_limits=request_limits,
+            ),
             purpose="branch_summary",
             sequence=1,
             prepare_model_call=prepare_model_call,
@@ -463,8 +500,15 @@ async def execute_branch_summary(
         summary = await completer(model, context, options)
         if _is_aborted(signal):
             return BranchSummaryOutput(aborted=True)
+        details = _with_image_omission_diagnostic(
+            None,
+            messages,
+            image_policy=image_policy,
+        )
         decoration = (
-            decorate(messages, None) if decorate is not None else SummaryDecoration()
+            decorate(messages, details)
+            if decorate is not None
+            else SummaryDecoration(details=details)
         )
         return BranchSummaryOutput(
             summary=f"{preamble}{summary or 'No summary generated'}{decoration.suffix}",
@@ -488,12 +532,15 @@ async def _summarize_messages(
     model_call_purpose: str,
     model_call_sequence: int,
     prepare_model_call: PrepareModelCallFn | None,
+    request_limits: PreparedRequestLimits | None,
+    image_policy: SummaryImagePolicy,
 ) -> _SummaryCallResult:
     mode = "update" if preparation.previous_summary else "initial"
     prompt = build_summary_prompt(
         profile,
         serialize_agent_conversation(
-            _model_messages(preparation.messages_to_summarize)
+            _model_messages(preparation.messages_to_summarize),
+            image_policy=image_policy,
         ),
         mode=mode,
         previous_summary=preparation.previous_summary,
@@ -503,7 +550,12 @@ async def _summarize_messages(
     options = await _prepare_summary_options(
         model,
         context,
-        _call_options(api_key=api_key, headers=headers, signal=signal),
+        _call_options(
+            api_key=api_key,
+            headers=headers,
+            signal=signal,
+            request_limits=request_limits,
+        ),
         purpose=model_call_purpose,
         sequence=model_call_sequence,
         prepare_model_call=prepare_model_call,
@@ -525,17 +577,27 @@ async def _summarize_turn_prefix(
     completer: SummaryCompleter,
     model_call_sequence: int,
     prepare_model_call: PrepareModelCallFn | None,
+    request_limits: PreparedRequestLimits | None,
+    image_policy: SummaryImagePolicy,
 ) -> _SummaryCallResult:
     prompt = build_summary_prompt(
         profile,
-        serialize_agent_conversation(_model_messages(messages)),
+        serialize_agent_conversation(
+            _model_messages(messages),
+            image_policy=image_policy,
+        ),
         mode="turn-prefix",
     )
     context = _summary_context(prompt.system_prompt, prompt.user_prompt)
     options = await _prepare_summary_options(
         model,
         context,
-        _call_options(api_key=api_key, headers=headers, signal=signal),
+        _call_options(
+            api_key=api_key,
+            headers=headers,
+            signal=signal,
+            request_limits=request_limits,
+        ),
         purpose="compaction_turn_prefix",
         sequence=model_call_sequence,
         prepare_model_call=prepare_model_call,
@@ -627,23 +689,35 @@ def _summary_context(system_prompt: str, user_prompt: str) -> Context:
 
 
 def _call_options(
-    *, api_key: str | None, headers: Mapping[str, str] | None, signal: object | None
+    *,
+    api_key: str | None,
+    headers: Mapping[str, str] | None,
+    signal: object | None,
+    request_limits: PreparedRequestLimits | None,
 ) -> CallOptions:
     return CallOptions(
         auth=ApiKeyAuth(api_key) if api_key else None,
         headers=dict(headers or {}),
         cancellation=signal,
+        request_limits=_summary_request_limits(request_limits),
     )
 
 
-def serialize_agent_conversation(messages: Sequence[object]) -> str:
+def serialize_agent_conversation(
+    messages: Sequence[object],
+    *,
+    image_policy: SummaryImagePolicy = "placeholder",
+) -> str:
     """Render stable, concise Agent messages for a summary prompt."""
 
     parts: list[str] = []
     for message in messages:
         role = getattr(message, "role", None)
         if role == "user":
-            text = _content_text(getattr(message, "content", ""))
+            text = _content_text(
+                getattr(message, "content", ""),
+                image_policy=image_policy,
+            )
             if text:
                 parts.append(f"[User]: {text}")
         elif role == "assistant":
@@ -658,6 +732,10 @@ def serialize_agent_conversation(messages: Sequence[object]) -> str:
                     thinking_parts.append(block.thinking)
                 elif block_type == "toolCall":
                     tool_calls.append(_format_tool_call(block))
+                elif block_type == "image":
+                    text_parts.append(
+                        _summary_image_placeholder(block, image_policy=image_policy)
+                    )
             if thinking_parts:
                 parts.append("[Assistant thinking]: " + "\n".join(thinking_parts))
             if text_parts:
@@ -665,7 +743,10 @@ def serialize_agent_conversation(messages: Sequence[object]) -> str:
             if tool_calls:
                 parts.append(f"[Assistant tool calls]: {'; '.join(tool_calls)}")
         elif role == "toolResult":
-            text = _content_text(getattr(message, "content", ""))
+            text = _content_text(
+                getattr(message, "content", ""),
+                image_policy=image_policy,
+            )
             if text:
                 parts.append(f"[Tool result]: {_truncate_for_summary(text)}")
     return "\n\n".join(parts)
@@ -706,16 +787,106 @@ def _model_messages(messages: Sequence[AgentMessage]) -> list[object]:
     ]
 
 
-def _content_text(content: object) -> str:
+def _content_text(
+    content: object,
+    *,
+    image_policy: SummaryImagePolicy,
+) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "".join(
-            str(block.text)
-            for block in content
-            if getattr(block, "type", None) == "text"
-        )
+        parts: list[str] = []
+        for block in content:
+            if getattr(block, "type", None) == "text":
+                parts.append(str(block.text))
+            elif getattr(block, "type", None) == "image":
+                parts.append(
+                    _summary_image_placeholder(block, image_policy=image_policy)
+                )
+        return "\n".join(parts)
     return ""
+
+
+def _summary_image_placeholder(
+    block: object,
+    *,
+    image_policy: SummaryImagePolicy,
+) -> str:
+    if image_policy == "refuse":
+        raise SummaryImagePolicyError(
+            "summary input contains an image and image policy is 'refuse'"
+        )
+    if image_policy != "placeholder":
+        raise ValueError(f"unsupported summary image policy: {image_policy!r}")
+    mime_type = getattr(block, "mime_type", "application/octet-stream")
+    if not isinstance(mime_type, str) or not mime_type:
+        mime_type = "application/octet-stream"
+    data = getattr(block, "data", "")
+    encoded_characters = len(data) if isinstance(data, str) else 0
+    return (
+        "[Image omitted from summary input: "
+        f"mime_type={mime_type}; base64_characters={encoded_characters}]"
+    )
+
+
+def _with_image_omission_diagnostic(
+    details: JSONValue,
+    messages: Sequence[AgentMessage],
+    *,
+    image_policy: SummaryImagePolicy,
+) -> JSONValue:
+    image_count = _count_image_parts(messages)
+    if image_count == 0:
+        return details
+    if image_policy == "refuse":
+        raise SummaryImagePolicyError(
+            "summary input contains an image and image policy is 'refuse'"
+        )
+    diagnostic: dict[str, JSONValue] = {
+        "code": "image_omitted",
+        "count": image_count,
+    }
+    if isinstance(details, Mapping):
+        projected = dict(details)
+        existing = projected.get("degradations")
+        degradations = list(existing) if isinstance(existing, list) else []
+        degradations.append(diagnostic)
+        projected["degradations"] = degradations
+        return require_json_value(projected, name="summary degradation details")
+    projected_details: dict[str, JSONValue] = {"degradations": [diagnostic]}
+    if details is not None:
+        projected_details["sourceDetails"] = details
+    return projected_details
+
+
+def _count_image_parts(messages: Sequence[AgentMessage]) -> int:
+    count = 0
+    for message in messages:
+        content = getattr(message, "content", ())
+        if isinstance(content, str):
+            continue
+        count += sum(
+            1 for block in content if getattr(block, "type", None) == "image"
+        )
+    return count
+
+
+def _summary_request_limits(
+    request_limits: PreparedRequestLimits | None,
+) -> PreparedRequestLimits:
+    if request_limits is None:
+        return PreparedRequestLimits(
+            max_canonical_bytes=SUMMARY_MAX_CANONICAL_BYTES
+        )
+    maximum = request_limits.max_canonical_bytes
+    return replace(
+        request_limits,
+        max_canonical_bytes=(
+            SUMMARY_MAX_CANONICAL_BYTES
+            if maximum is None
+            else min(maximum, SUMMARY_MAX_CANONICAL_BYTES)
+        ),
+    )
 
 
 def _format_tool_call(block: object) -> str:
@@ -763,11 +934,14 @@ def _is_aborted(signal: object | None) -> bool:
 
 __all__ = [
     "DEFAULT_BRANCH_SUMMARY_PREAMBLE",
+    "SUMMARY_MAX_CANONICAL_BYTES",
     "BranchSummaryPreparation",
     "BranchSummaryDelta",
     "SummaryDecoration",
     "SummaryDecorator",
     "SummaryCompleter",
+    "SummaryImagePolicy",
+    "SummaryImagePolicyError",
     "SummaryResourceOperationDecorationProfile",
     "collect_summary_resource_operations",
     "decorate_summary_resource_operations",
