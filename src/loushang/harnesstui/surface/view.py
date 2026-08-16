@@ -41,11 +41,13 @@ class ScreenSurfaceView(FocusableMixin):
     content: Any
     footer: str = "Enter to select - Esc to close"
     subtitle: str = ""
+    feedback: str = ""
     presentation: ScreenSurfacePresentation = "bottom"
     preferred_height: int | None = None
     theme: ThemeResolver | None = None
     title_theme_token: str = "surface.title"
     subtitle_theme_token: str = "surface.subtitle"
+    feedback_theme_token: str = "widget.error"
     footer_theme_token: str = "surface.footer"
     _last_content_start_row: int = field(default=0, init=False, repr=False)
     _info_scroll_offset: int = field(default=0, init=False, repr=False)
@@ -99,6 +101,13 @@ class ScreenSurfaceView(FocusableMixin):
                 self._styled(
                     truncate_to_width(self.subtitle, max_width=width),
                     self.subtitle_theme_token,
+                )
+            )
+        if self.feedback:
+            lines.append(
+                self._styled(
+                    truncate_to_width(self.feedback, max_width=width),
+                    self.feedback_theme_token,
                 )
             )
         lines.append("")

@@ -317,7 +317,13 @@ def test_screen_surface_model_selection_error_stays_in_tui() -> None:
     asyncio.run(manager.handle_surface_intent(intent))
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
-    assert app.state.status_message == "Error: model switch failed"
+    expected_error = (
+        "Error: Model 'deepseek-v4-flash' does not support image input"
+    )
+    assert app.state.status_message == expected_error
+    rendered = app.render(RenderConstraints(width=100, max_height=24))
+    plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
+    assert expected_error in plain_lines
 
 
 def test_screen_surface_manager_opens_model_surface_in_bottom_frame_with_runtime_overlay_host() -> (
@@ -1524,7 +1530,7 @@ class _Session:
 
 class _FailingModelSession(_Session):
     async def set_model(self, selection: object) -> None:
-        raise ValueError("model switch failed")
+        raise ValueError("Model 'deepseek-v4-flash' does not support image input")
 
 
 def _app() -> ScreenCodingTuiApp:

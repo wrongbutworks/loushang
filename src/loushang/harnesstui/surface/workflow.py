@@ -344,7 +344,15 @@ class ScreenSurfaceWorkflow:
         try:
             message = await self.ports.select_model(value)
         except Exception as error:
-            self.app.set_status(self.copy.recoverable_error(error))
+            message = self.copy.recoverable_error(error)
+            current = self.current
+            if (
+                close_surface
+                and isinstance(current, ScreenSurfaceView)
+                and current.purpose == "model"
+            ):
+                current.feedback = message
+            self.app.set_status(message)
             return
         if close_surface:
             self.close()
