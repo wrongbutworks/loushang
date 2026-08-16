@@ -37,6 +37,9 @@ from loushang.harness.transcript import (
     create_agent_transcript_payload_registry,
 )
 from loushang.harness.transcript.model_input_types import hash_model_input_json
+from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_PAYLOAD_VERSION,
+)
 
 
 def _payloads():
@@ -158,7 +161,14 @@ def test_all_standard_payloads_round_trip_through_versioned_registry() -> None:
     )
     assert registry.registered_keys == tuple(
         sorted(
-            (kind, STANDARD_PAYLOAD_VERSION) for kind in STANDARD_AGENT_TRANSCRIPT_KINDS
+            (
+                *(
+                    (kind, STANDARD_PAYLOAD_VERSION)
+                    for kind in STANDARD_AGENT_TRANSCRIPT_KINDS
+                ),
+                (MODEL_INPUT_COMPONENT_KIND, MODEL_INPUT_V2_PAYLOAD_VERSION),
+                (MODEL_INPUT_PREPARED_KIND, MODEL_INPUT_V2_PAYLOAD_VERSION),
+            )
         )
     )
     for kind, payload in _payloads().items():

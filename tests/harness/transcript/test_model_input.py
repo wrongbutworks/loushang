@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from collections.abc import AsyncIterator
 from dataclasses import replace
@@ -49,7 +50,18 @@ from loushang.harness.transcript import (
     rebuild_model_input,
     verify_model_input,
 )
-from loushang.harness.transcript.model_input_types import hash_model_input_json
+from loushang.harness.transcript.model_input_types import (
+    hash_model_input_json,
+    thaw_model_input_json,
+)
+from loushang.harness.transcript.model_input_v2_types import (
+    ModelInputJsonChunkNode,
+    ModelInputMappingRootNode,
+    ModelInputNodeBundle,
+    ModelInputNodeReference,
+    ModelInputSequenceTailNode,
+    ModelInputSnapshotV2,
+)
 
 
 class _BlockingModelInputStore(MemoryConversationStore):
@@ -130,6 +142,54 @@ class _CountingModelInputStore(MemoryConversationStore):
     ):
         self.batch_sizes.append(len(records))
         return await super().append_batch(
+            key,
+            records,
+            expected_revision=expected_revision,
+            operation_ids=operation_ids,
+        )
+
+
+class _InlineFileStore:
+    """Exercise the real File Store without a test-only thread executor."""
+
+    def __init__(self, delegate) -> None:
+        self.delegate = delegate
+
+    async def create(self, key, header, records=(), *, operation_id: str):
+        return self.delegate._create_sync(
+            key,
+            header,
+            records,
+            operation_id=operation_id,
+        )
+
+    async def load(self, key):
+        return self.delegate._load_sync(key)
+
+    async def append(
+        self,
+        key,
+        record,
+        *,
+        expected_revision: int,
+        operation_id: str,
+    ):
+        return self.delegate._append_sync(
+            key,
+            record,
+            expected_revision=expected_revision,
+            operation_id=operation_id,
+        )
+
+    async def append_batch(
+        self,
+        key,
+        records,
+        *,
+        expected_revision: int,
+        operation_ids,
+    ):
+        return self.delegate._append_batch_sync(
             key,
             records,
             expected_revision=expected_revision,
@@ -239,6 +299,7 @@ def _prepared(
     invocation_id: str = "invocation-1",
     attempt: int = 1,
     tools: list[dict[str, object]] | None = None,
+    payload: dict[str, object] | None = None,
 ) -> PreparedModelRequest:
     model = _model(api="model-input-test")
     request = ProviderRequest(
@@ -251,7 +312,8 @@ def _prepared(
     )
     return PreparedModelRequest.from_provider_request(
         request,
-        payload={
+        payload=payload
+        or {
             "tools": tools
             or [
                 {
@@ -331,7 +393,189 @@ def test_model_input_records_are_hidden_deduplicated_and_hash_verified() -> None
     asyncio.run(scenario())
 
 
-def test_model_input_materializes_all_missing_components_in_one_store_batch() -> None:
+async def _append_v1_model_input_snapshot(
+    transcript: AgentTranscriptUnitOfWork,
+) -> ModelInputSnapshot:
+    assert transcript.leaf_id is not None
+    source_leaf_id = transcript.leaf_id
+    source_revision = transcript.revision
+    logical_input = thaw_model_input_json(_context(transcript).logical_input)
+    assert isinstance(logical_input, dict)
+    prepared_request = _prepared(invocation_id="invocation-v1")
+    prepared_payload = thaw_model_input_json(prepared_request.payload)
+    assert isinstance(prepared_payload, dict)
+    model_visible_headers = dict(prepared_request.model_visible_headers)
+
+    async def append_components(
+        values: dict[str, object],
+    ) -> tuple[ModelInputComponentReference, ...]:
+        references = []
+        for name, value in values.items():
+            content_hash = hash_model_input_json(
+                value,
+                name=f"v1 Model Input {name}",
+            )
+            commit = await transcript.append(
+                MODEL_INPUT_COMPONENT_KIND,
+                ModelInputComponent(
+                    content_hash=content_hash,
+                    content=value,
+                ),
+            )
+            references.append(
+                ModelInputComponentReference(
+                    name=name,
+                    record_id=commit.record.record_id,
+                    content_hash=content_hash,
+                )
+            )
+        return tuple(references)
+
+    logical_references = await append_components(logical_input)
+    prepared_references = await append_components(prepared_payload)
+    headers_reference = (
+        await append_components({"model_visible_headers": model_visible_headers})
+    )[0]
+    snapshot = ModelInputSnapshot(
+        snapshot_id="snapshot-v1",
+        invocation_id="invocation-v1",
+        attempt=1,
+        purpose="main_turn",
+        product_id="coding",
+        runtime_id="runtime-1",
+        mount_generation=3,
+        profile_fingerprint="a" * 64,
+        registration_revision="c" * 64,
+        conversation_id=transcript.header.conversation_id,
+        source_leaf_id=source_leaf_id,
+        source_revision=source_revision,
+        commit_revision=transcript.revision + 1,
+        provider_id=prepared_request.provider_id,
+        model_id=prepared_request.model_id,
+        api_id=prepared_request.api,
+        endpoint_id=prepared_request.endpoint_id,
+        logical_components=logical_references,
+        prepared_payload_components=prepared_references,
+        model_visible_headers_component=headers_reference,
+        logical_input_hash=hash_model_input_json(
+            logical_input,
+            name="v1 logical Model Input",
+        ),
+        prepared_payload_hash=prepared_request.payload_hash,
+    )
+    await transcript.append(MODEL_INPUT_PREPARED_KIND, snapshot)
+    return snapshot
+
+
+def test_model_input_v1_snapshot_rebuilds_before_and_after_mixed_v2_writes() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        v1_snapshot = await _append_v1_model_input_snapshot(transcript)
+        v1_before = rebuild_model_input(transcript, v1_snapshot.snapshot_id)
+
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="continue with v2", timestamp=2.0)
+        )
+        v2_committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await v2_committer.commit_prepared_request(
+            _prepared(invocation_id="invocation-v2")
+        )
+
+        v1_after = rebuild_model_input(transcript, v1_snapshot.snapshot_id)
+        v2_rebuilt = rebuild_model_input(
+            transcript,
+            v2_committer.commits[-1].snapshot_id,
+        )
+        prepared_versions = {
+            record.payload_version
+            for record in transcript.records
+            if record.kind == MODEL_INPUT_PREPARED_KIND
+        }
+        assert v1_after == v1_before
+        assert isinstance(v1_after.snapshot, ModelInputSnapshot)
+        assert isinstance(v2_rebuilt.snapshot, ModelInputSnapshotV2)
+        assert prepared_versions == {1, 2}
+        assert verify_model_input(transcript, v1_snapshot.snapshot_id).verified
+        assert verify_model_input(
+            transcript,
+            v2_committer.commits[-1].snapshot_id,
+        ).verified
+        fork = await transcript.fork(
+            ConversationKey("test", "mixed-model-input-fork"),
+            _header("mixed-model-input-fork"),
+        )
+        assert rebuild_model_input(fork, v1_snapshot.snapshot_id).logical_input == (
+            v1_before.logical_input
+        )
+        assert (
+            rebuild_model_input(
+                fork,
+                v2_committer.commits[-1].snapshot_id,
+            ).prepared_payload
+            == v2_rebuilt.prepared_payload
+        )
+
+    asyncio.run(scenario())
+
+
+def test_loading_a_v1_file_is_byte_stable_before_appending_v2(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        layout = AgentTranscriptFileLayout(tmp_path / "sessions")
+        key = layout.key("v1-to-v2-file")
+        delegate = create_agent_transcript_file_store(layout)
+        transcript = await AgentTranscriptUnitOfWork.create(
+            _InlineFileStore(delegate),
+            key,
+            _header("v1-to-v2-file"),
+        )
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="hello", timestamp=1.0)
+        )
+        v1_snapshot = await _append_v1_model_input_snapshot(transcript)
+        path = layout.resolve_path(key)
+        assert path is not None
+        before_load = path.read_bytes()
+
+        loaded = await AgentTranscriptUnitOfWork.load(
+            _InlineFileStore(delegate),
+            key,
+        )
+
+        assert path.read_bytes() == before_load
+        assert rebuild_model_input(loaded, v1_snapshot.snapshot_id).snapshot == (
+            v1_snapshot
+        )
+        await loaded.append_agent_message(
+            UserMessage(role="user", content="continue", timestamp=2.0)
+        )
+        committer = ModelInputTranscriptCommitter(
+            transcript=loaded,
+            context=_context(loaded),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(
+            _prepared(invocation_id="file-v2")
+        )
+        assert path.read_bytes().startswith(before_load)
+        assert rebuild_model_input(loaded, v1_snapshot.snapshot_id).snapshot == (
+            v1_snapshot
+        )
+        assert isinstance(
+            rebuild_model_input(
+                loaded,
+                committer.commits[-1].snapshot_id,
+            ).snapshot,
+            ModelInputSnapshotV2,
+        )
+
+    asyncio.run(scenario())
+
+
+def test_model_input_materializes_missing_v2_layers_in_bounded_store_batches() -> None:
     async def scenario() -> None:
         backend = _CountingModelInputStore()
         transcript = await _memory_transcript(backend)
@@ -347,15 +591,277 @@ def test_model_input_materializes_all_missing_components_in_one_store_batch() ->
         component_count = sum(
             record.kind == MODEL_INPUT_COMPONENT_KIND for record in transcript.records
         )
-        assert backend.batch_sizes == [component_count]
+        assert sum(backend.batch_sizes) == component_count
+        assert 1 <= len(backend.batch_sizes) <= 4
         assert backend.append_calls == append_calls_before + 1
+        first_batch_sizes = list(backend.batch_sizes)
 
         await committer.commit_prepared_request(
             _prepared(invocation_id="invocation-1", attempt=2)
         )
 
-        assert backend.batch_sizes == [component_count]
+        assert backend.batch_sizes == first_batch_sizes
         assert backend.append_calls == append_calls_before + 2
+
+    asyncio.run(scenario())
+
+
+def _v2_node(transcript, reference: ModelInputNodeReference):
+    record = transcript.get(reference.record_id)
+    assert record is not None
+    assert isinstance(record.payload, ModelInputNodeBundle)
+    return record.payload.nodes[reference.ordinal]
+
+
+def test_model_input_v2_chunks_and_rebuilds_a_single_message_over_one_mib() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        image_data = "A" * (2 * MODEL_INPUT_MAX_ENCODED_RECORD_BYTES)
+        logical_input = {
+            "system_prompt": "system prompt",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "media_type": "image/png",
+                            "data": image_data,
+                        }
+                    ],
+                }
+            ],
+            "tools": [],
+            "request_options": {},
+        }
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript, logical_input=logical_input),
+            runtime_references=_runtime_references(),
+        )
+
+        await committer.commit_prepared_request(_prepared())
+
+        rebuilt = rebuild_model_input(
+            transcript,
+            committer.commits[-1].snapshot_id,
+        )
+        chunks = [
+            node
+            for record in transcript.records
+            if isinstance(record.payload, ModelInputNodeBundle)
+            for node in record.payload.nodes
+            if isinstance(node, ModelInputJsonChunkNode)
+        ]
+        assert len(chunks) > 1
+        assert rebuilt.logical_input == logical_input
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_reuses_the_previous_message_prefix_and_appends_suffix() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        first_message = {"role": "user", "content": "first"}
+        first_logical = {
+            "system_prompt": "system prompt",
+            "messages": [first_message],
+            "tools": [],
+            "request_options": {},
+        }
+        first_committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript, logical_input=first_logical),
+            runtime_references=_runtime_references(),
+        )
+        await first_committer.commit_prepared_request(_prepared())
+
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="second", timestamp=2.0)
+        )
+        second_message = {"role": "user", "content": "second"}
+        second_logical = {
+            **first_logical,
+            "messages": [first_message, second_message],
+        }
+        second_committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript, logical_input=second_logical),
+            runtime_references=_runtime_references(),
+        )
+        await second_committer.commit_prepared_request(
+            _prepared(invocation_id="invocation-2")
+        )
+
+        snapshot_record = next(
+            record
+            for record in transcript.records
+            if isinstance(record.payload, ModelInputSnapshotV2)
+            and record.payload.snapshot_id == second_committer.commits[-1].snapshot_id
+        )
+        snapshot = snapshot_record.payload
+        logical_root = _v2_node(transcript, snapshot.logical_root)
+        assert isinstance(logical_root, ModelInputMappingRootNode)
+        messages_ref = next(
+            entry.value for entry in logical_root.entries if entry.name == "messages"
+        )
+        messages_tail = _v2_node(transcript, messages_ref)
+
+        assert isinstance(messages_tail, ModelInputSequenceTailNode)
+        assert messages_tail.total_item_count == 2
+        assert messages_tail.previous_tail is not None
+        assert len(messages_tail.appended_items) == 1
+        assert (
+            rebuild_model_input(
+                transcript,
+                second_committer.commits[-1].snapshot_id,
+            ).logical_input
+            == second_logical
+        )
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_segments_a_large_first_sequence_tail() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        message = {"role": "user", "content": "same"}
+        messages = [message] * 2_500
+        logical_input = {
+            "system_prompt": "system prompt",
+            "messages": messages,
+            "tools": [],
+            "request_options": {},
+        }
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript, logical_input=logical_input),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(
+            _prepared(
+                payload={
+                    "messages": messages[:1_024],
+                    "model": "model-input-model",
+                }
+            )
+        )
+
+        tails = [
+            node
+            for record in transcript.records
+            if isinstance(record.payload, ModelInputNodeBundle)
+            for node in record.payload.nodes
+            if isinstance(node, ModelInputSequenceTailNode)
+            and node.total_item_count > 0
+        ]
+        rebuilt = rebuild_model_input(
+            transcript,
+            committer.commits[-1].snapshot_id,
+        )
+        assert [tail.total_item_count for tail in tails] == [1_024, 2_048, 2_500]
+        assert rebuilt.logical_input["messages"] == messages
+        assert rebuilt.prepared_payload["messages"] == messages[:1_024]
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_real_jsonl_growth_tracks_unique_suffix_content(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        layout = AgentTranscriptFileLayout(tmp_path / "sessions")
+        key = layout.key("growth-conversation")
+        delegate = create_agent_transcript_file_store(layout)
+        transcript = await AgentTranscriptUnitOfWork.create(
+            _InlineFileStore(delegate),
+            key,
+            _header("growth-conversation"),
+        )
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="start", timestamp=1.0)
+        )
+        path = layout.resolve_path(key)
+        assert path is not None
+        initial_bytes = path.stat().st_size
+        image_data = "".join(
+            hashlib.sha256(str(index).encode()).hexdigest() for index in range(2_000)
+        )
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "media_type": "image/png",
+                        "data": image_data,
+                    }
+                ],
+            }
+        ]
+        sizes = []
+        for turn in range(20):
+            if turn:
+                text = f"turn-{turn}:" + ("x" * 4_096)
+                await transcript.append_agent_message(
+                    UserMessage(role="user", content=text, timestamp=turn + 1.0)
+                )
+                messages.append({"role": "user", "content": text})
+            logical_input = {
+                "system_prompt": "system prompt",
+                "messages": list(messages),
+                "tools": [],
+                "request_options": {},
+            }
+            committer = ModelInputTranscriptCommitter(
+                transcript=transcript,
+                context=_context(transcript, logical_input=logical_input),
+                runtime_references=_runtime_references(),
+            )
+            prepared_messages = []
+            for message in messages:
+                content = message["content"]
+                if isinstance(content, list):
+                    prepared_messages.append(
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": "image/png",
+                                        "data": image_data,
+                                    },
+                                }
+                            ],
+                        }
+                    )
+                else:
+                    prepared_messages.append(message)
+            await committer.commit_prepared_request(
+                _prepared(
+                    invocation_id=f"growth-{turn}",
+                    payload={
+                        "messages": prepared_messages,
+                        "model": "model-input-model",
+                    },
+                )
+            )
+            sizes.append(path.stat().st_size)
+
+        first_ten_growth = sizes[9] - initial_bytes
+        second_ten_growth = sizes[19] - sizes[9]
+        journal_text = path.read_text(encoding="utf-8")
+        assert second_ten_growth < first_ten_growth
+        assert sizes[19] < sizes[9] * 2
+        assert journal_text.count(image_data[:64]) == 1
+        for line in journal_text.splitlines()[1:]:
+            envelope = json.loads(line)
+            if envelope.get("kind", "").startswith("model.input."):
+                assert len((line + "\n").encode()) <= (
+                    MODEL_INPUT_MAX_ENCODED_RECORD_BYTES
+                )
 
     asyncio.run(scenario())
 
@@ -599,9 +1105,132 @@ def test_reconstruction_rejects_component_outside_snapshot_ancestry() -> None:
             for record in transcript.records
             if getattr(record.payload, "snapshot_id", None) == snapshot_id
         )
-        reference = snapshot_record.payload.logical_components[0]
+        reference = snapshot_record.payload.logical_root
         object.__setattr__(reference, "record_id", transcript.leaf_id)
         with pytest.raises(ModelInputIntegrityError, match="ancestry"):
+            rebuild_model_input(transcript, snapshot_id)
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_branch_back_never_reuses_sibling_nodes() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        selected_root_id = transcript.leaf_id
+        assert selected_root_id is not None
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="left", timestamp=2.0)
+        )
+        left = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await left.commit_prepared_request(_prepared(invocation_id="left"))
+        left_record_id = left.commits[-1].record_id
+        left_components = {
+            record.record_id
+            for record in transcript.records_to(left_record_id)
+            if record.kind == MODEL_INPUT_COMPONENT_KIND
+        }
+
+        transcript.branch(selected_root_id)
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="right", timestamp=3.0)
+        )
+        right = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await right.commit_prepared_request(_prepared(invocation_id="right"))
+        right_record_id = right.commits[-1].record_id
+        right_components = {
+            record.record_id
+            for record in transcript.records_to(right_record_id)
+            if record.kind == MODEL_INPUT_COMPONENT_KIND
+        }
+
+        assert left_components
+        assert right_components
+        assert left_components.isdisjoint(right_components)
+        assert rebuild_model_input(transcript, left.commits[-1].snapshot_id)
+        assert rebuild_model_input(transcript, right.commits[-1].snapshot_id)
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_reconstruction_rejects_an_invalid_node_ordinal() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        snapshot_id = committer.commits[-1].snapshot_id
+        snapshot_record = next(
+            record
+            for record in transcript.records
+            if isinstance(record.payload, ModelInputSnapshotV2)
+            and record.payload.snapshot_id == snapshot_id
+        )
+        object.__setattr__(snapshot_record.payload.logical_root, "ordinal", 10_000)
+
+        with pytest.raises(ModelInputIntegrityError, match="ordinal"):
+            rebuild_model_input(transcript, snapshot_id)
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_reconstruction_rejects_a_wrong_kind_ancestor() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        snapshot_id = committer.commits[-1].snapshot_id
+        snapshot_record = next(
+            record
+            for record in transcript.records
+            if isinstance(record.payload, ModelInputSnapshotV2)
+            and record.payload.snapshot_id == snapshot_id
+        )
+        object.__setattr__(
+            snapshot_record.payload.logical_root,
+            "record_id",
+            snapshot_record.payload.source_leaf_id,
+        )
+
+        with pytest.raises(ModelInputIntegrityError, match="node bundle"):
+            rebuild_model_input(transcript, snapshot_id)
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_reconstruction_rejects_the_wrong_payload_version() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        snapshot_id = committer.commits[-1].snapshot_id
+        snapshot_record = next(
+            record
+            for record in transcript.records
+            if isinstance(record.payload, ModelInputSnapshotV2)
+            and record.payload.snapshot_id == snapshot_id
+        )
+        object.__setattr__(snapshot_record, "payload_version", 1)
+
+        with pytest.raises(ModelInputIntegrityError, match="payload version"):
             rebuild_model_input(transcript, snapshot_id)
 
     asyncio.run(scenario())
@@ -882,6 +1511,20 @@ def test_model_input_commit_propagates_cancellation_after_safe_append() -> None:
         assert not any(
             record.kind == MODEL_INPUT_PREPARED_KIND for record in transcript.records
         )
+
+        backend.block_appends = False
+        resumed = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await resumed.commit_prepared_request(
+            _prepared(invocation_id="invocation-after-cancel")
+        )
+        assert rebuild_model_input(
+            transcript,
+            resumed.commits[-1].snapshot_id,
+        ).logical_input["messages"] == [{"role": "user", "content": "hello"}]
 
     asyncio.run(scenario())
 

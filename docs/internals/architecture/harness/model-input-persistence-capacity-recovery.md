@@ -304,6 +304,19 @@ V2 reconstruction:
 - treats component bundles without a referencing prepared snapshot as orphan
   facts, never as a model-visible invocation.
 
+Implementation result (2026-08-16): Model Input payload version 2 now uses
+typed value, sequence-tail, mapping-root, and canonical-JSON chunk nodes in
+bounded bundles. Normal writes use v2 while v1 remains readable. Large JSON
+string tokens are aligned independently before deterministic 48 KiB
+character chunking, allowing the same retained base64 image to be shared
+between differently shaped logical and prepared messages. Bundles target
+700 KiB and use the Store batch extension added by the preceding slice.
+Snapshots retain only three roots and are rebuilt and hash-verified before
+transport. Indexing and reuse are restricted to verified active-path
+ancestors, with node, depth, item-count, and decoded-byte limits. Cancellation
+may leave orphan bundles; a later attempt can reuse them only from its active
+path after validation.
+
 ## Attempt And Outcome Semantics
 
 ### Prepared Attempt Facts
@@ -601,15 +614,13 @@ Model Input commit sequence.
 
 ## Open Decisions Before Acceptance
 
-The following choices require prototype evidence or explicit acceptance:
+The following choices still require prototype evidence or explicit acceptance:
 
-1. bounded node bundle versus a generic ConversationStore batch append;
-2. exact large-value chunk size and deterministic chunk algorithm;
-3. minimum-reader feature versus new Conversation format/fork for strict
+1. minimum-reader feature versus new Conversation format/fork for strict
    downlevel refusal;
-4. whether aborted-boundary text remains model-visible;
-5. whether partial summary results need durable mid-compaction resume; and
-6. default image policy when no image-capable summary model is available.
+2. whether partial summary results need durable mid-compaction resume; and
+3. default image policy when no image-capable summary model is available.
 
-No production implementation of Model Input v2 or automatic capacity recovery
-starts until these decisions are closed or assigned to a named later slice.
+Automatic capacity recovery remains gated on the unresolved compaction and
+image-policy decisions. Strict downgrade refusal beyond the bridge reader also
+remains a compatibility follow-up; it does not permit rewriting old facts.

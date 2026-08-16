@@ -156,6 +156,11 @@ if TYPE_CHECKING:
         ModelInputRecordSizeError,
         ModelInputSnapshot,
     )
+    from loushang.harness.transcript.model_input_v2_types import (
+        MODEL_INPUT_V2_PAYLOAD_VERSION,
+        ModelInputNodeBundle,
+        ModelInputSnapshotV2,
+    )
     from loushang.harness.transcript.product_session import (
         ProductTranscriptSession,
     )
@@ -279,6 +284,7 @@ _EXPORT_MODULES = {
     "MODEL_INPUT_MAX_ENCODED_RECORD_BYTES": "loushang.harness.transcript.model_input_types",
     "MODEL_INPUT_PROJECTION_VERSION": "loushang.harness.transcript.model_input_types",
     "MODEL_INPUT_SCHEMA_VERSION": "loushang.harness.transcript.model_input_types",
+    "MODEL_INPUT_V2_PAYLOAD_VERSION": "loushang.harness.transcript.model_input_v2_types",
     "HTML_TRANSCRIPT_DISPOSITIONS": "loushang.harness.transcript.export",
     "MODEL_SELECTION_KIND": "loushang.harness.transcript.kinds",
     "LEGACY_SESSION_OPAQUE_KIND": "loushang.harness.transcript.migration",
@@ -361,6 +367,8 @@ _EXPORT_MODULES = {
     "ModelInputReconstructionVerification": "loushang.harness.transcript.model_input",
     "ModelInputRuntimeReferences": "loushang.harness.transcript.model_input",
     "ModelInputSnapshot": "loushang.harness.transcript.model_input_types",
+    "ModelInputNodeBundle": "loushang.harness.transcript.model_input_v2_types",
+    "ModelInputSnapshotV2": "loushang.harness.transcript.model_input_v2_types",
     "ModelInputTranscriptCommitter": "loushang.harness.transcript.model_input",
     "ModelSelectionCatalog": "loushang.harness.transcript.interaction",
     "MigrationDisposition": "loushang.harness.transcript.migration",

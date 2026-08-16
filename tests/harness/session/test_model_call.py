@@ -420,7 +420,11 @@ def test_mount_registration_mismatch_writes_nothing_and_sends_nothing() -> None:
             entry.kind != "model.input.prepared" for entry in session.get_entries()
         )
         assert isinstance(agent.state.messages[-1], AssistantMessage)
-        assert "clocks diverge" in (agent.state.messages[-1].error_message or "")
+        assert agent.state.messages[-1].error_message == "Agent run failed."
+        assert agent.state.messages[-1].error_info is not None
+        assert agent.state.messages[-1].error_info["details"] == {
+            "exceptionType": "ValueError"
+        }
         await runtime.dispose()
 
     asyncio.run(scenario())
@@ -509,7 +513,11 @@ def test_non_current_session_fails_before_model_transport() -> None:
 
         assert adapter.transport_calls == 0
         assert isinstance(agent.state.messages[-1], AssistantMessage)
-        assert "not current" in (agent.state.messages[-1].error_message or "")
+        assert agent.state.messages[-1].error_message == "Agent run failed."
+        assert agent.state.messages[-1].error_info is not None
+        assert agent.state.messages[-1].error_info["details"] == {
+            "exceptionType": "RuntimeError"
+        }
         assert all(
             entry.kind != "model.input.prepared" for entry in session.get_entries()
         )

@@ -48,6 +48,11 @@ from loushang.harness.transcript.model_input_types import (
     ModelInputRecordSizeError,
     ModelInputSnapshot,
 )
+from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_PAYLOAD_VERSION,
+    ModelInputNodeBundle,
+    ModelInputSnapshotV2,
+)
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import (
     AgentTranscriptContext,
@@ -521,9 +526,41 @@ class AgentTranscriptUnitOfWork:
                 propagate_cancellation=True,
             )
 
+    async def append_model_input_node_bundles(
+        self,
+        bundles: Sequence[ModelInputNodeBundle],
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> tuple[AgentTranscriptCommit, ...]:
+        async with self._commit_lock:
+            if not bundles:
+                return ()
+            if self.revision != expected_revision or self.leaf_id != expected_leaf_id:
+                raise ModelInputIntegrityError(
+                    "transcript changed outside the Model Input commit sequence"
+                )
+            parent_id = expected_leaf_id
+            records: list[AgentTranscriptRecord] = []
+            for bundle in bundles:
+                record = self._record_factory.create(
+                    MODEL_INPUT_COMPONENT_KIND,
+                    bundle,
+                    parent_id=parent_id,
+                    payload_version=MODEL_INPUT_V2_PAYLOAD_VERSION,
+                )
+                self._require_record_size(record, max_encoded_record_bytes)
+                records.append(record)
+                parent_id = record.record_id
+            return await self._finish_batch_commit_atomically(
+                records,
+                propagate_cancellation=True,
+            )
+
     async def append_model_input_snapshot(
         self,
-        snapshot: ModelInputSnapshot,
+        snapshot: ModelInputSnapshot | ModelInputSnapshotV2,
         *,
         max_encoded_record_bytes: int,
         expected_revision: int,
@@ -532,6 +569,11 @@ class AgentTranscriptUnitOfWork:
         return await self._append_model_input_fact(
             MODEL_INPUT_PREPARED_KIND,
             snapshot,
+            payload_version=(
+                MODEL_INPUT_V2_PAYLOAD_VERSION
+                if isinstance(snapshot, ModelInputSnapshotV2)
+                else STANDARD_PAYLOAD_VERSION
+            ),
             max_encoded_record_bytes=max_encoded_record_bytes,
             expected_revision=expected_revision,
             expected_leaf_id=expected_leaf_id,
@@ -540,8 +582,9 @@ class AgentTranscriptUnitOfWork:
     async def _append_model_input_fact(
         self,
         kind: str,
-        payload: ModelInputComponent | ModelInputSnapshot,
+        payload: ModelInputComponent | ModelInputSnapshot | ModelInputSnapshotV2,
         *,
+        payload_version: int = STANDARD_PAYLOAD_VERSION,
         max_encoded_record_bytes: int,
         expected_revision: int,
         expected_leaf_id: str,
@@ -555,7 +598,7 @@ class AgentTranscriptUnitOfWork:
                 kind,
                 payload,
                 parent_id=expected_leaf_id,
-                payload_version=STANDARD_PAYLOAD_VERSION,
+                payload_version=payload_version,
             )
             self._require_record_size(record, max_encoded_record_bytes)
             return await self._finish_commit_atomically(
@@ -603,7 +646,9 @@ class AgentTranscriptUnitOfWork:
                 record
                 for record in self.records
                 if record.kind == MODEL_INPUT_PREPARED_KIND
-                and isinstance(record.payload, ModelInputSnapshot)
+                and isinstance(
+                    record.payload, ModelInputSnapshot | ModelInputSnapshotV2
+                )
                 and record.payload.snapshot_id == snapshot_id
             ]
             if len(matches) != 1:

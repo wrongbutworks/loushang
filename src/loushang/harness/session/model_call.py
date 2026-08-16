@@ -375,7 +375,7 @@ class SessionModelCallRuntime:
             return None
         snapshot = self._transcript.rebuild_model_input(snapshot_id).snapshot
         return ModelSurfaceReference(
-            schema_version=snapshot.schema_version,
+            schema_version=1,
             snapshot_id=snapshot.snapshot_id,
             product_id=snapshot.product_id,
             runtime_id=snapshot.runtime_id,

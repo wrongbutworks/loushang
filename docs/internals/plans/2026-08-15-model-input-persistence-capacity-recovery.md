@@ -158,6 +158,20 @@ remain MIR3 work.
 Exit gate: physical growth follows unique materialized content, v1/v2 mixed
 sessions reconstruct exactly, and every fork/branch/lineage invariant passes.
 
+Implementation result (2026-08-16): payload version 2 is implemented for the
+existing required Model Input kinds and is now the only version written by the
+prepared-request committer. Typed value nodes, append-only sequence tails,
+mapping roots, and bounded bundles preserve active-path reachability. Values
+larger than one record are split into deterministic canonical-JSON chunks;
+long string tokens receive independent boundaries so identical base64 leaves
+can be shared across logical and Provider-shaped payloads. Reconstruction
+enforces typed record/ordinal/hash ancestry plus node, depth, sequence, and
+decoded-byte budgets, then compares the committed canonical prepared envelope
+before transport. Tests cover real JSONL growth, a retained image present in
+both surfaces, a message over 1 MiB, mixed v1/v2 reconstruction and fork,
+branch-back isolation, invalid ancestry/kind/ordinal, retry reuse, and
+cancellation-orphan recovery. No v1 fact is migrated or rewritten.
+
 ### MIR4: Typed Failure And Logical Outcome
 
 - Preserve Provider-specific typed categories across AI and Agent.
@@ -218,18 +232,18 @@ text.
 
 ## Acceptance Checklist
 
-- [ ] Real JSONL growth is near-linear in unique v2 content.
-- [ ] Large image/text leaves remain below every encoded-record ceiling.
+- [x] Real JSONL growth is near-linear in unique v2 content.
+- [x] Large image/text leaves remain below every encoded-record ceiling.
 - [ ] V1 load/rebuild/resume/fork/checkpoint behavior remains unchanged.
-- [ ] Mixed v1/v2 sessions and branch-back/fork scenarios verify all hashes.
-- [ ] Unknown required Model Input versions fail loudly under the supported
+- [x] Mixed v1/v2 sessions and branch-back/fork scenarios verify all hashes.
+- [x] Unknown required Model Input versions fail loudly under the supported
       reader matrix.
 - [ ] V2 appends meet the selected record-count and latency budgets.
 - [x] Selection during sampling waits or fails without changing state.
 - [x] Image-incompatible selection writes no transcript/settings facts.
 - [x] Error and abort model visibility is explicit and tested.
 - [x] Non-AI and Provider diagnostics persist only allowlisted data.
-- [ ] Every Provider attempt retains a prepared snapshot.
+- [x] Every Provider attempt retains a prepared snapshot.
 - [ ] Every completed logical invocation has exactly one terminal outcome.
 - [ ] Crash without terminal outcome projects interrupted/unknown.
 - [ ] Every compaction batch and merge passes Provider capacity preflight.

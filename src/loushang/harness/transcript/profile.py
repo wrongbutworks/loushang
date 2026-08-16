@@ -62,7 +62,9 @@ from loushang.harness.transcript.types import (
     ConversationMetadataPatch,
     ExtensionData,
     ModelInputComponent,
+    ModelInputNodeBundle,
     ModelInputSnapshot,
+    ModelInputSnapshotV2,
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
     ThinkingSelectionSnapshot,
@@ -385,11 +387,15 @@ class AgentTranscriptProfile:
         )
         self.register_record_profile(
             MODEL_INPUT_COMPONENT_KIND,
-            RecordSemantics(payload_types=(ModelInputComponent,)),
+            RecordSemantics(
+                payload_types=(ModelInputComponent, ModelInputNodeBundle),
+            ),
         )
         self.register_record_profile(
             MODEL_INPUT_PREPARED_KIND,
-            RecordSemantics(payload_types=(ModelInputSnapshot,)),
+            RecordSemantics(
+                payload_types=(ModelInputSnapshot, ModelInputSnapshotV2),
+            ),
         )
 
 

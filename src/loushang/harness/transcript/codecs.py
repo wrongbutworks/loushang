@@ -46,6 +46,15 @@ from loushang.harness.transcript.model_input_types import (
     ModelInputSnapshot,
     thaw_model_input_json,
 )
+from loushang.harness.transcript.model_input_v2_codec import (
+    decode_model_input_node_bundle,
+    decode_model_input_snapshot_v2,
+    encode_model_input_node_bundle,
+    encode_model_input_snapshot_v2,
+)
+from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_PAYLOAD_VERSION,
+)
 from loushang.harness.transcript.types import (
     AnnotationOperation,
     ApplicationDeliveryMode,
@@ -172,6 +181,22 @@ def register_standard_payload_codecs(
         MODEL_INPUT_PREPARED_KIND,
         _encode_model_input_snapshot,
         _decode_model_input_snapshot,
+    )
+    registry.register(
+        MODEL_INPUT_COMPONENT_KIND,
+        MODEL_INPUT_V2_PAYLOAD_VERSION,
+        FunctionalConversationPayloadCodec(
+            encoder=encode_model_input_node_bundle,
+            decoder=decode_model_input_node_bundle,
+        ),
+    )
+    registry.register(
+        MODEL_INPUT_PREPARED_KIND,
+        MODEL_INPUT_V2_PAYLOAD_VERSION,
+        FunctionalConversationPayloadCodec(
+            encoder=encode_model_input_snapshot_v2,
+            decoder=decode_model_input_snapshot_v2,
+        ),
     )
     registry.require_known_payload_versions(
         MODEL_INPUT_COMPONENT_KIND,
