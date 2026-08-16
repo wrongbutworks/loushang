@@ -88,3 +88,25 @@ def test_screen_surface_view_info_close_keys_keep_existing_contract() -> None:
     assert view.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
         kind="surface_close"
     )
+
+
+def test_screen_surface_view_renders_feedback_inside_exclusive_surface() -> None:
+    view = ScreenSurfaceView(
+        title="Models",
+        purpose="model",
+        content=_Content(),
+        feedback="Error: selected model does not support image input",
+        feedback_hint="Choose another model or press Esc to keep the current model.",
+        presentation="bottom-exclusive",
+    )
+
+    rendered = view.render(RenderConstraints(width=80, max_height=8))
+
+    assert tuple(line.text for line in rendered.lines)[:6] == (
+        "Models",
+        "",
+        "choice",
+        "",
+        "Error: selected model does not support image input",
+        "Choose another model or press Esc to keep the current model.",
+    )

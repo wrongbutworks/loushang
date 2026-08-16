@@ -15,13 +15,20 @@ from loushang.ai.model import ModelSelection
 from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
+    MODEL_INPUT_PREPARATION_REQUIREMENT,
     CapabilityCompositionRuntime,
     CapabilityGraphExplanation,
     EffectiveRuntimeDiff,
     EffectiveRuntimeView,
     RegistrationExplanation,
     RegistrationInventoryEntry,
+    RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphProjector,
+    RuntimeCapabilityGraphRuntime,
     RuntimeProfileSlotExplanation,
+)
+from loushang.harness.capabilities.effective_runtime import (
+    runtime_profile_fingerprint,
 )
 from loushang.harness.config.agent import (
     CompactionSettings,
@@ -86,7 +93,15 @@ from loushang.harness.session.composition import (
 )
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.extension_bridge import AgentSessionExtensionBridge
-from loushang.harness.session.model_call import SessionModelCallRuntime
+from loushang.harness.session.legacy_side_question import (
+    LegacySideQuestionBinding,
+    bind_legacy_side_question,
+)
+from loushang.harness.session.model_call import (
+    SessionModelCallCapabilityConsumer,
+    SessionModelCallRuntime,
+    build_session_model_call_capability_binding,
+)
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.side_question import (
@@ -145,6 +160,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         copy_to_clipboard: ClipboardWriter,
         retry_sleep: RetrySleeper,
         footer_data_provider: FooterDataPort,
+        side_question_binding: LegacySideQuestionBinding | None = None,
         package_summary_provider: PackageSummaryProvider | None = None,
         settings_manager: SettingsManager | None = None,
         model_registry: SessionModelCatalogPort | None = None,
@@ -207,14 +223,39 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 execute_branch_summary,
                 name="branch-summary executor",
             )
+        self._capability_runtime: CapabilityCompositionRuntime | None = (
+            capability_runtime
+        )
+        runtime_id = (
+            "session:" + str(self.session_manager.get_session_record().session_id)
+        )
+        initial_profile = capability_runtime.profile.snapshot()
+        self._capability_graph_runtime = RuntimeCapabilityGraphRuntime(
+            product_id=initial_profile.product_id,
+            runtime_id=runtime_id,
+            profile_fingerprint=runtime_profile_fingerprint(initial_profile),
+        )
+        self._capability_graph_binder = RuntimeCapabilityGraphBinder()
+        self._capability_graph_projector = RuntimeCapabilityGraphProjector(
+            self._capability_graph_runtime
+        )
+        self._model_call_bind_lock = asyncio.Lock()
+        self._model_call_consumer: SessionModelCallCapabilityConsumer | None = None
+        self._model_call_capability_binding = (
+            build_session_model_call_capability_binding(
+                transcript=session_manager,
+                projector=self._capability_graph_projector,
+                product_id=initial_profile.product_id,
+                runtime_id=runtime_id,
+                is_current=self._is_current_model_call_session,
+                registration_entries_provider=self._effective_registration_entries,
+                profile_fingerprint_provider=self._current_profile_fingerprint,
+            )
+        )
         self._model_call_runtime = SessionModelCallRuntime(
             transcript=session_manager,
-            profile=capability_runtime.profile,
-            runtime_id=(
-                "session:"
-                + str(self.session_manager.get_session_record().session_id)
-            ),
-            is_current=self._is_current_model_call_session,
+            ensure_consumer=self._ensure_session_graph_prepared,
+            projector=self._capability_graph_projector,
             registration_entries_provider=self._effective_registration_entries,
         )
         self._previous_agent_prepare_model_call = self.agent.prepare_model_call
@@ -229,15 +270,22 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
         self._tool_exec_service = tool_exec_service
-        self._capability_runtime: CapabilityCompositionRuntime | None = (
-            capability_runtime
+        self._side_question_binding: LegacySideQuestionBinding | None = (
+            side_question_binding
+            if side_question_binding is not None
+            else bind_legacy_side_question(capability_runtime.profile)
         )
-        side_question_factory = capability_runtime.side_question_provider_factory
-        self._side_question = (
-            SideQuestionCoordinator(side_question_factory.bind(self))
-            if side_question_factory is not None
-            else None
-        )
+        try:
+            side_question_factory = self._side_question_binding.provider_factory
+            self._side_question = (
+                SideQuestionCoordinator(side_question_factory.bind(self))
+                if side_question_factory is not None
+                else None
+            )
+        except BaseException:
+            self._side_question_binding.dispose()
+            self._side_question_binding = None
+            raise
         self.footer_data_provider = footer_data_provider
         self._base_prompt = (
             base_prompt if base_prompt is not None else self.agent.system_prompt
@@ -687,9 +735,20 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 await coordinator.cancel_and_wait()
             except BaseException as exc:
                 errors.append(exc)
+        side_question_binding = self._side_question_binding
+        self._side_question_binding = None
+        if side_question_binding is not None:
+            try:
+                side_question_binding.dispose()
+            except BaseException as exc:
+                errors.append(exc)
         self._restore_agent_model_call_boundary()
         try:
-            await self._model_call_runtime.dispose()
+            async with self._model_call_bind_lock:
+                self._model_call_consumer = None
+                await self._capability_graph_binder.dispose(
+                    self._capability_graph_runtime
+                )
         except BaseException as exc:
             errors.append(exc)
         try:
@@ -737,7 +796,34 @@ class AgentProductSession(AgentSessionAdapterMixin):
     async def prepare_model_call_runtime(self) -> None:
         """Commit the candidate-private graph before Session publication."""
 
-        await self._model_call_runtime.bind()
+        await self._ensure_session_graph_prepared()
+
+    async def _ensure_session_graph_prepared(
+        self,
+    ) -> SessionModelCallCapabilityConsumer:
+        consumer = self._model_call_consumer
+        if consumer is not None:
+            return consumer
+        async with self._model_call_bind_lock:
+            consumer = self._model_call_consumer
+            if consumer is not None:
+                return consumer
+            binding = self._model_call_capability_binding
+            await self._capability_graph_binder.bind(
+                self._capability_graph_runtime,
+                binding.plan,
+                (binding.provider_binding,),
+            )
+            consumer = SessionModelCallCapabilityConsumer(
+                self._capability_graph_runtime.capture(
+                    MODEL_INPUT_PREPARATION_REQUIREMENT
+                )
+            )
+            self._model_call_consumer = consumer
+            return consumer
+
+    def _current_profile_fingerprint(self) -> str:
+        return runtime_profile_fingerprint(self.capability_profile.snapshot())
 
     def _is_current_model_call_session(self) -> bool:
         runtime_host = self._extension_bridge.runtime_host

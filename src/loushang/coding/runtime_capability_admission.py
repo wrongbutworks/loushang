@@ -26,6 +26,10 @@ from loushang.harness.runtime import (
     RuntimeProfileLayerGrant,
     RuntimeProfileResolver,
 )
+from loushang.harness.session.legacy_side_question import (
+    LegacySideQuestionBinding,
+    bind_legacy_side_question,
+)
 
 SIDE_QUESTION_RUNTIME_PERMISSION = SIDE_QUESTION_PROVIDER_SLOT.key
 
@@ -39,6 +43,12 @@ class CodingCapabilityProfileResolution:
 
     def bind(self) -> CapabilityCompositionRuntime:
         return bind_capability_composition_runtime(
+            self.profile,
+            additional_implementations=self.implementations,
+        )
+
+    def bind_side_question(self) -> LegacySideQuestionBinding:
+        return bind_legacy_side_question(
             self.profile,
             additional_implementations=self.implementations,
         )
@@ -122,6 +132,16 @@ def bind_coding_capability_composition_runtime(
     return resolve_coding_capability_profile(extension_runtime.active_extensions).bind()
 
 
+def bind_coding_side_question(
+    extension_runtime: ExtensionRunner,
+) -> LegacySideQuestionBinding:
+    """Bind the final Extension-selected side-question factory for one Session."""
+
+    return resolve_coding_capability_profile(
+        extension_runtime.active_extensions
+    ).bind_side_question()
+
+
 def _extension_id(extension: LoadedExtension) -> str:
     manifest = extension.manifest
     if isinstance(manifest, ExtensionManifest):
@@ -175,5 +195,6 @@ __all__ = [
     "CodingCapabilityProfileResolution",
     "SIDE_QUESTION_RUNTIME_PERMISSION",
     "bind_coding_capability_composition_runtime",
+    "bind_coding_side_question",
     "resolve_coding_capability_profile",
 ]

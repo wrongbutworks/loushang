@@ -39,10 +39,23 @@ The implemented owner table above remains authoritative for current code. The
 accepted [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
 decision adds a coarser architecture. Its immutable Definition, Requirement,
 Bundle Provider declaration, pure planner, transactional Binder, live per-graph
-Runtime, and read-only Projector now exist. `harness.workspace` is the first
+Runtime, and read-only Projector now exist. `harness.workspace` is a
 Definition / Provider / Consumer slice: Consumers receive only declared
 filesystem facets or the authorized process-launch port, never the graph
 Runtime, raw process host, approval gateway, or sandbox backend.
+
+`harness.resources` is also source-complete but is not production-mounted. Its
+Session/bootstrap/sealed Bundle maps the private resource, prompt, skill, Tool
+pack, and Command pack Profile selections through focused Consumers. The
+Provider temporarily owns its private Profile Binder and computes one complete
+construction fingerprint; resource content remains call data and does not
+publish a Mount. `interaction.side_question` is excluded and remains a focused
+legacy binding owned and disposed by the Product Session.
+
+The generated [Harness Capability Catalog](capability-catalog.md) is the
+source-backed coverage projection. A target Capability is not reported as
+implemented there until its Definition, Provider, requirements, and Consumers
+all exist and pass the architecture gate.
 
 The initial top-level Harness Capability IDs are `harness.workspace`,
 `harness.resources`, and `harness.session`; current Coding-owned examples are

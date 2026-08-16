@@ -57,6 +57,7 @@ from loushang.ai.types import (
     Usage,
 )
 from loushang.ai.utils.json_parse import parse_streaming_json
+from loushang.foundation.json import JSONValue
 
 
 @dataclass
@@ -416,6 +417,7 @@ class RawAssembler:
             message = self._build_message(
                 stop_reason="error",
                 error_message=error_info.message,
+                error_info=error_info.to_dict(),
             )
             error_event: ErrorEvent = {
                 "type": "error",
@@ -526,7 +528,11 @@ class RawAssembler:
             )
 
     def _build_message(
-        self, *, stop_reason: str, error_message: str | None
+        self,
+        *,
+        stop_reason: str,
+        error_message: str | None,
+        error_info: dict[str, JSONValue] | None = None,
     ) -> AssistantMessage:
         return AssistantMessage(
             role="assistant",
@@ -540,6 +546,7 @@ class RawAssembler:
             stop_reason=_assistant_stop_reason(stop_reason),
             error_message=error_message,
             timestamp=self._clock(),
+            error_info=error_info,
         )
 
     def _build_partial_message(self) -> AssistantMessage:

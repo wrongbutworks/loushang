@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
-from typing import TypeVar, cast
+from typing import TypeVar
 
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
@@ -50,6 +50,15 @@ DISABLED_SKILL_ACTIVATION_IMPLEMENTATION = "harness.disabled_skill_activation"
 ORDERED_CAPABILITY_PACKS_IMPLEMENTATION = "harness.ordered_capability_packs"
 AGENT_SIDE_QUESTION_IMPLEMENTATION = "harness.agent_side_question"
 CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION = 1
+RESOURCE_CAPABILITY_SLOT_KEYS = frozenset(
+    {
+        RESOURCE_RUNTIME_SLOT.key,
+        PROMPT_SECTIONS_SLOT.key,
+        SKILL_ACTIVATION_SLOT.key,
+        TOOL_PACKS_SLOT.key,
+        COMMAND_PACKS_SLOT.key,
+    }
+)
 
 T = TypeVar("T")
 TValue = TypeVar("TValue")
@@ -135,10 +144,22 @@ class CapabilityCompositionRuntime:
 
     binding: RuntimeProfileBinding
     _binder: RuntimeProfileBinder
+    _profile: ResolvedRuntimeProfile
 
     @property
     def profile(self) -> ResolvedRuntimeProfile:
-        return self.binding.profile
+        current_resources = {
+            capability.slot.key: capability
+            for capability in self.binding.profile.capabilities
+        }
+        return ResolvedRuntimeProfile(
+            product_id=self._profile.product_id,
+            capabilities=tuple(
+                current_resources.get(capability.slot.key, capability)
+                for capability in self._profile.capabilities
+            ),
+            schema_version=self._profile.schema_version,
+        )
 
     def apply_skill_activation(
         self,
@@ -205,18 +226,6 @@ class CapabilityCompositionRuntime:
             COMMAND_PACKS_SLOT.key,
         )
 
-    @property
-    def side_question_provider_factory(self) -> SideQuestionProviderFactory | None:
-        value = self.binding.values().get(SIDE_QUESTION_PROVIDER_SLOT.key)
-        if value is None:
-            return None
-        if not callable(getattr(value, "bind", None)):
-            raise TypeError(
-                f"runtime slot {SIDE_QUESTION_PROVIDER_SLOT.key!r} returned "
-                "an invalid side-question Provider factory"
-            )
-        return cast(SideQuestionProviderFactory, value)
-
     def dispose(self) -> None:
         self._binder.dispose_sync(self.binding)
 
@@ -231,15 +240,19 @@ def bind_capability_composition_runtime(
 
     binder = RuntimeProfileBinder(
         RuntimeCapabilityRegistry(
-            (
+            implementation
+            for implementation in (
                 *standard_capability_composition_implementations(),
                 *tuple(additional_implementations),
             )
+            if implementation.slot in RESOURCE_CAPABILITY_SLOT_KEYS
         )
     )
+    resource_profile = resource_capability_profile(profile)
     return CapabilityCompositionRuntime(
-        binding=binder.bind_sync(profile, context=context),
+        binding=binder.bind_sync(resource_profile, context=context),
         _binder=binder,
+        _profile=profile,
     )
 
 
@@ -290,6 +303,30 @@ def standard_capability_composition_implementations() -> tuple[
             implementation_version=CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
             create=_create_agent_side_question_provider_factory,
         ),
+    )
+
+
+def resource_capability_profile(
+    profile: ResolvedRuntimeProfile,
+) -> ResolvedRuntimeProfile:
+    """Project the private resource mechanism selections from one full Profile."""
+
+    capabilities = tuple(
+        capability
+        for capability in profile.capabilities
+        if capability.slot.key in RESOURCE_CAPABILITY_SLOT_KEYS
+    )
+    present = {capability.slot.key for capability in capabilities}
+    missing = RESOURCE_CAPABILITY_SLOT_KEYS - present
+    if missing:
+        raise ValueError(
+            "resource capability profile is missing slots: "
+            + ", ".join(sorted(missing))
+        )
+    return ResolvedRuntimeProfile(
+        product_id=profile.product_id,
+        capabilities=capabilities,
+        schema_version=profile.schema_version,
     )
 
 
@@ -388,8 +425,10 @@ __all__ = [
     "DISABLED_SKILL_ACTIVATION_IMPLEMENTATION",
     "ORDERED_CAPABILITY_PACKS_IMPLEMENTATION",
     "PROMPT_SECTIONS_IMPLEMENTATION",
+    "RESOURCE_CAPABILITY_SLOT_KEYS",
     "RESOURCE_ACTIVATION_IMPLEMENTATION",
     "bind_capability_composition_runtime",
+    "resource_capability_profile",
     "standard_capability_composition_plan",
     "standard_capability_composition_implementations",
 ]

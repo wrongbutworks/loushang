@@ -134,18 +134,23 @@ class PreparedExtensionGeneration:
             raise
         self._activated = True
 
-    def publish(self, commit_resource: Callable[[], object]) -> ExtensionGenerationRetirement:
+    def publish(
+        self,
+        commit_resource: Callable[[], object],
+    ) -> ExtensionGenerationRetirement:
+        """Publish atomically while retaining rollback ownership on failure."""
+
         if not self._activated:
             raise RuntimeError("Extension generation must be activated before publish")
         if self._published:
             raise RuntimeError("Extension generation is already published")
-        try:
-            retirement = self._host._publish_generation(
-                self._candidate,
-                commit_resource=commit_resource,
-            )
-        finally:
-            self._release_lifecycle()
+        retirement = self._host._publish_generation(
+            self._candidate,
+            commit_resource=commit_resource,
+        )
+        # Reaching this line proves publication succeeded. Failures leave the
+        # gate owned until rollback has disposed the staged registrations.
+        self._release_lifecycle()
         self._published = True
         return retirement
 
@@ -155,7 +160,13 @@ class PreparedExtensionGeneration:
         try:
             return await self._candidate._dispose_current_registrations()
         finally:
-            self._release_lifecycle()
+            try:
+                if self._candidate._has_pending_registration_cleanup():
+                    self._host._retain_retired_generation_registrations(
+                        self._candidate._generation_registrations
+                    )
+            finally:
+                self._release_lifecycle()
 
     def _release_lifecycle(self) -> None:
         if not self._owns_lifecycle:
@@ -888,6 +899,24 @@ class ExtensionRunner(ExtensionRuntime):
         )
         self._retired_generation_registrations.append(previous_registrations)
         return ExtensionGenerationRetirement(self, previous_registrations)
+
+    def _has_pending_registration_cleanup(self) -> bool:
+        return any(
+            state != "disposed"
+            for registrations in self._generation_registrations
+            for _, _, state in registrations.inventory
+        )
+
+    def _retain_retired_generation_registrations(
+        self,
+        registrations: tuple[ExtensionGenerationRegistrations, ...],
+    ) -> None:
+        if not registrations or any(
+            retained is registrations
+            for retained in self._retired_generation_registrations
+        ):
+            return
+        self._retired_generation_registrations.append(registrations)
 
     async def _dispose_current_registrations(
         self,

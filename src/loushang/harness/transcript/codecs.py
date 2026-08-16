@@ -33,11 +33,16 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     THINKING_SELECTION_KIND,
+)
+from loushang.harness.transcript.model_call_codec import (
+    decode_model_call_outcome,
+    encode_model_call_outcome,
 )
 from loushang.harness.transcript.model_input_types import (
     FrozenModelInputValue,
@@ -45,6 +50,15 @@ from loushang.harness.transcript.model_input_types import (
     ModelInputComponentReference,
     ModelInputSnapshot,
     thaw_model_input_json,
+)
+from loushang.harness.transcript.model_input_v2_codec import (
+    decode_model_input_node_bundle,
+    decode_model_input_snapshot_v2,
+    encode_model_input_node_bundle,
+    encode_model_input_snapshot_v2,
+)
+from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_PAYLOAD_VERSION,
 )
 from loushang.harness.transcript.types import (
     AnnotationOperation,
@@ -173,6 +187,32 @@ def register_standard_payload_codecs(
         _encode_model_input_snapshot,
         _decode_model_input_snapshot,
     )
+    _register(
+        registry,
+        MODEL_CALL_OUTCOME_KIND,
+        encode_model_call_outcome,
+        decode_model_call_outcome,
+    )
+    registry.register(
+        MODEL_INPUT_COMPONENT_KIND,
+        MODEL_INPUT_V2_PAYLOAD_VERSION,
+        FunctionalConversationPayloadCodec(
+            encoder=encode_model_input_node_bundle,
+            decoder=decode_model_input_node_bundle,
+        ),
+    )
+    registry.register(
+        MODEL_INPUT_PREPARED_KIND,
+        MODEL_INPUT_V2_PAYLOAD_VERSION,
+        FunctionalConversationPayloadCodec(
+            encoder=encode_model_input_snapshot_v2,
+            decoder=decode_model_input_snapshot_v2,
+        ),
+    )
+    registry.require_known_payload_versions(
+        MODEL_INPUT_COMPONENT_KIND,
+        MODEL_INPUT_PREPARED_KIND,
+    )
 
 
 def _register(
@@ -282,9 +322,7 @@ def _encode_compaction_checkpoint(payload: object) -> JSONValue:
     }
     if checkpoint.model_input_snapshot_ids:
         encoded["lineageVersion"] = 2
-        encoded["modelInputSnapshotIds"] = list(
-            checkpoint.model_input_snapshot_ids
-        )
+        encoded["modelInputSnapshotIds"] = list(checkpoint.model_input_snapshot_ids)
     return encoded
 
 

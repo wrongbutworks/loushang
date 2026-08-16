@@ -6,6 +6,9 @@ import json
 from dataclasses import replace
 from datetime import date
 
+import pytest
+
+from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import (
     Capabilities,
@@ -14,7 +17,14 @@ from loushang.ai.model import (
     Provider,
 )
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    ImagePart,
+    TextPart,
+    ToolCall,
+    Usage,
+    UserMessage,
+)
 from loushang.harness.tools.workspace import direct_tool
 
 
@@ -2615,6 +2625,140 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
         "endpoint_id": "responses",
         "model_id": "alt-model",
     }
+
+
+def test_agent_session_rejects_text_only_model_for_image_history_before_commit(
+    tmp_path,
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+
+    image_model = Model(
+        id="image-model",
+        name="Image",
+        provider="image-provider",
+        endpoint="responses",
+        capabilities=Capabilities(
+            input=("text", "image"),
+            context_window=64_000,
+            max_tokens=2_048,
+        ),
+    )
+    text_model = Model(
+        id="text-model",
+        name="Text",
+        provider="text-provider",
+        endpoint="responses",
+        capabilities=Capabilities(
+            input=("text",),
+            context_window=64_000,
+            max_tokens=2_048,
+        ),
+    )
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[
+                    ImagePart(
+                        type="image",
+                        data="aGVsbG8=",
+                        mime_type="image/png",
+                    )
+                ],
+                timestamp=0.0,
+            )
+        )
+    )
+    session = AgentSession(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": image_model,
+                "thinking_level": "off",
+            }
+        ),
+        session_manager=manager,
+    )
+    entries_before = list(manager.get_entries())
+
+    with pytest.raises(
+        UnsupportedCapabilityError, match="does not support image input"
+    ):
+        asyncio.run(session.set_model(text_model))
+
+    assert session.agent.model == image_model
+    assert manager.get_entries() == entries_before
+
+
+def test_agent_session_serializes_model_selection_after_active_prompt(tmp_path) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        started.set()
+        await release.wait()
+        return _stream_with_final_message(_assistant_text_message("done"))
+
+    first = _model()
+    second = Model(
+        id="alt-model",
+        name="Alt",
+        provider="alt",
+        endpoint="responses",
+        capabilities=Capabilities(
+            input=("text",),
+            context_window=64_000,
+            max_tokens=2_048,
+        ),
+    )
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+
+    async def scenario() -> None:
+        agent = Agent(
+            stream_fn=stream_fn,
+            initial_state={
+                "system_prompt": "",
+                "model": first,
+                "thinking_level": "off",
+            },
+        )
+        session = AgentSession(agent=agent, session_manager=manager)
+        prompt_task = asyncio.create_task(session.prompt("hi"))
+        await started.wait()
+
+        selection_task = asyncio.create_task(session.set_model(second))
+        await asyncio.sleep(0)
+
+        assert selection_task.done() is False
+        assert agent.model == first
+        assert not any(
+            entry.kind == "agent.model_selection" for entry in manager.get_entries()
+        )
+
+        release.set()
+        await prompt_task
+        await selection_task
+
+        assert agent.model == second
+        assert [
+            entry.kind
+            for entry in manager.get_entries()
+            if entry.kind == "agent.model_selection"
+        ] == ["agent.model_selection"]
+
+    asyncio.run(scenario())
 
 
 def test_agent_session_persists_explicit_model_selection_endpoint(tmp_path) -> None:

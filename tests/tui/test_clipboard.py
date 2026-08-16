@@ -21,6 +21,7 @@ def test_copy_to_clipboard_uses_platform_command_with_text_stdin() -> None:
         "hello",
         env={"WAYLAND_DISPLAY": "wayland-1"},
         runner=runner,
+        platform="linux",
     )
 
     assert result.ok is True

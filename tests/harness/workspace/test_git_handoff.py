@@ -4,6 +4,7 @@ import asyncio
 import errno
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -142,6 +143,10 @@ def test_capture_and_apply_preserve_complete_file_tree_semantics(
 
 
 @pytest.mark.skipif(os.name == "nt", reason="raw-byte filenames are POSIX-only")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="APFS rejects invalid UTF-8 byte-sequence filenames (Linux ext4 allows them)",
+)
 def test_capture_and_apply_preserve_non_utf8_git_filenames(
     tmp_path: Path,
 ) -> None:

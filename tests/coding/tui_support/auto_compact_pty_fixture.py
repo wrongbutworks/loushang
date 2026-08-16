@@ -156,7 +156,7 @@ async def _render_auto_compact_playback(
                     capabilities=Capabilities(
                         input=("text",),
                         stream=True,
-                        context_window=100,
+                        context_window=32_768,
                         max_tokens=32,
                     ),
                 ),
@@ -200,7 +200,7 @@ async def _render_auto_compact_playback(
             session=session,
             runtime=runtime,
             lines=early_lines,
-            total_tokens=95,
+            total_tokens=31_000,
         )
 
         await manager.append_message(

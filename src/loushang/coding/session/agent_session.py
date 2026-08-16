@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 from loushang.agent import Agent, PrepareModelCallFn
+from loushang.ai import PreparedRequestLimits
 from loushang.ai.api_registry import APIRegistry
 from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
@@ -26,7 +27,7 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.resource_runtime import summarize_coding_package_root
 from loushang.coding.runtime_capability_admission import (
-    bind_coding_capability_composition_runtime,
+    resolve_coding_capability_profile,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.approval import InteractiveApprovalResolver
@@ -51,6 +52,10 @@ from loushang.harness.session.composition import sleep_for_retry
 from loushang.harness.session.cwd_audit import CwdBoundServicesAudit
 from loushang.harness.session.event_types import AgentSessionEvent
 from loushang.harness.session.footer import FooterDataProvider
+from loushang.harness.session.legacy_side_question import (
+    LegacySideQuestionBinding,
+    bind_legacy_side_question,
+)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
     BranchSummaryOutput,
@@ -78,6 +83,7 @@ async def _execute_coding_compaction_runtime(
     signal: object | None,
     custom_instructions: str | None = None,
     prepare_model_call: PrepareModelCallFn | None = None,
+    request_limits: PreparedRequestLimits | None = None,
 ) -> CompactionResult:
     return await _execute_coding_compaction(
         preparation=preparation,
@@ -86,6 +92,7 @@ async def _execute_coding_compaction_runtime(
         signal=signal,
         custom_instructions=custom_instructions,
         prepare_model_call=prepare_model_call,
+        request_limits=request_limits,
     )
 
 
@@ -136,6 +143,7 @@ class AgentSession(AgentProductSession):
         approval_resolver: InteractiveApprovalResolver | None = None,
         tool_policy_evaluator: PolicyEvaluator | None = None,
         capability_runtime: CapabilityCompositionRuntime | None = None,
+        side_question_binding: LegacySideQuestionBinding | None = None,
         sandbox_runtime: SandboxExecutionRuntime | None = None,
         lsp_runtime: CodingLspRuntime | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
@@ -145,52 +153,90 @@ class AgentSession(AgentProductSession):
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
         resolved_capability_runtime = capability_runtime
-        if resolved_capability_runtime is None:
-            resolved_capability_runtime = (
-                bind_coding_capability_composition_runtime(extension_runner)
-                if extension_runner is not None
-                else bind_capability_composition_runtime(CODING_CAPABILITY_PROFILE)
+        locally_created_capability_runtime: CapabilityCompositionRuntime | None = None
+        locally_created_side_question_binding: LegacySideQuestionBinding | None = None
+        resolution = None
+        if extension_runner is not None and (
+            resolved_capability_runtime is None or side_question_binding is None
+        ):
+            resolution = resolve_coding_capability_profile(
+                extension_runner.active_extensions
             )
-        super().__init__(
-            agent=agent,
-            session_manager=session_manager,
-            capability_runtime=resolved_capability_runtime,
-            execute_compaction=_execute_coding_compaction_runtime,
-            execute_branch_summary=_execute_coding_branch_summary,
-            get_changelog=read_changelog_for_cwd,
-            copy_to_clipboard=_copy_to_clipboard,
-            retry_sleep=lambda delay, signal: sleep_for_retry(delay, signal),
-            footer_data_provider=footer_data_provider
-            or FooterDataProvider(session_manager.get_cwd()),
-            package_summary_provider=summarize_coding_package_root,
-            settings_manager=settings_manager,
-            model_registry=model_registry,
-            resource_loader=resource_loader,
-            resource_bundle=resource_bundle,
-            extension_runner=extension_runner,
-            tool_registry=tool_registry,
-            allowed_tool_names=allowed_tool_names,
-            active_tool_names=active_tool_names,
-            default_activate_new_tools=default_activate_new_tools,
-            show_empty_tool_prompt=show_empty_tool_prompt,
-            base_prompt=base_prompt,
-            diagnostics_service=diagnostics_service,
-            package_materializer=package_materializer,
-            session_start_event=session_start_event,
-            api_registry=api_registry,
-            exec_service=exec_service,
-            tool_exec_service=(
-                exec_service
-                if (
-                    sandbox_runtime is not None
-                    and sandbox_runtime.status().state != "disabled"
+        if resolved_capability_runtime is None:
+            if resolution is not None:
+                resolved_capability_runtime = resolution.bind()
+            else:
+                resolved_capability_runtime = bind_capability_composition_runtime(
+                    CODING_CAPABILITY_PROFILE
                 )
-                or getattr(exec_service, "execution_profile", None) is not None
-                else None
-            ),
-            approval_resolver=approval_resolver,
-            tool_policy_evaluator=tool_policy_evaluator,
-        )
+            locally_created_capability_runtime = resolved_capability_runtime
+        try:
+            if side_question_binding is None:
+                side_question_binding = (
+                    resolution.bind_side_question()
+                    if resolution is not None
+                    else bind_legacy_side_question(resolved_capability_runtime.profile)
+                )
+                locally_created_side_question_binding = side_question_binding
+            super().__init__(
+                agent=agent,
+                session_manager=session_manager,
+                capability_runtime=resolved_capability_runtime,
+                side_question_binding=side_question_binding,
+                execute_compaction=_execute_coding_compaction_runtime,
+                execute_branch_summary=_execute_coding_branch_summary,
+                get_changelog=read_changelog_for_cwd,
+                copy_to_clipboard=_copy_to_clipboard,
+                retry_sleep=lambda delay, signal: sleep_for_retry(delay, signal),
+                footer_data_provider=footer_data_provider
+                or FooterDataProvider(session_manager.get_cwd()),
+                package_summary_provider=summarize_coding_package_root,
+                settings_manager=settings_manager,
+                model_registry=model_registry,
+                resource_loader=resource_loader,
+                resource_bundle=resource_bundle,
+                extension_runner=extension_runner,
+                tool_registry=tool_registry,
+                allowed_tool_names=allowed_tool_names,
+                active_tool_names=active_tool_names,
+                default_activate_new_tools=default_activate_new_tools,
+                show_empty_tool_prompt=show_empty_tool_prompt,
+                base_prompt=base_prompt,
+                diagnostics_service=diagnostics_service,
+                package_materializer=package_materializer,
+                session_start_event=session_start_event,
+                api_registry=api_registry,
+                exec_service=exec_service,
+                tool_exec_service=(
+                    exec_service
+                    if (
+                        sandbox_runtime is not None
+                        and sandbox_runtime.status().state != "disabled"
+                    )
+                    or getattr(exec_service, "execution_profile", None) is not None
+                    else None
+                ),
+                approval_resolver=approval_resolver,
+                tool_policy_evaluator=tool_policy_evaluator,
+            )
+        except BaseException as error:
+            if locally_created_side_question_binding is not None:
+                try:
+                    locally_created_side_question_binding.dispose()
+                except BaseException as cleanup_error:
+                    error.add_note(
+                        "direct Session side-question cleanup also failed: "
+                        f"{cleanup_error}"
+                    )
+            if locally_created_capability_runtime is not None:
+                try:
+                    locally_created_capability_runtime.dispose()
+                except BaseException as cleanup_error:
+                    error.add_note(
+                        "direct Session capability cleanup also failed: "
+                        f"{cleanup_error}"
+                    )
+            raise
 
     def get_sandbox_status(self) -> SandboxStatus:
         if self._sandbox_runtime is None:

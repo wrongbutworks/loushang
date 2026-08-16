@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 from loushang.ai.model import Model
 from loushang.ai.model.selection import ModelSelection
@@ -35,6 +35,7 @@ from loushang.harness.session.bootstrap_utils import (
     resolve_base_system_prompt,
     resolve_initial_active_tool_names,
 )
+from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.session.model_resolution import (
     resolve_session_model,
     scoped_models_from_patterns,
@@ -433,6 +434,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
     ) = None
     product_tool_pack_id: str = "product.registry"
     extension_tool_pack_id: str = "product.extensions"
+    bind_session_side_question: (
+        Callable[[StandardExtensionT], LegacySideQuestionBinding] | None
+    ) = None
 
     def construct(
         self,
@@ -466,6 +470,20 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 NoToolsMode | None,
             ],
             SessionT,
+        ]
+        | Callable[
+            [
+                CapabilityCompositionRuntime,
+                LegacySideQuestionBinding,
+                AgentT,
+                ResourceBundle,
+                StandardExtensionT,
+                WorkspaceToolRegistry | None,
+                list[str] | None,
+                str,
+                NoToolsMode | None,
+            ],
+            SessionT,
         ],
         on_default_model_unavailable: Callable[
             [ModelSelection, Exception, str],
@@ -478,6 +496,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         settings = services.settings_manager.get_settings()
         bootstrap_capability_runtime = self.bind_capabilities()
         session_capability_runtimes: list[CapabilityCompositionRuntime] = []
+        session_side_question_bindings: list[LegacySideQuestionBinding] = []
 
         def create_session(
             agent: AgentT,
@@ -494,8 +513,61 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 else bootstrap_capability_runtime
             )
             session_capability_runtimes.append(capability_runtime)
-            return session_factory(
+            side_question_binding = (
+                self.bind_session_side_question(extension_runtime)
+                if self.bind_session_side_question is not None
+                else None
+            )
+            if side_question_binding is not None:
+                session_side_question_bindings.append(side_question_binding)
+            if self.bind_session_side_question is None:
+                legacy_factory = cast(
+                    Callable[
+                        [
+                            CapabilityCompositionRuntime,
+                            AgentT,
+                            ResourceBundle,
+                            StandardExtensionT,
+                            WorkspaceToolRegistry | None,
+                            list[str] | None,
+                            str,
+                            NoToolsMode | None,
+                        ],
+                        SessionT,
+                    ],
+                    session_factory,
+                )
+                return legacy_factory(
+                    capability_runtime,
+                    agent,
+                    bundle,
+                    extension_runtime,
+                    registry,
+                    active,
+                    prompt,
+                    mode,
+                )
+            factory_with_side_question = cast(
+                Callable[
+                    [
+                        CapabilityCompositionRuntime,
+                        LegacySideQuestionBinding,
+                        AgentT,
+                        ResourceBundle,
+                        StandardExtensionT,
+                        WorkspaceToolRegistry | None,
+                        list[str] | None,
+                        str,
+                        NoToolsMode | None,
+                    ],
+                    SessionT,
+                ],
+                session_factory,
+            )
+            assert side_question_binding is not None
+            return factory_with_side_question(
                 capability_runtime,
+                side_question_binding,
                 agent,
                 bundle,
                 extension_runtime,
@@ -567,6 +639,14 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 )
             )
         except BaseException as error:
+            for side_question_binding in reversed(session_side_question_bindings):
+                try:
+                    side_question_binding.dispose()
+                except BaseException as cleanup_error:
+                    error.add_note(
+                        "final Session side-question cleanup also failed: "
+                        f"{cleanup_error}"
+                    )
             for capability_runtime in reversed(session_capability_runtimes):
                 if capability_runtime is bootstrap_capability_runtime:
                     continue
@@ -580,8 +660,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 bootstrap_capability_runtime.dispose()
             except BaseException as cleanup_error:
                 error.add_note(
-                    "bootstrap capability cleanup also failed: "
-                    f"{cleanup_error}"
+                    f"bootstrap capability cleanup also failed: {cleanup_error}"
                 )
             raise
 
@@ -591,6 +670,14 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             try:
                 bootstrap_capability_runtime.dispose()
             except BaseException as error:
+                for side_question_binding in reversed(session_side_question_bindings):
+                    try:
+                        side_question_binding.dispose()
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "final Session side-question cleanup also failed: "
+                            f"{cleanup_error}"
+                        )
                 for capability_runtime in reversed(session_capability_runtimes):
                     if capability_runtime is bootstrap_capability_runtime:
                         continue

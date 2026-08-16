@@ -107,16 +107,19 @@ Conversation metadata is an append-only patch with disjoint values and removed
 keys. Both reduce deterministically along the selected conversation path and
 are invisible to model context by default.
 
-## Hidden Model Input Facts
+## Hidden Model-Call Facts
 
-The profile also owns two hidden record kinds for the first durable
+The profile also owns three hidden record kinds for the durable
 prepare-before-send closure:
 
 - `model.input.component` retains one canonical strict-JSON value with its
   SHA-256 content fingerprint;
 - `model.input.prepared` retains ordered component references, logical and
   final prepared-payload fingerprints, invocation identity, source and commit
-  clocks, and the committed Profile/Mount/registration references.
+  clocks, and the committed Profile/Mount/registration references;
+- `model.call.outcome` closes one logical invocation after internal Provider
+  retries, linking its complete ordered prepared-snapshot sequence to a safe
+  completed, failed, or cancelled terminal result.
 
 These records have codecs but no model-context or rendered transcript-body
 projection. Portable export data retains the authoritative facts, and an entry
@@ -136,7 +139,9 @@ that record is appended and before provider transport; it is never truncated.
 The ceiling applies at the common unit-of-work commit boundary for both
 reserved Model Input kinds. A composition may select a lower limit but cannot
 raise the v1 ceiling.
-Because the Store is append-only rather than a multi-record transaction,
+Payload version 2 replaces monolithic values with bounded typed node bundles,
+large-value chunks, sequence tails, and root-only prepared snapshots. Version 1
+facts remain readable and are never rewritten. Because the Store is append-only,
 components committed before a later component or snapshot failure may remain
 as harmless reusable facts. Only a committed `model.input.prepared` record is
 a Model Input snapshot.
@@ -145,7 +150,9 @@ a Model Input snapshot.
 request barrier and that Harness committed its reconstructable facts. It does
 not claim that transport was attempted, accepted, or failed. AI owns the
 prepared-request value and pre-transport commit port; Harness implements that
-port without an `AI -> Harness` dependency. This wave proves one explicit
+port without an `AI -> Harness` dependency. A separate `model.call.outcome`
+fact may later close the invocation; a missing fact remains unknown rather than
+mutating the prepared snapshot. This wave proves one explicit
 main-turn composition whose logical projection contains system prompt,
 messages, Tool schemas, and relevant request options, plus
 restart/source-deletion reconstruction. Wiring all managed Session call and
@@ -163,7 +170,11 @@ The conversation codec always validates and decodes the envelope. The profile
 then selects a payload codec by `(kind, payload_version)`:
 
 - an unregistered pair produces the same `ConversationRecord` with an
-  `OpaquePayload` containing a defensive strict-JSON snapshot;
+  `OpaquePayload` containing a defensive strict-JSON snapshot, unless the
+  active profile marks that kind as core and required for reconstruction;
+- an unknown payload version for a required core kind fails closed instead of
+  becoming opaque; the standard Agent profile applies this rule to both Model
+  Input kinds;
 - a registered codec that rejects its payload reports a corrupted known
   record and must not fall back to opaque;
 - opaque records remain part of parent graphs and survive load, selected-path

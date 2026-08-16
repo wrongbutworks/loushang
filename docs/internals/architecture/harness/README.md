@@ -22,16 +22,31 @@ planning, work event persistence, or AI provider behavior.
 - [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
   defines top-level Capability IDs, dependency direction, Mount identity,
   graph lifecycle, and graph diagnostics.
+- [Harness Capability Catalog](capability-catalog.md) is the generated,
+  source-backed inventory of role-complete Capability Definition / Provider /
+  Consumer seams and their lifecycle metadata.
 - [Capability Runtime Convergence Plan](capability-runtime-convergence-plan.md)
-  records the reviewed delivery plan for owner-scoped reversible registration,
+  records the completed PR0-PR9 delivery for owner-scoped reversible registration,
   Definition/Provider/Consumer separation, composed Profile/Mount/registration
   projection, and reconstruction of model-visible inputs from committed facts.
+- [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md)
+  defines the accepted next-stage convergence of Profile, Mount, Registration,
+  and Extension/Resource construction authority around one publisher per owned
+  live object while preserving independent fact clocks.
+- [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
+  freezes the current construction/publication owners, supported entrypoint
+  counts, Profile-slot handoff classes, Binder ordering, and production
+  construction allowlists before lifecycle convergence changes behavior.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   freezes the mutable-surface, compatibility, model-call, package-owner, and
   lifecycle-fault evidence that later convergence PRs must preserve or revise.
 - [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
   fixes PR8's Session/candidate-graph nesting, per-sampling commit seam, complete
   model-call inventory, compaction lineage compatibility, and failure policy.
+- [Model Input Persistence And Capacity Recovery](model-input-persistence-capacity-recovery.md)
+  is the proposed corrective boundary for incremental Model Input persistence,
+  typed invocation outcomes, capability-safe model selection, Provider request
+  budgets, and bounded overflow recovery after PR #451.
 - [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
   fixes PR9's four-clock composed view, explicit skew, explain, JSON, and diff
   semantics while retaining the existing graph projector as the only projector.
@@ -54,22 +69,38 @@ description.
   separates static Capability Plan nodes from live Mounted Capabilities,
   fixes `A -> B` as "A depends on B", and defines graph planning, incremental
   binding, disposal, diagnostics, and multi-Product observation.
+- [Harness Capability Catalog](capability-catalog.md) is regenerated from
+  source-backed seam metadata and fails verification when an implemented
+  Definition, Provider, requirement, or Consumer drifts.
 - [Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md)
   defines aggregate contribution, ordered interception and decoration,
   exclusive replacement, protocol injection, composition-root ownership, and
   the invariant enforcement layer that Product and Plugin variation cannot
   bypass.
 - [Capability Runtime Convergence Plan](capability-runtime-convergence-plan.md)
-  joins registration ownership and disposal, Capability role separation,
-  existing graph projection, and durable model-input reconstruction into one
-  reviewed migration sequence. It is a delivery plan and does not override
-  implemented source or accepted boundary documents.
+  records the completed migration sequence that joined registration ownership
+  and disposal, Capability role separation, graph projection, and durable
+  model-input reconstruction. It does not override implemented source or
+  accepted boundary documents.
+- [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md)
+  is the accepted follow-on delivery plan for a Session-owned graph, the
+  `harness.resources` vertical slice, and contraction of duplicate live
+  construction paths; workspace production mounting remains an independent
+  follow-up. Its
+  [independent review brief](composition-lifecycle-authority-review-brief.md)
+  can be given to reviewers without prior conversation context.
+- [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
+  is the executable zero-behavior-change inventory for that accepted plan and
+  distinguishes current repeated construction from cleanup leakage.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   is the executable pre-change inventory for that sequence. It records current
   compatibility and assigns each future contract to one package owner.
 - [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md)
   defines the implemented PR8 Session graph, per-sampling commit, complete
   model-call inventory, and compaction-lineage boundary.
+- [Model Input Persistence And Capacity Recovery](model-input-persistence-capacity-recovery.md)
+  proposes a v1-compatible Model Input v2 representation and the selection,
+  error, capacity, and recovery boundaries required before it is implemented.
 - [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
   defines PR9's Product-neutral effective runtime diagnostics and clock-skew
   semantics without introducing another authority.

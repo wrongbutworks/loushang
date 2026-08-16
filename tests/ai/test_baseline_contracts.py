@@ -22,6 +22,7 @@ ROOT_STABLE_EXPORTS = (
     "ApiKeyAuth",
     "AuthError",
     "CallOptions",
+    "PreparedRequestLimits",
     "CredentialExpiredError",
     "CredentialStatus",
     "FileCredentialStore",

@@ -10,6 +10,7 @@ from loushang.ai.errors import (
     AIAuthenticationError,
     AIProviderProtocolError,
     AIRateLimitError,
+    AIRequestTooLargeError,
     AITimeoutError,
     ModelNotFoundError,
     ToolValidationError,
@@ -88,6 +89,10 @@ def test_error_subclasses_have_stable_codes_and_retry_defaults() -> None:
         is AIErrorCode.UNSUPPORTED_CAPABILITY
     )
     assert ToolValidationError("invalid").info.code is AIErrorCode.TOOL_VALIDATION
+    assert (
+        AIRequestTooLargeError("too large").info.code
+        is AIErrorCode.REQUEST_TOO_LARGE
+    )
     assert AIRateLimitError("rate limited").info.retryable is True
     assert AITimeoutError("timeout").info.retryable is True
     assert AIProviderProtocolError("bad event").info.retryable is False

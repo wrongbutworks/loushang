@@ -97,8 +97,12 @@ async def call_api_adapter_stream(
         if request.options is not None
         else None
     )
+    request_limits = (
+        request.options.request_limits if request.options is not None else None
+    )
     uses_prepared_barrier = isinstance(adapter, PreparedRequestAdapter)
-    if committer is not None and not uses_prepared_barrier:
+    requires_prepared_barrier = committer is not None or request_limits is not None
+    if requires_prepared_barrier and not uses_prepared_barrier:
         raise TypeError(
             f"API adapter {adapter.api!r} does not implement the prepared-request barrier"
         )
@@ -118,7 +122,7 @@ async def call_api_adapter_stream(
                 attempt=attempt,
             )
         )
-        if committer is not None:
+        if requires_prepared_barrier:
             return invoke_prepared_request(adapter, attempt_request)
         return _call_adapter_raw_parts(adapter, attempt_request)
 

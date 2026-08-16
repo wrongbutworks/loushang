@@ -7,14 +7,9 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 from loushang.ai.errors import (
-    AIAuthenticationError,
     AIError,
     AIErrorCode,
     AIErrorInfo,
-    AIProviderError,
-    AIRateLimitError,
-    AIServiceUnavailableError,
-    AITimeoutError,
     ai_error_from_info,
     ai_error_info_from_mapping,
 )
@@ -30,15 +25,18 @@ class ProviderErrorInfo(TypedDict):
     error_info: NotRequired[dict[str, JSONValue]]
 
 
-_ERROR_CLASS_BY_CODE: dict[
-    AIErrorCode, type[AIProviderError | AIAuthenticationError]
-] = {
-    AIErrorCode.AUTHENTICATION: AIAuthenticationError,
-    AIErrorCode.RATE_LIMIT: AIRateLimitError,
-    AIErrorCode.TIMEOUT: AITimeoutError,
-    AIErrorCode.SERVICE_UNAVAILABLE: AIServiceUnavailableError,
-    AIErrorCode.PROVIDER: AIProviderError,
-}
+_LOCAL_AI_ERROR_CODES = frozenset(
+    {
+        AIErrorCode.CONFIGURATION,
+        AIErrorCode.MODEL_NOT_FOUND,
+        AIErrorCode.AMBIGUOUS_MODEL,
+        AIErrorCode.UNSUPPORTED_CAPABILITY,
+        AIErrorCode.REQUEST_VALIDATION,
+        AIErrorCode.REQUEST_TOO_LARGE,
+        AIErrorCode.TOOL_VALIDATION,
+        AIErrorCode.CANCELLED,
+    }
+)
 
 _PROVIDER_RESPONSE_SUMMARY_MAX_CHARS = 512
 _PROVIDER_DIAGNOSTIC_KEYS = frozenset({"code", "detail", "error", "message", "type"})
@@ -47,6 +45,25 @@ _SENSITIVE_KEY_PATTERN = re.compile(
     r"(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;}]+")
+_PROVIDER_ERROR_IDENTITY_PATTERN = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}"
+)
+_REQUEST_TOO_LARGE_CODES = frozenset(
+    {
+        "content_too_large",
+        "payload_too_large",
+        "request_entity_too_large",
+        "request_too_large",
+    }
+)
+_CONTEXT_OVERFLOW_CODES = frozenset(
+    {
+        "context_length_exceeded",
+        "context_overflow",
+        "input_too_long",
+        "max_context_length_exceeded",
+    }
+)
 
 
 def classify_provider_error(
@@ -131,11 +148,12 @@ def normalize_provider_error(
     source: str = "provider",
 ) -> AIError:
     if isinstance(error, AIError):
+        if error.info.code in _LOCAL_AI_ERROR_CODES:
+            return ai_error_from_info(error.info)
         info = _canonicalize_provider_error_info(error.info)
         return ai_error_from_info(info)
     status_code = _provider_status_code(error)
     code = _provider_error_code(error, status_code)
-    error_type = _ERROR_CLASS_BY_CODE.get(code, AIProviderError)
     info = AIErrorInfo(
         code=code,
         message=_public_provider_error_message(code),
@@ -146,9 +164,10 @@ def normalize_provider_error(
         details={
             "exceptionType": error.__class__.__name__,
             **_raw_code_details(getattr(error, "code", None), code, status_code),
+            **_provider_error_identity(error),
         },
     )
-    return error_type(_canonicalize_provider_error_info(info))
+    return ai_error_from_info(_canonicalize_provider_error_info(info))
 
 
 def provider_error_info_from_raw(
@@ -197,8 +216,23 @@ def _canonicalize_provider_error_info(
 ) -> AIErrorInfo:
     resolved_status_code = info.status_code if status_code is None else status_code
     code = cast(AIErrorCode, info.code)
+    if resolved_status_code is None and code in _LOCAL_AI_ERROR_CODES:
+        return info
     if resolved_status_code is not None:
-        code = _provider_error_code_from_status(resolved_status_code)
+        status_code_classification = _provider_error_code_from_status(
+            resolved_status_code
+        )
+        if status_code_classification is not AIErrorCode.PROVIDER:
+            code = status_code_classification
+        else:
+            code = _capacity_error_code(info.details) or (
+                code
+                if code
+                in {AIErrorCode.REQUEST_TOO_LARGE, AIErrorCode.CONTEXT_OVERFLOW}
+                else AIErrorCode.PROVIDER
+            )
+    else:
+        code = _capacity_error_code(info.details) or code
     is_authentication_error = (
         resolved_status_code in {401, 403} or code is AIErrorCode.AUTHENTICATION
     )
@@ -226,9 +260,31 @@ def _safe_provider_error_details(
     raw_code = details.get("rawCode")
     if isinstance(raw_code, str) and raw_code:
         safe["rawCode"] = raw_code
-    if code is not AIErrorCode.PROVIDER_PROTOCOL:
+    for key in ("providerErrorType", "providerErrorCode"):
+        identity = _provider_error_identity_text(details.get(key))
+        if identity is not None:
+            safe[key] = identity
+    if code not in {
+        AIErrorCode.PROVIDER_PROTOCOL,
+        AIErrorCode.REQUEST_TOO_LARGE,
+        AIErrorCode.CONTEXT_OVERFLOW,
+    }:
         return safe
-    for key in ("maxParts", "maxBytes", "partCount", "estimatedBytes"):
+    for key in (
+        "maxParts",
+        "maxBytes",
+        "partCount",
+        "estimatedBytes",
+        "canonicalBytes",
+        "estimatedWireBytes",
+        "messageBytes",
+        "messageCount",
+        "imageBytes",
+        "toolSchemaBytes",
+        "estimatedInputTokens",
+        "capacityValue",
+        "capacityMaximum",
+    ):
         value = details.get(key)
         if isinstance(value, int) and not isinstance(value, bool):
             safe[key] = value
@@ -258,6 +314,10 @@ def _public_provider_error_message(code: AIErrorCode) -> str:
         return "Provider service unavailable."
     if code is AIErrorCode.PROVIDER_PROTOCOL:
         return "provider stream ended before a terminal response event"
+    if code is AIErrorCode.REQUEST_TOO_LARGE:
+        return "Provider request is too large."
+    if code is AIErrorCode.CONTEXT_OVERFLOW:
+        return "Provider context window exceeded."
     return "Provider request failed."
 
 
@@ -349,6 +409,40 @@ def _summarize_provider_body(body: object) -> str | None:
     return None
 
 
+def _provider_error_identity(error: Exception) -> dict[str, JSONValue]:
+    body = getattr(error, "body", None)
+    if body is None:
+        response = getattr(error, "response", None)
+        body = getattr(response, "text", None)
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except (TypeError, ValueError):
+            return {}
+    if not isinstance(body, Mapping):
+        return {}
+    nested = body.get("error")
+    error_payload = nested if isinstance(nested, Mapping) else body
+    details: dict[str, JSONValue] = {}
+    for source_key, target_key in (
+        ("type", "providerErrorType"),
+        ("code", "providerErrorCode"),
+    ):
+        identity = _provider_error_identity_text(error_payload.get(source_key))
+        if identity is not None:
+            details[target_key] = identity
+    return details
+
+
+def _provider_error_identity_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not _PROVIDER_ERROR_IDENTITY_PATTERN.fullmatch(normalized):
+        return None
+    return normalized
+
+
 def _safe_provider_diagnostic_mapping(
     value: Mapping[object, object],
 ) -> dict[str, JSONValue]:
@@ -425,6 +519,8 @@ def _provider_error_code_from_status(status_code: int | None) -> AIErrorCode:
         return AIErrorCode.TIMEOUT
     if status_code == 429:
         return AIErrorCode.RATE_LIMIT
+    if status_code == 413:
+        return AIErrorCode.REQUEST_TOO_LARGE
     if status_code is not None and 500 <= status_code <= 599:
         return AIErrorCode.SERVICE_UNAVAILABLE
     return AIErrorCode.PROVIDER
@@ -453,7 +549,24 @@ def _provider_error_code_from_raw(
         return AIErrorCode.SERVICE_UNAVAILABLE
     if normalized in {"authentication", "authentication_error", "invalid_api_key"}:
         return AIErrorCode.AUTHENTICATION
+    if normalized in _REQUEST_TOO_LARGE_CODES:
+        return AIErrorCode.REQUEST_TOO_LARGE
+    if normalized in _CONTEXT_OVERFLOW_CODES:
+        return AIErrorCode.CONTEXT_OVERFLOW
     return AIErrorCode.PROVIDER
+
+
+def _capacity_error_code(details: Mapping[str, JSONValue]) -> AIErrorCode | None:
+    for key in ("providerErrorCode", "providerErrorType"):
+        value = details.get(key)
+        if not isinstance(value, str):
+            continue
+        normalized = value.strip().lower().replace("-", "_")
+        if normalized in _REQUEST_TOO_LARGE_CODES:
+            return AIErrorCode.REQUEST_TOO_LARGE
+        if normalized in _CONTEXT_OVERFLOW_CODES:
+            return AIErrorCode.CONTEXT_OVERFLOW
+    return None
 
 
 def _is_retryable_provider_error(code: AIErrorCode) -> bool:

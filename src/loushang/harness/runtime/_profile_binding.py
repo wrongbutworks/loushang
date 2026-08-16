@@ -403,6 +403,10 @@ class RuntimeProfileBinder:
                 if entries:
                     bound[capability.slot.key] = entries
                     created.extend(entries)
+        except asyncio.CancelledError as exc:
+            errors = self._dispose_entries_collecting_sync(created, context=context)
+            _annotate_cleanup_errors(exc, errors)
+            raise
         except Exception as exc:
             errors = self._dispose_entries_collecting_sync(created, context=context)
             _annotate_cleanup_errors(exc, errors)
@@ -433,6 +437,10 @@ class RuntimeProfileBinder:
                         value=value,
                     )
                 )
+        except asyncio.CancelledError as exc:
+            errors = self._dispose_entries_collecting_sync(created, context=context)
+            _annotate_cleanup_errors(exc, errors)
+            raise
         except RuntimeCapabilityBindingError as exc:
             errors = self._dispose_entries_collecting_sync(created, context=context)
             _annotate_cleanup_errors(exc, errors)

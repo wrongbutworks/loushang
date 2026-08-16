@@ -5,6 +5,7 @@ from contextlib import suppress
 from types import SimpleNamespace
 
 from loushang.ai import Model
+from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
@@ -133,12 +134,16 @@ def test_screen_surface_manager_opens_model_surface_and_selects_model() -> None:
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert plain_lines[:3] == (
         "Select Model",
-        "Access legacy models by running loushang --model <provider:model>.",
+        "Choose a model for this session · legacy: loushang --model <provider:model>",
         "",
     )
     assert plain_lines[3].startswith("> 1. moonshot:test-endpoint:kimi-for-coding")
     assert plain_lines[3].endswith("current")
-    assert plain_lines[-1] == "  Press number or enter to confirm or esc to go back"
+    assert plain_lines[-1] == (
+        "Type to filter · ↑/↓ choose · Enter switch · "
+        "1–9 quick select · Esc keep current"
+    )
+    assert rendered.lines[0].text.startswith("\x1b[1;36mSelect Model")
     assert rendered.lines[3].text.startswith("\x1b[1;38;5;33m> 1.")
 
     assert app.active_surface.handle_input(InputEvent(kind="key", key="down")) is None
@@ -317,7 +322,23 @@ def test_screen_surface_model_selection_error_stays_in_tui() -> None:
     asyncio.run(manager.handle_surface_intent(intent))
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
-    assert app.state.status_message == "Error: model switch failed"
+    expected_error = (
+        "Error: Cannot switch to 'deepseek-v4-flash': this conversation contains "
+        "images, but the model does not support image input"
+    )
+    assert app.state.status_message == expected_error
+    assert app.active_surface.preferred_height == 20
+    rendered = app.render(RenderConstraints(width=100, max_height=24))
+    plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
+    assert expected_error in " ".join(plain_lines)
+    assert any("/fork and select the image prompt" in line for line in plain_lines)
+    assert any("/compact works" in line for line in plain_lines)
+    assert any("moonshot:test-endpoint:kimi-for-coding" in line for line in plain_lines)
+    assert any(line.text.startswith("\x1b[91mError:") for line in rendered.lines)
+    assert any(
+        line.text.startswith("\x1b[33mTo use it:")
+        for line in rendered.lines
+    )
 
 
 def test_screen_surface_manager_opens_model_surface_in_bottom_frame_with_runtime_overlay_host() -> (
@@ -1524,7 +1545,12 @@ class _Session:
 
 class _FailingModelSession(_Session):
     async def set_model(self, selection: object) -> None:
-        raise ValueError("model switch failed")
+        raise UnsupportedCapabilityError(
+            "Cannot switch to 'deepseek-v4-flash': this conversation contains images, "
+            "but the model does not support image input",
+            model="deepseek-v4-flash",
+            details={"capability": "image_input"},
+        )
 
 
 def _app() -> ScreenCodingTuiApp:
