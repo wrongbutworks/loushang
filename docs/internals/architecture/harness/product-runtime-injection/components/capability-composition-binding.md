@@ -15,8 +15,10 @@ ordering, lifecycle, and diagnostics. Products retain their domain content,
 default selections, executable handlers, and policy.
 
 It satisfies PDRI-001, PDRI-004, PDRI-008, PDRI-009, PDRI-010, and PDRI-011.
-PDRI-013 through PDRI-015 define an accepted follow-on graph/finalization
-target that is not yet implemented by this component.
+PDRI-013 through PDRI-015 led to the implemented graph Planner, Binder,
+Runtime, and Projector owners under `loushang.harness.capabilities`; those
+owners are adjacent to this facet-composition component rather than hidden
+inside it.
 
 The standard slots below are internal Binding Facets rather than one public
 Capability dependency node per slot. Resource, prompt, skill, Tool-pack, and
