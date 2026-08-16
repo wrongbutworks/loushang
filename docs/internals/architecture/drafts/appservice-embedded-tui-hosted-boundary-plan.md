@@ -6,9 +6,27 @@
 
 ## Status
 
-Status: proposed delivery plan.
+- ID: `APP-DP-HOSTED-BOUNDARY`
+- Kind: delivery plan
+- Scope: AppService / application host
+- Parent: Loushang
+- Authority: normative target proposal
+- Design status: proposed
+- Implementation status: not-started
+- Owner: Loushang application architecture
+- Current evidence:
+  - `src/loushang/harnesstui/`
+  - `src/loushang/harness/session/facade.py`
+  - `src/loushang/harness/session/operations.py`
+  - `src/loushang/harness/host/rpc/`
+  - `tests/harnesstui/`
+  - `tests/harness/session/test_facade.py`
+  - `tests/harness/session/test_operations.py`
+  - `tests/coding/test_rpc_controls.py`
+  - `tests/coding/test_rpc_wire_playback.py`
 
-This plan clarifies one deployment choice in the v3 target architecture:
+This proposed Target plan clarifies one deployment choice in the v3 target
+architecture:
 
 - the default native TUI remains an embedded, in-process Product surface and
   does not use `AppClient`;
@@ -19,8 +37,39 @@ This plan clarifies one deployment choice in the v3 target architecture:
 
 This document does not authorize implementation ahead of an accepted daemon,
 external-client, or background-Session delivery requirement. It also does not
-change the accepted Harness Capability graph, Plugin lifecycle, or provider
-composition work currently being built in the Harness lane.
+change the accepted Harness Capability graph, its implemented graph owners,
+Plugin lifecycle, or provider-composition boundaries.
+
+## Current, Target, And Delta
+
+### Current facts
+
+- the native TUI binds Product and Harness Session behavior in-process through
+  Harnesstui and Product-owned adapters;
+- `SessionFacade`, `SessionOperationRuntime`, and the legacy JSONL RPC host
+  provide current typed Session and transitional remote-host boundaries; and
+- there is no `loushang.appserver` package, App Contract, `AppClient`,
+  `AppService`, daemon-owned live Session router, or reconnect protocol.
+
+The Current claims above are bounded by the evidence listed in the status
+block. The source and tests remain authoritative if this draft drifts.
+
+### Proposed target
+
+The Target is the two-profile boundary below: the default native TUI remains
+embedded, while hosted or reconnectable clients use a versioned App Contract
+and AppService. Because the design status is `proposed`, target-only names and
+rules in this document are review inputs rather than accepted architecture or
+current public APIs.
+
+### Explicit delta
+
+The Delta begins only after a hosted delivery trigger is accepted. It includes
+an AppService architecture scope, minimal Product Session and Work ports, a
+versioned client-safe protocol, hosted lifecycle and routing, reconnect and
+delivery semantics, and the associated trust and conformance gates. Until
+then, the embedded path and transitional RPC owners remain Current and no
+placeholder AppService runtime should be introduced.
 
 ## Decision Summary
 
@@ -141,9 +190,11 @@ provider selection, and Mount Policy. The runtime scope that binds a final
 graph owns its leases and ordered disposal. AppService consumes only the final
 Product-facing binding produced by those owners.
 
-The accepted top-level graph owners are not all implemented on `main` yet.
-AppService must not depend on a target-only graph result, binder, live Mount
-runtime, or projector before its public contract actually lands.
+The top-level graph Planner, Binder, Runtime, and Projector are implemented
+under `loushang.harness.capabilities`. That does not make them AppService
+dependencies: AppService must not import or orchestrate the graph result,
+binder, live Mount runtime, or projector. It may consume only the resulting
+narrow Product-facing binding supplied by the owning composition root.
 
 The following rules are mandatory:
 
