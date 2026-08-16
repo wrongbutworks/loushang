@@ -292,8 +292,6 @@ class AgentTranscriptCompactionRuntime:
         if not policy.enabled:
             return AutoCompactionOutcome()
         context_window = model_context_window(self._get_model()) or 0
-        if context_window <= 0:
-            return AutoCompactionOutcome()
         branch = self._transcript.get_branch()
         latest_compaction = latest_compaction_entry(branch)
         if latest_compaction is not None and _message_is_before_or_at_entry(
@@ -306,7 +304,8 @@ class AgentTranscriptCompactionRuntime:
         ):
             if self._overflow_recovery_attempted:
                 message = (
-                    "Context overflow recovery failed after one compact-and-retry attempt. "
+                    "Context capacity recovery failed after one compact-and-retry "
+                    "attempt. "
                     "Try reducing context or switching to a larger-context model."
                 )
                 usage = _snapshot_payload(self.build_usage_snapshot(policy))
@@ -336,6 +335,9 @@ class AgentTranscriptCompactionRuntime:
                 result=result,
                 should_continue=result is not None,
             )
+
+        if context_window <= 0:
+            return AutoCompactionOutcome()
 
         context_messages = self._get_context_messages()
         if not any(message is assistant_message for message in context_messages):

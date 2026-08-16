@@ -235,10 +235,19 @@ any stricter caller limit. The active Agent's explicit request limits flow into
 Product compaction without breaking older callback signatures. Summary input
 no longer drops images silently: the default policy replaces each image with a
 deterministic MIME/base64-length placeholder and persists an `image_omitted`
-degradation count; an explicit `refuse` policy stops before a model call. An
-oversized single summary request now fails before Model Input snapshot and
-transport with a typed terminal outcome. Turn-safe batching and bounded partial
-merge remain the next slice.
+degradation count; an explicit `refuse` policy stops before a model call.
+
+Implementation result, bounded execution (2026-08-16): the standard compactor
+packs whole conversation turns into at most 16 history batches under canonical
+byte and estimated input-token budgets. One turn is never split implicitly; a
+turn with no legal cut fails before a model call. Partial summaries merge under
+the same request budget through at most four levels, with at most 32 total model
+calls and 8 MiB total source. Summary output is reserved explicitly and capped
+at 8,192 tokens or the lower model maximum/context fraction. History, merge,
+and split-prefix snapshots remain ordered in final checkpoint lineage. Typed
+`request_too_large` now enters the existing one-shot compact-and-continue path,
+including when context-window metadata is unknown. Dynamic account/endpoint
+limit discovery remains pending.
 
 ### MIR6: Optional Physical Reclamation
 
@@ -286,9 +295,9 @@ text.
 - [x] Every terminal Provider-runtime invocation with the durable Harness port
       appends exactly one terminal outcome.
 - [x] Crash without terminal outcome projects unknown without inventing a fact.
-- [ ] Every compaction batch and merge passes Provider capacity preflight.
-- [ ] Image omission is explicit and degraded or refused.
-- [ ] Capacity recovery creates at most one new logical invocation.
+- [x] Every compaction batch and merge passes Provider capacity preflight.
+- [x] Image omission is explicit and degraded or refused.
+- [x] Capacity recovery creates at most one new logical invocation.
 - [x] Any failed prepared commit results in zero Provider transport calls.
 
 ## Review Questions

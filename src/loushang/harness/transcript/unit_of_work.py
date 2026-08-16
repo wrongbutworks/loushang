@@ -410,7 +410,11 @@ class AgentTranscriptUnitOfWork:
         ):
             self._require_model_input_lineage(
                 record.payload.model_input_snapshot_ids,
-                purposes={"compaction_history", "compaction_turn_prefix"},
+                purposes={
+                    "compaction_history",
+                    "compaction_merge",
+                    "compaction_turn_prefix",
+                },
                 owner="compaction checkpoint",
             )
         elif record.kind == CONTEXT_BRANCH_SUMMARY_KIND and isinstance(

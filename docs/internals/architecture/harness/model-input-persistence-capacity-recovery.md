@@ -4,9 +4,9 @@
 
 Accepted corrective boundary following the capability-runtime convergence merged
 in PR #451. Three internal reviews and one independent external review have been
-incorporated. MIR1 through MIR4 and the request-measurement/preflight portion of
-MIR5 are implemented locally; bounded compaction and recovery remain incomplete.
-The sections describing those remaining stages are normative targets rather than
+incorporated. MIR1 through MIR4 and the standard MIR5 capacity path are
+implemented locally. Dynamic account/endpoint limit discovery remains future
+work; sections describing that discovery are normative targets rather than
 claims about current behavior.
 
 Current source and the following implemented documents remain authoritative:
@@ -530,11 +530,15 @@ store one merged summary and the complete ordered snapshot lineage; durable
 partial plans/results are required only if mid-compaction crash-resume becomes
 an accepted requirement.
 
-The implemented safety floor uses the placeholder mode by default, records an
+The implemented standard path uses the placeholder mode by default, records an
 `image_omitted` degradation count, and caps each summary request's canonical
-prepared envelope at 512 KiB (or a stricter caller limit). Until turn-safe
-batching lands, input that cannot fit this bound fails before snapshot and
-transport instead of issuing an unbounded Provider request.
+prepared envelope at 512 KiB (or a stricter caller limit). Conversation turns
+are packed without splitting into at most 16 history batches; partial summaries
+merge through at most four levels. Total source is capped at 8 MiB, total model
+calls at 32, and every call carries a bounded output-token reserve. A single
+turn with no legal cut fails before any model call. All successful history,
+merge, and split-prefix Model Input snapshots remain ordered in the final
+checkpoint lineage.
 
 ## Cancellation, Crash, And Orphan Semantics
 

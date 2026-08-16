@@ -17,7 +17,9 @@ from loushang.ai.types import (
 from loushang.harness.context import SummaryProfile
 from loushang.harness.transcript.maintenance import CompactionPreparation
 from loushang.harness.transcript.summarization import (
+    SUMMARY_MAX_BATCHES,
     SUMMARY_MAX_CANONICAL_BYTES,
+    SummaryCapacityPlanError,
     SummaryImagePolicyError,
     default_summary_completer,
     execute_transcript_compaction,
@@ -168,7 +170,7 @@ def test_compaction_uses_bounded_request_and_explicit_image_placeholder() -> Non
             compaction_profile=_summary_profile(),
             turn_prefix_profile=_summary_profile(),
             completer=completer,
-            request_limits=PreparedRequestLimits(max_canonical_bytes=600_000),
+            request_limits=PreparedRequestLimits(max_canonical_bytes=200_000),
         )
     )
 
@@ -177,10 +179,7 @@ def test_compaction_uses_bounded_request_and_explicit_image_placeholder() -> Non
     assert isinstance(context, Context)
     assert isinstance(options, CallOptions)
     assert options.request_limits is not None
-    assert (
-        options.request_limits.max_canonical_bytes
-        == SUMMARY_MAX_CANONICAL_BYTES
-    )
+    assert options.request_limits.max_canonical_bytes == 200_000
     prompt = context.messages[0].content[0].text
     assert image_data not in prompt
     assert (
@@ -235,3 +234,106 @@ def test_summary_image_refusal_is_explicit_and_skips_model_call() -> None:
     assert calls == 0
     with pytest.raises(SummaryImagePolicyError):
         serialize_agent_conversation(messages, image_policy="refuse")
+
+
+def test_compaction_batches_turns_and_merges_partials_with_bounded_calls() -> None:
+    calls: list[tuple[Context, CallOptions]] = []
+
+    async def completer(
+        model: object,
+        context: Context,
+        options: CallOptions | None,
+    ) -> str:
+        del model
+        assert isinstance(options, CallOptions)
+        calls.append((context, options))
+        return f"partial-{len(calls)}"
+
+    messages = [
+        UserMessage(
+            role="user",
+            content=f"turn-{index}:" + (character * 200_000),
+            timestamp=float(index),
+        )
+        for index, character in enumerate(("a", "b", "c"), start=1)
+    ]
+    result = asyncio.run(
+        execute_transcript_compaction(
+            preparation=CompactionPreparation(
+                first_kept_entry_id="kept",
+                messages_to_summarize=messages,
+                turn_prefix_messages=[],
+                is_split_turn=False,
+                tokens_before=150_000,
+            ),
+            model=object(),
+            compaction_profile=_summary_profile(),
+            turn_prefix_profile=_summary_profile(),
+            completer=completer,
+        )
+    )
+
+    assert len(calls) == 4
+    assert result.summary == "partial-4"
+    history_prompts = [
+        call_context.messages[0].content[0].text
+        for call_context, _options in calls[:3]
+    ]
+    for index in range(1, 4):
+        assert sum(f"turn-{index}:" in prompt for prompt in history_prompts) == 1
+    merge_prompt = calls[3][0].messages[0].content[0].text
+    assert "[Partial summary 1]" in merge_prompt
+    assert "partial-1" in merge_prompt
+    assert "partial-3" in merge_prompt
+    assert all(
+        options.max_output_tokens == 8_192
+        and options.request_limits is not None
+        and options.request_limits.max_canonical_bytes
+        == SUMMARY_MAX_CANONICAL_BYTES
+        for _context, options in calls
+    )
+
+
+def test_compaction_rejects_a_plan_over_the_batch_limit_before_model_calls() -> None:
+    calls = 0
+
+    async def completer(
+        model: object,
+        context: Context,
+        options: CallOptions | None,
+    ) -> str:
+        del model, context, options
+        nonlocal calls
+        calls += 1
+        return "unreachable"
+
+    messages = [
+        UserMessage(
+            role="user",
+            content=f"turn-{index}:" + ("x" * 4_000),
+            timestamp=float(index),
+        )
+        for index in range(SUMMARY_MAX_BATCHES + 1)
+    ]
+    with pytest.raises(
+        SummaryCapacityPlanError,
+        match=f"exceeds {SUMMARY_MAX_BATCHES} batches",
+    ):
+        asyncio.run(
+            execute_transcript_compaction(
+                preparation=CompactionPreparation(
+                    first_kept_entry_id="kept",
+                    messages_to_summarize=messages,
+                    turn_prefix_messages=[],
+                    is_split_turn=False,
+                    tokens_before=20_000,
+                ),
+                model=object(),
+                compaction_profile=_summary_profile(),
+                turn_prefix_profile=_summary_profile(),
+                completer=completer,
+                request_limits=PreparedRequestLimits(max_canonical_bytes=70_000),
+            )
+        )
+
+    assert calls == 0

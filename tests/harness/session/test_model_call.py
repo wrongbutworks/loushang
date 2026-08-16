@@ -9,7 +9,6 @@ import pytest
 from loushang.agent import Agent, ModelCallPreparation
 from loushang.ai import Context, stream
 from loushang.ai.api_registry import get_default_api_registry
-from loushang.ai.errors import AIRequestTooLargeError
 from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions, RetryOptions
@@ -56,9 +55,10 @@ from loushang.harness.transcript import (
     execute_branch_summary,
     execute_transcript_compaction,
 )
+from loushang.harness.transcript.summarization import SummaryCapacityPlanError
 
 
-def _model(*, api: str) -> Model:
+def _model(*, api: str, context_window: int = 8_192) -> Model:
     return Model(
         id="model-call-test",
         name="Model Call Test",
@@ -70,7 +70,7 @@ def _model(*, api: str) -> Model:
         capabilities=Capabilities(
             input=("text",),
             output=("text",),
-            context_window=8192,
+            context_window=context_window,
             stream=True,
         ),
     )
@@ -780,7 +780,10 @@ def test_oversized_compaction_request_fails_before_snapshot_and_transport() -> N
         adapter_source = "session-model-call-oversized-compaction-test"
         registry.register_api_adapter(adapter, source_id=adapter_source)
         try:
-            with pytest.raises(AIRequestTooLargeError) as exc_info:
+            with pytest.raises(
+                SummaryCapacityPlanError,
+                match="one conversation turn has no legal cut",
+            ):
                 await execute_transcript_compaction(
                     preparation=CompactionPreparation(
                         first_kept_entry_id=source_id,
@@ -803,8 +806,6 @@ def test_oversized_compaction_request_fails_before_snapshot_and_transport() -> N
         finally:
             registry.unregister_api_adapters(adapter_source)
 
-        error = exc_info.value
-        assert error.info.code.value == "request_too_large"
         assert adapter.transport_calls == 0
         assert all(
             entry.kind != "model.input.prepared" for entry in session.get_entries()
@@ -814,10 +815,75 @@ def test_oversized_compaction_request_fails_before_snapshot_and_transport() -> N
             for entry in session.get_entries()
             if isinstance(entry.payload, ModelCallOutcome)
         ]
-        assert len(outcomes) == 1
-        assert outcomes[0].model_input_snapshot_ids == ()
-        assert outcomes[0].failure is not None
-        assert outcomes[0].failure.code == "request_too_large"
+        assert outcomes == []
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_batched_compaction_records_ordered_history_and_merge_lineage() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        source_id = session.get_entries()[0].record_id
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        adapter = _PreparedAdapter()
+        registry = get_default_api_registry()
+        adapter_source = "session-model-call-batched-compaction-test"
+        registry.register_api_adapter(adapter, source_id=adapter_source)
+        try:
+            result = await execute_transcript_compaction(
+                preparation=CompactionPreparation(
+                    first_kept_entry_id=source_id,
+                    messages_to_summarize=[
+                        UserMessage(
+                            role="user",
+                            content=f"turn-{index}:" + character * 200_000,
+                            timestamp=float(index),
+                        )
+                        for index, character in enumerate(
+                            ("a", "b", "c"),
+                            start=1,
+                        )
+                    ],
+                    turn_prefix_messages=[],
+                    is_split_turn=False,
+                    tokens_before=150_000,
+                ),
+                model=_model(api=adapter.api, context_window=1_048_576),
+                compaction_profile=CODING_COMPACTION_SUMMARY_PROFILE,
+                turn_prefix_profile=CODING_TURN_PREFIX_SUMMARY_PROFILE,
+                prepare_model_call=runtime.prepare,
+            )
+        finally:
+            registry.unregister_api_adapters(adapter_source)
+
+        assert adapter.transport_calls == 4
+        assert len(result.model_input_snapshot_ids) == 4
+        purposes = [
+            session.rebuild_model_input(snapshot_id).snapshot.purpose
+            for snapshot_id in result.model_input_snapshot_ids
+        ]
+        assert purposes == [
+            "compaction_history",
+            "compaction_history",
+            "compaction_history",
+            "compaction_merge",
+        ]
+        await session.append_compaction(
+            result.summary,
+            result.first_kept_entry_id,
+            result.tokens_before,
+            model_input_snapshot_ids=result.model_input_snapshot_ids,
+        )
+        checkpoint = session.get_entries()[-1].payload
+        assert checkpoint.derivation_verifiable is True
+        assert checkpoint.model_input_snapshot_ids == result.model_input_snapshot_ids
+        outcomes = [
+            entry.payload
+            for entry in session.get_entries()
+            if isinstance(entry.payload, ModelCallOutcome)
+        ]
+        assert len(outcomes) == 4
         await runtime.dispose()
 
     asyncio.run(scenario())

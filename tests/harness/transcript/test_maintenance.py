@@ -6,6 +6,7 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+from loushang.ai.utils import is_context_overflow
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationKey,
@@ -29,7 +30,7 @@ from loushang.harness.transcript import (
 )
 
 
-def _model(*, context_window: int = 100) -> Model:
+def _model(*, context_window: int | None = 100) -> Model:
     return Model(
         id="test-model",
         name="Test",
@@ -261,6 +262,73 @@ def test_compaction_runtime_counts_the_completed_message_before_context_refresh(
 
         assert outcome.result is not None
         assert outcome.should_continue is False
+        assert session.get_entries()[-1].kind == "context.compaction_checkpoint"
+
+    asyncio.run(scenario())
+
+
+def test_typed_payload_capacity_recovery_does_not_require_context_metadata() -> None:
+    async def scenario() -> None:
+        session = await _session()
+        user_id = await session.append_message(
+            UserMessage(role="user", content="older", timestamp=0.0)
+        )
+        failed = _assistant(
+            stop_reason="error",
+            error_message="Provider request is too large.",
+        )
+        object.__setattr__(
+            failed,
+            "error_info",
+            {
+                "code": "request_too_large",
+                "message": "Provider request is too large.",
+                "source": "provider",
+                "retryable": False,
+                "details": {"canonicalBytes": 900_000},
+            },
+        )
+
+        def prepare(entries, keep_recent_tokens):
+            del entries, keep_recent_tokens
+            return CompactionPreparation(
+                first_kept_entry_id=user_id,
+                messages_to_summarize=list(session.build_context().messages),
+                turn_prefix_messages=[],
+                is_split_turn=False,
+                tokens_before=10,
+            )
+
+        async def execute(preparation, instructions):
+            assert instructions is None
+            return CompactionResult(
+                summary="bounded summary",
+                first_kept_entry_id=preparation.first_kept_entry_id,
+                tokens_before=preparation.tokens_before,
+            )
+
+        runtime = AgentTranscriptCompactionRuntime(
+            transcript=session,
+            get_policy=lambda: TranscriptCompactionPolicy(
+                enabled=True,
+                reserve_tokens=10,
+            ),
+            get_model=lambda: _model(context_window=None),
+            get_context_messages=lambda: list(session.build_context().messages),
+            refresh_context=lambda: None,
+            prepare_compaction=prepare,
+            execute_compaction=execute,
+            dispatch_event=lambda event: _append([], event),
+            has_queued_messages=lambda: False,
+        )
+
+        outcome = await runtime.maybe_compact_after_turn(
+            failed,
+            is_context_overflow_fn=is_context_overflow,
+        )
+
+        assert outcome.result is not None
+        assert outcome.should_continue is True
         assert session.get_entries()[-1].kind == "context.compaction_checkpoint"
 
     asyncio.run(scenario())

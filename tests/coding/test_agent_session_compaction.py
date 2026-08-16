@@ -961,7 +961,7 @@ def test_agent_session_auto_compaction_uses_default_streaming_summarizer(
             reasoning=True,
             stream=True,
             input=("text",),
-            context_window=100,
+            context_window=4_096,
             max_tokens=64,
         ),
     )
@@ -999,11 +999,11 @@ def test_agent_session_auto_compaction_uses_default_streaming_summarizer(
     assistant = _assistant_message(
         "recent reply",
         usage=Usage(
-            input=90,
-            output=5,
+            input=3_900,
+            output=100,
             cache_read=0,
             cache_write=0,
-            total_tokens=95,
+            total_tokens=4_000,
             cost={},
         ),
         timestamp=1.0,
@@ -1673,8 +1673,15 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
         response_id=None,
         usage=_usage(),
         stop_reason="error",
-        error_message="input token count exceeds the maximum context window",
+        error_message="Provider request is too large.",
         timestamp=1.0,
+        error_info={
+            "code": "request_too_large",
+            "message": "Provider request is too large.",
+            "source": "provider",
+            "retryable": False,
+            "details": {"canonicalBytes": 900_000},
+        },
     )
 
     async def _fake_compact(**kwargs):
