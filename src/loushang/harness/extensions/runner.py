@@ -272,6 +272,12 @@ class ExtensionRunner(ExtensionRuntime):
         return self._generation
 
     @property
+    def source_runtime_id(self) -> str:
+        """Return the stable redacted domain for published source generations."""
+
+        return self._runtime_id
+
+    @property
     def registration_inventory(
         self,
     ) -> tuple[

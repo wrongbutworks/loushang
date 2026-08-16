@@ -15,20 +15,38 @@ from loushang.ai.model import ModelSelection
 from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
+    MODEL_INPUT_CAPABILITY_DEFINITION,
     MODEL_INPUT_PREPARATION_REQUIREMENT,
+    RESOURCES_ACTIVATION_REQUIREMENT,
+    RESOURCES_CAPABILITY_DEFINITION,
+    RESOURCES_COMMAND_PACK_REQUIREMENT,
+    RESOURCES_PROMPT_REQUIREMENT,
+    RESOURCES_TOOL_PACK_REQUIREMENT,
     CapabilityCompositionRuntime,
     CapabilityGraphExplanation,
+    CapabilityGraphPlanRequest,
     EffectiveRuntimeDiff,
     EffectiveRuntimeView,
     RegistrationExplanation,
     RegistrationInventoryEntry,
     RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphProjector,
     RuntimeCapabilityGraphRuntime,
     RuntimeProfileSlotExplanation,
+    ScopedSourcePublicationReference,
 )
 from loushang.harness.capabilities.effective_runtime import (
     runtime_profile_fingerprint,
+)
+from loushang.harness.capabilities.resources_consumers import (
+    ResourceActivationCapabilityConsumer,
+    ResourceCommandPackCapabilityConsumer,
+    ResourcePromptCapabilityConsumer,
+    ResourceToolPackCapabilityConsumer,
+)
+from loushang.harness.capabilities.resources_provider import (
+    resources_capability_provider_binding,
 )
 from loushang.harness.config.agent import (
     CompactionSettings,
@@ -88,6 +106,7 @@ from loushang.harness.session.composition import (
     SessionMaintenanceInputs,
     SessionModelCatalogPort,
     SessionProductInputs,
+    SessionResourceCompositionPorts,
     compose_session_runtime,
     supports_prepare_model_call,
 )
@@ -103,6 +122,9 @@ from loushang.harness.session.model_call import (
     build_session_model_call_capability_binding,
 )
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
+from loushang.harness.session.resource_capability_ports import (
+    SessionResourceCapabilityPorts,
+)
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.side_question import (
     SIDE_QUESTION_BOUNDARY_PROMPT,
@@ -223,7 +245,13 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 execute_branch_summary,
                 name="branch-summary executor",
             )
-        self._capability_runtime: CapabilityCompositionRuntime | None = (
+        self._capability_profile_provider: Callable[
+            [], ResolvedRuntimeProfile
+        ] | None = lambda: capability_runtime.profile
+        self._staged_resource_candidate: CapabilityCompositionRuntime | None = (
+            capability_runtime
+        )
+        self._resource_capability_ports = SessionResourceCapabilityPorts(
             capability_runtime
         )
         runtime_id = (
@@ -252,11 +280,34 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 profile_fingerprint_provider=self._current_profile_fingerprint,
             )
         )
+        self._resource_capability_binding = resources_capability_provider_binding(
+            profile=capability_runtime.profile,
+            scope_instance_id=runtime_id,
+            staged_candidate=capability_runtime,
+        )
+        self._session_capability_plan = RuntimeCapabilityGraphPlanner().plan(
+            CapabilityGraphPlanRequest(
+                product_id=initial_profile.product_id,
+                roots=(
+                    MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
+                    RESOURCES_CAPABILITY_DEFINITION.capability_id,
+                ),
+                definitions=(
+                    MODEL_INPUT_CAPABILITY_DEFINITION,
+                    RESOURCES_CAPABILITY_DEFINITION,
+                ),
+                providers=(
+                    self._model_call_capability_binding.provider_binding.provider,
+                    self._resource_capability_binding.provider,
+                ),
+            )
+        )
         self._model_call_runtime = SessionModelCallRuntime(
             transcript=session_manager,
             ensure_consumer=self._ensure_session_graph_prepared,
             projector=self._capability_graph_projector,
             registration_entries_provider=self._effective_registration_entries,
+            source_publication_provider=self._source_publication_reference,
         )
         self._previous_agent_prepare_model_call = self.agent.prepare_model_call
         self._installed_agent_prepare_model_call: object | None = None
@@ -385,7 +436,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 active_tool_names=active_tool_names,
                 default_activate_new_tools=default_activate_new_tools,
                 show_empty_tool_prompt=show_empty_tool_prompt,
-                capability_runtime=capability_runtime,
             )
         )
         initialize_composed_session(
@@ -418,10 +468,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
     def capability_profile(self) -> ResolvedRuntimeProfile:
         """Return the final resolved Session capability profile."""
 
-        runtime = self._capability_runtime
-        if runtime is None:
+        provider = self._capability_profile_provider
+        if provider is None:
             raise RuntimeError("Session capability profile has been disposed.")
-        return runtime.profile
+        return provider()
 
     def get_effective_runtime_view(
         self,
@@ -552,7 +602,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
         active_tool_names: list[str] | None,
         default_activate_new_tools: bool | None,
         show_empty_tool_prompt: bool,
-        capability_runtime: CapabilityCompositionRuntime,
     ) -> SessionCompositionPorts:
         def build_command_controller(
             diagnostics_runtime: SessionDiagnosticsRuntime,
@@ -588,14 +637,24 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     get_default_active_tool_names=self._default_active_tool_names,
                     get_extensions=self.list_extensions,
                 ),
-                pack_composer=capability_runtime.command_pack_composer,
+                pack_composer=cast(
+                    Any,
+                    self._resource_capability_ports.commands,
+                ),
             )
 
         return SessionCompositionPorts(
             agent=self.agent,
             session_manager=self.session_manager,
             settings=self._settings_controller,
-            capability_runtime=capability_runtime,
+            product_id=self.capability_profile.product_id,
+            resources=SessionResourceCompositionPorts(
+                activation=self._resource_capability_ports.activation,
+                skill_activation=self._resource_capability_ports.skills,
+                prompt_sections=self._resource_capability_ports.prompt,
+                tool_packs=self._resource_capability_ports.tools,
+                command_packs=self._resource_capability_ports.commands,
+            ),
             foundation=SessionFoundationInputs(
                 resource_loader=self._resource_loader,
                 get_resource_bundle=lambda: self.resource_bundle,
@@ -743,14 +802,23 @@ class AgentProductSession(AgentSessionAdapterMixin):
             except BaseException as exc:
                 errors.append(exc)
         self._restore_agent_model_call_boundary()
-        try:
-            async with self._model_call_bind_lock:
-                self._model_call_consumer = None
+        async with self._model_call_bind_lock:
+            self._model_call_consumer = None
+            self._resource_capability_ports.invalidate()
+            staged_candidate = self._staged_resource_candidate
+            try:
                 await self._capability_graph_binder.dispose(
                     self._capability_graph_runtime
                 )
-        except BaseException as exc:
-            errors.append(exc)
+            except BaseException as exc:
+                errors.append(exc)
+            if staged_candidate is not None:
+                try:
+                    staged_candidate.dispose()
+                except BaseException as exc:
+                    errors.append(exc)
+                else:
+                    self._staged_resource_candidate = None
         try:
             await base_dispose()
         except BaseException as exc:
@@ -809,21 +877,121 @@ class AgentProductSession(AgentSessionAdapterMixin):
             if consumer is not None:
                 return consumer
             binding = self._model_call_capability_binding
-            await self._capability_graph_binder.bind(
-                self._capability_graph_runtime,
-                binding.plan,
-                (binding.provider_binding,),
-            )
-            consumer = SessionModelCallCapabilityConsumer(
-                self._capability_graph_runtime.capture(
-                    MODEL_INPUT_PREPARATION_REQUIREMENT
+            try:
+                await self._capability_graph_binder.bind(
+                    self._capability_graph_runtime,
+                    self._session_capability_plan,
+                    (
+                        binding.provider_binding,
+                        self._resource_capability_binding,
+                    ),
                 )
+                consumer = SessionModelCallCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        MODEL_INPUT_PREPARATION_REQUIREMENT
+                    )
+                )
+                resource_activation = ResourceActivationCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        RESOURCES_ACTIVATION_REQUIREMENT
+                    )
+                )
+                resource_prompt = ResourcePromptCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        RESOURCES_PROMPT_REQUIREMENT
+                    )
+                )
+                resource_tools = ResourceToolPackCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        RESOURCES_TOOL_PACK_REQUIREMENT
+                    )
+                )
+                resource_commands = ResourceCommandPackCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        RESOURCES_COMMAND_PACK_REQUIREMENT
+                    )
+                )
+            except BaseException as error:
+                if (
+                    self._capability_graph_runtime.snapshot is not None
+                    and not self._capability_graph_runtime.is_closed
+                ):
+                    cleanup_task = asyncio.create_task(
+                        self._capability_graph_binder.dispose(
+                            self._capability_graph_runtime
+                        )
+                    )
+                    try:
+                        await _await_cancellation_atomic(cleanup_task)
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "Session Capability graph cleanup also failed: "
+                            f"{cleanup_error!r}"
+                        )
+                staged_candidate = self._staged_resource_candidate
+                if (
+                    staged_candidate is not None
+                    and staged_candidate.ownership_state == "root_owned"
+                ):
+                    try:
+                        staged_candidate.dispose()
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "staged resource candidate cleanup also failed: "
+                            f"{cleanup_error!r}"
+                        )
+                    else:
+                        self._staged_resource_candidate = None
+                raise
+            staged_candidate = self._staged_resource_candidate
+            if (
+                staged_candidate is not None
+                and staged_candidate.ownership_state == "root_owned"
+            ):
+                # Graph-wide or node reuse intentionally skipped Provider.create().
+                staged_candidate.dispose()
+            self._staged_resource_candidate = None
+            self._resource_capability_ports.install(
+                activation=resource_activation,
+                prompt=resource_prompt,
+                tools=resource_tools,
+                commands=resource_commands,
             )
             self._model_call_consumer = consumer
             return consumer
 
     def _current_profile_fingerprint(self) -> str:
         return runtime_profile_fingerprint(self.capability_profile.snapshot())
+
+    def _source_publication_reference(
+        self,
+    ) -> ScopedSourcePublicationReference:
+        extension_runtime = self._extension_runner
+        source_runtime_id = getattr(extension_runtime, "source_runtime_id", None)
+        extension_generation = getattr(extension_runtime, "generation", None)
+        if (
+            not isinstance(source_runtime_id, str)
+            or not source_runtime_id
+            or not isinstance(extension_generation, int)
+            or isinstance(extension_generation, bool)
+        ):
+            source_runtime_id = self._capability_graph_runtime.runtime_id
+            extension_generation = None
+        composition = getattr(self, "_composition", None)
+        resource_refresh = getattr(composition, "resource_refresh_runtime", None)
+        resource_revision = getattr(
+            resource_refresh,
+            "resource_revision",
+            1 if self.resource_bundle is not None else 0,
+        )
+        return ScopedSourcePublicationReference(
+            schema_version=1,
+            owner_capability_id=RESOURCES_CAPABILITY_DEFINITION.capability_id,
+            source_runtime_id=source_runtime_id,
+            extension_generation=extension_generation,
+            declaration_revision=extension_generation,
+            resource_revision=resource_revision,
+        )
 
     def _is_current_model_call_session(self) -> bool:
         runtime_host = self._extension_bridge.runtime_host
@@ -839,7 +1007,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 "Extension context is stale after session replacement or shutdown."
             )
         self.footer_data_provider.dispose()
-        self._capability_runtime = None
+        self._capability_profile_provider = None
 
     def _abort_from_extension(self) -> None:
         self.abort()

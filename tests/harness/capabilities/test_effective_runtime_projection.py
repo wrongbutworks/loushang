@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from dataclasses import replace
+
+import pytest
 
 from loushang.harness.capabilities import (
     CapabilityBundleProvider,
@@ -13,12 +16,14 @@ from loushang.harness.capabilities import (
     CapabilityFacetBinding,
     CapabilityGraphPlanRequest,
     CapabilityProviderContext,
+    EffectiveRuntimeSkew,
     ModelSurfaceReference,
     RegistrationInventoryEntry,
     RuntimeCapabilityGraphBinder,
     RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphProjector,
     RuntimeCapabilityGraphRuntime,
+    ScopedSourcePublicationReference,
 )
 from loushang.harness.capabilities.effective_runtime import (
     compose_registration_inventory,
@@ -267,6 +272,74 @@ def test_registration_refresh_does_not_synthesize_a_mount_generation() -> None:
     asyncio.run(scenario())
 
 
+def test_model_surface_dispositions_follow_mount_history_or_violation() -> None:
+    async def scenario() -> None:
+        profile = _profile(
+            implementation="workspace.standard",
+            secret="not-projected",
+        )
+        runtime, binder = await _runtime(
+            profile=profile,
+            provider_id="workspace.standard",
+            provider_version=1,
+            registration_id="registration-v1",
+        )
+        projector = RuntimeCapabilityGraphProjector(runtime)
+        graph = projector.snapshot()
+
+        def dispositions(mount_generation: int) -> dict[str, str]:
+            view = projector.effective_view(
+                profile,
+                model_surface=ModelSurfaceReference(
+                    schema_version=1,
+                    snapshot_id=f"model-input-{mount_generation}",
+                    product_id="research",
+                    runtime_id=graph.runtime_id,
+                    profile_fingerprint=_fingerprint({"profile": "different"}),
+                    mount_generation=mount_generation,
+                    registration_revision=_fingerprint(
+                        {"registration": "different"}
+                    ),
+                ),
+            )
+            return {item.code: item.disposition for item in view.skew}
+
+        historical = dispositions(graph.generation - 1)
+        future = dispositions(graph.generation + 1)
+
+        assert historical["model_profile_reference_skew"] == "expected_history"
+        assert historical["model_mount_reference_skew"] == "expected_history"
+        assert historical["model_registration_reference_skew"] == "expected_history"
+        assert future["model_profile_reference_skew"] == "invariant_violation"
+        assert future["model_mount_reference_skew"] == "invariant_violation"
+        assert future["model_registration_reference_skew"] == "invariant_violation"
+
+        await binder.dispose(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_effective_runtime_skew_rejects_unknown_disposition_contracts() -> None:
+    with pytest.raises(ValueError, match="disposition schema"):
+        EffectiveRuntimeSkew(
+            code="profile_mount_reference_skew",
+            left_clock="profile",
+            left_value="one",
+            right_clock="mount",
+            right_value="two",
+            disposition_schema_version=2,
+        )
+    with pytest.raises(ValueError, match="skew disposition"):
+        EffectiveRuntimeSkew(
+            code="profile_mount_reference_skew",
+            left_clock="profile",
+            left_value="one",
+            right_clock="mount",
+            right_value="two",
+            disposition="unknown",  # type: ignore[arg-type]
+        )
+
+
 def test_historical_model_surface_from_fork_is_runtime_skew() -> None:
     async def scenario() -> None:
         profile = _profile(
@@ -297,6 +370,129 @@ def test_historical_model_surface_from_fork_is_runtime_skew() -> None:
         assert [item.code for item in view.skew] == [
             "model_runtime_reference_skew"
         ]
+
+        await binder.dispose(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_source_publication_is_scoped_without_becoming_a_fifth_clock() -> None:
+    async def scenario() -> None:
+        profile = _profile(
+            implementation="workspace.standard",
+            secret="not-projected",
+        )
+        runtime, binder = await _runtime(
+            profile=profile,
+            provider_id="workspace.standard",
+            provider_version=1,
+            registration_id="registration-v1",
+        )
+        projector = RuntimeCapabilityGraphProjector(runtime)
+        before_reference = ScopedSourcePublicationReference(
+            schema_version=1,
+            owner_capability_id="harness.workspace",
+            source_runtime_id="session-42",
+            extension_generation=1,
+            declaration_revision=1,
+            resource_revision=1,
+        )
+        after_reference = replace(before_reference, resource_revision=2)
+        before = projector.effective_view(
+            profile,
+            source_publication=before_reference,
+        )
+        after = projector.effective_view(
+            profile,
+            source_publication=after_reference,
+        )
+        diff = projector.diff(before, after)
+
+        assert tuple(before.clocks.__dataclass_fields__) == (
+            "profile",
+            "mount",
+            "registration",
+            "model_surface",
+        )
+        assert before.clocks == after.clocks
+        assert before.assembly_fingerprint != after.assembly_fingerprint
+        assert diff.source_publication_changed is True
+        assert before.skew == after.skew == ()
+        assert diff.mount_generation_changed is False
+        assert diff.registration_revision_changed is False
+        assert diff.profile_changed is False
+        explanation = projector.explain(
+            "harness.workspace",
+            profile=profile,
+            source_publication=after_reference,
+        )
+        assert explanation.source_publication == after_reference
+
+        await binder.dispose(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_source_generation_skew_distinguishes_retirement_from_violation() -> None:
+    async def scenario() -> None:
+        profile = _profile(
+            implementation="workspace.standard",
+            secret="not-projected",
+        )
+        runtime, binder = await _runtime(
+            profile=profile,
+            provider_id="workspace.standard",
+            provider_version=1,
+            registration_id="registration-v1",
+        )
+        projector = RuntimeCapabilityGraphProjector(runtime)
+        base = projector.registration_inventory()
+        source = ScopedSourcePublicationReference(
+            schema_version=1,
+            owner_capability_id="harness.workspace",
+            source_runtime_id="session-42",
+            extension_generation=2,
+            declaration_revision=2,
+            resource_revision=2,
+        )
+
+        def view(attachment: str):
+            inventory = compose_registration_inventory(
+                base,
+                (
+                    RegistrationInventoryEntry(
+                        registration_id=f"extension-{attachment}",
+                        surface="command",
+                        public_key="review",
+                        owner_kind="extension",
+                        owner_id="review-extension",
+                        runtime_id="session-42",
+                        owner_generation=1,
+                        attachment=attachment,  # type: ignore[arg-type]
+                        state="active",
+                    ),
+                ),
+            )
+            return projector.effective_view(
+                profile,
+                registrations=inventory,
+                source_publication=source,
+            )
+
+        pending = next(
+            item
+            for item in view("pending_retirement").skew
+            if item.code == "registration_source_generation_skew"
+        )
+        effective = next(
+            item
+            for item in view("effective").skew
+            if item.code == "registration_source_generation_skew"
+        )
+
+        assert pending.disposition == "transitional_retirement"
+        assert effective.disposition == "invariant_violation"
+        assert pending.classification == effective.classification == "clock_skew"
 
         await binder.dispose(runtime)
 

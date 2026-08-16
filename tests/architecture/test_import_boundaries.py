@@ -431,8 +431,8 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
             "loushang.harness.runtime.RuntimeProfileResolver",
         },
         Path("src/loushang/coding/bootstrap.py"): {
-            "loushang.coding.runtime_capability_admission.bind_coding_capability_composition_runtime",
             "loushang.coding.runtime_capability_admission.bind_coding_side_question",
+            "loushang.coding.runtime_capability_admission.resolve_coding_capability_profile",
             "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.bind_capability_composition_runtime",
         },
@@ -5136,6 +5136,7 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
         "RegistrationInventoryEntry",
         "RegistrationInventorySnapshot",
         "RegistrationExplanation",
+        "ScopedSourcePublicationReference",
         "RESOURCES_ACTIVATION_REQUIREMENT",
         "RESOURCES_CAPABILITY_DEFINITION",
         "RESOURCES_COMMAND_PACK_REQUIREMENT",

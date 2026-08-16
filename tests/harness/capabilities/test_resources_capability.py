@@ -13,6 +13,7 @@ from loushang.harness.capabilities import (
     RuntimeCapabilityGraphBinder,
     RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphRuntime,
+    bind_capability_composition_runtime,
     standard_capability_composition_plan,
 )
 from loushang.harness.capabilities.prompt import PromptSection
@@ -224,6 +225,27 @@ def test_resources_fingerprint_covers_construction_inputs_but_not_side_question(
     )
 
 
+def test_staged_resources_candidate_must_match_declared_profile() -> None:
+    candidate = bind_capability_composition_runtime(_profile(separator="|"))
+
+    try:
+        with pytest.raises(
+            ValueError,
+            match="staged resource candidate does not match the declared Profile",
+        ):
+            resources_capability_provider_binding(
+                profile=_profile(separator="/"),
+                scope_instance_id="session:research",
+                staged_candidate=candidate,
+            )
+
+        assert candidate.ownership_state == "root_owned"
+    finally:
+        candidate.dispose()
+
+    assert candidate.ownership_state == "disposed"
+
+
 def test_resources_content_only_use_does_not_publish_a_new_mount(tmp_path) -> None:
     async def scenario() -> None:
         binding = resources_capability_provider_binding(
@@ -251,6 +273,148 @@ def test_resources_content_only_use_does_not_publish_a_new_mount(tmp_path) -> No
         assert reused.reused_capability_ids == ("harness.resources",)
         assert runtime.generation == generation
         await binder.dispose(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_staged_resources_transfer_once_and_reuse_rejects_new_candidate() -> None:
+    async def scenario() -> None:
+        profile = _profile()
+        first_candidate = bind_capability_composition_runtime(profile)
+        first_binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:research",
+            staged_candidate=first_candidate,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session",
+            profile_fingerprint=_sha("profile"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, _plan(first_binding), (first_binding,))
+
+        assert first_candidate.ownership_state == "graph_owned"
+        assert ResourceActivationCapabilityConsumer(
+            runtime.capture(RESOURCES_ACTIVATION_REQUIREMENT)
+        ).activate(None).bundle is None
+
+        rejected_candidate = bind_capability_composition_runtime(profile)
+        rejected_binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:research",
+            staged_candidate=rejected_candidate,
+        )
+        reused = await binder.bind(
+            runtime,
+            _plan(rejected_binding),
+            (rejected_binding,),
+        )
+
+        assert reused.created_capability_ids == ()
+        assert reused.reused_capability_ids == ("harness.resources",)
+        assert rejected_candidate.ownership_state == "root_owned"
+        rejected_candidate.dispose()
+        assert rejected_candidate.ownership_state == "disposed"
+        assert first_candidate.ownership_state == "graph_owned"
+
+        await binder.dispose(runtime)
+        assert first_candidate.ownership_state == "disposed"
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("cancellation_point", "state_after_bind"),
+    (("graph_constructing", "root_owned"), ("prepublication", "disposed")),
+)
+def test_staged_resources_cancellation_has_one_cleanup_owner(
+    cancellation_point: str,
+    state_after_bind: str,
+) -> None:
+    async def scenario() -> None:
+        profile = _profile()
+        candidate = bind_capability_composition_runtime(profile)
+        original_commit = candidate._commit_graph_ownership
+
+        def cancel_during_commit() -> None:
+            if cancellation_point == "graph_constructing":
+                raise asyncio.CancelledError
+            original_commit()
+            task = asyncio.current_task()
+            assert task is not None
+            task.cancel()
+
+        candidate._commit_graph_ownership = cancel_during_commit  # type: ignore[method-assign]
+        binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:research",
+            staged_candidate=candidate,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session",
+            profile_fingerprint=_sha("profile"),
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            await RuntimeCapabilityGraphBinder().bind(
+                runtime,
+                _plan(binding),
+                (binding,),
+            )
+
+        assert candidate.ownership_state == state_after_bind
+        candidate.dispose()
+        assert candidate.ownership_state == "disposed"
+        assert runtime.snapshot is None
+
+    asyncio.run(scenario())
+
+
+def test_graph_retries_only_failed_staged_resource_disposal() -> None:
+    async def scenario() -> None:
+        attempts: list[str] = []
+        profile = _replace_selection(
+            _profile(),
+            RESOURCE_RUNTIME_SLOT.key,
+            implementation="research.retryable-resource",
+        )
+
+        def dispose(_value, _context):  # type: ignore[no-untyped-def]
+            attempts.append("resource")
+            if len(attempts) == 1:
+                raise RuntimeError("transient resource disposal failure")
+
+        implementation = RuntimeCapabilityImplementation(
+            slot=RESOURCE_RUNTIME_SLOT.key,
+            implementation="research.retryable-resource",
+            implementation_version=1,
+            create=lambda _selection, _context: ResourceActivationRuntime(),
+            dispose=dispose,
+        )
+        candidate = bind_capability_composition_runtime(
+            profile,
+            additional_implementations=(implementation,),
+        )
+        binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:research",
+            staged_candidate=candidate,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session",
+            profile_fingerprint=_sha("profile"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, _plan(binding), (binding,))
+
+        assert await binder.dispose(runtime) == ("provider_retirement_failed",)
+        assert candidate.ownership_state == "graph_owned"
+        assert await binder.dispose(runtime) == ()
+        assert candidate.ownership_state == "disposed"
+        assert attempts == ["resource", "resource"]
 
     asyncio.run(scenario())
 

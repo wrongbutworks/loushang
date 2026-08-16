@@ -37,6 +37,7 @@ from loushang.harness.capabilities import (
     RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphProjector,
     RuntimeProfileSlotExplanation,
+    ScopedSourcePublicationReference,
 )
 from loushang.harness.capabilities.effective_runtime import (
     compose_registration_inventory,
@@ -57,6 +58,7 @@ from loushang.harness.transcript import (
 CurrentSessionPredicate = Callable[[], bool]
 RegistrationEntriesProvider = Callable[[], tuple[RegistrationInventoryEntry, ...]]
 CurrentProfileFingerprintProvider = Callable[[], str]
+SourcePublicationProvider = Callable[[], ScopedSourcePublicationReference | None]
 
 
 class SessionModelCallPreparer:
@@ -283,6 +285,7 @@ class SessionModelCallRuntime:
         ],
         projector: RuntimeCapabilityGraphProjector,
         registration_entries_provider: RegistrationEntriesProvider | None = None,
+        source_publication_provider: SourcePublicationProvider | None = None,
     ) -> None:
         if not isinstance(transcript, AgentTranscriptSession):
             raise TypeError("model-call runtime requires AgentTranscriptSession")
@@ -294,12 +297,19 @@ class SessionModelCallRuntime:
             registration_entries_provider
         ):
             raise TypeError("model-call runtime registration inventory must be callable")
+        if source_publication_provider is not None and not callable(
+            source_publication_provider
+        ):
+            raise TypeError("model-call runtime source publication must be callable")
 
         self._transcript = transcript
         self._ensure_consumer = ensure_consumer
         self._projector = projector
         self._registration_entries_provider = (
             registration_entries_provider or (lambda: ())
+        )
+        self._source_publication_provider = (
+            source_publication_provider or (lambda: None)
         )
 
     def effective_view(
@@ -312,6 +322,7 @@ class SessionModelCallRuntime:
             profile,
             model_surface=self._model_surface(model_input_snapshot_id),
             registrations=self._registration_inventory(),
+            source_publication=self._source_publication_provider(),
         )
 
     def explain_capability(
@@ -327,6 +338,7 @@ class SessionModelCallRuntime:
             profile=profile,
             model_surface=model_surface,
             registrations=self._registration_inventory(),
+            source_publication=self._source_publication_provider(),
         )
 
     def explain_profile_slot(

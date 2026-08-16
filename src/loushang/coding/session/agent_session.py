@@ -170,6 +170,8 @@ class AgentSession(AgentProductSession):
                     CODING_CAPABILITY_PROFILE
                 )
             locally_created_capability_runtime = resolved_capability_runtime
+        elif resolution is not None:
+            resolved_capability_runtime.select_final_profile(resolution.profile)
         try:
             if side_question_binding is None:
                 side_question_binding = (

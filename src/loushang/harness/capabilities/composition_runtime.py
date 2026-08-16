@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
@@ -133,18 +133,82 @@ def standard_capability_composition_plan(
 
 
 @dataclass
-class CapabilityCompositionRuntime:
-    """Live binding for standard resource and capability-composition slots.
+class _CapabilityCompositionCandidate:
+    binding: RuntimeProfileBinding
+    binder: RuntimeProfileBinder
+    profile: ResolvedRuntimeProfile
+    ownership: Literal[
+        "root_owned",
+        "graph_constructing",
+        "graph_owned",
+        "disposed",
+    ] = "root_owned"
 
-    The profile determines the mechanisms. Products pass already-admitted
-    resource bundles, prompt sections, and packs to these operations; no
-    Product content, extension objects, or handler callables enter this
-    runtime.
+
+@dataclass(frozen=True)
+class _RootOwnedResourceCapabilityHandles:
+    """Private bootstrap-only views into one root-owned candidate."""
+
+    _runtime: CapabilityCompositionRuntime
+
+    def _require_root(self) -> CapabilityCompositionRuntime:
+        if self._runtime.ownership_state != "root_owned":
+            raise RuntimeError("Resource bootstrap handles are no longer root-owned")
+        return self._runtime
+
+    @property
+    def skill_activation(self) -> SkillActivationRuntime:
+        return self._require_root().skill_activation
+
+    def activate_resources(self, bundle: ResourceBundle | None) -> ResourceActivation:
+        return self._require_root().activate_resources(bundle)
+
+    @property
+    def prompt_section_composer(self) -> PromptSectionComposer:
+        return self._require_root().prompt_section_composer
+
+    @property
+    def tool_pack_composer(self) -> CapabilityPackComposer:
+        return self._require_root().tool_pack_composer
+
+    def dispose(self) -> None:
+        self._runtime.dispose()
+
+
+class CapabilityCompositionRuntime:
+    """Staged resource mechanisms with exactly one transferable owner.
+
+    Synchronous Product bootstrap owns the candidate initially.  The Session
+    Capability graph may claim that same candidate exactly once; after the
+    claim, this object is only a compatibility view and the graph owns release.
+    No Product content, Extension object, or handler callback enters the
+    binding.
     """
 
-    binding: RuntimeProfileBinding
-    _binder: RuntimeProfileBinder
-    _profile: ResolvedRuntimeProfile
+    def __init__(
+        self,
+        *,
+        binding: RuntimeProfileBinding,
+        _binder: RuntimeProfileBinder,
+        _profile: ResolvedRuntimeProfile,
+    ) -> None:
+        self.__candidate = _CapabilityCompositionCandidate(
+            binding=binding,
+            binder=_binder,
+            profile=_profile,
+        )
+
+    @property
+    def binding(self) -> RuntimeProfileBinding:
+        """Compatibility read view; lifecycle ownership stays in the candidate."""
+
+        return self.__candidate.binding
+
+    @property
+    def _binder(self) -> RuntimeProfileBinder:
+        """Compatibility-only test seam for the private Provider binder."""
+
+        return self.__candidate.binder
 
     @property
     def profile(self) -> ResolvedRuntimeProfile:
@@ -153,13 +217,67 @@ class CapabilityCompositionRuntime:
             for capability in self.binding.profile.capabilities
         }
         return ResolvedRuntimeProfile(
-            product_id=self._profile.product_id,
+            product_id=self.__candidate.profile.product_id,
             capabilities=tuple(
                 current_resources.get(capability.slot.key, capability)
-                for capability in self._profile.capabilities
+                for capability in self.__candidate.profile.capabilities
             ),
-            schema_version=self._profile.schema_version,
+            schema_version=self.__candidate.profile.schema_version,
         )
+
+    @property
+    def ownership_state(self) -> str:
+        """Return the redacted handoff state used by lifecycle tests."""
+
+        return self.__candidate.ownership
+
+    def _root_owned_handles(self) -> _RootOwnedResourceCapabilityHandles:
+        """Return the focused private handles used only during bootstrap."""
+
+        if self.__candidate.ownership != "root_owned":
+            raise RuntimeError("Resource candidate is not root-owned")
+        return _RootOwnedResourceCapabilityHandles(self)
+
+    def select_final_profile(self, profile: ResolvedRuntimeProfile) -> None:
+        """Attach final immutable selection facts without rebuilding resources.
+
+        The resource projection must be identical to the already-constructed
+        bootstrap candidate.  A changed resource mechanism requires a future
+        graph replacement contract and therefore fails closed in this slice.
+        """
+
+        if self.__candidate.ownership != "root_owned":
+            raise RuntimeError("Only a root-owned resource candidate can be selected")
+        expected = self.binding.profile.snapshot().to_json()
+        actual = resource_capability_profile(profile).snapshot().to_json()
+        if actual != expected:
+            raise RuntimeError(
+                "Final resource mechanism selections differ from the staged candidate"
+            )
+        self.__candidate.profile = profile
+
+    def _begin_graph_construction(self) -> None:
+        if self.__candidate.ownership != "root_owned":
+            raise RuntimeError("Resource candidate is not available for graph claim")
+        self.__candidate.ownership = "graph_constructing"
+
+    def _commit_graph_ownership(self) -> None:
+        if self.__candidate.ownership != "graph_constructing":
+            raise RuntimeError("Resource candidate graph claim was not started")
+        self.__candidate.ownership = "graph_owned"
+
+    def _restore_root_ownership(self) -> None:
+        if self.__candidate.ownership != "graph_constructing":
+            raise RuntimeError("Resource candidate graph claim is not in progress")
+        self.__candidate.ownership = "root_owned"
+
+    def _dispose_graph_owned(self) -> None:
+        if self.__candidate.ownership == "disposed":
+            return
+        if self.__candidate.ownership != "graph_owned":
+            raise RuntimeError("Graph cannot dispose a resource candidate it does not own")
+        self.__candidate.binder.dispose_sync(self.binding)
+        self.__candidate.ownership = "disposed"
 
     def apply_skill_activation(
         self,
@@ -227,7 +345,16 @@ class CapabilityCompositionRuntime:
         )
 
     def dispose(self) -> None:
-        self._binder.dispose_sync(self.binding)
+        """Dispose only while the construction root still owns the candidate."""
+
+        if self.__candidate.ownership == "disposed":
+            return
+        if self.__candidate.ownership == "graph_owned":
+            return
+        if self.__candidate.ownership == "graph_constructing":
+            raise RuntimeError("Resource candidate ownership transfer is in progress")
+        self.__candidate.binder.dispose_sync(self.binding)
+        self.__candidate.ownership = "disposed"
 
 
 def bind_capability_composition_runtime(

@@ -87,6 +87,9 @@ SOURCE_BACKED_SEAMS = (
                 ),
             ),
         ),
+        production_mounts=(
+            "loushang.harness.session.agent_product:AgentProductSession",
+        ),
     ),
     CapabilitySeam(
         definition=(

@@ -347,7 +347,9 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
         if isinstance(node, ast.Call)
     ]
     assert managed_calls.count("bind_capabilities") == 1
+    assert managed_calls.count("_root_owned_resource_handles") == 1
     assert managed_calls.count("bind_session_capabilities") == 1
+    assert managed_calls.count("resolve_session_capability_profile") == 1
     assert managed_calls.count("bind_session_side_question") == 1
 
     direct = _method_node(
@@ -463,10 +465,43 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
     )
     assert statuses == {
         "harness.model_input": "production-mounted",
-        "harness.resources": "source-complete",
+        "harness.resources": "production-mounted",
         "harness.workspace": "source-complete",
     }
 
 
-def test_cla3_resources_provider_is_not_production_mounted() -> None:
-    assert _construction_sites("resources_capability_provider_binding") == Counter()
+def test_cla4_resources_provider_has_one_production_mount_owner() -> None:
+    assert _construction_sites("resources_capability_provider_binding") == Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession.__init__",
+            ): 1
+        }
+    )
+
+
+def test_cla4_session_has_no_peer_resource_profile_owner() -> None:
+    for path in (
+        Path("src/loushang/harness/session/agent_product.py"),
+        Path("src/loushang/harness/session/agent_adapter.py"),
+        Path("src/loushang/harness/session/composition.py"),
+        Path("src/loushang/harness/session/operations_runtime.py"),
+    ):
+        assert "_capability_runtime" not in path.read_text(encoding="utf-8")
+
+    coding_tree = _source_trees()[Path("src/loushang/coding/bootstrap.py")]
+    construction = next(
+        node.value
+        for node in coding_tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id == "_CODING_AGENT_PRODUCT_CONSTRUCTION"
+            for target in node.targets
+        )
+    )
+    assert isinstance(construction, ast.Call)
+    keywords = {keyword.arg for keyword in construction.keywords}
+    assert "resolve_session_capability_profile" in keywords
+    assert "bind_session_capabilities" not in keywords

@@ -263,6 +263,17 @@ class SessionProductInputs:
     before_agent_start_system_prompt_options: Callable[[], dict[str, object]]
 
 
+@dataclass(frozen=True)
+class SessionResourceCompositionPorts:
+    """Focused resource mechanism ports captured by long-lived controllers."""
+
+    activation: object
+    skill_activation: object
+    prompt_sections: object
+    tool_packs: object
+    command_packs: object
+
+
 @dataclass(frozen=True, init=False)
 class SessionCompositionPorts:
     """Cohesive inputs needed to assemble a standard Product session.
@@ -275,7 +286,8 @@ class SessionCompositionPorts:
     agent: Agent
     session_manager: ProductTranscriptSession[Any, Any]
     settings: SessionSettingsBinding
-    capability_runtime: CapabilityCompositionRuntime
+    product_id: str
+    resources: SessionResourceCompositionPorts
     foundation: SessionFoundationInputs
     maintenance: SessionMaintenanceInputs
     product: SessionProductInputs
@@ -286,7 +298,9 @@ class SessionCompositionPorts:
         session_manager: ProductTranscriptSession[Any, Any],
         settings: SessionSettingsBinding,
         *,
-        capability_runtime: CapabilityCompositionRuntime,
+        capability_runtime: CapabilityCompositionRuntime | None = None,
+        product_id: str | None = None,
+        resources: SessionResourceCompositionPorts | None = None,
         foundation: SessionFoundationInputs | None = None,
         maintenance: SessionMaintenanceInputs | None = None,
         product: SessionProductInputs | None = None,
@@ -319,10 +333,28 @@ class SessionCompositionPorts:
                 _legacy_composition_inputs(legacy)
             )
 
+        if resources is None:
+            if capability_runtime is None:
+                raise TypeError(
+                    "Session composition requires focused resource ports"
+                )
+            resources = SessionResourceCompositionPorts(
+                activation=capability_runtime.resource_runtime,
+                skill_activation=capability_runtime.skill_activation,
+                prompt_sections=capability_runtime.prompt_section_composer,
+                tool_packs=capability_runtime.tool_pack_composer,
+                command_packs=capability_runtime.command_pack_composer,
+            )
+        if product_id is None:
+            if capability_runtime is None:
+                raise TypeError("Session composition requires a Product id")
+            product_id = capability_runtime.profile.product_id
+
         object.__setattr__(self, "agent", agent)
         object.__setattr__(self, "session_manager", session_manager)
         object.__setattr__(self, "settings", settings)
-        object.__setattr__(self, "capability_runtime", capability_runtime)
+        object.__setattr__(self, "product_id", product_id)
+        object.__setattr__(self, "resources", resources)
         object.__setattr__(self, "foundation", resolved_foundation)
         object.__setattr__(self, "maintenance", resolved_maintenance)
         object.__setattr__(self, "product", resolved_product)
@@ -409,7 +441,6 @@ class SessionComposition:
     stored shape exposes the actual lifetime and ownership groups.
     """
 
-    capability_runtime: CapabilityCompositionRuntime
     foundation: _FoundationRuntimes
     maintenance: _MaintenanceRuntimes
     product: _ProductBindings
@@ -609,7 +640,6 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         session_runtime=session_runtime,
     )
     return SessionComposition(
-        capability_runtime=ports.capability_runtime,
         foundation=foundation,
         maintenance=maintenance,
         product=bindings,
@@ -662,7 +692,7 @@ def _build_foundation_runtimes(
             diagnostics_bridge.sync_extension_diagnostics(phase="resource_loading")
         ),
         prepare_resource_refresh=inputs.prepare_resource_refresh,
-        skill_activation_runtime=ports.capability_runtime.skill_activation,
+        skill_activation_runtime=cast(Any, ports.resources.skill_activation),
     )
     resource_watch_controller = ResourceChangeWatcher(
         get_paths=inputs.get_resource_watch_paths,
@@ -736,7 +766,7 @@ def _build_maintenance_runtimes(
         before_compaction=maintenance.before_compaction,
         after_compaction=maintenance.after_compaction,
         record_runtime_exception=foundation.record_runtime_exception,
-        product_id=ports.capability_runtime.profile.product_id,
+        product_id=ports.product_id,
         session_id=session.get_header().conversation_id,
     )
     retry_runtime = AgentTranscriptRetryRuntime(
@@ -954,8 +984,8 @@ def _build_tool_controller(
         get_approval_resolver=lambda: inputs.approval_resolver,
         policy_evaluator=inputs.tool_policy_evaluator,
         emit_tool_audit_event=inputs.dispatch_event,
-        resource_activation_runtime=ports.capability_runtime.resource_runtime,
-        prompt_section_composer=ports.capability_runtime.prompt_section_composer,
+        resource_activation_runtime=cast(Any, ports.resources.activation),
+        prompt_section_composer=cast(Any, ports.resources.prompt_sections),
     )
 
 

@@ -79,12 +79,14 @@ class _StagedCandidate:
         activation_started: asyncio.Event | None = None,
         rollback_started: asyncio.Event | None = None,
         release_rollback: asyncio.Event | None = None,
+        publication_error: BaseException | None = None,
     ) -> None:
         self.events = events
         self.activation_error = activation_error
         self.activation_started = activation_started
         self.rollback_started = rollback_started
         self.release_rollback = release_rollback
+        self.publication_error = publication_error
 
     async def discover_resources_async(
         self,
@@ -116,6 +118,8 @@ class _StagedCandidate:
         self.events.append("publish")
         commit_resource()
         self.events.append("committed")
+        if self.publication_error is not None:
+            raise self.publication_error
         return _StagedRetirement(self.events)
 
     async def rollback(self) -> None:
@@ -180,7 +184,7 @@ def _runtime(
     )
 
 
-def test_session_resource_refresh_runtime_gets_prompt_templates_from_loader_then_bundle() -> (
+def test_session_resource_refresh_runtime_gets_only_committed_prompt_templates() -> (
     None
 ):
     loader_prompt = PromptFragmentDescriptor(
@@ -198,7 +202,7 @@ def test_session_resource_refresh_runtime_gets_prompt_templates_from_loader_then
     runtime = _runtime(loader=_PromptLoader([loader_prompt]), bundle=bundle)
     fallback_runtime = _runtime(loader=None, bundle=bundle)
 
-    assert runtime.get_prompt_templates() == [loader_prompt]
+    assert runtime.get_prompt_templates() == [bundle_prompt]
     assert fallback_runtime.get_prompt_templates() == [bundle_prompt]
 
 
@@ -313,6 +317,7 @@ def test_staged_extension_reload_publishes_resource_before_retiring_old_generati
     result = asyncio.run(runtime.reload_extension_generation(object()))
 
     assert result is not None
+    assert runtime.resource_revision == 1
     assert result.prompt_fragments == ["candidate prompt"]
     assert extension_runtime.extension_sets == [[]]
     assert refreshed == [result]
@@ -402,6 +407,7 @@ def test_staged_extension_reload_restores_resource_when_publication_fails() -> N
         asyncio.run(runtime.reload_extension_generation(object()))
 
     assert current == [previous]
+    assert runtime.resource_revision == 1
     assert events == [
         "discover:reload",
         "activate",
@@ -409,6 +415,71 @@ def test_staged_extension_reload_restores_resource_when_publication_fails() -> N
         "restored",
         "rollback",
     ]
+
+
+def test_staged_extension_reload_restores_revision_when_publish_fails_after_commit() -> (
+    None
+):
+    events: list[str] = []
+    previous = ResourceBundle(cwd=Path("/tmp/old"), prompt_fragments=["old"])
+    current: list[ResourceBundle | None] = [previous]
+    candidate = _StagedCandidate(
+        events,
+        publication_error=RuntimeError("publication failed after commit"),
+    )
+    runtime = SessionResourceRefreshRuntime(
+        get_resource_loader=lambda: _Loader(ResourceBundle(cwd=Path("/tmp/new"))),
+        get_resource_bundle=lambda: current[0],
+        get_cwd=lambda: "/tmp/project",
+        get_extension_runtime=lambda: _StagedExtensionRuntime(candidate),
+        get_settings=lambda: None,
+        set_resource_bundle=lambda bundle: current.__setitem__(0, bundle),
+        rebuild_prompt_and_tools_view=lambda: events.append("rebuild"),
+        record_refresh_failure=lambda error: None,
+        sync_extension_diagnostics=lambda: None,
+    )
+
+    with pytest.raises(RuntimeError, match="publication failed after commit"):
+        asyncio.run(runtime.reload_extension_generation(object()))
+
+    assert current == [previous]
+    assert runtime.resource_revision == 1
+    assert events[-1] == "rollback"
+
+
+def test_failed_view_restoration_still_restores_publication_revision() -> None:
+    previous = ResourceBundle(cwd=Path("/tmp/old"), prompt_fragments=["old"])
+    current: list[ResourceBundle | None] = [previous]
+    candidate = _StagedCandidate(
+        [],
+        publication_error=RuntimeError("publication failed after commit"),
+    )
+
+    def rebuild() -> None:
+        if current[0] is previous:
+            raise RuntimeError("restoration rebuild failed")
+
+    runtime = SessionResourceRefreshRuntime(
+        get_resource_loader=lambda: _Loader(ResourceBundle(cwd=Path("/tmp/new"))),
+        get_resource_bundle=lambda: current[0],
+        get_cwd=lambda: "/tmp/project",
+        get_extension_runtime=lambda: _StagedExtensionRuntime(candidate),
+        get_settings=lambda: None,
+        set_resource_bundle=lambda bundle: current.__setitem__(0, bundle),
+        rebuild_prompt_and_tools_view=rebuild,
+        record_refresh_failure=lambda error: None,
+        sync_extension_diagnostics=lambda: None,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="publication failed after commit",
+    ) as caught:
+        asyncio.run(runtime.reload_extension_generation(object()))
+
+    assert current == [previous]
+    assert runtime.resource_revision == 1
+    assert "previous resource bundle view restoration failed" in caught.value.__notes__
 
 
 def test_failed_publication_restores_old_resource_before_async_candidate_cleanup() -> (

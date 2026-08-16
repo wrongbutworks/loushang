@@ -41,8 +41,8 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.runtime_capability_admission import (
-    bind_coding_capability_composition_runtime,
     bind_coding_side_question,
+    resolve_coding_capability_profile,
 )
 from loushang.coding.sandbox import bind_coding_sandbox_runtime
 from loushang.coding.session import AgentSession
@@ -706,8 +706,10 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
     source_identity_check=_source_identity_startup_check,
     list_tool_definitions=lambda runner: runner.list_tool_definitions(),
     get_tool_source_info=lambda runner, name: runner.get_tool_source_info(name),
-    bind_session_capabilities=bind_coding_capability_composition_runtime,
     bind_session_side_question=bind_coding_side_question,
+    resolve_session_capability_profile=lambda runner: (
+        resolve_coding_capability_profile(runner.active_extensions).profile
+    ),
     product_tool_pack_id="coding.registry",
     extension_tool_pack_id="coding.extensions",
 )

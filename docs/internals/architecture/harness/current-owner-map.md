@@ -44,13 +44,17 @@ Definition / Provider / Consumer slice: Consumers receive only declared
 filesystem facets or the authorized process-launch port, never the graph
 Runtime, raw process host, approval gateway, or sandbox backend.
 
-`harness.resources` is also source-complete but is not production-mounted. Its
-Session/bootstrap/sealed Bundle maps the private resource, prompt, skill, Tool
-pack, and Command pack Profile selections through focused Consumers. The
-Provider temporarily owns its private Profile Binder and computes one complete
-construction fingerprint; resource content remains call data and does not
-publish a Mount. `interaction.side_question` is excluded and remains a focused
-legacy binding owned and disposed by the Product Session.
+`harness.resources` is production-mounted beside `harness.model_input` in the
+single Session-owned graph. Its Session/bootstrap/sealed Bundle maps the
+private resource, prompt, skill, Tool-pack, and Command-pack Profile selections
+through focused Consumers. Synchronous bootstrap constructs one root-owned
+candidate; the Resource Provider transfers that same candidate to the Graph
+instead of constructing a peer binding. Long-lived controllers route through
+stable focused ports and generation-scoped Consumers after publication.
+Resource content remains call data and changes only the scoped source
+publication reference, not the Mount generation. `interaction.side_question`
+is excluded and remains a focused legacy binding owned and disposed by the
+Product Session.
 
 The generated [Harness Capability Catalog](capability-catalog.md) is the
 source-backed coverage projection. A target Capability is not reported as

@@ -45,6 +45,9 @@ from loushang.harness.capabilities.effective_runtime import (
 from loushang.harness.capabilities.effective_runtime import (
     ModelSurfaceReference as ModelSurfaceReference,
 )
+from loushang.harness.capabilities.effective_runtime import (
+    ScopedSourcePublicationReference as ScopedSourcePublicationReference,
+)
 from loushang.harness.capabilities.graph_binding import (
     CapabilityGraphBindingError as CapabilityGraphBindingError,
 )
@@ -227,6 +230,7 @@ __all__ = [
     "RESOURCES_COMMAND_PACK_REQUIREMENT",
     "RESOURCES_PROMPT_REQUIREMENT",
     "RESOURCES_TOOL_PACK_REQUIREMENT",
+    "ScopedSourcePublicationReference",
     "RuntimeCapabilityGraphBinder",
     "RuntimeCapabilityGraphPlan",
     "RuntimeCapabilityGraphPlanner",

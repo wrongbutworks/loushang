@@ -1314,6 +1314,11 @@ def test_sync_binder_cleanup_continues_after_disposer_failure() -> None:
     assert calls == ["dispose:second", "dispose:first"]
     assert binding.is_closed is True
 
+    with pytest.raises(RuntimeCapabilityBindingError, match="second"):
+        binder.dispose_sync(binding)
+
+    assert calls == ["dispose:second", "dispose:first", "dispose:second"]
+
 
 def test_async_binder_cleanup_continues_after_disposer_failure() -> None:
     slots = tuple(

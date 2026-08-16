@@ -27,6 +27,7 @@ from loushang.harness.config.agent import (
     SettingsManager,
 )
 from loushang.harness.conversation import ConversationKey, MemoryConversationStore
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import (
     CancellationSignal,
     RegistrationIdentity,
@@ -305,6 +306,14 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert research.get_active_tool_names() == []
         assert design.get_active_tool_names() == []
         assert effective_runtime.product_id == "research"
+        assert tuple(
+            node.capability_id for node in effective_runtime.capabilities
+        ) == ("harness.model_input", "harness.resources")
+        assert effective_runtime.source_publication is not None
+        assert effective_runtime.source_publication.owner_capability_id == (
+            "harness.resources"
+        )
+        assert effective_runtime.source_publication.resource_revision == 0
         assert effective_runtime.clocks.model_surface is None
         assert effective_runtime.skew == ()
         assert research.explain_runtime_capability(
@@ -313,6 +322,20 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert research.effective_runtime_to_json(effective_runtime)[
             "runtime_id"
         ] == effective_runtime.runtime_id
+        research._composition.resource_refresh_runtime._commit_resource_bundle(
+            ResourceBundle(cwd=tmp_path)
+        )
+        refreshed_runtime = research.get_effective_runtime_view()
+        source_diff = research.diff_effective_runtime(
+            effective_runtime,
+            refreshed_runtime,
+        )
+        assert refreshed_runtime.clocks.mount == effective_runtime.clocks.mount
+        assert refreshed_runtime.source_publication is not None
+        assert refreshed_runtime.source_publication.resource_revision == 1
+        assert source_diff.source_publication_changed is True
+        assert source_diff.mount_generation_changed is False
+        assert source_diff.registration_revision_changed is False
         _assert_no_composed_runtime_mirrors(research)
         _assert_no_composed_runtime_mirrors(design)
 
@@ -352,6 +375,8 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert disposed_transcripts == ["research-session"]
         with pytest.raises(RuntimeError, match="disposed"):
             research.get_effective_runtime_view()
+        with pytest.raises(RuntimeError, match="not mounted"):
+            research._resource_capability_ports.activation.activate(None)
         assert research.effective_runtime_to_json(effective_runtime)[
             "runtime_id"
         ] == effective_runtime.runtime_id
@@ -433,6 +458,130 @@ def test_failed_graph_preparation_is_disposed_without_leaving_agent_boundary(
         assert session.agent.prepare_model_call is None
         assert session._capability_graph_runtime.is_closed is True
         assert disposed_transcripts == ["bind-failure-session"]
+
+    asyncio.run(scenario())
+
+
+def test_failed_graph_preparation_retains_root_candidate_for_shutdown_retry(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="bind-cleanup-retry")
+        capability_runtime = _capability_runtime("bind-cleanup-retry")
+        session = _ContractProductSession(
+            product_id="bind-cleanup-retry",
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        original_dispose = capability_runtime.dispose
+        disposal_attempts = 0
+
+        def fail_first_disposal() -> None:
+            nonlocal disposal_attempts
+            disposal_attempts += 1
+            if disposal_attempts == 1:
+                raise RuntimeError("transient candidate cleanup failure")
+            original_dispose()
+
+        capability_runtime.dispose = fail_first_disposal  # type: ignore[method-assign]
+
+        async def fail_bind(*_args: object) -> None:
+            raise RuntimeError("graph preparation failed")
+
+        session._capability_graph_binder.bind = fail_bind  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="graph preparation failed") as caught:
+            await session.prepare_model_call_runtime()
+
+        assert "transient candidate cleanup failure" in "\n".join(
+            caught.value.__notes__
+        )
+        assert session._staged_resource_candidate is capability_runtime
+        assert capability_runtime.ownership_state == "root_owned"
+
+        await session.dispose()
+
+        assert disposal_attempts == 2
+        assert capability_runtime.ownership_state == "disposed"
+        assert disposed_transcripts == ["bind-cleanup-retry-session"]
+
+    asyncio.run(scenario())
+
+
+def test_unprepared_shutdown_retains_root_candidate_for_cleanup_retry(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="shutdown-retry")
+        capability_runtime = _capability_runtime("shutdown-retry")
+        session = _ContractProductSession(
+            product_id="shutdown-retry",
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        original_dispose = capability_runtime.dispose
+        disposal_attempts = 0
+
+        def fail_first_disposal() -> None:
+            nonlocal disposal_attempts
+            disposal_attempts += 1
+            if disposal_attempts == 1:
+                raise RuntimeError("transient root cleanup failure")
+            original_dispose()
+
+        capability_runtime.dispose = fail_first_disposal  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="transient root cleanup failure"):
+            await session.dispose()
+
+        assert disposal_attempts == 1
+        assert session._staged_resource_candidate is capability_runtime
+        assert capability_runtime.ownership_state == "root_owned"
+
+        await session.dispose()
+
+        assert disposal_attempts == 2
+        assert session._staged_resource_candidate is None
+        assert capability_runtime.ownership_state == "disposed"
+        assert disposed_transcripts == ["shutdown-retry-session"]
+
+    asyncio.run(scenario())
+
+
+def test_source_publication_does_not_mix_partial_extension_provenance(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="source-domain")
+        session = _ContractProductSession(
+            product_id="source-domain",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("source-domain"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        session._extension_runner = SimpleNamespace(generation=7)
+
+        reference = session._source_publication_reference()
+
+        assert reference.source_runtime_id == (
+            session._capability_graph_runtime.runtime_id
+        )
+        assert reference.extension_generation is None
+        assert reference.declaration_revision is None
+
+        await session.dispose()
+        assert disposed_transcripts == ["source-domain-session"]
 
     asyncio.run(scenario())
 

@@ -60,8 +60,10 @@ class SessionResourceRefreshRuntime:
     )
     _coordinator: ResourceRefreshCoordinator[ResourceBundle] = field(init=False)
     _discovery: RuntimeResourceDiscovery[ResourceBundle] = field(init=False)
+    _resource_revision: int = field(init=False, default=0)
 
     def __post_init__(self) -> None:
+        self._resource_revision = 1 if self.get_resource_bundle() is not None else 0
         self._discovery = RuntimeResourceDiscovery(self.get_extension_runtime)
         self._coordinator = ResourceRefreshCoordinator(
             load_resource=self._load_resource_bundle,
@@ -71,14 +73,13 @@ class SessionResourceRefreshRuntime:
             prepare_refresh=self.prepare_resource_refresh,
         )
 
+    @property
+    def resource_revision(self) -> int:
+        """Return the Session-local ordinal of the effective resource view."""
+
+        return self._resource_revision
+
     def get_prompt_templates(self) -> list[PromptFragmentDescriptor]:
-        resource_loader = self.get_resource_loader()
-        if resource_loader is not None:
-            get_prompts = getattr(resource_loader, "get_prompts", None)
-            if not callable(get_prompts):
-                return []
-            prompts = get_prompts().get("prompts", [])
-            return list(prompts) if isinstance(prompts, list) else []
         resource_bundle = self.get_resource_bundle()
         if resource_bundle is not None:
             return list(resource_bundle.prompts)
@@ -142,6 +143,7 @@ class SessionResourceRefreshRuntime:
         published = False
         publication_started = False
         previous_resource = self.get_resource_bundle()
+        previous_resource_revision = self._resource_revision
         try:
             discovered = await candidate.discover_resources_async(
                 resource_bundle,
@@ -159,12 +161,15 @@ class SessionResourceRefreshRuntime:
             if not published:
                 if publication_started:
                     try:
-                        self.set_resource_bundle(previous_resource)
-                        self.rebuild_prompt_and_tools_view()
+                        if self.get_resource_bundle() is not previous_resource:
+                            self.set_resource_bundle(previous_resource)
+                            self.rebuild_prompt_and_tools_view()
                     except BaseException:
                         publication_error.add_note(
                             "previous resource bundle view restoration failed"
                         )
+                    finally:
+                        self._resource_revision = previous_resource_revision
                 await candidate.rollback()
             raise
 
@@ -201,8 +206,21 @@ class SessionResourceRefreshRuntime:
             resource_bundle = self.skill_activation_runtime.apply(
                 resource_bundle, disabled_skills
             )
-        self.set_resource_bundle(resource_bundle)
-        self.rebuild_prompt_and_tools_view()
+        previous = self.get_resource_bundle()
+        try:
+            self.set_resource_bundle(resource_bundle)
+            self.rebuild_prompt_and_tools_view()
+        except BaseException as error:
+            try:
+                self.set_resource_bundle(previous)
+                self.rebuild_prompt_and_tools_view()
+            except BaseException as restoration_error:
+                error.add_note(
+                    "previous resource bundle view restoration also failed: "
+                    f"{restoration_error!r}"
+                )
+            raise
+        self._resource_revision += 1
 
     def _commit_resource_generation(self, resource_bundle: ResourceBundle) -> None:
         self._commit_resource_bundle(resource_bundle)
