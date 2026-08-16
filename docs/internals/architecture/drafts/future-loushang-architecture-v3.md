@@ -290,6 +290,9 @@ sync, merge, or runtime handoff to a daemon. The embedded profile is therefore
 local-only and non-migratable. A Session that must survive the foreground
 process or support multi-device attach uses AppService from the beginning,
 possibly through an in-process `AppClient` before a daemon exists.
+The default-native-TUI delivery choice in
+[AppService Hosted Boundary With An Embedded TUI](appservice-embedded-tui-hosted-boundary-plan.md)
+keeps this as an explicit Product election rather than the default local path.
 
 ### Hosted profile
 
@@ -653,6 +656,7 @@ interaction.
 ## Related Decisions
 
 - [Application Service Refactor](application-service-refactor.md)
+- [AppService Hosted Boundary With An Embedded TUI](appservice-embedded-tui-hosted-boundary-plan.md)
 - [Agent, Harness, And Product Adapters](../agent/ARD-001-agent-harness-and-product-adapters.md)
 - [Harness Product Runtime Core Boundary](../harness/product-runtime-core-boundary.md)
 - [Capability Dependency And Mount Lifecycle](../harness/capability-dependency-and-mount-lifecycle.md)
