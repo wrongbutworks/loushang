@@ -53,6 +53,9 @@ from loushang.harness.transcript.kinds import (
     STANDARD_AGENT_TRANSCRIPT_KINDS,
     THINKING_SELECTION_KIND,
 )
+from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_PAYLOAD_VERSION,
+)
 from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptRecord,
@@ -710,6 +713,27 @@ def _require_standard_payload_codecs(
         raise ValueError(
             "Agent transcript profile is missing standard payload codecs: "
             + ", ".join(missing)
+        )
+    model_input_kinds = (
+        MODEL_INPUT_COMPONENT_KIND,
+        MODEL_INPUT_PREPARED_KIND,
+    )
+    missing_v2 = [
+        kind
+        for kind in model_input_kinds
+        if (kind, MODEL_INPUT_V2_PAYLOAD_VERSION) not in registered
+    ]
+    if missing_v2:
+        raise ValueError(
+            "Agent transcript profile is missing Model Input v2 payload codecs: "
+            + ", ".join(missing_v2)
+        )
+    required = set(registry.required_kinds)
+    missing_required = [kind for kind in model_input_kinds if kind not in required]
+    if missing_required:
+        raise ValueError(
+            "Agent transcript profile is missing required payload kinds: "
+            + ", ".join(missing_required)
         )
 
 

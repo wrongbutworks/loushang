@@ -6,7 +6,7 @@ import pytest
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
-from loushang.ai.errors import UnsupportedCapabilityError
+from loushang.ai.errors import AIRequestTooLargeError, UnsupportedCapabilityError
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions, ReasoningOptions, RetryOptions
@@ -309,6 +309,40 @@ def test_continue_consumes_system_mailbox_from_an_idle_assistant_boundary() -> N
         assert agent.mailbox_queue.has_items() is False
 
     asyncio.run(scenario())
+
+
+def test_continue_retries_from_error_assistant_boundary() -> None:
+    from loushang.agent import Agent
+
+    seen_messages: list[list[object]] = []
+
+    async def stream_fn(model, context, options=None):
+        del model, options
+        seen_messages.append(list(context.messages))
+        return _stream_with_final_message(_assistant_text_message("recovered"))
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn)
+        agent.state.messages.extend(
+            [
+                UserMessage(role="user", content="retry this", timestamp=0.0),
+                _assistant_text_message(
+                    "",
+                    stop_reason="error",
+                    error_message="Provider request is too large.",
+                ),
+            ]
+        )
+
+        await agent.continue_run(model_call_purpose="continuation")
+
+    asyncio.run(scenario())
+
+    assert len(seen_messages) == 1
+    assert not any(
+        isinstance(message, AssistantMessage) and message.stop_reason == "error"
+        for message in seen_messages[0]
+    )
 
 
 def test_agent_forwards_caller_declared_model_call_purpose_to_preparation() -> None:
@@ -667,6 +701,21 @@ def test_abort_marks_run_as_aborted_and_sets_error_message() -> None:
     asyncio.run(scenario())
 
 
+def test_abort_identity_overrides_concurrent_capacity_failure() -> None:
+    from loushang.agent.agent import _run_failure_error_info
+
+    error_info = _run_failure_error_info(
+        AIRequestTooLargeError(
+            "Prepared Provider request exceeds its configured capacity limit."
+        ),
+        aborted=True,
+        model=_model(),
+    )
+
+    assert error_info["code"] == "cancelled"
+    assert error_info["retryable"] is False
+
+
 def test_non_ai_run_failure_does_not_expose_exception_text() -> None:
     from loushang.agent import Agent
 
@@ -713,9 +762,7 @@ def test_ai_run_failure_preserves_safe_public_message() -> None:
             == "Model 'text-only' does not support image input"
         )
         assert agent.state.messages[-1].error_info is not None
-        assert agent.state.messages[-1].error_info["code"] == (
-            "unsupported_capability"
-        )
+        assert agent.state.messages[-1].error_info["code"] == ("unsupported_capability")
 
     asyncio.run(scenario())
 

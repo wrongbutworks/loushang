@@ -314,7 +314,7 @@ class AgentTranscriptCompactionRuntime:
                         reason="overflow",
                         result=None,
                         aborted=False,
-                        will_retry=True,
+                        will_retry=False,
                         error_message=message,
                         usage_before=usage,
                         usage_after=usage,

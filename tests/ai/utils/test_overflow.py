@@ -80,6 +80,26 @@ def test_typed_request_too_large_triggers_capacity_recovery() -> None:
     assert is_context_overflow(msg, context_window=1_048_576) is True
 
 
+def test_typed_capacity_identity_does_not_override_aborted_terminal() -> None:
+    msg = _assistant(
+        stop_reason="aborted",
+        error_message="Request aborted by user",
+    )
+    object.__setattr__(
+        msg,
+        "error_info",
+        {
+            "code": "request_too_large",
+            "message": "Provider request is too large.",
+            "source": "provider",
+            "retryable": False,
+            "details": {},
+        },
+    )
+
+    assert is_context_overflow(msg, context_window=1_048_576) is False
+
+
 def test_error_message_no_overflow() -> None:
     msg = _assistant(
         stop_reason="error",

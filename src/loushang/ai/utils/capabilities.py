@@ -3,7 +3,12 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.types import ImagePart, ToolResultMessage, UserMessage
+from loushang.ai.types import (
+    AssistantMessage,
+    ImagePart,
+    ToolResultMessage,
+    UserMessage,
+)
 
 
 def context_has_image_input(messages: Iterable[object]) -> bool:
@@ -11,7 +16,7 @@ def context_has_image_input(messages: Iterable[object]) -> bool:
 
     for message in messages:
         if (
-            isinstance(message, UserMessage)
+            isinstance(message, UserMessage | AssistantMessage)
             and isinstance(message.content, list)
             and any(isinstance(part, ImagePart) for part in message.content)
         ):

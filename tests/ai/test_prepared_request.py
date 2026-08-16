@@ -599,6 +599,41 @@ def test_no_committer_preserves_inherited_invoke_raw_override() -> None:
     assert adapter.transport_calls == 0
 
 
+def test_request_limits_without_committer_still_use_prepared_barrier() -> None:
+    async def _run() -> _InheritedPreparedAdapter:
+        adapter = _InheritedPreparedAdapter([])
+        stream = await call_api_adapter_stream(
+            adapter,
+            _request(
+                options=CallOptions(
+                    request_limits=PreparedRequestLimits(max_canonical_bytes=1)
+                )
+            ),
+        )
+        with pytest.raises(AIRequestTooLargeError):
+            await stream.result()
+        return adapter
+
+    adapter = asyncio.run(_run())
+
+    assert adapter.legacy_invoke_calls == 0
+    assert adapter.transport_calls == 0
+
+
+def test_request_limits_reject_adapter_without_prepared_barrier() -> None:
+    with pytest.raises(TypeError, match="prepared-request barrier"):
+        asyncio.run(
+            call_api_adapter_stream(
+                _LegacyAdapter(),
+                _request(
+                    options=CallOptions(
+                        request_limits=PreparedRequestLimits(max_canonical_bytes=1)
+                    )
+                ),
+            )
+        )
+
+
 def test_provider_runtime_requires_initial_attempt_one() -> None:
     with pytest.raises(ValueError, match="initial attempt must be 1"):
         asyncio.run(call_api_adapter_stream(_LegacyAdapter(), _request(attempt=2)))

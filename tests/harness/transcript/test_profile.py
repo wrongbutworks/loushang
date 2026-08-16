@@ -5,7 +5,9 @@ import pytest
 from loushang.ai.types import ImagePart, TextPart, UserMessage
 from loushang.harness.conversation import (
     CommandExecutionRecord,
+    ConversationPayloadCodecRegistry,
     ConversationRecord,
+    FunctionalConversationPayloadCodec,
     OpaquePayload,
 )
 from loushang.harness.transcript import (
@@ -15,6 +17,8 @@ from loushang.harness.transcript import (
     CONTEXT_BRANCH_SUMMARY_KIND,
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
+    MODEL_INPUT_COMPONENT_KIND,
+    MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     STANDARD_AGENT_TRANSCRIPT_KINDS,
@@ -32,6 +36,51 @@ from loushang.harness.transcript import (
     context_item_to_model_message,
     context_items_to_model_messages,
 )
+from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_PAYLOAD_VERSION,
+)
+
+
+def _permissive_payload_codec() -> FunctionalConversationPayloadCodec[object]:
+    return FunctionalConversationPayloadCodec(
+        encoder=lambda _payload: None,
+        decoder=lambda payload: payload,
+    )
+
+
+def _custom_registry(
+    *, include_model_input_v2: bool
+) -> ConversationPayloadCodecRegistry:
+    registry = ConversationPayloadCodecRegistry()
+    codec = _permissive_payload_codec()
+    for kind in STANDARD_AGENT_TRANSCRIPT_KINDS:
+        registry.register(kind, 1, codec)
+    if include_model_input_v2:
+        registry.register(
+            MODEL_INPUT_COMPONENT_KIND,
+            MODEL_INPUT_V2_PAYLOAD_VERSION,
+            codec,
+        )
+        registry.register(
+            MODEL_INPUT_PREPARED_KIND,
+            MODEL_INPUT_V2_PAYLOAD_VERSION,
+            codec,
+        )
+    return registry
+
+
+def test_profile_rejects_custom_registry_without_model_input_v2_codecs() -> None:
+    registry = _custom_registry(include_model_input_v2=False)
+
+    with pytest.raises(ValueError, match="Model Input v2 payload codecs"):
+        AgentTranscriptProfile(payload_codecs=registry)
+
+
+def test_profile_rejects_custom_registry_without_required_model_input_policy() -> None:
+    registry = _custom_registry(include_model_input_v2=True)
+
+    with pytest.raises(ValueError, match="required payload kinds"):
+        AgentTranscriptProfile(payload_codecs=registry)
 
 
 def test_profile_rejects_duplicate_record_profile_registration() -> None:
