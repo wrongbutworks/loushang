@@ -147,8 +147,9 @@ def _is_image_capability_error(error: Exception) -> bool:
 
 def _image_model_selection_recovery_hint() -> str:
     return (
-        "To use it: Esc, then /new or /fork from before the image. /compact works "
-        "only after the image leaves recent context (~32K tokens by default)."
+        "To use it: Esc, then /new, or /fork and select the image prompt (or an "
+        "earlier one). /compact works only after the image leaves recent context "
+        "(~32K tokens by default)."
     )
 
 

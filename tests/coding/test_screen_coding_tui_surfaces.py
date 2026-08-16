@@ -331,7 +331,7 @@ def test_screen_surface_model_selection_error_stays_in_tui() -> None:
     rendered = app.render(RenderConstraints(width=100, max_height=24))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert expected_error in " ".join(plain_lines)
-    assert any("/new or /fork from before the image" in line for line in plain_lines)
+    assert any("/fork and select the image prompt" in line for line in plain_lines)
     assert any("/compact works" in line for line in plain_lines)
     assert any("moonshot:test-endpoint:kimi-for-coding" in line for line in plain_lines)
     assert any(line.text.startswith("\x1b[91mError:") for line in rendered.lines)
