@@ -40,7 +40,8 @@ def validate_image_input_compatibility(
         return
     model_id = str(getattr(model, "id", "unknown"))
     raise UnsupportedCapabilityError(
-        f"Model {model_id!r} does not support image input",
+        f"Cannot switch to {model_id!r}: this conversation contains images, "
+        "but the model does not support image input",
         model=model_id,
         details={"capability": "image_input"},
     )

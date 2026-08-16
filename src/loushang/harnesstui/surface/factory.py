@@ -7,12 +7,21 @@ from loushang.harnesstui.commands.presentation import (
     command_palette,
     command_palette_select_items,
 )
-from loushang.harnesstui.selection.model import ModelSelectorSurface
+from loushang.harnesstui.selection.model import (
+    MODEL_SELECTOR_THEME,
+    ModelSelectorSurface,
+)
 from loushang.harnesstui.surface.view import (
     ScreenSurfacePresentation,
     ScreenSurfaceView,
 )
-from loushang.tui import CommandPalette, CommandSurface, InfoPanel, SelectItem
+from loushang.tui import (
+    CommandPalette,
+    CommandSurface,
+    InfoPanel,
+    SelectItem,
+    ThemeResolver,
+)
 
 
 def info_surface_view(
@@ -137,14 +146,17 @@ def model_selector_surface_view(
     presentation: ScreenSurfacePresentation = "bottom",
     preferred_height: int | None = None,
     max_visible: int = 10,
+    theme: ThemeResolver | None = None,
 ) -> ScreenSurfaceView:
     """Present prepared, product-neutral model items in the shared selector."""
 
+    resolved_theme = theme if theme is not None else MODEL_SELECTOR_THEME
     content = ModelSelectorSurface(
         all_items=tuple(all_items),
         scoped_items=tuple(scoped_items),
         selected_value=selected_value,
         max_visible=max_visible,
+        theme=resolved_theme,
     )
     return ScreenSurfaceView(
         title=title,
@@ -154,6 +166,9 @@ def model_selector_surface_view(
         subtitle=subtitle,
         presentation=presentation,
         preferred_height=preferred_height,
+        theme=resolved_theme,
+        feedback_theme_token="model_selector.error",
+        feedback_hint_theme_token="model_selector.recovery",
     )
 
 

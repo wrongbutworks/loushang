@@ -394,6 +394,9 @@ def test_surface_workflow_applies_model_and_keeps_recoverable_error_surface_open
     assert state.model_refreshes == 0
     assert isinstance(model_surface, ScreenSurfaceView)
     assert model_surface.feedback == "recoverable:catalog offline"
+    assert model_surface.feedback_hint == (
+        "Choose another model, or press Esc to keep the current model."
+    )
 
     state.fail_model = False
     asyncio.run(

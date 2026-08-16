@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
@@ -113,6 +113,9 @@ class ScreenSurfaceWorkflowCopy:
     hotkeys_title: str
     settings_title: str
     approval_aborted: str = "Turn stopped"
+    model_selection_recovery_hint: Callable[[Exception], str] = (
+        lambda _error: "Choose another model, or press Esc to keep the current model."
+    )
 
 
 STANDARD_SCREEN_SURFACE_WORKFLOW_COPY = ScreenSurfaceWorkflowCopy(
@@ -128,7 +131,25 @@ STANDARD_SCREEN_SURFACE_WORKFLOW_COPY = ScreenSurfaceWorkflowCopy(
     terminal_title="Terminal",
     hotkeys_title="Hotkeys",
     settings_title="Settings",
+    model_selection_recovery_hint=lambda error: (
+        _image_model_selection_recovery_hint()
+        if _is_image_capability_error(error)
+        else "Choose another model, or press Esc to keep the current model."
+    ),
 )
+
+
+def _is_image_capability_error(error: Exception) -> bool:
+    info = getattr(error, "info", None)
+    details = getattr(info, "details", None)
+    return isinstance(details, Mapping) and details.get("capability") == "image_input"
+
+
+def _image_model_selection_recovery_hint() -> str:
+    return (
+        "To use it: Esc, then /new or /fork from before the image. /compact works "
+        "only after the image leaves recent context (~32K tokens by default)."
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -352,6 +373,8 @@ class ScreenSurfaceWorkflow:
                 and current.purpose == "model"
             ):
                 current.feedback = message
+                current.feedback_hint = self.copy.model_selection_recovery_hint(error)
+                current.preferred_height = max(current.preferred_height or 0, 20)
             self.app.set_status(message)
             return
         if close_surface:

@@ -96,14 +96,17 @@ def test_screen_surface_view_renders_feedback_inside_exclusive_surface() -> None
         purpose="model",
         content=_Content(),
         feedback="Error: selected model does not support image input",
+        feedback_hint="Choose another model or press Esc to keep the current model.",
         presentation="bottom-exclusive",
     )
 
     rendered = view.render(RenderConstraints(width=80, max_height=8))
 
-    assert tuple(line.text for line in rendered.lines)[:4] == (
+    assert tuple(line.text for line in rendered.lines)[:6] == (
         "Models",
-        "Error: selected model does not support image input",
         "",
         "choice",
+        "",
+        "Error: selected model does not support image input",
+        "Choose another model or press Esc to keep the current model.",
     )
