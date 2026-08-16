@@ -4590,7 +4590,7 @@ def test_capability_docs_define_exact_top_level_id_budgets() -> None:
     assert (
         _markdown_table_first_column_after(
             shared_text,
-            "The accepted target Harness Capability IDs are deliberately coarse.",
+            "The accepted Harness Capability IDs are deliberately coarse.",
         )
         == expected_harness_ids
     )

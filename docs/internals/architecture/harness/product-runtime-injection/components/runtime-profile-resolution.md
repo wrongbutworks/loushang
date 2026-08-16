@@ -15,9 +15,10 @@ This component turns an explicitly declared Product runtime plan into a
 deterministic, inspectable, session-scoped set of live bindings. It satisfies
 the common mechanics in PDRI-001 through PDRI-012, with capability-specific
 policy remaining in each Product and its later component document.
-PDRI-013 through PDRI-015 define the accepted next-stage top-level Capability
-graph and incremental Mount finalization; those mechanics are not yet part of
-`loushang.harness.runtime.profile`.
+PDRI-013 through PDRI-015 are implemented by the adjacent top-level Capability
+graph Planner, Binder, Runtime, and Projector under
+`loushang.harness.capabilities`; they are intentionally not folded into the
+finer-grained `loushang.harness.runtime.profile` resolver.
 
 Harness owns resolution, strict data validation, lifecycle sequencing, stale
 lease invalidation, and diagnostics. A Product owns its slots, baseline
@@ -287,10 +288,12 @@ factory, Coding derives an explicit grant from its effective policy, the
 runtime profile selects one deterministic winner, only that factory binds, and
 Session shutdown cancels the active Provider before disposing the factory.
 
-PDRI-013 through PDRI-015 additionally require future neutral tests for
-dependency closure, full cycle paths, scope/phase inversion, unchanged-node
-reuse, failure/cancellation rollback with shielded cleanup, and reverse-
-topological disposal before the Mount-graph target may be marked implemented.
+The PDRI-013 through PDRI-015 graph evidence now lives in
+`tests/harness/capabilities/test_graph_planning.py`,
+`test_graph_binding.py`, and `test_graph_projection.py`, with owner and import
+gates under `tests/architecture/`. The separate `stable_reference` refresh
+binding still fails closed and is not implied by the implemented direct-
+dependency Mount runtime.
 
 ## Non-Goals
 

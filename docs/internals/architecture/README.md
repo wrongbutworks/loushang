@@ -132,8 +132,8 @@ drift guards.
 - [Harness Current Owner Map](harness/current-owner-map.md) is the descriptive
   owner-map pattern.
 - [Harness Capability Dependency And Mount Lifecycle](harness/capability-dependency-and-mount-lifecycle.md)
-  is an accepted Target that explicitly distinguishes unimplemented graph
-  owners.
+  is an accepted Target whose graph owners are implemented while accepted
+  Capability IDs may still differ from production-mounted coverage.
 - [TUI Traceability Matrix](tui/native-terminal-core/traceability-matrix.md)
   demonstrates requirements-to-design-to-test traceability.
 - [Coding LSP](coding/lsp/README.md) demonstrates a nested Product Capability

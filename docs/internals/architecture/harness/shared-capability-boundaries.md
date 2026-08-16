@@ -43,10 +43,15 @@ lifecycle. The composition rules for those slots are defined by the
 Top-level Capability dependency and Mount lifecycle rules are defined by
 [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md).
 
-## Accepted Target Top-Level Harness Capability IDs
+## Top-Level Harness Capability IDs
 
-The accepted target Harness Capability IDs are deliberately coarse. The
-top-level planner and live Mount graph are not yet implemented:
+The accepted Harness Capability IDs are deliberately coarse. The pure Planner,
+transactional Binder, live per-graph Runtime, and read-only Projector are now
+implemented under `loushang.harness.capabilities`. Role completeness and
+production mounting still vary by Capability; the
+[Harness Capability Catalog](capability-catalog.md) and
+[Current Owner Map](current-owner-map.md) are authoritative for that Current
+coverage.
 
 | Capability ID | Product-neutral boundary |
 | --- | --- |
@@ -54,8 +59,10 @@ top-level planner and live Mount graph are not yet implemented:
 | `harness.resources` | resource discovery, activation, and prompt/skill/tool/command contribution composition |
 | `harness.session` | Session, transcript, context, interaction, and continuity mechanics |
 
-These identities are the accepted dependency and observation budget, not a
-current public runtime API and not a limit on focused Harness Python modules.
+These identities are the accepted dependency and observation budget and the
+node vocabulary of the implemented Mount runtime. They are not a claim that
+every accepted ID is production-mounted, not a general public runtime API, and
+not a limit on focused Harness Python modules.
 Read, write, edit, process launch, prompt sections, Tool packs, compaction, and
 side-question providers remain facets or contributions inside the owning
 Capability; they do not become top-level nodes merely because their
