@@ -15,12 +15,15 @@ from loushang.ai.context import NormalizedContext
 from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions
-from loushang.ai.prepared_request import PreparedModelRequest
+from loushang.ai.prepared_request import (
+    PreparedModelCallOutcome,
+    PreparedModelRequest,
+)
 from loushang.ai.provider.prepared_request_conformance import (
     run_prepared_request_barrier_conformance,
 )
 from loushang.ai.provider.protocol import ProviderRequest
-from loushang.ai.types import UserMessage
+from loushang.ai.types import Usage, UserMessage
 from loushang.harness.capabilities import (
     MountGraphSnapshot,
     RegistrationInventorySnapshot,
@@ -32,12 +35,14 @@ from loushang.harness.conversation import (
     MemoryConversationStore,
 )
 from loushang.harness.transcript import (
+    MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
     MODEL_INPUT_PREPARED_KIND,
     AgentTranscriptFileLayout,
     AgentTranscriptRecordFactory,
     AgentTranscriptUnitOfWork,
+    ModelCallOutcome,
     ModelInputCommitContext,
     ModelInputComponent,
     ModelInputComponentReference,
@@ -47,6 +52,7 @@ from loushang.harness.transcript import (
     ModelInputSnapshot,
     ModelInputTranscriptCommitter,
     create_agent_transcript_file_store,
+    project_model_call_invocations,
     rebuild_model_input,
     verify_model_input,
 )
@@ -389,6 +395,240 @@ def test_model_input_records_are_hidden_deduplicated_and_hash_verified() -> None
         assert commit.commit_revision == transcript.revision
         assert rebuilt.commit_revision == commit.commit_revision
         assert rebuilt.snapshot.commit_revision == commit.commit_revision
+
+    asyncio.run(scenario())
+
+
+def test_model_call_outcome_closes_all_ordered_attempt_snapshots_once() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        await committer.commit_prepared_request(_prepared(attempt=2))
+
+        await committer.record_model_call_outcome(
+            PreparedModelCallOutcome(
+                invocation_id="invocation-1",
+                disposition="completed",
+                stop_reason="stop",
+                usage=Usage(
+                    input=20,
+                    output=5,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=25,
+                    cost=None,
+                ),
+            )
+        )
+
+        outcomes = [
+            record.payload
+            for record in transcript.records
+            if record.kind == MODEL_CALL_OUTCOME_KIND
+        ]
+        assert outcomes == [
+            ModelCallOutcome(
+                invocation_id="invocation-1",
+                model_input_snapshot_ids=tuple(
+                    commit.snapshot_id for commit in committer.commits
+                ),
+                disposition="completed",
+                stop_reason="stop",
+                usage=Usage(
+                    input=20,
+                    output=5,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=25,
+                    cost=None,
+                ),
+            )
+        ]
+        projected = project_model_call_invocations(transcript.active_path())
+        assert len(projected) == 1
+        assert projected[0].invocation_id == "invocation-1"
+        assert projected[0].model_input_snapshot_ids == tuple(
+            commit.snapshot_id for commit in committer.commits
+        )
+        assert projected[0].state == "completed"
+        assert projected[0].terminal is True
+        with pytest.raises(ModelInputIntegrityError, match="already has"):
+            await committer.record_model_call_outcome(
+                PreparedModelCallOutcome(
+                    invocation_id="invocation-1",
+                    disposition="completed",
+                    stop_reason="stop",
+                    usage=Usage(0, 0, 0, 0, 0, None),
+                )
+            )
+        with pytest.raises(ModelInputIntegrityError, match="cannot follow"):
+            await committer.commit_prepared_request(_prepared(attempt=3))
+
+    asyncio.run(scenario())
+
+
+def test_model_call_failure_outcome_persists_only_allowlisted_diagnostics() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+
+        await committer.record_model_call_outcome(
+            PreparedModelCallOutcome(
+                invocation_id="invocation-1",
+                disposition="failed",
+                stop_reason="error",
+                usage=Usage(10, 0, 0, 0, 10, None),
+                error_info={
+                    "code": "provider",
+                    "message": "Authorization: Bearer secret-token",
+                    "source": "provider-test",
+                    "retryable": False,
+                    "statusCode": 400,
+                    "requestId": "request-safe-id",
+                    "details": {
+                        "exceptionType": "ProviderHTTPError",
+                        "estimatedWireBytes": 900_000,
+                        "providerErrorType": "invalid_request_error",
+                        "providerErrorCode": "request_too_large",
+                        "providerResponseSummary": "private prompt",
+                        "authorization": "Bearer secret-token",
+                    },
+                },
+            )
+        )
+
+        outcome = next(
+            record.payload
+            for record in transcript.records
+            if isinstance(record.payload, ModelCallOutcome)
+        )
+        assert outcome.failure is not None
+        assert outcome.failure.code == "provider"
+        assert outcome.failure.status_code == 400
+        assert outcome.failure.request_id == "request-safe-id"
+        assert dict(outcome.failure.details) == {
+            "exceptionType": "ProviderHTTPError",
+            "estimatedWireBytes": 900_000,
+            "providerErrorType": "invalid_request_error",
+            "providerErrorCode": "request_too_large",
+        }
+        assert "secret-token" not in repr(outcome)
+        assert "private prompt" not in repr(outcome)
+
+    asyncio.run(scenario())
+
+
+def test_model_call_outcome_rejects_an_incomplete_attempt_sequence() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        await committer.commit_prepared_request(_prepared(attempt=2))
+        assert transcript.leaf_id is not None
+
+        with pytest.raises(ModelInputIntegrityError, match="complete ordered"):
+            await transcript.append_model_call_outcome(
+                ModelCallOutcome(
+                    invocation_id="invocation-1",
+                    model_input_snapshot_ids=(committer.commits[0].snapshot_id,),
+                    disposition="cancelled",
+                    stop_reason="aborted",
+                    usage=Usage(0, 0, 0, 0, 0, None),
+                ),
+                expected_revision=transcript.revision,
+                expected_leaf_id=transcript.leaf_id,
+            )
+
+    asyncio.run(scenario())
+
+
+def test_prepared_attempts_without_an_outcome_project_as_unknown() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        await committer.commit_prepared_request(_prepared(attempt=2))
+
+        projected = project_model_call_invocations(transcript.active_path())
+
+        assert len(projected) == 1
+        invocation = projected[0]
+        assert invocation.invocation_id == "invocation-1"
+        assert invocation.model_input_snapshot_ids == tuple(
+            commit.snapshot_id for commit in committer.commits
+        )
+        assert invocation.state == "unknown"
+        assert invocation.terminal is False
+        assert invocation.outcome is None
+        tampered = AgentTranscriptRecordFactory().create(
+            MODEL_CALL_OUTCOME_KIND,
+            ModelCallOutcome(
+                invocation_id="invocation-1",
+                model_input_snapshot_ids=tuple(
+                    reversed(
+                        [commit.snapshot_id for commit in committer.commits]
+                    )
+                ),
+                disposition="completed",
+                stop_reason="stop",
+                usage=Usage(0, 0, 0, 0, 0, None),
+            ),
+            parent_id=transcript.leaf_id,
+        )
+        with pytest.raises(ModelInputIntegrityError, match="selected-path"):
+            project_model_call_invocations((*transcript.active_path(), tampered))
+
+    asyncio.run(scenario())
+
+
+def test_pre_transport_cancellation_outcome_allows_no_attempt_snapshot() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+
+        await committer.record_model_call_outcome(
+            PreparedModelCallOutcome(
+                invocation_id="cancelled-before-preparation",
+                disposition="cancelled",
+                stop_reason="aborted",
+                usage=Usage(0, 0, 0, 0, 0, None),
+            )
+        )
+
+        outcome = next(
+            record.payload
+            for record in transcript.records
+            if isinstance(record.payload, ModelCallOutcome)
+        )
+        assert outcome.invocation_id == "cancelled-before-preparation"
+        assert outcome.model_input_snapshot_ids == ()
+        assert outcome.disposition == "cancelled"
+        projected = project_model_call_invocations(transcript.active_path())
+        assert len(projected) == 1
+        assert projected[0].state == "cancelled"
+        assert projected[0].model_input_snapshot_ids == ()
 
     asyncio.run(scenario())
 

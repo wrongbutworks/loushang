@@ -1,4 +1,6 @@
 from loushang.ai.prepared_request import (
+    PreparedModelCallOutcome,
+    PreparedModelCallOutcomeRecorder,
     PreparedModelRequest,
     PreparedRequestAdapter,
     PreparedRequestCommitter,
@@ -27,6 +29,8 @@ __all__ = [
     "ProviderRequest",
     "ProviderRequestValidator",
     "PreparedModelRequest",
+    "PreparedModelCallOutcome",
+    "PreparedModelCallOutcomeRecorder",
     "PreparedRequestAdapter",
     "PreparedRequestCommitter",
     "ensure_request_api",

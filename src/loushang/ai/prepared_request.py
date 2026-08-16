@@ -6,9 +6,11 @@ import json
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol, TypeAlias, cast, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias, cast, runtime_checkable
 from uuid import uuid4
 
+from loushang.ai.json_codec import deserialize_usage, serialize_usage
+from loushang.ai.types import AssistantMessage, StopReason, Usage
 from loushang.foundation.json import JSONValue, require_json_mapping
 
 if TYPE_CHECKING:
@@ -23,6 +25,106 @@ FrozenJSONValue: TypeAlias = (
 )
 
 PREPARED_MODEL_REQUEST_SCHEMA_VERSION = 1
+PREPARED_MODEL_CALL_OUTCOME_SCHEMA_VERSION = 1
+PreparedModelCallDisposition: TypeAlias = Literal[
+    "completed",
+    "failed",
+    "cancelled",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedModelCallOutcome:
+    """Content-free terminal result for one logical Provider invocation."""
+
+    invocation_id: str
+    disposition: PreparedModelCallDisposition
+    stop_reason: StopReason
+    usage: Usage
+    error_info: Mapping[str, FrozenJSONValue] | None = field(
+        default=None,
+        repr=False,
+    )
+    schema_version: int = PREPARED_MODEL_CALL_OUTCOME_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.invocation_id, str) or not self.invocation_id:
+            raise ValueError(
+                "PreparedModelCallOutcome.invocation_id must be non-empty"
+            )
+        if self.schema_version != PREPARED_MODEL_CALL_OUTCOME_SCHEMA_VERSION:
+            raise ValueError(
+                "unsupported PreparedModelCallOutcome schema version: "
+                f"{self.schema_version}"
+            )
+        expected_disposition: PreparedModelCallDisposition
+        if self.stop_reason == "error":
+            expected_disposition = "failed"
+        elif self.stop_reason == "aborted":
+            expected_disposition = "cancelled"
+        elif self.stop_reason in {"stop", "length", "toolUse"}:
+            expected_disposition = "completed"
+        else:
+            raise ValueError(
+                f"unsupported PreparedModelCallOutcome stop reason: {self.stop_reason}"
+            )
+        if self.disposition != expected_disposition:
+            raise ValueError(
+                "PreparedModelCallOutcome disposition does not match stop reason"
+            )
+        if not isinstance(self.usage, Usage):
+            raise TypeError("PreparedModelCallOutcome.usage must be Usage")
+        for name in ("input", "output", "cache_read", "cache_write", "total_tokens"):
+            value = getattr(self.usage, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(
+                    f"PreparedModelCallOutcome.usage.{name} must be non-negative"
+                )
+        canonical_usage = deserialize_usage(serialize_usage(self.usage))
+        if canonical_usage != self.usage:
+            raise ValueError(
+                "PreparedModelCallOutcome.usage cost must be finite and non-negative"
+            )
+        object.__setattr__(self, "usage", canonical_usage)
+        if self.error_info is None:
+            if self.disposition == "failed":
+                raise ValueError("failed PreparedModelCallOutcome requires error info")
+            return
+        if self.disposition != "failed":
+            raise ValueError(
+                "non-failed PreparedModelCallOutcome cannot contain error info"
+            )
+        projected = require_json_mapping(
+            self.error_info,
+            name="prepared model call outcome error info",
+        )
+        object.__setattr__(self, "error_info", _freeze_json(projected))
+
+    @classmethod
+    def from_assistant_message(
+        cls,
+        invocation_id: str,
+        message: AssistantMessage,
+    ) -> PreparedModelCallOutcome:
+        if not isinstance(message, AssistantMessage):
+            raise TypeError("PreparedModelCallOutcome requires AssistantMessage")
+        disposition: PreparedModelCallDisposition
+        if message.stop_reason == "error":
+            disposition = "failed"
+        elif message.stop_reason == "aborted":
+            disposition = "cancelled"
+        else:
+            disposition = "completed"
+        return cls(
+            invocation_id=invocation_id,
+            disposition=disposition,
+            stop_reason=message.stop_reason,
+            usage=message.usage,
+            error_info=cast(
+                Mapping[str, FrozenJSONValue] | None,
+                message.error_info,
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +237,14 @@ class PreparedRequestCommitter(Protocol):
 
 
 @runtime_checkable
+class PreparedModelCallOutcomeRecorder(Protocol):
+    async def record_model_call_outcome(
+        self,
+        outcome: PreparedModelCallOutcome,
+    ) -> None: ...
+
+
+@runtime_checkable
 class PreparedRequestAdapter(Protocol):
     api: str
 
@@ -224,6 +334,10 @@ def _thaw_json(value: object) -> JSONValue:
 
 __all__ = [
     "PREPARED_MODEL_REQUEST_SCHEMA_VERSION",
+    "PREPARED_MODEL_CALL_OUTCOME_SCHEMA_VERSION",
+    "PreparedModelCallDisposition",
+    "PreparedModelCallOutcome",
+    "PreparedModelCallOutcomeRecorder",
     "PreparedModelRequest",
     "PreparedRequestAdapter",
     "PreparedRequestCommitter",

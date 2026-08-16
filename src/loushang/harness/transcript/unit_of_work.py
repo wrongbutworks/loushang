@@ -35,12 +35,14 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     THINKING_SELECTION_KIND,
 )
+from loushang.harness.transcript.model_call_types import ModelCallOutcome
 from loushang.harness.transcript.model_input_types import (
     MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
     ModelInputComponent,
@@ -420,6 +422,36 @@ class AgentTranscriptUnitOfWork:
                 purposes={"branch_summary"},
                 owner="branch summary",
             )
+        elif record.kind == MODEL_CALL_OUTCOME_KIND and isinstance(
+            record.payload,
+            ModelCallOutcome,
+        ):
+            self._require_model_call_outcome(record.payload)
+
+    def _require_model_call_outcome(self, outcome: ModelCallOutcome) -> None:
+        if any(
+            isinstance(record.payload, ModelCallOutcome)
+            and record.payload.invocation_id == outcome.invocation_id
+            for record in self.records
+        ):
+            raise ModelInputIntegrityError(
+                "model call invocation already has a terminal outcome"
+            )
+        active_path = self.active_path()
+        invocation_snapshots = tuple(
+            record.payload
+            for record in active_path
+            if isinstance(record.payload, ModelInputSnapshot | ModelInputSnapshotV2)
+            and record.payload.invocation_id == outcome.invocation_id
+        )
+        expected_snapshot_ids = tuple(
+            snapshot.snapshot_id for snapshot in invocation_snapshots
+        )
+        if outcome.model_input_snapshot_ids != expected_snapshot_ids:
+            raise ModelInputIntegrityError(
+                "model call outcome does not reference the complete ordered "
+                "Model Input attempt sequence"
+            )
 
     def _require_model_input_lineage(
         self,
@@ -579,6 +611,29 @@ class AgentTranscriptUnitOfWork:
             expected_leaf_id=expected_leaf_id,
         )
 
+    async def append_model_call_outcome(
+        self,
+        outcome: ModelCallOutcome,
+        *,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> AgentTranscriptCommit:
+        async with self._commit_lock:
+            if self.revision != expected_revision or self.leaf_id != expected_leaf_id:
+                raise ModelInputIntegrityError(
+                    "transcript changed outside the Model Input commit sequence"
+                )
+            record = self._record_factory.create(
+                MODEL_CALL_OUTCOME_KIND,
+                outcome,
+                parent_id=expected_leaf_id,
+                payload_version=STANDARD_PAYLOAD_VERSION,
+            )
+            return await self._finish_commit_atomically(
+                record,
+                propagate_cancellation=True,
+            )
+
     async def _append_model_input_fact(
         self,
         kind: str,
@@ -657,7 +712,25 @@ class AgentTranscriptUnitOfWork:
                 )
             dependency_path = self.records_to(matches[0].record_id)
             included_ids.update(record.record_id for record in dependency_path)
+            outcome_matches = [
+                record
+                for record in self.records
+                if isinstance(record.payload, ModelCallOutcome)
+                and snapshot_id in record.payload.model_input_snapshot_ids
+            ]
+            if len(outcome_matches) > 1:
+                raise ModelInputIntegrityError(
+                    f"fork Model Input outcome for {snapshot_id!r} is ambiguous"
+                )
             resolved_snapshot_ids.add(snapshot_id)
+            if outcome_matches:
+                outcome_path = self.records_to(outcome_matches[0].record_id)
+                included_ids.update(record.record_id for record in outcome_path)
+                pending_snapshot_ids.extend(
+                    lineage_id
+                    for lineage_id in _summary_lineage_ids(outcome_path)
+                    if lineage_id not in resolved_snapshot_ids
+                )
             pending_snapshot_ids.extend(
                 lineage_id
                 for lineage_id in _summary_lineage_ids(dependency_path)
@@ -926,7 +999,11 @@ def _require_model_input_record_size(
     record: AgentTranscriptRecord,
     profile: AgentTranscriptProfile,
 ) -> None:
-    if record.kind in {MODEL_INPUT_COMPONENT_KIND, MODEL_INPUT_PREPARED_KIND}:
+    if record.kind in {
+        MODEL_CALL_OUTCOME_KIND,
+        MODEL_INPUT_COMPONENT_KIND,
+        MODEL_INPUT_PREPARED_KIND,
+    }:
         _require_encoded_record_size(
             record,
             MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,

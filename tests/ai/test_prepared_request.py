@@ -6,10 +6,11 @@ from collections.abc import AsyncIterator
 import pytest
 
 from loushang.ai.context import NormalizedContext
-from loushang.ai.errors import AIProviderError
+from loushang.ai.errors import AICancelledError, AIProviderError
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.prepared_request import (
+    PreparedModelCallOutcome,
     PreparedModelRequest,
     PreparedRequestAdapter,
 )
@@ -36,9 +37,17 @@ class _RecordingCommitter:
 class _PreparedAdapter:
     api = "faux"
 
-    def __init__(self, events: list[str]) -> None:
+    def __init__(
+        self,
+        events: list[str],
+        *,
+        terminal_error: bool = False,
+        terminal_aborted: bool = False,
+    ) -> None:
         self.events = events
         self.transport_calls = 0
+        self.terminal_error = terminal_error
+        self.terminal_aborted = terminal_aborted
 
     def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
         return PreparedModelRequest.from_provider_request(
@@ -73,6 +82,25 @@ class _PreparedAdapter:
                     },
                 }
                 return
+        if self.terminal_error:
+            yield {
+                "type": "response_error",
+                "message": "Authorization: Bearer secret-token",
+                "code": 400,
+                "error_info": {
+                    "code": "provider",
+                    "message": "Provider request failed.",
+                    "source": self.api,
+                    "retryable": False,
+                    "statusCode": 400,
+                    "requestId": "request-terminal-400",
+                    "details": {"exceptionType": "ProviderHTTPError"},
+                },
+            }
+            return
+        if self.terminal_aborted:
+            yield {"type": "aborted"}
+            return
         yield {"type": "response_start", "response_id": "response-1"}
         yield {"type": "response_done"}
 
@@ -82,6 +110,19 @@ class _PreparedAdapter:
     ) -> AsyncIterator[dict[str, object]]:
         raise AssertionError("prepared adapters must use invoke_prepared_raw")
         yield {"type": "response_done"}  # pragma: no cover
+
+
+class _OutcomeRecordingCommitter(_RecordingCommitter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.outcomes: list[PreparedModelCallOutcome] = []
+
+    async def record_model_call_outcome(
+        self,
+        outcome: PreparedModelCallOutcome,
+    ) -> None:
+        self.outcomes.append(outcome)
+        self.events.append(f"outcome:{outcome.disposition}")
 
 
 class _LegacyAdapter:
@@ -258,6 +299,118 @@ def test_prepared_barrier_commits_before_each_retry_transport() -> None:
     assert [request.attempt for request in committer.requests] == [1, 2]
     assert len({request.invocation_id for request in committer.requests}) == 1
     assert len({request.payload_hash for request in committer.requests}) == 1
+
+
+def test_outcome_recorder_runs_once_after_all_internal_provider_retries() -> None:
+    async def _run() -> tuple[_PreparedAdapter, _OutcomeRecordingCommitter]:
+        events: list[str] = []
+        committer = _OutcomeRecordingCommitter()
+        committer.events = events
+        adapter = _PreparedAdapter(events)
+        stream = await call_api_adapter_stream(
+            adapter,
+            _request(
+                options=CallOptions(
+                    retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
+                    prepared_request_committer=committer,
+                )
+            ),
+        )
+        await stream.result()
+        return adapter, committer
+
+    adapter, committer = asyncio.run(_run())
+
+    assert adapter.transport_calls == 2
+    assert committer.events == [
+        "commit:1",
+        "transport:1",
+        "commit:2",
+        "transport:2",
+        "outcome:completed",
+    ]
+    assert len(committer.outcomes) == 1
+    outcome = committer.outcomes[0]
+    assert outcome.invocation_id == committer.requests[0].invocation_id
+    assert outcome.stop_reason == "stop"
+    assert outcome.error_info is None
+
+
+def test_outcome_recorder_receives_typed_terminal_provider_failure() -> None:
+    async def _run() -> _OutcomeRecordingCommitter:
+        committer = _OutcomeRecordingCommitter()
+        adapter = _PreparedAdapter(committer.events, terminal_error=True)
+        stream = await call_api_adapter_stream(
+            adapter,
+            _request(
+                options=CallOptions(prepared_request_committer=committer),
+            ),
+        )
+        with pytest.raises(AIProviderError):
+            await stream.result()
+        return committer
+
+    committer = asyncio.run(_run())
+
+    assert committer.events == ["commit:1", "transport:1", "outcome:failed"]
+    assert len(committer.outcomes) == 1
+    outcome = committer.outcomes[0]
+    assert outcome.disposition == "failed"
+    assert outcome.stop_reason == "error"
+    assert outcome.error_info is not None
+    assert outcome.error_info["code"] == "provider"
+    assert outcome.error_info["statusCode"] == 400
+    assert outcome.error_info["requestId"] == "request-terminal-400"
+    assert "secret-token" not in repr(outcome)
+
+
+def test_outcome_recorder_receives_terminal_cancellation() -> None:
+    async def _run() -> _OutcomeRecordingCommitter:
+        committer = _OutcomeRecordingCommitter()
+        adapter = _PreparedAdapter(committer.events, terminal_aborted=True)
+        stream = await call_api_adapter_stream(
+            adapter,
+            _request(options=CallOptions(prepared_request_committer=committer)),
+        )
+        with pytest.raises(AICancelledError):
+            await stream.result()
+        return committer
+
+    committer = asyncio.run(_run())
+
+    assert committer.events == ["commit:1", "transport:1", "outcome:cancelled"]
+    assert len(committer.outcomes) == 1
+    outcome = committer.outcomes[0]
+    assert outcome.disposition == "cancelled"
+    assert outcome.stop_reason == "aborted"
+    assert outcome.error_info is None
+
+
+def test_pre_transport_cancellation_records_outcome_without_an_attempt() -> None:
+    async def _run() -> tuple[_PreparedAdapter, _OutcomeRecordingCommitter]:
+        cancellation = asyncio.Event()
+        cancellation.set()
+        committer = _OutcomeRecordingCommitter()
+        adapter = _PreparedAdapter(committer.events)
+        stream = await call_api_adapter_stream(
+            adapter,
+            _request(
+                options=CallOptions(
+                    cancellation=cancellation,
+                    prepared_request_committer=committer,
+                )
+            ),
+        )
+        with pytest.raises(AICancelledError):
+            await stream.result()
+        return adapter, committer
+
+    adapter, committer = asyncio.run(_run())
+
+    assert adapter.transport_calls == 0
+    assert committer.requests == []
+    assert committer.events == ["outcome:cancelled"]
+    assert len(committer.outcomes) == 1
 
 
 def test_committer_failure_makes_zero_transport_calls() -> None:

@@ -33,11 +33,16 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     THINKING_SELECTION_KIND,
+)
+from loushang.harness.transcript.model_call_codec import (
+    decode_model_call_outcome,
+    encode_model_call_outcome,
 )
 from loushang.harness.transcript.model_input_types import (
     FrozenModelInputValue,
@@ -181,6 +186,12 @@ def register_standard_payload_codecs(
         MODEL_INPUT_PREPARED_KIND,
         _encode_model_input_snapshot,
         _decode_model_input_snapshot,
+    )
+    _register(
+        registry,
+        MODEL_CALL_OUTCOME_KIND,
+        encode_model_call_outcome,
+        decode_model_call_outcome,
     )
     registry.register(
         MODEL_INPUT_COMPONENT_KIND,

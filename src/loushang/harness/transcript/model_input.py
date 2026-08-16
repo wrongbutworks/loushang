@@ -10,6 +10,8 @@ from typing import cast
 from uuid import uuid4
 
 from loushang.ai.prepared_request import (
+    PreparedModelCallOutcome,
+    PreparedModelCallOutcomeRecorder,
     PreparedModelRequest,
     PreparedRequestCommitter,
 )
@@ -22,6 +24,7 @@ from loushang.harness.transcript.kinds import (
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
 )
+from loushang.harness.transcript.model_call_types import ModelCallOutcome
 from loushang.harness.transcript.model_input_types import (
     MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
     ModelInputComponent,
@@ -173,7 +176,10 @@ class ModelInputReconstructionVerification:
         return self.logical_input_matches and self.prepared_payload_matches
 
 
-class ModelInputTranscriptCommitter(PreparedRequestCommitter):
+class ModelInputTranscriptCommitter(
+    PreparedRequestCommitter,
+    PreparedModelCallOutcomeRecorder,
+):
     """AI commit-port implementation over one authoritative transcript."""
 
     def __init__(
@@ -216,6 +222,8 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
         self._expected_revision = transcript.revision
         self._expected_leaf_id = transcript.leaf_id
         self._commits: list[ModelInputCommitResult] = []
+        self._invocation_id: str | None = None
+        self._outcome_recorded = False
         self._lock = asyncio.Lock()
 
     @property
@@ -227,7 +235,18 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
         request: PreparedModelRequest,
     ) -> None:
         async with self._lock:
+            if self._outcome_recorded:
+                raise ModelInputIntegrityError(
+                    "Model Input attempt cannot follow its terminal outcome"
+                )
             self._require_current_transcript()
+            invocation_id = _prepared_text(request, "invocation_id")
+            if self._invocation_id is None:
+                self._invocation_id = invocation_id
+            elif self._invocation_id != invocation_id:
+                raise ModelInputIntegrityError(
+                    "Model Input attempts changed logical invocation identity"
+                )
             prepared_payload, model_visible_headers, canonical = (
                 _validate_prepared_request(request)
             )
@@ -249,7 +268,7 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
             self._expected_leaf_id = materialization.expected_leaf_id
             snapshot = ModelInputSnapshotV2(
                 snapshot_id=str(uuid4()),
-                invocation_id=_prepared_text(request, "invocation_id"),
+                invocation_id=invocation_id,
                 attempt=_prepared_positive_int(request, "attempt"),
                 purpose=self._context.purpose,
                 product_id=self._runtime.product_id,
@@ -310,6 +329,41 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
                     commit_revision=receipt.revision,
                 )
             )
+
+    async def record_model_call_outcome(
+        self,
+        outcome: PreparedModelCallOutcome,
+    ) -> None:
+        async with self._lock:
+            if self._outcome_recorded:
+                raise ModelInputIntegrityError(
+                    "model call invocation already has a terminal outcome"
+                )
+            self._require_current_transcript()
+            if self._invocation_id is None:
+                self._invocation_id = outcome.invocation_id
+            elif self._invocation_id != outcome.invocation_id:
+                raise ModelInputIntegrityError(
+                    "model call outcome changed logical invocation identity"
+                )
+            fact = ModelCallOutcome.from_prepared_outcome(
+                outcome,
+                model_input_snapshot_ids=tuple(
+                    commit.snapshot_id for commit in self._commits
+                ),
+            )
+            commit = await self._transcript.append_model_call_outcome(
+                fact,
+                expected_revision=self._expected_revision,
+                expected_leaf_id=self._expected_leaf_id,
+            )
+            receipt = commit.receipt
+            if receipt is None:
+                raise ModelInputIntegrityError(
+                    "model call outcome did not reach the authoritative Store"
+                )
+            self._advance(commit.record.record_id, receipt.revision)
+            self._outcome_recorded = True
 
     def _require_current_transcript(self) -> None:
         if (

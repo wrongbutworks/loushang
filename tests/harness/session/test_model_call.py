@@ -44,11 +44,13 @@ from loushang.harness.session.model_call import (
 )
 from loushang.harness.transcript import (
     CONTEXT_BRANCH_SUMMARY_KIND,
+    MODEL_CALL_OUTCOME_KIND,
     AgentTranscriptRecordFactory,
     AgentTranscriptSession,
     AgentTranscriptUnitOfWork,
     BranchContextSummary,
     CompactionPreparation,
+    ModelCallOutcome,
     ModelInputIntegrityError,
     execute_branch_summary,
     execute_transcript_compaction,
@@ -177,9 +179,15 @@ def _model_call_runtime(
 class _PreparedAdapter:
     api = "session-model-call-test"
 
-    def __init__(self, *, retry_first: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        retry_first: bool = False,
+        terminal_error: bool = False,
+    ) -> None:
         self.transport_calls = 0
         self.retry_first = retry_first
+        self.terminal_error = terminal_error
 
     def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
         return PreparedModelRequest.from_provider_request(
@@ -213,6 +221,28 @@ class _PreparedAdapter:
                     "source": self.api,
                     "retryable": True,
                     "details": {},
+                },
+            }
+            return
+        if self.terminal_error:
+            yield {
+                "type": "response_error",
+                "message": "Authorization: Bearer secret-token",
+                "code": 400,
+                "error_info": {
+                    "code": "provider",
+                    "message": "Provider request failed.",
+                    "source": self.api,
+                    "retryable": False,
+                    "statusCode": 400,
+                    "requestId": "request-terminal-400",
+                    "details": {
+                        "exceptionType": "ProviderHTTPError",
+                        "estimatedWireBytes": 900_000,
+                        "providerErrorType": "invalid_request_error",
+                        "providerErrorCode": "request_too_large",
+                        "providerResponseSummary": "private prompt",
+                    },
                 },
             }
             return
@@ -346,8 +376,78 @@ def test_provider_retry_commits_each_attempt_with_one_invocation_identity() -> N
         assert [snapshot.attempt for snapshot in snapshots] == [1, 2]
         assert len({snapshot.invocation_id for snapshot in snapshots}) == 1
         assert [snapshot.purpose for snapshot in snapshots] == ["main", "main"]
+        outcomes = [
+            entry.payload
+            for entry in session.get_entries()
+            if entry.kind == MODEL_CALL_OUTCOME_KIND
+        ]
+        assert len(outcomes) == 1
+        outcome = outcomes[0]
+        assert isinstance(outcome, ModelCallOutcome)
+        assert outcome.invocation_id == snapshots[0].invocation_id
+        assert outcome.model_input_snapshot_ids == tuple(
+            snapshot.snapshot_id for snapshot in snapshots
+        )
+        assert outcome.disposition == "completed"
+        assert outcome.stop_reason == "stop"
+        projected = session.get_model_call_invocations()
+        assert len(projected) == 1
+        assert projected[0].state == "completed"
+        assert projected[0].outcome == outcome
         for snapshot in snapshots:
             assert session.rebuild_model_input(snapshot.snapshot_id).snapshot == snapshot
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_terminal_provider_failure_records_one_safe_model_call_outcome() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        adapter = _PreparedAdapter(terminal_error=True)
+        registry = get_default_api_registry()
+        source_id = "session-model-call-terminal-failure-test"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("hello")
+        finally:
+            registry.unregister_api_adapters(source_id)
+
+        snapshots = [
+            entry.payload
+            for entry in session.get_entries()
+            if entry.kind == "model.input.prepared"
+        ]
+        outcomes = [
+            entry.payload
+            for entry in session.get_entries()
+            if isinstance(entry.payload, ModelCallOutcome)
+        ]
+        assert adapter.transport_calls == 1
+        assert len(snapshots) == 1
+        assert len(outcomes) == 1
+        outcome = outcomes[0]
+        assert outcome.model_input_snapshot_ids == (snapshots[0].snapshot_id,)
+        assert outcome.disposition == "failed"
+        assert outcome.failure is not None
+        assert outcome.failure.status_code == 400
+        assert outcome.failure.request_id == "request-terminal-400"
+        assert dict(outcome.failure.details) == {
+            "exceptionType": "ProviderHTTPError",
+            "providerErrorType": "invalid_request_error",
+            "providerErrorCode": "request_too_large",
+        }
+        assert "secret-token" not in repr(outcome)
+        assert "private prompt" not in repr(outcome)
         await runtime.dispose()
 
     asyncio.run(scenario())
@@ -684,6 +784,13 @@ def test_branch_summary_v2_lineage_survives_selected_path_fork_and_reload() -> N
         assert output.error is None
         assert output.summary is not None
         assert len(output.model_input_snapshot_ids) == 1
+        source_outcome = next(
+            entry.payload
+            for entry in source.get_entries()
+            if isinstance(entry.payload, ModelCallOutcome)
+            and output.model_input_snapshot_ids[0]
+            in entry.payload.model_input_snapshot_ids
+        )
         with pytest.raises(ModelInputIntegrityError, match="has purpose"):
             await source.append_compaction(
                 "wrong lineage",
@@ -747,6 +854,14 @@ def test_branch_summary_v2_lineage_survives_selected_path_fork_and_reload() -> N
         assert branch_summary.payload.model_input_snapshot_ids == (
             output.model_input_snapshot_ids
         )
+        forked_outcome = next(
+            entry.payload
+            for entry in forked.get_entries()
+            if isinstance(entry.payload, ModelCallOutcome)
+            and output.model_input_snapshot_ids[0]
+            in entry.payload.model_input_snapshot_ids
+        )
+        assert forked_outcome == source_outcome
         await runtime.dispose()
 
     asyncio.run(scenario())

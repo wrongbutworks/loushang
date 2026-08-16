@@ -336,14 +336,29 @@ all AI-internal retries for the logical invocation finish. It references:
 
 - the logical `invocation_id`;
 - every prepared snapshot ID created for its attempts;
-- `completed`, `failed`, `cancelled`, or `interrupted` disposition;
+- `completed`, `failed`, or `cancelled` disposition;
 - safe typed error fields when failed;
-- final usage when available; and
-- a recovery parent when this invocation follows compaction.
+- final usage when available.
 
 A crash may leave prepared snapshots without a terminal outcome. Replay
-classifies those invocations as `interrupted/unknown`; it does not invent a
-terminal fact.
+classifies those invocations as `unknown`; it does not invent a terminal fact.
+
+Implementation result (2026-08-16): AI exposes a Harness-neutral terminal
+outcome recorder on the existing prepared-request committer. The Provider
+runtime invokes it once, after its internal retry loop reaches a terminal raw
+part. The Harness committer serializes the outcome through the same revision
+authority as its prepared snapshots and requires the outcome to reference the
+complete ordered attempt sequence on the active path. The hidden outcome fact
+contains no generated content or Provider response body. Failed outcomes retain
+only code, source, retryability, HTTP status, request ID, usage, and explicitly
+allowlisted scalar details. A structured Provider body may contribute bounded
+identifier-shaped `type` and `code` fields, but never its message or arbitrary
+response summary. Existing snapshots remain immutable. Retry and
+recovery parent links remain part of the later recovery slice. The selected-
+path projection groups all prepared attempts by invocation and reports a
+missing terminal fact as `unknown`; it never fabricates a failed or completed
+outcome. Forking an off-path summary lineage retains the unique associated
+terminal outcome when one exists.
 
 If later requirements demand a durable record for every transport phase, AI
 must expose a Harness-neutral lifecycle observer owned by the same per-sampling

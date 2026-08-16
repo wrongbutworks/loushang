@@ -136,8 +136,11 @@ the writer never fabricates a replacement Mount generation to hide it.
 
 One AI provider retry retains its `invocation_id` and increments
 `PreparedModelRequest.attempt`; the same per-sampling committer records each
-prepared attempt. A Product-level retry or a later Tool/queue continuation is
-a new logical sampling invocation with a new committer and invocation ID.
+prepared attempt. After the AI retry loop terminates, the committer records one
+separate hidden logical outcome linked to the complete ordered attempt sequence;
+it never writes a terminal state back into a prepared snapshot. A Product-level
+retry or a later Tool/queue continuation is a new logical sampling invocation
+with a new committer and invocation ID.
 
 ## Model-Call Inventory
 

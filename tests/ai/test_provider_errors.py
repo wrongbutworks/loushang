@@ -199,6 +199,30 @@ def test_provider_response_summary_keeps_only_diagnostic_fields_and_redacts() ->
     assert "private user prompt" not in summary
 
 
+def test_normalized_provider_error_keeps_only_structured_body_identity() -> None:
+    normalized = normalize_provider_error(
+        _HttpErrorWithBody(
+            {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "request_too_large",
+                    "message": "private prompt and Bearer secret-token",
+                },
+                "request": {"prompt": "private user prompt"},
+            }
+        ),
+        source="openai",
+    )
+
+    assert normalized.info.details == {
+        "exceptionType": "_HttpErrorWithBody",
+        "providerErrorType": "invalid_request_error",
+        "providerErrorCode": "request_too_large",
+    }
+    assert "private prompt" not in repr(normalized.info.details)
+    assert "secret-token" not in repr(normalized.info.details)
+
+
 def test_provider_response_summary_is_bounded_for_plain_text() -> None:
     error = _HttpErrorWithBody("token=secret " + ("x" * 800))
 

@@ -33,6 +33,13 @@ repeat prepare/commit. A configured committer fails closed for an adapter that
 does not implement this seam. Without a committer, legacy custom adapters keep
 their standalone `invoke_raw(request)` behavior.
 
+A committer may additionally implement the Harness-neutral
+`PreparedModelCallOutcomeRecorder`. After all runtime-owned retries reach one
+terminal part, AI calls that observer once with invocation identity,
+completed/failed/cancelled disposition, final usage, and typed error data. The
+observer receives no Harness type and does not replace any per-attempt prepared
+commit. Standalone committers that do not implement it remain supported.
+
 ## Core Support Modules
 
 | Module | Role |

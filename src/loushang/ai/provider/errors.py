@@ -59,6 +59,9 @@ _SENSITIVE_KEY_PATTERN = re.compile(
     r"(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;}]+")
+_PROVIDER_ERROR_IDENTITY_PATTERN = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}"
+)
 
 
 def classify_provider_error(
@@ -160,6 +163,7 @@ def normalize_provider_error(
         details={
             "exceptionType": error.__class__.__name__,
             **_raw_code_details(getattr(error, "code", None), code, status_code),
+            **_provider_error_identity(error),
         },
     )
     return error_type(_canonicalize_provider_error_info(info))
@@ -242,6 +246,10 @@ def _safe_provider_error_details(
     raw_code = details.get("rawCode")
     if isinstance(raw_code, str) and raw_code:
         safe["rawCode"] = raw_code
+    for key in ("providerErrorType", "providerErrorCode"):
+        identity = _provider_error_identity_text(details.get(key))
+        if identity is not None:
+            safe[key] = identity
     if code is not AIErrorCode.PROVIDER_PROTOCOL:
         return safe
     for key in ("maxParts", "maxBytes", "partCount", "estimatedBytes"):
@@ -363,6 +371,40 @@ def _summarize_provider_body(body: object) -> str | None:
             return None
         return json.dumps(safe_items, ensure_ascii=False, separators=(",", ":"))
     return None
+
+
+def _provider_error_identity(error: Exception) -> dict[str, JSONValue]:
+    body = getattr(error, "body", None)
+    if body is None:
+        response = getattr(error, "response", None)
+        body = getattr(response, "text", None)
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except (TypeError, ValueError):
+            return {}
+    if not isinstance(body, Mapping):
+        return {}
+    nested = body.get("error")
+    error_payload = nested if isinstance(nested, Mapping) else body
+    details: dict[str, JSONValue] = {}
+    for source_key, target_key in (
+        ("type", "providerErrorType"),
+        ("code", "providerErrorCode"),
+    ):
+        identity = _provider_error_identity_text(error_payload.get(source_key))
+        if identity is not None:
+            details[target_key] = identity
+    return details
+
+
+def _provider_error_identity_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not _PROVIDER_ERROR_IDENTITY_PATTERN.fullmatch(normalized):
+        return None
+    return normalized
 
 
 def _safe_provider_diagnostic_mapping(

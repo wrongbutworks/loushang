@@ -25,6 +25,10 @@ from loushang.harness.transcript.committer import (
     TranscriptCommitter,
 )
 from loushang.harness.transcript.kinds import RECORD_ANNOTATION_PATCH_KIND
+from loushang.harness.transcript.model_call import (
+    ModelCallInvocationProjection,
+    project_model_call_invocations,
+)
 from loushang.harness.transcript.model_input import (
     ModelInputCommitContext as _ModelInputCommitContext,
 )
@@ -359,6 +363,13 @@ class AgentTranscriptSession:
         """Reconstruct one committed request through the Session boundary."""
 
         return rebuild_model_input(self._transcript, snapshot_id)
+
+    def get_model_call_invocations(
+        self,
+    ) -> tuple[ModelCallInvocationProjection, ...]:
+        """Project prepared attempts and known outcomes on the selected path."""
+
+        return project_model_call_invocations(self._transcript.active_path())
 
     def _complete_commit(self, commit: AgentTranscriptCommit) -> str:
         result = CommitResult(

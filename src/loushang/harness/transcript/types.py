@@ -14,6 +14,7 @@ from loushang.harness.conversation.types import (
     ConversationRecord,
     OpaquePayload,
 )
+from loushang.harness.transcript.model_call_types import ModelCallOutcome
 from loushang.harness.transcript.model_input_types import (
     ModelInputComponent,
     ModelInputSnapshot,
@@ -295,6 +296,7 @@ AgentTranscriptPayload: TypeAlias = (
     | ModelInputSnapshot
     | ModelInputNodeBundle
     | ModelInputSnapshotV2
+    | ModelCallOutcome
 )
 DecodedAgentTranscriptPayload: TypeAlias = AgentTranscriptPayload | OpaquePayload
 AgentTranscriptRecord: TypeAlias = ConversationRecord[DecodedAgentTranscriptPayload]
@@ -392,6 +394,7 @@ __all__ = [
     "DecodedAgentTranscriptPayload",
     "ExtensionData",
     "ModelSelectionSnapshot",
+    "ModelCallOutcome",
     "RecordAnnotationPatch",
     "ThinkingSelectionSnapshot",
     "application_message_content_blocks",

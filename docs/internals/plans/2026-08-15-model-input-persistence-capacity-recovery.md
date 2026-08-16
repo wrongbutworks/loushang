@@ -18,7 +18,9 @@ arbitrary exception text. `AssistantMessage.errorInfo` now carries additive,
 codec-backed typed failure data into retry, overflow, and allowlisted Session
 diagnostics. Local prepared-request validation errors are no longer relabeled
 as Provider errors, and `ModelInputRecordSizeError` is typed as request
-validation. Terminal invocation outcomes remain MIR4.
+validation. MIR2 and MIR3 have since landed locally, and the first MIR4 slice
+now records terminal logical invocation outcomes without removing per-attempt
+prepared snapshots.
 
 ## Summary
 
@@ -185,6 +187,19 @@ cancellation-orphan recovery. No v1 fact is migrated or rewritten.
 Exit gate: internal Provider retry creates multiple prepared snapshots and one
 terminal outcome without revision conflicts or diagnostic leakage.
 
+Implementation result (2026-08-16): the standard AI prepared-request port now
+has an optional terminal outcome observer. Provider runtime calls it once after
+all internal retries, using the same invocation identity. Harness appends one
+hidden `model.call.outcome` through the Model Input committer and verifies that
+its snapshot IDs exactly equal the complete ordered attempt sequence on the
+active path. Completed, failed, and cancelled outcomes preserve final usage;
+failed outcomes retain only allowlisted typed identity, HTTP status, request ID,
+and bounded scalar details. Provider output and response bodies are excluded.
+The existing prepared snapshots remain one-per-attempt and immutable. Projection
+of a missing outcome now returns `unknown` without inventing a terminal fact;
+off-path summary forks retain a unique associated outcome. Recovery-parent
+links remain for the subsequent recovery work.
+
 ### MIR5: Capacity Metrics And Bounded Compaction
 
 - Add adapter-owned canonical, estimated-wire, message, image, Tool-schema, and
@@ -244,8 +259,9 @@ text.
 - [x] Error and abort model visibility is explicit and tested.
 - [x] Non-AI and Provider diagnostics persist only allowlisted data.
 - [x] Every Provider attempt retains a prepared snapshot.
-- [ ] Every completed logical invocation has exactly one terminal outcome.
-- [ ] Crash without terminal outcome projects interrupted/unknown.
+- [x] Every terminal Provider-runtime invocation with the durable Harness port
+      appends exactly one terminal outcome.
+- [x] Crash without terminal outcome projects unknown without inventing a fact.
 - [ ] Every compaction batch and merge passes Provider capacity preflight.
 - [ ] Image omission is explicit and degraded or refused.
 - [ ] Capacity recovery creates at most one new logical invocation.

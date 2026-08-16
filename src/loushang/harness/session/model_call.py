@@ -12,6 +12,8 @@ from loushang.agent import ModelCallPreparation
 from loushang.ai.json_codec import serialize_message
 from loushang.ai.options import CallOptions
 from loushang.ai.prepared_request import (
+    PreparedModelCallOutcome,
+    PreparedModelCallOutcomeRecorder,
     PreparedModelRequest,
     PreparedRequestCommitter,
 )
@@ -118,7 +120,10 @@ class SessionModelCallPreparer:
         )
 
 
-class _CurrentSessionCommitter(PreparedRequestCommitter):
+class _CurrentSessionCommitter(
+    PreparedRequestCommitter,
+    PreparedModelCallOutcomeRecorder,
+):
     """Carry current-Session ownership through AI's final commit barrier."""
 
     def __init__(
@@ -133,6 +138,18 @@ class _CurrentSessionCommitter(PreparedRequestCommitter):
     async def commit_prepared_request(self, request: PreparedModelRequest) -> None:
         self._require_current()
         await self._committer.commit_prepared_request(request)
+        self._require_current()
+
+    async def record_model_call_outcome(
+        self,
+        outcome: PreparedModelCallOutcome,
+    ) -> None:
+        self._require_current()
+        if not isinstance(self._committer, PreparedModelCallOutcomeRecorder):
+            raise TypeError(
+                "durable Session Model Input committer cannot record outcomes"
+            )
+        await self._committer.record_model_call_outcome(outcome)
         self._require_current()
 
     @property
