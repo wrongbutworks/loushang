@@ -248,6 +248,11 @@ def is_retryable_assistant_error(
         return False
     if is_context_overflow_fn(message, context_window):
         return False
+    error_info = message.error_info
+    if isinstance(error_info, dict) and isinstance(
+        error_info.get("retryable"), bool
+    ):
+        return error_info["retryable"] is True
     if any(
         pattern.search(message.error_message)
         for pattern in _NON_RETRYABLE_ERROR_PATTERNS

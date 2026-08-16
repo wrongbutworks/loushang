@@ -470,16 +470,16 @@ def test_cancelled_session_dispose_finishes_model_call_cleanup(tmp_path) -> None
         )
         agent = Agent()
         session = AgentSession(agent=agent, session_manager=manager)
-        original_dispose = session._model_call_runtime.dispose
+        original_dispose = session._capability_graph_binder.dispose
         started = asyncio.Event()
         release = asyncio.Event()
 
-        async def slow_dispose() -> None:
+        async def slow_dispose(runtime) -> None:
             started.set()
             await release.wait()
-            await original_dispose()
+            await original_dispose(runtime)
 
-        session._model_call_runtime.dispose = slow_dispose  # type: ignore[method-assign]
+        session._capability_graph_binder.dispose = slow_dispose  # type: ignore[method-assign]
         task = asyncio.create_task(session.dispose())
         await started.wait()
         task.cancel()

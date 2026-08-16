@@ -11,10 +11,9 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
-from typing import Any, TypeAlias, cast
+from typing import Any, TypeAlias
 
 from loushang.agent import Agent
-from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import AssistantMessage
 from loushang.harness.extensions.context import (
     SessionBeforeTreeResult,
@@ -25,6 +24,7 @@ from loushang.harness.runtime.registration import _await_cancellation_atomic
 from loushang.harness.session.composition import (
     SessionComposition,
     SessionExtensionCompositionPort,
+    apply_agent_session_model_selection,
     supports_prepare_model_call,
 )
 from loushang.harness.transcript import (
@@ -95,25 +95,20 @@ class SessionOperations:
         emit_refresh: bool,
         source: str = "set",
     ) -> None:
-        resolved = self.composition.selection_runtime.resolve_model(
-            cast(Model | ModelSelection, model)
+        async def refresh_extension_runtime(reason: str) -> None:
+            if emit_refresh:
+                await self.composition.extension_bridge.refresh(reason=reason)
+
+        await apply_agent_session_model_selection(
+            self.composition.selection_runtime,
+            model,
+            self.ports.agent,
+            self.composition.session_runtime,
+            self.ports.extension_runner,
+            refresh_extension_runtime,
+            self.ports.session_manager.get_cwd,
+            source=source,
         )
-        previous = self.ports.agent.model
-        await self.composition.selection_runtime.apply_model(resolved)
-        if emit_refresh:
-            await self.composition.extension_bridge.refresh(
-                reason="model_selection_changed"
-            )
-        if self.ports.extension_runner is not None and previous != resolved:
-            await self.ports.extension_runner.emit_agent_event(
-                {
-                    "type": "model_select",
-                    "model": resolved,
-                    "previous_model": previous,
-                    "source": source,
-                },
-                cwd=self.ports.session_manager.get_cwd(),
-            )
 
     async def maybe_compact_after_turn(
         self, assistant_message: AssistantMessage

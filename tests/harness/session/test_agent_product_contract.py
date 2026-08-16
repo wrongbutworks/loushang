@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
 
-from loushang.agent import Agent
+from loushang.agent import Agent, ModelCallPreparation
+from loushang.ai import Context
 from loushang.ai.model import Capabilities, Model
+from loushang.ai.options import CallOptions
+from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
@@ -30,6 +33,11 @@ from loushang.harness.runtime import (
     RegistrationOwner,
     RuntimeProfileResolver,
 )
+from loushang.harness.runtime.session_operations import (
+    SessionOperationCandidate,
+    SessionOperationCoordinator,
+)
+from loushang.harness.runtime.transition import SessionTransitionHost
 from loushang.harness.session import AgentProductSession
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
@@ -233,9 +241,63 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         design_events: list[dict[str, object]] = []
         research.subscribe(research_events.append)
         design.subscribe(design_events.append)
+        graph_bind_calls = 0
+        graph_bind_started = asyncio.Event()
+        release_graph_bind = asyncio.Event()
+        original_graph_bind = research._capability_graph_binder.bind
+
+        async def counted_graph_bind(runtime, plan, bindings):
+            nonlocal graph_bind_calls
+            graph_bind_calls += 1
+            graph_bind_started.set()
+            await release_graph_bind.wait()
+            return await original_graph_bind(runtime, plan, bindings)
+
+        research._capability_graph_binder.bind = counted_graph_bind  # type: ignore[method-assign]
+        direct_prepare = asyncio.create_task(
+            research._model_call_runtime.prepare(
+                ModelCallPreparation(
+                    purpose="main",
+                    sequence=1,
+                    model=research.agent.model,
+                    context=Context(system_prompt="research prompt", messages=[]),
+                    options=CallOptions(),
+                )
+            )
+        )
+        await asyncio.wait_for(graph_bind_started.wait(), timeout=1)
+        lifecycle_prepare = asyncio.create_task(
+            research.prepare_model_call_runtime()
+        )
+        try:
+            await asyncio.sleep(0)
+            assert lifecycle_prepare.done() is False
+            release_graph_bind.set()
+            prepared_options, _ = await asyncio.wait_for(
+                asyncio.gather(direct_prepare, lifecycle_prepare),
+                timeout=2,
+            )
+        finally:
+            release_graph_bind.set()
+            for task in (direct_prepare, lifecycle_prepare):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(
+                direct_prepare,
+                lifecycle_prepare,
+                return_exceptions=True,
+            )
         await research.prepare_model_call_runtime()
         effective_runtime = research.get_effective_runtime_view()
 
+        assert graph_bind_calls == 1
+        assert prepared_options.prepared_request_committer is not None
+        assert research._capability_graph_runtime.runtime_id == (
+            effective_runtime.runtime_id
+        )
+        assert not hasattr(research._model_call_runtime, "graph_runtime")
+        assert not hasattr(research._model_call_runtime, "bind")
+        assert not hasattr(research._model_call_runtime, "dispose")
         assert research.session_control is research
         assert design.session_control is design
         assert research.session_id == "research-session"
@@ -284,6 +346,7 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         await research.dispose()
 
         assert research.footer.disposed is True
+        assert research._capability_graph_runtime.is_closed is True
         assert research_capabilities.binding.is_closed is True
         assert design_capabilities.binding.is_closed is False
         assert disposed_transcripts == ["research-session"]
@@ -321,6 +384,138 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert design.footer.disposed is True
         assert design_capabilities.binding.is_closed is True
         assert disposed_transcripts == ["research-session", "design-session"]
+
+    asyncio.run(scenario())
+
+
+def test_failed_graph_preparation_is_disposed_without_leaving_agent_boundary(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="bind-failure")
+        capability_runtime = _capability_runtime("bind-failure")
+        session = _ContractProductSession(
+            product_id="bind-failure",
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+
+        async def fail_bind(*_args: object) -> None:
+            raise RuntimeError("graph preparation failed")
+
+        session._capability_graph_binder.bind = fail_bind  # type: ignore[method-assign]
+
+        previous = object()
+        host = SessionTransitionHost(
+            previous,
+            dispose=lambda _session: None,
+        )
+        coordinator = SessionOperationCoordinator(host)
+
+        with pytest.raises(RuntimeError, match="graph preparation failed"):
+            await coordinator.run(
+                lambda _current: SessionOperationCandidate(
+                    session,
+                    None,
+                    rollback=session.dispose,
+                ),
+                prepare_session=lambda candidate, _previous: (
+                    candidate.session.prepare_model_call_runtime()
+                ),
+            )
+
+        assert host.current is previous
+        assert session._capability_graph_runtime.snapshot is None
+        assert session.agent.prepare_model_call is None
+        assert session._capability_graph_runtime.is_closed is True
+        assert disposed_transcripts == ["bind-failure-session"]
+
+    asyncio.run(scenario())
+
+
+def test_product_model_input_reads_profile_after_turn_boundary_refresh(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="profile-refresh")
+        capability_runtime = _capability_runtime("profile-refresh")
+        session = _ContractProductSession(
+            product_id="profile-refresh",
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+        mount_profile_fingerprint = (
+            session._capability_graph_runtime.profile_fingerprint
+        )
+
+        profile = capability_runtime.binding.profile
+        capabilities = list(profile.capabilities)
+        prompt_index = next(
+            index
+            for index, capability in enumerate(capabilities)
+            if capability.slot.key == "prompt.sections"
+        )
+        prompt = capabilities[prompt_index]
+        selected = prompt.selections[0]
+        changed_selection = replace(
+            selected.selection,
+            config={**selected.selection.config, "separator": "\n---\n"},
+        )
+        capabilities[prompt_index] = replace(
+            prompt,
+            selections=(replace(selected, selection=changed_selection),),
+        )
+        await capability_runtime._binder.rebind(
+            capability_runtime.binding,
+            replace(profile, capabilities=tuple(capabilities)),
+        )
+        current_profile_fingerprint = session._current_profile_fingerprint()
+        assert current_profile_fingerprint != mount_profile_fingerprint
+
+        options = await session._model_call_runtime.prepare(
+            ModelCallPreparation(
+                purpose="main",
+                sequence=1,
+                model=session.agent.model,
+                context=Context(system_prompt="profile refresh", messages=[]),
+                options=CallOptions(),
+            )
+        )
+        committer = options.prepared_request_committer
+        assert committer is not None
+        await committer.commit_prepared_request(
+            PreparedModelRequest(
+                invocation_id="profile-refresh-invocation",
+                attempt=1,
+                provider_id="test",
+                endpoint_id="test-endpoint",
+                api="test",
+                model_id="profile-refresh-model",
+                mode="stream",
+                payload={"messages": []},
+            )
+        )
+        snapshot = next(
+            entry.payload
+            for entry in transcript.get_entries()
+            if entry.kind == "model.input.prepared"
+        )
+
+        assert snapshot.profile_fingerprint == current_profile_fingerprint
+        assert snapshot.profile_fingerprint != mount_profile_fingerprint
+        assert transcript.rebuild_model_input(snapshot.snapshot_id).snapshot == snapshot
+
+        await session.dispose()
+        assert disposed_transcripts == ["profile-refresh-session"]
 
     asyncio.run(scenario())
 

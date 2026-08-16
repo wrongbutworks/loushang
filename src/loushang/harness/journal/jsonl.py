@@ -119,6 +119,38 @@ def append_jsonl_record(
             _sync_handle(handle, durability)
 
 
+def append_jsonl_records(
+    path: str | Path,
+    records: Sequence[R],
+    *,
+    record_codec: JournalRecordCodec[R],
+    format_profile: JournalFormatProfile = DEFAULT_JSONL_FORMAT,
+    durability: JournalDurabilityProfile = DURABLE_LOCKED_JOURNAL,
+    lock_factory: LockFactory | None = None,
+) -> None:
+    """Append an ordered record batch with one lock, open, write, and sync."""
+
+    durable_records = tuple(records)
+    if not durable_records:
+        return
+    lines = tuple(
+        _dump_mapping(record_codec.encode_record(record), format_profile)
+        for record in durable_records
+    )
+    payload = format_profile.newline.join(lines) + format_profile.newline
+    target = Path(path)
+    with _lock_context(
+        target,
+        "exclusive",
+        durability=durability,
+        lock_factory=lock_factory,
+    ):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding=format_profile.encoding) as handle:
+            handle.write(payload)
+            _sync_handle(handle, durability)
+
+
 def write_jsonl(
     path: str | Path,
     records: Sequence[R],
@@ -366,6 +398,16 @@ class JsonlJournal(Generic[H, R]):
             lock_factory=self.lock_factory,
         )
 
+    def append_batch(self, records: Sequence[R]) -> None:
+        append_jsonl_records(
+            self.path,
+            records,
+            record_codec=self.record_codec,
+            format_profile=self.format_profile,
+            durability=self.durability,
+            lock_factory=self.lock_factory,
+        )
+
     def rewrite(self, records: Sequence[R], *, header: H | None = None) -> None:
         write_jsonl(
             self.path,
@@ -552,6 +594,7 @@ __all__ = [
     "LockFactory",
     "LockMode",
     "append_jsonl_record",
+    "append_jsonl_records",
     "journal_file_lock",
     "load_jsonl",
     "parse_legacy_jsonl_line",

@@ -22,6 +22,7 @@ class AIErrorCode(str, Enum):
     UNSUPPORTED_CAPABILITY = "unsupported_capability"
     AUTHENTICATION = "authentication"
     REQUEST_VALIDATION = "request_validation"
+    REQUEST_TOO_LARGE = "request_too_large"
     TOOL_VALIDATION = "tool_validation"
     PROVIDER = "provider"
     RATE_LIMIT = "rate_limit"
@@ -144,6 +145,10 @@ class AIRequestValidationError(AIError):
     default_code = AIErrorCode.REQUEST_VALIDATION
 
 
+class AIRequestTooLargeError(AIRequestValidationError):
+    default_code = AIErrorCode.REQUEST_TOO_LARGE
+
+
 class ToolValidationError(AIRequestValidationError):
     default_code = AIErrorCode.TOOL_VALIDATION
 
@@ -191,6 +196,7 @@ _ERROR_CLASS_BY_CODE: dict[AIErrorCode, type[AIError]] = {
     AIErrorCode.UNSUPPORTED_CAPABILITY: UnsupportedCapabilityError,
     AIErrorCode.AUTHENTICATION: AIAuthenticationError,
     AIErrorCode.REQUEST_VALIDATION: AIRequestValidationError,
+    AIErrorCode.REQUEST_TOO_LARGE: AIRequestTooLargeError,
     AIErrorCode.TOOL_VALIDATION: ToolValidationError,
     AIErrorCode.PROVIDER: AIProviderError,
     AIErrorCode.RATE_LIMIT: AIRateLimitError,
@@ -277,6 +283,7 @@ __all__ = [
     "UnsupportedCapabilityError",
     "AIAuthenticationError",
     "AIRequestValidationError",
+    "AIRequestTooLargeError",
     "ToolValidationError",
     "AIProviderError",
     "AIRateLimitError",

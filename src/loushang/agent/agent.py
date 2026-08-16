@@ -28,6 +28,7 @@ from loushang.agent.types import (
     ToolExecutionMode,
 )
 from loushang.ai.api import stream
+from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
 from loushang.ai.messages import canonicalize_user_message
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.registry import resolve_model_api
@@ -40,8 +41,49 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
+from loushang.foundation.json import JSONValue
 
 _ABORT_EXECUTION_CANCEL_DELAY_S = 0.05
+
+
+def _public_run_failure_message(error: Exception, *, aborted: bool) -> str:
+    if aborted:
+        return "Request aborted by user"
+    if isinstance(error, AIError):
+        return error.info.message
+    return "Agent run failed."
+
+
+def _run_failure_error_info(
+    error: Exception,
+    *,
+    aborted: bool,
+    model: Model,
+) -> dict[str, JSONValue]:
+    if aborted:
+        return AIErrorInfo(
+            code=AIErrorCode.CANCELLED,
+            message=_public_run_failure_message(error, aborted=True),
+            source="loushang.agent",
+            retryable=False,
+            provider=model.provider_id,
+            endpoint=model.endpoint_id,
+            model=model.id,
+            details={"exceptionType": error.__class__.__name__},
+        ).to_dict()
+    if isinstance(error, AIError):
+        return error.info.to_dict()
+    message = _public_run_failure_message(error, aborted=aborted)
+    return AIErrorInfo(
+        code=AIErrorCode.CANCELLED if aborted else AIErrorCode.STREAM,
+        message=message,
+        source="loushang.agent",
+        retryable=False,
+        provider=model.provider_id,
+        endpoint=model.endpoint_id,
+        model=model.id,
+        details={"exceptionType": error.__class__.__name__},
+    ).to_dict()
 
 
 class AgentStateError(RuntimeError):
@@ -525,6 +567,13 @@ class Agent:
                 )
                 return
 
+            if getattr(last_message, "stop_reason", None) == "error":
+                await self._run_continuation(
+                    model_call_purpose=model_call_purpose,
+                    drop_terminal_error=True,
+                )
+                return
+
             raise RuntimeError("Cannot continue from message role: assistant")
 
         await self._run_continuation(model_call_purpose=model_call_purpose)
@@ -555,10 +604,19 @@ class Agent:
         self,
         *,
         model_call_purpose: str = "continuation",
+        drop_terminal_error: bool = False,
     ) -> None:
         async def executor(signal: AbortSignal) -> None:
+            context = self._create_context_snapshot()
+            if drop_terminal_error:
+                last_message = context.messages[-1] if context.messages else None
+                if (
+                    isinstance(last_message, AssistantMessage)
+                    and last_message.stop_reason == "error"
+                ):
+                    context.messages.pop()
             await run_agent_loop_continue(
-                self._create_context_snapshot(),
+                context,
                 self._create_loop_config(),
                 self._process_event,
                 signal=signal,
@@ -679,6 +737,12 @@ class Agent:
             raise asyncio.CancelledError
 
     async def _handle_run_failure(self, error: Exception, *, aborted: bool) -> None:
+        error_message = _public_run_failure_message(error, aborted=aborted)
+        error_info = _run_failure_error_info(
+            error,
+            aborted=aborted,
+            model=self._state.model,
+        )
         failure_message = AssistantMessage(
             role="assistant",
             content=[TextPart(type="text", text="")],
@@ -689,8 +753,9 @@ class Agent:
             response_id=None,
             usage=_empty_usage(),
             stop_reason="aborted" if aborted else "error",
-            error_message=str(error),
+            error_message=error_message,
             timestamp=time.time() * 1000,
+            error_info=error_info,
         )
         self._state.messages.append(failure_message)
         self._state.error_message = failure_message.error_message

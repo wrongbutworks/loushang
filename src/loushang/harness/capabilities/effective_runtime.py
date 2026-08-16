@@ -275,7 +275,7 @@ def effective_runtime_clocks(
         profile=RuntimeProfileClock(
             schema_version=profile.schema_version if profile is not None else None,
             fingerprint=(
-                _fingerprint(profile.to_json())
+                runtime_profile_fingerprint(profile)
                 if profile is not None
                 else graph.profile_fingerprint
             ),
@@ -296,6 +296,16 @@ def effective_runtime_clocks(
         ),
         model_surface=model_surface,
     )
+
+
+def runtime_profile_fingerprint(profile: RuntimeProfileSnapshot) -> str:
+    """Return the canonical fingerprint for one immutable Profile fact."""
+
+    if not isinstance(profile, RuntimeProfileSnapshot):
+        raise TypeError("Profile fingerprint requires RuntimeProfileSnapshot")
+    if profile.schema_version != 1:
+        raise ValueError("unsupported Runtime Profile snapshot schema version")
+    return _fingerprint(profile.to_json())
 
 
 def diff_effective_runtime_views(
@@ -588,4 +598,5 @@ __all__ = [
     "diff_effective_runtime_views",
     "effective_runtime_clocks",
     "runtime_projection_to_json",
+    "runtime_profile_fingerprint",
 ]

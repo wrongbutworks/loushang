@@ -36,6 +36,7 @@ from loushang.ai.model.registry import (
 )
 from loushang.ai.options import (
     CallOptions,
+    PreparedRequestLimits,
     ReasoningOptions,
     RetryOptions,
     ThinkingLevel,
@@ -121,6 +122,7 @@ __all__ = [
     "ApiKeyAuth",
     "AuthError",
     "CallOptions",
+    "PreparedRequestLimits",
     "CredentialExpiredError",
     "CredentialStatus",
     "FileCredentialStore",

@@ -49,6 +49,7 @@ class ConversationPayloadCodecRegistry:
             tuple[str, int],
             ConversationPayloadCodec[object],
         ] = {}
+        self._required_kinds: set[str] = set()
 
     def register(
         self,
@@ -75,6 +76,19 @@ class ConversationPayloadCodecRegistry:
     def registered_keys(self) -> tuple[tuple[str, int], ...]:
         return tuple(sorted(self._codecs))
 
+    @property
+    def required_kinds(self) -> tuple[str, ...]:
+        return tuple(sorted(self._required_kinds))
+
+    def require_known_payload_versions(self, *kinds: str) -> None:
+        """Fail closed when one core kind uses an unregistered version."""
+
+        if not kinds:
+            raise ValueError("required conversation payload kinds must not be empty")
+        for kind in kinds:
+            _require_payload_kind(kind)
+            self._required_kinds.add(kind)
+
     def encode(
         self,
         kind: str,
@@ -82,15 +96,23 @@ class ConversationPayloadCodecRegistry:
         payload: object,
     ) -> JSONValue:
         key = _payload_key(kind, payload_version)
-        if isinstance(payload, OpaquePayload):
-            return payload.value
         codec = self._codecs.get(key)
         if codec is None:
+            if kind in self._required_kinds:
+                raise JournalCodecError(
+                    "Required conversation payload version is unsupported for "
+                    f"{kind!r} version {payload_version}",
+                    code="unsupported_required_payload_version",
+                )
+            if isinstance(payload, OpaquePayload):
+                return payload.value
             raise JournalCodecError(
                 "No conversation payload codec is registered for "
                 f"{kind!r} version {payload_version}",
                 code="unregistered_payload_codec",
             )
+        if isinstance(payload, OpaquePayload):
+            return payload.value
         try:
             encoded = codec.encode_payload(payload)
             return snapshot_json_value(
@@ -123,6 +145,12 @@ class ConversationPayloadCodecRegistry:
             ) from exc
         codec = self._codecs.get(key)
         if codec is None:
+            if kind in self._required_kinds:
+                raise JournalCodecError(
+                    "Required conversation payload version is unsupported for "
+                    f"{kind!r} version {payload_version}",
+                    code="unsupported_required_payload_version",
+                )
             return OpaquePayload(snapshot)
         try:
             return codec.decode_payload(snapshot)
@@ -247,13 +275,18 @@ class ConversationJsonlRecordCodec:
 
 
 def _payload_key(kind: str, payload_version: int) -> tuple[str, int]:
-    if not isinstance(kind, str) or not kind.strip():
-        raise ValueError("conversation payload kind must be a non-empty string")
+    _require_payload_kind(kind)
     if isinstance(payload_version, bool) or not isinstance(payload_version, int):
         raise TypeError("conversation payload version must be an integer")
     if payload_version < 1:
         raise ValueError("conversation payload version must be positive")
     return kind, payload_version
+
+
+def _require_payload_kind(kind: object) -> str:
+    if not isinstance(kind, str) or not kind.strip():
+        raise ValueError("conversation payload kind must be a non-empty string")
+    return kind
 
 
 def _require_supported_format_version(version: int) -> None:

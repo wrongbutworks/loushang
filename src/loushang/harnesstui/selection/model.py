@@ -11,12 +11,23 @@ from loushang.tui import (
     RenderResult,
     SelectionSurface,
     SelectItem,
+    ThemeResolver,
     apply_theme_style,
     visible_width,
 )
 from loushang.tui.input import InputIntentKind
 
 MODEL_SELECTOR_SELECTED_STYLE = {"color": 33, "bold": True}
+MODEL_SELECTOR_THEME = ThemeResolver(
+    defaults={
+        "surface.title": {"bold": True, "color": "cyan"},
+        "surface.subtitle": {"color": "bright_black"},
+        "surface.footer": {"color": "bright_black", "dim": True},
+        "model_selector.error": {"color": "bright_red"},
+        "model_selector.recovery": {"color": "yellow"},
+        "model_selector.search": {"bold": True, "color": "cyan"},
+    }
+)
 
 
 @dataclass(slots=True)
@@ -25,6 +36,7 @@ class ModelSelectorSurface:
     scoped_items: tuple[SelectItem, ...] = ()
     selected_value: str | None = None
     max_visible: int = 10
+    theme: ThemeResolver = field(default_factory=lambda: MODEL_SELECTOR_THEME)
     _scope: Literal["all", "scoped"] = field(default="all", init=False)
     _surface: SelectionSurface = field(init=False, repr=False)
     _filter_text: str = field(default="", init=False, repr=False)
@@ -40,6 +52,15 @@ class ModelSelectorSurface:
 
     def blur(self) -> None:
         self._surface.blur()
+
+    @property
+    def footer_help(self) -> str:
+        if self._filter_text:
+            return "↑/↓ choose · Enter switch · Esc keep current"
+        return (
+            "Type to filter · ↑/↓ choose · Enter switch · "
+            "1–9 quick select · Esc keep current"
+        )
 
     def handle_input(self, event: InputEvent) -> InputIntent | None:
         if event.kind == "text":
@@ -99,6 +120,10 @@ class ModelSelectorSurface:
             empty_text="No matching models",
             show_scroll_info=False,
             selected_style=MODEL_SELECTOR_SELECTED_STYLE,
+            theme=self.theme,
+            search_prompt=apply_theme_style(
+                "Search: ", self.theme.resolve("model_selector.search")
+            ),
             enable_search=True,
             show_search_when_empty=False,
             filter_mode="contains",
@@ -239,4 +264,8 @@ def _screen_input_intent_or_none(result: object) -> InputIntent | None:
     )
 
 
-__all__ = ["MODEL_SELECTOR_SELECTED_STYLE", "ModelSelectorSurface"]
+__all__ = [
+    "MODEL_SELECTOR_SELECTED_STYLE",
+    "MODEL_SELECTOR_THEME",
+    "ModelSelectorSurface",
+]

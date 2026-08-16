@@ -20,6 +20,10 @@ from loushang.ai.options import (
     get_idle_timeout_seconds,
     get_timeout_seconds,
 )
+from loushang.ai.prepared_request import (
+    PreparedModelCallOutcome,
+    PreparedModelCallOutcomeRecorder,
+)
 from loushang.ai.provider.cancellation import is_signal_cancelled, wait_signal_cancelled
 from loushang.ai.provider.errors import (
     normalize_provider_error,
@@ -106,7 +110,14 @@ def start_provider_runtime(
             _emit_runtime_cancel_trace(
                 options, request=request, model=model, call_id=call_id
             )
-            await assembler.emit({"type": "aborted"})
+            await _emit_terminal_part_and_record_outcome(
+                assembler,
+                cast(RawPart, {"type": "aborted"}),
+                options=options,
+                request=request,
+                model=model,
+                call_id=call_id,
+            )
             return
         try:
             max_attempts = _retry_max_attempts(options)
@@ -201,9 +212,17 @@ def start_provider_runtime(
                                     model=model,
                                     call_id=call_id,
                                 )
-                            await assembler.emit(part)
                             if part["type"] in _TERMINAL_RAW_PART_TYPES:
+                                await _emit_terminal_part_and_record_outcome(
+                                    assembler,
+                                    part,
+                                    options=options,
+                                    request=request,
+                                    model=model,
+                                    call_id=call_id,
+                                )
                                 return
+                            await assembler.emit(part)
                             continue
 
                         pending_bytes = _append_pending_part(
@@ -236,14 +255,28 @@ def start_provider_runtime(
                         model=model,
                         call_id=call_id,
                     )
-                    await assembler.emit(error_part)
+                    await _emit_terminal_part_and_record_outcome(
+                        assembler,
+                        error_part,
+                        options=options,
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    )
                     return
                 except _RuntimeCancelled:
                     await _flush_pending(assembler, pending)
                     _emit_runtime_cancel_trace(
                         options, request=request, model=model, call_id=call_id
                     )
-                    await assembler.emit({"type": "aborted"})
+                    await _emit_terminal_part_and_record_outcome(
+                        assembler,
+                        cast(RawPart, {"type": "aborted"}),
+                        options=options,
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    )
                     return
                 except (Exception, asyncio.CancelledError) as caught:
                     if isinstance(caught, asyncio.CancelledError):
@@ -266,7 +299,14 @@ def start_provider_runtime(
                             model=model,
                             call_id=call_id,
                         )
-                        await assembler.emit({"type": "aborted"})
+                        await _emit_terminal_part_and_record_outcome(
+                            assembler,
+                            cast(RawPart, {"type": "aborted"}),
+                            options=options,
+                            request=request,
+                            model=model,
+                            call_id=call_id,
+                        )
                         return
                     if (
                         not visible_output_started
@@ -306,7 +346,14 @@ def start_provider_runtime(
                         model=model,
                         call_id=call_id,
                     )
-                    await assembler.emit(error_part)
+                    await _emit_terminal_part_and_record_outcome(
+                        assembler,
+                        error_part,
+                        options=options,
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    )
                     return
                 finally:
                     deadline.cancel()
@@ -316,6 +363,43 @@ def start_provider_runtime(
 
     stream.attach_task(asyncio.create_task(_run()))
     return stream
+
+
+async def _emit_terminal_part_and_record_outcome(
+    assembler: RawAssembler,
+    part: RawPart,
+    *,
+    options: object | None,
+    request: ProviderRequest,
+    model: object,
+    call_id: str,
+) -> None:
+    await assembler.emit(part)
+    committer = getattr(options, "prepared_request_committer", None)
+    if not isinstance(committer, PreparedModelCallOutcomeRecorder):
+        return
+    outcome = PreparedModelCallOutcome.from_assistant_message(
+        call_id,
+        assembler.result_nowait(),
+    )
+    try:
+        await committer.record_model_call_outcome(outcome)
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        emit_trace(
+            options,
+            {
+                "type": "runtime:outcome",
+                **_runtime_trace_base(
+                    request=request,
+                    model=model,
+                    call_id=call_id,
+                ),
+                "reason": "record_failed",
+                "exceptionType": error.__class__.__name__,
+            },
+        )
 
 
 async def _flush_pending(assembler: RawAssembler, pending: deque[RawPart]) -> None:

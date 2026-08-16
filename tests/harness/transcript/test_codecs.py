@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.ai.types import TextPart, UserMessage
+from loushang.ai.types import TextPart, Usage, UserMessage
 from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.journal import JournalCodecError
 from loushang.harness.transcript import (
@@ -15,6 +15,7 @@ from loushang.harness.transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
@@ -27,6 +28,8 @@ from loushang.harness.transcript import (
     ContextCompactionCheckpoint,
     ConversationMetadataPatch,
     ExtensionData,
+    ModelCallFailureInfo,
+    ModelCallOutcome,
     ModelInputComponent,
     ModelInputComponentReference,
     ModelInputSnapshot,
@@ -37,6 +40,9 @@ from loushang.harness.transcript import (
     create_agent_transcript_payload_registry,
 )
 from loushang.harness.transcript.model_input_types import hash_model_input_json
+from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_PAYLOAD_VERSION,
+)
 
 
 def _payloads():
@@ -110,6 +116,20 @@ def _payloads():
             values={"title": "Investigation", "count": 2},
             removed_keys=("oldTitle",),
         ),
+        MODEL_CALL_OUTCOME_KIND: ModelCallOutcome(
+            invocation_id="invocation-1",
+            model_input_snapshot_ids=("snapshot-1",),
+            disposition="completed",
+            stop_reason="stop",
+            usage=Usage(
+                input=12,
+                output=4,
+                cache_read=2,
+                cache_write=1,
+                total_tokens=19,
+                cost=None,
+            ),
+        ),
         MODEL_INPUT_COMPONENT_KIND: component,
         MODEL_INPUT_PREPARED_KIND: ModelInputSnapshot(
             snapshot_id="snapshot-1",
@@ -152,15 +172,68 @@ def _payloads():
 def test_all_standard_payloads_round_trip_through_versioned_registry() -> None:
     registry = create_agent_transcript_payload_registry()
 
+    assert registry.required_kinds == (
+        MODEL_INPUT_COMPONENT_KIND,
+        MODEL_INPUT_PREPARED_KIND,
+    )
     assert registry.registered_keys == tuple(
         sorted(
-            (kind, STANDARD_PAYLOAD_VERSION) for kind in STANDARD_AGENT_TRANSCRIPT_KINDS
+            (
+                *(
+                    (kind, STANDARD_PAYLOAD_VERSION)
+                    for kind in STANDARD_AGENT_TRANSCRIPT_KINDS
+                ),
+                (MODEL_INPUT_COMPONENT_KIND, MODEL_INPUT_V2_PAYLOAD_VERSION),
+                (MODEL_INPUT_PREPARED_KIND, MODEL_INPUT_V2_PAYLOAD_VERSION),
+            )
         )
     )
     for kind, payload in _payloads().items():
         encoded = registry.encode(kind, STANDARD_PAYLOAD_VERSION, payload)
         decoded = registry.decode(kind, STANDARD_PAYLOAD_VERSION, encoded)
         assert decoded == payload
+
+
+def test_model_call_failure_codec_round_trips_only_safe_typed_fields() -> None:
+    registry = create_agent_transcript_payload_registry()
+    outcome = ModelCallOutcome(
+        invocation_id="invocation-failed",
+        model_input_snapshot_ids=("snapshot-failed",),
+        disposition="failed",
+        stop_reason="error",
+        usage=Usage(12, 0, 0, 0, 12, None),
+        failure=ModelCallFailureInfo(
+            code="provider",
+            source="openai-responses",
+            retryable=False,
+            status_code=400,
+            request_id="request-400",
+            details={
+                "exceptionType": "ProviderHTTPError",
+                "providerErrorType": "invalid_request_error",
+                "providerErrorCode": "request_too_large",
+                "providerResponseSummary": "private prompt",
+            },
+        ),
+    )
+
+    encoded = registry.encode(
+        MODEL_CALL_OUTCOME_KIND,
+        STANDARD_PAYLOAD_VERSION,
+        outcome,
+    )
+
+    assert registry.decode(
+        MODEL_CALL_OUTCOME_KIND,
+        STANDARD_PAYLOAD_VERSION,
+        encoded,
+    ) == outcome
+    assert encoded["failure"]["details"] == {
+        "exceptionType": "ProviderHTTPError",
+        "providerErrorType": "invalid_request_error",
+        "providerErrorCode": "request_too_large",
+    }
+    assert "private prompt" not in repr(encoded)
 
 
 @pytest.mark.parametrize(

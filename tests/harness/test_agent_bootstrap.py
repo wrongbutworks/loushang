@@ -378,6 +378,19 @@ def test_agent_product_construction_binding_compiles_research_policy(
     )
     session_capabilities: list[object] = []
 
+    def legacy_session_factory(
+        capabilities,
+        _agent,
+        _bundle,
+        _extensions,
+        _registry,
+        _active,
+        _prompt,
+        _mode,
+    ):
+        session_capabilities.append(capabilities)
+        return object()
+
     result = binding.construct(
         services=services,
         package_materializer=cast(Any, "materializer"),
@@ -396,9 +409,7 @@ def test_agent_product_construction_binding_compiles_research_policy(
         stream_fn=None,
         convert_to_llm=lambda value: value,
         agent_factory=lambda **_kwargs: object(),
-        session_factory=lambda capabilities, *_args: (
-            session_capabilities.append(capabilities) or object()
-        ),
+        session_factory=legacy_session_factory,
         on_default_model_unavailable=lambda *_args: None,
         set_scoped_models=lambda *_args: None,
     )
@@ -445,6 +456,10 @@ def test_agent_product_construction_late_binds_session_capabilities_and_disposes
         Any,
         SimpleNamespace(dispose=lambda: calls.append("dispose:session")),
     )
+    side_question_binding = cast(
+        Any,
+        SimpleNamespace(dispose=lambda: calls.append("dispose:side-question")),
+    )
 
     def construct(_self, request):
         request.session_factory(
@@ -482,6 +497,7 @@ def test_agent_product_construction_late_binds_session_capabilities_and_disposes
         bind_session_capabilities=lambda extensions: (
             calls.append(f"bind:{extensions}") or session_capabilities
         ),
+        bind_session_side_question=lambda _extensions: side_question_binding,
         create_extension_runtime=lambda bundle: bundle,
         source_identity_check=lambda _cwd: cast(Any, None),
         list_tool_definitions=lambda _runtime: (),
@@ -535,6 +551,10 @@ def test_agent_product_construction_disposes_late_bound_capabilities_on_failure(
         Any,
         SimpleNamespace(dispose=lambda: calls.append("dispose:session")),
     )
+    side_question_binding = cast(
+        Any,
+        SimpleNamespace(dispose=lambda: calls.append("dispose:side-question")),
+    )
 
     def construct(_self, request):
         request.session_factory(
@@ -569,6 +589,7 @@ def test_agent_product_construction_disposes_late_bound_capabilities_on_failure(
         default_system_prompt="research",
         bind_capabilities=lambda: bootstrap_capabilities,
         bind_session_capabilities=lambda _extensions: session_capabilities,
+        bind_session_side_question=lambda _extensions: side_question_binding,
         create_extension_runtime=lambda bundle: bundle,
         source_identity_check=lambda _cwd: cast(Any, None),
         list_tool_definitions=lambda _runtime: (),
@@ -602,7 +623,11 @@ def test_agent_product_construction_disposes_late_bound_capabilities_on_failure(
             set_scoped_models=lambda *_args: None,
         )
 
-    assert calls == ["dispose:session", "dispose:bootstrap"]
+    assert calls == [
+        "dispose:side-question",
+        "dispose:session",
+        "dispose:bootstrap",
+    ]
 
 
 def test_agent_product_construction_disposes_session_if_bootstrap_cleanup_fails(
@@ -627,6 +652,10 @@ def test_agent_product_construction_disposes_session_if_bootstrap_cleanup_fails(
     session_capabilities = cast(
         Any,
         SimpleNamespace(dispose=lambda: calls.append("dispose:session")),
+    )
+    side_question_binding = cast(
+        Any,
+        SimpleNamespace(dispose=lambda: calls.append("dispose:side-question")),
     )
 
     def construct(_self, request):
@@ -662,6 +691,7 @@ def test_agent_product_construction_disposes_session_if_bootstrap_cleanup_fails(
         default_system_prompt="research",
         bind_capabilities=lambda: bootstrap_capabilities,
         bind_session_capabilities=lambda _extensions: session_capabilities,
+        bind_session_side_question=lambda _extensions: side_question_binding,
         create_extension_runtime=lambda bundle: bundle,
         source_identity_check=lambda _cwd: cast(Any, None),
         list_tool_definitions=lambda _runtime: (),
@@ -692,7 +722,11 @@ def test_agent_product_construction_disposes_session_if_bootstrap_cleanup_fails(
             set_scoped_models=lambda *_args: None,
         )
 
-    assert calls == ["dispose:bootstrap", "dispose:session"]
+    assert calls == [
+        "dispose:bootstrap",
+        "dispose:side-question",
+        "dispose:session",
+    ]
 
 
 def test_standard_agent_session_activation_plan_preserves_capability_order() -> None:

@@ -65,6 +65,8 @@ from loushang.harness.conversation.repository import (
 )
 from loushang.harness.conversation.store import (
     CommitReceipt,
+    ConversationBatchCommitResult,
+    ConversationBatchStore,
     ConversationCommitResult,
     ConversationHead,
     ConversationKey,
@@ -110,6 +112,8 @@ __all__ = [
     "ConversationCatalog",
     "ConversationCatalogDiagnostic",
     "ConversationCatalogResult",
+    "ConversationBatchCommitResult",
+    "ConversationBatchStore",
     "ConversationCheckpoint",
     "ConversationCommitResult",
     "ConversationDiagnostic",

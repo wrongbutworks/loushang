@@ -45,12 +45,16 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
     MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
     STANDARD_AGENT_TRANSCRIPT_KINDS,
     THINKING_SELECTION_KIND,
+)
+from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_PAYLOAD_VERSION,
 )
 from loushang.harness.transcript.types import (
     AgentTranscriptContext,
@@ -61,8 +65,11 @@ from loushang.harness.transcript.types import (
     ContextCompactionCheckpoint,
     ConversationMetadataPatch,
     ExtensionData,
+    ModelCallOutcome,
     ModelInputComponent,
+    ModelInputNodeBundle,
     ModelInputSnapshot,
+    ModelInputSnapshotV2,
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
     ThinkingSelectionSnapshot,
@@ -385,11 +392,19 @@ class AgentTranscriptProfile:
         )
         self.register_record_profile(
             MODEL_INPUT_COMPONENT_KIND,
-            RecordSemantics(payload_types=(ModelInputComponent,)),
+            RecordSemantics(
+                payload_types=(ModelInputComponent, ModelInputNodeBundle),
+            ),
         )
         self.register_record_profile(
             MODEL_INPUT_PREPARED_KIND,
-            RecordSemantics(payload_types=(ModelInputSnapshot,)),
+            RecordSemantics(
+                payload_types=(ModelInputSnapshot, ModelInputSnapshotV2),
+            ),
+        )
+        self.register_record_profile(
+            MODEL_CALL_OUTCOME_KIND,
+            RecordSemantics(payload_types=(ModelCallOutcome,)),
         )
 
 
@@ -698,6 +713,27 @@ def _require_standard_payload_codecs(
         raise ValueError(
             "Agent transcript profile is missing standard payload codecs: "
             + ", ".join(missing)
+        )
+    model_input_kinds = (
+        MODEL_INPUT_COMPONENT_KIND,
+        MODEL_INPUT_PREPARED_KIND,
+    )
+    missing_v2 = [
+        kind
+        for kind in model_input_kinds
+        if (kind, MODEL_INPUT_V2_PAYLOAD_VERSION) not in registered
+    ]
+    if missing_v2:
+        raise ValueError(
+            "Agent transcript profile is missing Model Input v2 payload codecs: "
+            + ", ".join(missing_v2)
+        )
+    required = set(registry.required_kinds)
+    missing_required = [kind for kind in model_input_kinds if kind not in required]
+    if missing_required:
+        raise ValueError(
+            "Agent transcript profile is missing required payload kinds: "
+            + ", ".join(missing_required)
         )
 
 

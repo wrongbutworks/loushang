@@ -65,6 +65,54 @@ def test_header_journal_rewrite_append_and_load_round_trip(tmp_path: Path) -> No
     assert not list(path.parent.glob("*.tmp"))
 
 
+def test_journal_batch_append_preserves_order(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from loushang.harness.journal import (
+        JournalLoadPolicy,
+        append_jsonl_records,
+        load_jsonl,
+        write_jsonl,
+    )
+    from loushang.harness.journal import jsonl as jsonl_module
+
+    path = tmp_path / "records.jsonl"
+    write_jsonl(
+        path,
+        [],
+        record_codec=_RecordCodec(),
+        header=_Header("journal-1"),
+        header_codec=_HeaderCodec(),
+    )
+    sync_calls = 0
+
+    def count_sync(handle, durability) -> None:
+        nonlocal sync_calls
+        sync_calls += 1
+        handle.flush()
+
+    monkeypatch.setattr(jsonl_module, "_sync_handle", count_sync)
+
+    append_jsonl_records(
+        path,
+        [_Record("one", "alpha"), _Record("two", "beta")],
+        record_codec=_RecordCodec(),
+    )
+
+    snapshot = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        header_codec=_HeaderCodec(),
+        load_policy=JournalLoadPolicy(header="required"),
+    )
+    assert snapshot.records == (
+        _Record("one", "alpha"),
+        _Record("two", "beta"),
+    )
+    assert sync_calls == 1
+
+
 def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
     from loushang.harness.journal import (
         PROCESS_LOCAL_JOURNAL,
@@ -246,8 +294,7 @@ def test_legacy_jsonl_line_parser_is_explicit_and_syntax_only() -> None:
     )
 
     parsed = parse_legacy_jsonl_line(
-        '{"nan":NaN,"positive":Infinity,"negative":-Infinity,'
-        '"text":"\\ud800"}\r\n'
+        '{"nan":NaN,"positive":Infinity,"negative":-Infinity,"text":"\\ud800"}\r\n'
     )
 
     assert parsed is not None

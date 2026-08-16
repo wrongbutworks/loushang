@@ -11,6 +11,7 @@ from typing import Generic, TypeVar
 
 from loushang.harness.conversation.store import (
     CommitReceipt,
+    ConversationBatchCommitResult,
     ConversationCommitResult,
     ConversationHead,
     ConversationKey,
@@ -35,6 +36,7 @@ from loushang.harness.journal import (
     JournalFileError,
     JsonlJournal,
     append_jsonl_record,
+    append_jsonl_records,
     journal_file_lock,
     load_jsonl,
     write_jsonl,
@@ -114,6 +116,23 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
             record,
             expected_revision=expected_revision,
             operation_id=operation_id,
+        )
+        return await asyncio.shield(operation)
+
+    async def append_batch(
+        self,
+        key: ConversationKey,
+        records: Sequence[RecordT],
+        *,
+        expected_revision: int,
+        operation_ids: Sequence[str],
+    ) -> ConversationBatchCommitResult:
+        operation = asyncio.to_thread(
+            self._append_batch_sync,
+            key,
+            tuple(records),
+            expected_revision=expected_revision,
+            operation_ids=tuple(operation_ids),
         )
         return await asyncio.shield(operation)
 
@@ -298,6 +317,124 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
             diagnostics=tuple(
                 _source_diagnostic(diagnostic) for diagnostic in snapshot.diagnostics
             ),
+        )
+
+    def _append_batch_sync(
+        self,
+        key: ConversationKey,
+        records: Sequence[RecordT],
+        *,
+        expected_revision: int,
+        operation_ids: Sequence[str],
+    ) -> ConversationBatchCommitResult:
+        durable_records = tuple(records)
+        operations = tuple(require_operation_id(value) for value in operation_ids)
+        if not durable_records:
+            raise ValueError("append batch requires at least one record")
+        if len(durable_records) != len(operations):
+            raise ValueError("append batch records and operation ids must align")
+        if len(set(operations)) != len(operations):
+            raise StoreOperationConflictError(
+                "append batch operation ids must be unique"
+            )
+        if self._record_id is None:
+            raise ValueError("append batch requires stable record ids")
+        projected_ids = tuple(self._record_id(record) for record in durable_records)
+        if projected_ids != operations:
+            raise StoreOperationConflictError(
+                "append batch operation ids must match stable record ids"
+            )
+        expected = require_revision(expected_revision, name="expected revision")
+        path = self._required_path(key)
+        journal = self._write_journal_factory(path)
+        try:
+            with _exclusive_lock(journal):
+                if not path.is_file():
+                    raise StoreNotFoundError(f"conversation {key!r} was not found")
+                snapshot = _load_unlocked(journal)
+                if snapshot.header is None:
+                    raise StoreDataError(f"conversation {key!r} has no header")
+                revision = len(snapshot.records)
+                if revision < expected:
+                    raise StoreConflictError(
+                        f"conversation {key!r} is at revision {revision}, "
+                        f"not {expected}"
+                    )
+                by_record_id: dict[str, list[tuple[int, RecordT]]] = {}
+                for index, existing in enumerate(snapshot.records):
+                    existing_id = self._record_id(existing)
+                    if existing_id is not None:
+                        by_record_id.setdefault(existing_id, []).append(
+                            (index, existing)
+                        )
+                receipts: list[CommitReceipt] = []
+                matched = 0
+                for index, (record, operation) in enumerate(
+                    zip(durable_records, operations, strict=True)
+                ):
+                    occurrences = by_record_id.get(operation, [])
+                    if len(occurrences) > 1:
+                        raise StoreOperationConflictError(
+                            f"operation {operation!r} is not unique"
+                        )
+                    position = expected + index
+                    if occurrences and occurrences[0] != (position, record):
+                        raise StoreOperationConflictError(
+                            f"operation {operation!r} was reused for a different append"
+                        )
+                    if position >= revision:
+                        break
+                    if snapshot.records[position] != record:
+                        raise StoreConflictError(
+                            f"conversation {key!r} diverged inside append batch"
+                        )
+                    receipts.append(
+                        CommitReceipt(
+                            revision=position + 1,
+                            committed_at=self._clock(),
+                            record_id=operation,
+                        )
+                    )
+                    matched += 1
+                if matched < len(durable_records) and revision != expected + matched:
+                    raise StoreConflictError(
+                        f"conversation {key!r} is at revision {revision}, "
+                        f"not {expected + matched}"
+                    )
+                appended = durable_records[matched:]
+                for offset, operation in enumerate(
+                    operations[matched:],
+                    start=matched,
+                ):
+                    receipts.append(
+                        CommitReceipt(
+                            revision=expected + offset + 1,
+                            committed_at=self._clock(),
+                            record_id=operation,
+                        )
+                    )
+                if appended:
+                    try:
+                        _append_many_unlocked(journal, appended)
+                    except Exception as exc:
+                        raise StoreCommitOutcomeUnknown(
+                            f"append batch outcome for conversation {key!r} is unknown"
+                        ) from exc
+        except (
+            StoreCommitOutcomeUnknown,
+            StoreConflictError,
+            StoreDataError,
+            StoreNotFoundError,
+            StoreOperationConflictError,
+        ):
+            raise
+        except FileNotFoundError as exc:
+            raise StoreNotFoundError(f"conversation {key!r} was not found") from exc
+        except Exception as exc:
+            raise _data_error("append batch to", key, exc) from exc
+        return ConversationBatchCommitResult(
+            receipts,
+            tuple(_source_diagnostic(item) for item in snapshot.diagnostics),
         )
 
     def _delete_sync(
@@ -526,6 +663,19 @@ def _append_unlocked(
     append_jsonl_record(
         journal.path,
         record,
+        record_codec=journal.record_codec,
+        format_profile=journal.format_profile,
+        durability=_unlocked_durability(journal),
+    )
+
+
+def _append_many_unlocked(
+    journal: JsonlJournal[HeaderT, RecordT],
+    records: Sequence[RecordT],
+) -> None:
+    append_jsonl_records(
+        journal.path,
+        records,
         record_codec=journal.record_codec,
         format_profile=journal.format_profile,
         durability=_unlocked_durability(journal),

@@ -42,6 +42,7 @@ from loushang.coding.resource_runtime import (
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.runtime_capability_admission import (
     bind_coding_capability_composition_runtime,
+    bind_coding_side_question,
 )
 from loushang.coding.sandbox import bind_coding_sandbox_runtime
 from loushang.coding.session import AgentSession
@@ -90,6 +91,7 @@ from loushang.harness.session import (
 from loushang.harness.session import (
     prepare_agent_session_services as prepare_standard_agent_session_services,
 )
+from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -338,6 +340,7 @@ def _create_agent_session(
 
     def _create_session(
         capability_runtime: CapabilityCompositionRuntime,
+        side_question_binding: LegacySideQuestionBinding | None,
         agent: Agent,
         bundle: ResourceBundle,
         extension_runner: ExtensionRunner,
@@ -412,6 +415,7 @@ def _create_agent_session(
             approval_resolver=approval_resolver,
             tool_policy_evaluator=tool_policy_evaluator,
             capability_runtime=capability_runtime,
+            side_question_binding=side_question_binding,
             sandbox_runtime=sandbox_runtime,
             lsp_runtime=lsp_runtime,
             delegated_execution_profile=delegated_execution_profile,
@@ -703,6 +707,7 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
     list_tool_definitions=lambda runner: runner.list_tool_definitions(),
     get_tool_source_info=lambda runner, name: runner.get_tool_source_info(name),
     bind_session_capabilities=bind_coding_capability_composition_runtime,
+    bind_session_side_question=bind_coding_side_question,
     product_tool_pack_id="coding.registry",
     extension_tool_pack_id="coding.extensions",
 )

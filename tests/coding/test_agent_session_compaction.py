@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 
@@ -71,6 +72,25 @@ def _assistant_message(
         error_message=error_message,
         timestamp=timestamp,
     )
+
+
+def _stream_with_final_message(
+    message: AssistantMessage,
+) -> AssistantMessageEventStream:
+    stream = AssistantMessageEventStream()
+
+    async def _feed() -> None:
+        stream.push({"type": "start", "partial": message})
+        stream.push(
+            {
+                "type": "done",
+                "reason": message.stop_reason,
+                "message": message,
+            }  # type: ignore[typeddict-item]
+        )
+
+    asyncio.create_task(_feed())
+    return stream
 
 
 def test_agent_session_compact_appends_compaction_and_rebuilds_context(
@@ -961,7 +981,7 @@ def test_agent_session_auto_compaction_uses_default_streaming_summarizer(
             reasoning=True,
             stream=True,
             input=("text",),
-            context_window=100,
+            context_window=4_096,
             max_tokens=64,
         ),
     )
@@ -999,11 +1019,11 @@ def test_agent_session_auto_compaction_uses_default_streaming_summarizer(
     assistant = _assistant_message(
         "recent reply",
         usage=Usage(
-            input=90,
-            output=5,
+            input=3_900,
+            output=100,
             cache_read=0,
             cache_write=0,
-            total_tokens=95,
+            total_tokens=4_000,
             cost={},
         ),
         timestamp=1.0,
@@ -1610,7 +1630,7 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
 def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.agent import AbortSignal, Agent
+    from loushang.agent import AbortSignal, Agent, synthetic_model_transport
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -1633,8 +1653,17 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
         )
     )
 
+    continued = asyncio.Event()
+
+    @synthetic_model_transport
+    async def recovery_stream(model, context, options=None):
+        del model, context, options
+        continued.set()
+        return _stream_with_final_message(_assistant_text_message("recovered"))
+
     session = AgentSession(
         agent=Agent(
+            stream_fn=recovery_stream,
             initial_state={
                 "system_prompt": "",
                 "model": Model(
@@ -1650,7 +1679,7 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
                     ),
                 ),
                 "thinking_level": "off",
-            }
+            },
         ),
         session_manager=manager,
         settings_manager=SettingsManager(
@@ -1673,8 +1702,15 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
         response_id=None,
         usage=_usage(),
         stop_reason="error",
-        error_message="input token count exceeds the maximum context window",
+        error_message="Provider request is too large.",
         timestamp=1.0,
+        error_info={
+            "code": "request_too_large",
+            "message": "Provider request is too large.",
+            "source": "provider",
+            "retryable": False,
+            "details": {"canonicalBytes": 900_000},
+        },
     )
 
     async def _fake_compact(**kwargs):
@@ -1689,16 +1725,6 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
         "loushang.coding.session.agent_session._execute_coding_compaction",
         _fake_compact,
     )
-    continue_runs = 0
-
-    def _continue_run() -> asyncio.Task[None]:
-        nonlocal continue_runs
-        continue_runs += 1
-        return asyncio.create_task(asyncio.sleep(0))
-
-    monkeypatch.setattr(
-        session._composition.session_runtime, "schedule_continue_run", _continue_run
-    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
@@ -1708,7 +1734,8 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
         await session._composition.session_runtime.handle_agent_event(
             {"type": "agent_end", "messages": [assistant]}, AbortSignal()
         )
-        await asyncio.sleep(0)
+        await asyncio.wait_for(continued.wait(), timeout=1)
+        await session.wait_for_idle()
 
     asyncio.run(scenario())
 
@@ -1717,7 +1744,14 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
     )
     assert compaction_end["reason"] == "overflow"
     assert compaction_end["will_retry"] is True
-    assert continue_runs == 1
+    assert any(
+        isinstance(message, AssistantMessage)
+        and any(
+            isinstance(part, TextPart) and part.text == "recovered"
+            for part in message.content
+        )
+        for message in session.agent.state.messages
+    )
 
 
 def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
@@ -1826,8 +1860,24 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
             {"type": "agent_end", "messages": [assistant]}, AbortSignal()
         )
         await asyncio.sleep(0)
+        second_assistant = AssistantMessage(
+            endpoint="test-endpoint",
+            role="assistant",
+            content=[TextPart(type="text", text="overflow after recovery")],
+            api="anthropic-messages",
+            provider="faux",
+            model="tiny-model",
+            response_id=None,
+            usage=_usage(),
+            stop_reason="error",
+            error_message="input token count exceeds the maximum context window",
+            timestamp=9_999_999_999_999.0,
+        )
         await session._composition.session_runtime.handle_agent_event(
-            {"type": "agent_end", "messages": [assistant]}, AbortSignal()
+            {"type": "message_end", "message": second_assistant}, AbortSignal()
+        )
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "agent_end", "messages": [second_assistant]}, AbortSignal()
         )
 
     asyncio.run(scenario())
@@ -1835,5 +1885,11 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
     compaction_ends = [event for event in events if event["type"] == "compaction_end"]
     assert compact_calls == 1
     assert continue_runs == 1
-    assert [event["reason"] for event in compaction_ends] == ["overflow"]
-    assert compaction_ends[-1]["result"] is not None
+    assert [event["reason"] for event in compaction_ends] == [
+        "overflow",
+        "overflow",
+    ]
+    assert compaction_ends[0]["result"] is not None
+    assert compaction_ends[0]["will_retry"] is True
+    assert compaction_ends[1]["result"] is None
+    assert compaction_ends[1]["will_retry"] is False

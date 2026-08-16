@@ -13,7 +13,7 @@ from loushang.tui import (
     RenderLine,
     RenderResult,
 )
-from loushang.tui.cell_width import truncate_to_width, wrap_cells
+from loushang.tui.cell_width import truncate_to_width, wrap_ansi, wrap_cells
 from loushang.tui.input import InputIntentKind
 from loushang.tui.theme import ThemeResolver, apply_theme_style
 
@@ -41,11 +41,15 @@ class ScreenSurfaceView(FocusableMixin):
     content: Any
     footer: str = "Enter to select - Esc to close"
     subtitle: str = ""
+    feedback: str = ""
+    feedback_hint: str = ""
     presentation: ScreenSurfacePresentation = "bottom"
     preferred_height: int | None = None
     theme: ThemeResolver | None = None
     title_theme_token: str = "surface.title"
     subtitle_theme_token: str = "surface.subtitle"
+    feedback_theme_token: str = "widget.error"
+    feedback_hint_theme_token: str = "surface.hint"
     footer_theme_token: str = "surface.footer"
     _last_content_start_row: int = field(default=0, init=False, repr=False)
     _info_scroll_offset: int = field(default=0, init=False, repr=False)
@@ -102,11 +106,18 @@ class ScreenSurfaceView(FocusableMixin):
                 )
             )
         lines.append("")
-        reserved_footer_lines = 2 if self.footer else 0
+        footer = self._footer_text()
+        feedback_lines = self._feedback_lines(width)
+        reserved_feedback_lines = len(feedback_lines) + (1 if feedback_lines else 0)
+        reserved_footer_lines = 2 if footer else 0
         body_constraints = RenderConstraints(
             width=width,
             max_height=max(
-                1, constraints.max_height - len(lines) - reserved_footer_lines
+                1,
+                constraints.max_height
+                - len(lines)
+                - reserved_feedback_lines
+                - reserved_footer_lines,
             ),
         )
         if isinstance(self.content, InfoPanel):
@@ -138,6 +149,11 @@ class ScreenSurfaceView(FocusableMixin):
                         row=cursor_row, column=result.cursor.column
                     )
         footer = self._footer_text()
+        if feedback_lines and len(lines) < constraints.max_height:
+            lines.append("")
+            lines.extend(
+                feedback_lines[: max(0, constraints.max_height - len(lines))]
+            )
         if footer and len(lines) < constraints.max_height:
             if len(lines) + 1 < constraints.max_height:
                 lines.append("")
@@ -196,6 +212,24 @@ class ScreenSurfaceView(FocusableMixin):
         if self.purpose == "info" and self._max_info_scroll_offset() > 0:
             return f"Up/Down/Page to scroll - {footer}"
         return footer
+
+    def _feedback_lines(self, width: int) -> list[str]:
+        lines: list[str] = []
+        if self.feedback:
+            lines.extend(
+                wrap_ansi(
+                    self._styled(self.feedback, self.feedback_theme_token),
+                    width=width,
+                )
+            )
+        if self.feedback_hint:
+            lines.extend(
+                wrap_ansi(
+                    self._styled(self.feedback_hint, self.feedback_hint_theme_token),
+                    width=width,
+                )
+            )
+        return lines
 
     def _styled(self, text: str, token: str) -> str:
         if self.theme is None:

@@ -73,3 +73,18 @@ def test_model_selector_surface_preserves_filter_across_scope_changes() -> None:
     assert any("model-3" in line for line in all_lines)
     assert not any("model-1" in line for line in scoped_lines[2:])
     assert not any("model-1" in line for line in all_lines[2:])
+    assert surface.footer_help == "↑/↓ choose · Enter switch · Esc keep current"
+    assert any(
+        "\x1b[1;36mSearch: " in line.text for line in all_models.lines
+    )
+
+
+def test_model_selector_surface_unfiltered_footer_matches_available_shortcuts() -> (
+    None
+):
+    surface = ModelSelectorSurface(_items(12))
+
+    assert surface.footer_help == (
+        "Type to filter · ↑/↓ choose · Enter switch · "
+        "1–9 quick select · Esc keep current"
+    )

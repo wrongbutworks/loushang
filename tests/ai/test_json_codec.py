@@ -58,10 +58,21 @@ def _assistant_message() -> AssistantMessage:
 
 
 def test_message_codec_round_trips_ai_messages() -> None:
-    message = _assistant_message()
+    message = replace(
+        _assistant_message(),
+        error_info={
+            "code": "rate_limit",
+            "message": "Provider rate limit exceeded.",
+            "source": "responses",
+            "retryable": True,
+            "requestId": "req_123",
+            "details": {},
+        },
+    )
     payload = serialize_message(message)
 
     assert payload["endpoint"] == "test-endpoint"
+    assert payload["errorInfo"]["requestId"] == "req_123"
     restored = deserialize_message(payload)
     assert restored == message
     assert isinstance(restored, AssistantMessage)

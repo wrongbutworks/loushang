@@ -137,6 +137,31 @@ class LostAppendResponseMemoryStore(MemoryConversationStore):
         return result
 
 
+class LostBatchResponseMemoryStore(MemoryConversationStore):
+    def __init__(self) -> None:
+        super().__init__(record_id=lambda record: record.record_id)
+        self.batch_calls = 0
+
+    async def append_batch(
+        self,
+        key: ConversationKey,
+        records,
+        *,
+        expected_revision: int,
+        operation_ids,
+    ):
+        self.batch_calls += 1
+        result = await super().append_batch(
+            key,
+            records,
+            expected_revision=expected_revision,
+            operation_ids=operation_ids,
+        )
+        if self.batch_calls == 1:
+            raise StoreCommitOutcomeUnknown("batch response lost")
+        return result
+
+
 class BlockingFailureMemoryStore(MemoryConversationStore):
     def __init__(self) -> None:
         super().__init__(record_id=lambda record: record.record_id)
@@ -392,6 +417,35 @@ def test_append_retries_a_lost_success_response_once_with_the_same_operation() -
         assert committed.receipt.revision == 1
         assert store.revision == 1
         assert len(store.records) == 1
+
+    asyncio.run(scenario())
+
+
+def test_batch_commit_retries_a_lost_success_response_as_one_operation_set() -> None:
+    async def scenario() -> None:
+        backend = LostBatchResponseMemoryStore()
+        store = await _create(backend, ids=_id_factory())
+        factory = AgentTranscriptRecordFactory(
+            clock=lambda: datetime(2026, 7, 16, tzinfo=UTC),
+            id_factory=iter(("batch-1", "batch-2")).__next__,
+        )
+        first = factory.create(
+            APPLICATION_MESSAGE_KIND,
+            _application("batch-1", "first"),
+            parent_id=None,
+        )
+        second = factory.create(
+            APPLICATION_MESSAGE_KIND,
+            _application("batch-2", "second"),
+            parent_id=first.record_id,
+        )
+
+        commits = await store.commit_batch((first, second))
+
+        assert backend.batch_calls == 2
+        assert tuple(commit.receipt.revision for commit in commits) == (1, 2)
+        assert store.records == (first, second)
+        assert store.revision == 2
 
     asyncio.run(scenario())
 

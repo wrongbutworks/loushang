@@ -22,8 +22,8 @@ The standard slots below are internal Binding Facets rather than one public
 Capability dependency node per slot. Resource, prompt, skill, Tool-pack, and
 Command-pack facets project through the top-level `harness.resources`
 Capability. `interaction.side_question` is semantically a `harness.session`
-facet despite its current physical binding in the standard composition
-runtime. See
+facet and is now physically bound through a focused legacy Session-owned
+binding rather than the resource composition runtime. See
 [Capability Dependency And Mount Lifecycle](../../capability-dependency-and-mount-lifecycle.md).
 
 ## Standard Slots
@@ -57,7 +57,7 @@ extension manifest / OEM configuration
   -> RuntimeProfileLayerGrant
   -> RuntimeProfileAdmissionPolicy
   -> RuntimeProfileResolver
-  -> RuntimeProfileBinder
+  -> focused RuntimeProfileBinder owner
 ```
 
 An unknown, untrusted, out-of-scope, or under-permissioned layer produces a
@@ -109,14 +109,21 @@ disposal; the bound Provider's question execution remains asynchronous.
 
 Bootstrap still uses the Product baseline mechanisms while resources and
 Extensions are discovered. `AgentProductConstructionBinding` then transfers
-ownership to the final Session capability runtime and disposes the bootstrap
-binding. The late-bound side-question choice is auxiliary rather than
-continuity-critical: persisted `capabilityProfile` metadata omits this slot,
-while the live selected provenance is exposed by `session.capability_profile`.
+ownership to the final Session resource runtime, transfers the separately
+selected side-question binding to that Session, and disposes the bootstrap
+resource binding. Session shutdown joins an active side question before
+disposing its selected Provider factory. The late-bound side-question choice is
+auxiliary rather than continuity-critical: persisted `capabilityProfile`
+metadata omits this slot, while the live selected provenance is exposed by
+`session.capability_profile`.
 
-This describes the current implementation, including construction of separate
-bootstrap and final composition bindings when Coding enables late Session
-capability admission. It is not the accepted final Mount lifecycle.
+The source-complete `harness.resources` Definition, Provider, requirements, and
+focused Consumers now map the five resource facets into one
+Session/bootstrap/sealed Bundle. The Provider computes a deterministic
+construction fingerprint and may use a private Profile Binder, but CLA3 does
+not production-mount it. Existing bootstrap/final resource composition remains
+the live compatibility path until the atomic CLA4 cutover; content-only calls
+do not change the prospective Mount identity.
 
 ## Accepted Incremental Finalization Target
 

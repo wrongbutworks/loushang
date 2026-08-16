@@ -154,6 +154,21 @@ from loushang.harness.capabilities.provider_binding import (
 from loushang.harness.capabilities.providers import (
     CapabilityBundleProvider as CapabilityBundleProvider,
 )
+from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_ACTIVATION_REQUIREMENT as RESOURCES_ACTIVATION_REQUIREMENT,
+)
+from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_CAPABILITY_DEFINITION as RESOURCES_CAPABILITY_DEFINITION,
+)
+from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_COMMAND_PACK_REQUIREMENT as RESOURCES_COMMAND_PACK_REQUIREMENT,
+)
+from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_PROMPT_REQUIREMENT as RESOURCES_PROMPT_REQUIREMENT,
+)
+from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_TOOL_PACK_REQUIREMENT as RESOURCES_TOOL_PACK_REQUIREMENT,
+)
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION as WORKSPACE_CAPABILITY_DEFINITION,
 )
@@ -207,6 +222,11 @@ __all__ = [
     "RegistrationInventoryEntry",
     "RegistrationInventorySnapshot",
     "RegistrationExplanation",
+    "RESOURCES_ACTIVATION_REQUIREMENT",
+    "RESOURCES_CAPABILITY_DEFINITION",
+    "RESOURCES_COMMAND_PACK_REQUIREMENT",
+    "RESOURCES_PROMPT_REQUIREMENT",
+    "RESOURCES_TOOL_PACK_REQUIREMENT",
     "RuntimeCapabilityGraphBinder",
     "RuntimeCapabilityGraphPlan",
     "RuntimeCapabilityGraphPlanner",

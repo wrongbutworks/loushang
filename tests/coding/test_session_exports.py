@@ -595,6 +595,7 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
 
 def test_product_transcript_dispositions_cover_every_standard_kind() -> None:
     from loushang.harness.transcript import (
+        MODEL_CALL_OUTCOME_KIND,
         MODEL_INPUT_COMPONENT_KIND,
         MODEL_INPUT_PREPARED_KIND,
         STANDARD_AGENT_TRANSCRIPT_KINDS,
@@ -611,6 +612,8 @@ def test_product_transcript_dispositions_cover_every_standard_kind() -> None:
     assert set(STANDARD_AGENT_HISTORY_DISPOSITIONS) == expected
     assert STANDARD_AGENT_HISTORY_DISPOSITIONS[MODEL_INPUT_COMPONENT_KIND] == "hidden"
     assert STANDARD_AGENT_HISTORY_DISPOSITIONS[MODEL_INPUT_PREPARED_KIND] == "hidden"
+    assert STANDARD_AGENT_HISTORY_DISPOSITIONS[MODEL_CALL_OUTCOME_KIND] == "hidden"
+    assert HTML_TRANSCRIPT_DISPOSITIONS[MODEL_CALL_OUTCOME_KIND] == "hidden"
 
 
 def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(

@@ -418,6 +418,9 @@ def test_event_stream_result_raises_typed_error_for_error_terminal() -> None:
     message = asyncio.run(stream.final_message())
     assert message.stop_reason == "error"
     assert message.error_message == "Provider rate limit exceeded."
+    assert message.error_info is not None
+    assert message.error_info["code"] == "rate_limit"
+    assert message.error_info["requestId"] == "req_123"
     assert message.endpoint == "test-endpoint"
 
 

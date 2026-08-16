@@ -2,9 +2,10 @@
 
 ## Status
 
-Status: implemented PR8 boundary. The acceptance matrix is enforced by the
-Session Model Input, Agent-loop, transcript lineage, lifecycle, and architecture
-tests referenced below.
+Status: implemented PR8 boundary with the CLA2 Session-owned Graph authority
+refinement. The acceptance matrix is enforced by the Session Model Input,
+Agent-loop, transcript lineage, lifecycle, and architecture tests referenced
+below.
 
 The implementation uses the Session-scoped `harness.model_input` Definition,
 Provider, and Consumer; Agent's per-sampling `prepare_model_call` seam; and AI's
@@ -38,6 +39,20 @@ The following authorities remain separate:
 No combined mutable authority is added. In particular, a Model Input snapshot
 references Profile, Mount, and registration clocks; it does not publish or
 repair those clocks.
+
+The Session composition root is the sole live graph owner. It creates one
+`RuntimeCapabilityGraphRuntime`, one existing Binder, and one read-only
+Projector for the Session runtime ID. It also owns the bind lock, captured
+model-input Consumer, and final graph disposal. `SessionModelCallRuntime` is a
+non-owning adapter: it receives one typed, idempotent Consumer-acquisition port
+and the read-only Projector. It cannot plan, bind, dispose, or obtain the graph
+runtime itself.
+
+Both lifecycle `prepare_session` and the direct first-sampling path converge on
+that same Consumer-acquisition port. Successful preparation installs one
+captured facet lease; repeated preparation reuses it. Binding failure publishes
+no Mount, and candidate Session disposal removes only the preparer installed by
+that Session and closes its private graph.
 
 ## Session And Candidate-Graph Nesting
 
@@ -99,7 +114,8 @@ provides a per-sampling factory or equivalent narrow adapter that:
 
 1. runs after Agent context transformation and Tool projection;
 2. captures the current transcript leaf and revision;
-3. captures the current committed Profile/Mount/registration references;
+3. captures the current Profile fingerprint and committed Mount/registration
+   references as separate facts;
 4. assigns an explicit invocation purpose;
 5. creates a fresh `ModelInputTranscriptCommitter` for the logical input; and
 6. injects that committer into AI's existing `CallOptions` before calling the
@@ -109,10 +125,22 @@ AI still prepares the final provider payload, invokes the committer, checks
 cancellation, and begins transport. Harness never reconstructs provider
 payloads and AI never imports Harness.
 
+The current Profile fingerprint is supplied explicitly by the Session
+composition root at each sampling boundary. It is not inferred from
+`MountGraphSnapshot.profile_fingerprint`: that Mount field records the Profile
+fact used to assemble the committed Mount and may legitimately lag a later
+turn-boundary Profile refresh. Mount and Registration must still reference the
+same graph ID, runtime ID, and Mount generation or Model Input creation fails
+before transcript write and transport. Diagnostics report Profile/Mount skew;
+the writer never fabricates a replacement Mount generation to hide it.
+
 One AI provider retry retains its `invocation_id` and increments
 `PreparedModelRequest.attempt`; the same per-sampling committer records each
-prepared attempt. A Product-level retry or a later Tool/queue continuation is
-a new logical sampling invocation with a new committer and invocation ID.
+prepared attempt. After the AI retry loop terminates, the committer records one
+separate hidden logical outcome linked to the complete ordered attempt sequence;
+it never writes a terminal state back into a prepared snapshot. A Product-level
+retry or a later Tool/queue continuation is a new logical sampling invocation
+with a new committer and invocation ID.
 
 ## Model-Call Inventory
 
@@ -201,6 +229,13 @@ legacy Session.
 
 - standalone AI and Agent calls without a committer remain supported and keep
   importing no Harness modules;
+- direct callers of `ModelInputRuntimeReferences.from_snapshots` that omit the
+  additive Profile argument retain the legacy Mount-profile default; every
+  Harness-managed Product call supplies the current Profile explicitly;
+- the lazy public model-call symbols remain importable, but their constructors
+  no longer offer an owning-graph mode: Product composition must inject the
+  typed Consumer-acquisition and read-only projection ports, because preserving
+  the old ownership path would recreate the peer Graph authority CLA2 removes;
 - synthetic Product tests may opt out of durable closure explicitly, but a
   durable Product profile may not silently downgrade because a custom stream
   was supplied; Agent checks the actual transport at every sampling boundary,
@@ -232,6 +267,15 @@ PR8 is complete only when deterministic tests prove:
   transport calls; and
 - Session replacement/shutdown cannot expose a candidate graph early or leave
   an owned model-call task using disposed registrations.
+
+CLA2 ownership evidence remains
+`tests/harness/session/test_agent_product_contract.py::test_agent_product_sessions_keep_compaction_strategy_and_state_isolated`,
+failure cleanup evidence remains
+`tests/harness/session/test_agent_product_contract.py::test_failed_graph_preparation_is_disposed_without_leaving_agent_boundary`,
+explicit current-Profile evidence remains
+`tests/harness/session/test_agent_product_contract.py::test_product_model_input_reads_profile_after_turn_boundary_refresh`,
+and the non-owning adapter gate remains
+`tests/architecture/test_session_model_call_closure_contract.py::test_cla2_model_call_runtime_cannot_plan_bind_or_own_the_graph`.
 
 Existing one-turn evidence remains
 `tests/harness/transcript/test_model_input.py::test_main_agent_turn_rebuilds_after_restart_and_source_deletion`

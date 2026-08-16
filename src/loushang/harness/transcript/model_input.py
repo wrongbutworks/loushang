@@ -5,13 +5,17 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import cast
 from uuid import uuid4
 
 from loushang.ai.prepared_request import (
+    FrozenJSONValue,
+    PreparedModelCallOutcome,
+    PreparedModelCallOutcomeRecorder,
     PreparedModelRequest,
     PreparedRequestCommitter,
+    PreparedRequestMetrics,
 )
 from loushang.foundation.json import JSONValue
 from loushang.harness.capabilities import (
@@ -22,9 +26,9 @@ from loushang.harness.transcript.kinds import (
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
 )
+from loushang.harness.transcript.model_call_types import ModelCallOutcome
 from loushang.harness.transcript.model_input_types import (
     MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
-    FrozenModelInputValue,
     ModelInputComponent,
     ModelInputComponentReference,
     ModelInputIntegrityError,
@@ -33,6 +37,14 @@ from loushang.harness.transcript.model_input_types import (
     freeze_model_input_json,
     hash_model_input_json,
     thaw_model_input_json,
+)
+from loushang.harness.transcript.model_input_v2 import (
+    ModelInputV2Resolver,
+    ModelInputV2Writer,
+)
+from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_PAYLOAD_VERSION,
+    ModelInputSnapshotV2,
 )
 from loushang.harness.transcript.unit_of_work import AgentTranscriptUnitOfWork
 
@@ -87,6 +99,8 @@ class ModelInputRuntimeReferences:
         cls,
         graph: MountGraphSnapshot,
         registrations: RegistrationInventorySnapshot,
+        *,
+        profile_fingerprint: str | None = None,
     ) -> ModelInputRuntimeReferences:
         if not isinstance(graph, MountGraphSnapshot):
             raise TypeError("Model Input requires a committed MountGraphSnapshot")
@@ -95,7 +109,9 @@ class ModelInputRuntimeReferences:
                 "Model Input requires a committed RegistrationInventorySnapshot"
             )
         if graph.schema_version != 1 or registrations.schema_version != 1:
-            raise ValueError("Model Input does not support this runtime snapshot version")
+            raise ValueError(
+                "Model Input does not support this runtime snapshot version"
+            )
         if (
             registrations.graph_id != graph.graph_id
             or registrations.runtime_id != graph.runtime_id
@@ -106,7 +122,11 @@ class ModelInputRuntimeReferences:
             product_id=graph.product_id,
             runtime_id=graph.runtime_id,
             mount_generation=graph.generation,
-            profile_fingerprint=graph.profile_fingerprint,
+            profile_fingerprint=(
+                graph.profile_fingerprint
+                if profile_fingerprint is None
+                else profile_fingerprint
+            ),
             registration_revision=registrations.revision,
         )
 
@@ -137,7 +157,7 @@ class ModelInputCommitResult:
 
 @dataclass(frozen=True)
 class RebuiltModelInput:
-    snapshot: ModelInputSnapshot
+    snapshot: ModelInputSnapshot | ModelInputSnapshotV2
     commit_revision: int
     logical_input: dict[str, JSONValue]
     prepared_payload: dict[str, JSONValue]
@@ -158,7 +178,10 @@ class ModelInputReconstructionVerification:
         return self.logical_input_matches and self.prepared_payload_matches
 
 
-class ModelInputTranscriptCommitter(PreparedRequestCommitter):
+class ModelInputTranscriptCommitter(
+    PreparedRequestCommitter,
+    PreparedModelCallOutcomeRecorder,
+):
     """AI commit-port implementation over one authoritative transcript."""
 
     def __init__(
@@ -200,8 +223,10 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
         self._max_encoded_record_bytes = max_encoded_record_bytes
         self._expected_revision = transcript.revision
         self._expected_leaf_id = transcript.leaf_id
-        self._component_records = _index_components(transcript.active_path())
         self._commits: list[ModelInputCommitResult] = []
+        self._invocation_id: str | None = None
+        self._latest_metrics: PreparedRequestMetrics | None = None
+        self._outcome_recorded = False
         self._lock = asyncio.Lock()
 
     @property
@@ -213,23 +238,41 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
         request: PreparedModelRequest,
     ) -> None:
         async with self._lock:
+            if self._outcome_recorded:
+                raise ModelInputIntegrityError(
+                    "Model Input attempt cannot follow its terminal outcome"
+                )
             self._require_current_transcript()
+            invocation_id = _prepared_text(request, "invocation_id")
+            if self._invocation_id is None:
+                self._invocation_id = invocation_id
+            elif self._invocation_id != invocation_id:
+                raise ModelInputIntegrityError(
+                    "Model Input attempts changed logical invocation identity"
+                )
             prepared_payload, model_visible_headers, canonical = (
                 _validate_prepared_request(request)
             )
+            self._latest_metrics = request.metrics
             logical_input = cast(
                 dict[str, JSONValue],
                 thaw_model_input_json(self._context.logical_input),
             )
-            logical_references = await self._materialize_mapping(logical_input)
-            prepared_references = await self._materialize_mapping(prepared_payload)
-            headers_reference = await self._materialize_component(
-                "model_visible_headers",
-                model_visible_headers,
+            materialization = await ModelInputV2Writer(
+                transcript=self._transcript,
+                expected_revision=self._expected_revision,
+                expected_leaf_id=self._expected_leaf_id,
+                max_encoded_record_bytes=self._max_encoded_record_bytes,
+            ).materialize(
+                logical_input=logical_input,
+                prepared_payload=prepared_payload,
+                model_visible_headers=model_visible_headers,
             )
-            snapshot = ModelInputSnapshot(
+            self._expected_revision = materialization.expected_revision
+            self._expected_leaf_id = materialization.expected_leaf_id
+            snapshot = ModelInputSnapshotV2(
                 snapshot_id=str(uuid4()),
-                invocation_id=_prepared_text(request, "invocation_id"),
+                invocation_id=invocation_id,
                 attempt=_prepared_positive_int(request, "attempt"),
                 purpose=self._context.purpose,
                 product_id=self._runtime.product_id,
@@ -245,9 +288,9 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
                 model_id=_prepared_text(request, "model_id"),
                 api_id=_prepared_text(request, "api"),
                 endpoint_id=_prepared_text(request, "endpoint_id"),
-                logical_components=logical_references,
-                prepared_payload_components=prepared_references,
-                model_visible_headers_component=headers_reference,
+                logical_root=materialization.logical_root,
+                prepared_payload_root=materialization.prepared_payload_root,
+                model_visible_headers_root=(materialization.model_visible_headers_root),
                 logical_input_hash=hash_model_input_json(
                     logical_input,
                     name="Model Input logical projection",
@@ -277,6 +320,11 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
                     "Model Input snapshot commit revision changed"
                 )
             self._advance(commit.record.record_id, receipt.revision)
+            rebuilt = rebuild_model_input(self._transcript, snapshot.snapshot_id)
+            if rebuilt.canonical_prepared_payload != canonical:
+                raise ModelInputIntegrityError(
+                    "committed Model Input v2 prepared payload changed"
+                )
             self._commits.append(
                 ModelInputCommitResult(
                     snapshot_id=snapshot.snapshot_id,
@@ -286,60 +334,40 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
                 )
             )
 
-    async def _materialize_mapping(
+    async def record_model_call_outcome(
         self,
-        value: Mapping[str, JSONValue],
-    ) -> tuple[ModelInputComponentReference, ...]:
-        references: list[ModelInputComponentReference] = []
-        for name, content in value.items():
-            references.append(await self._materialize_component(name, content))
-        return tuple(references)
-
-    async def _materialize_component(
-        self,
-        name: str,
-        content: object,
-    ) -> ModelInputComponentReference:
-        content_hash = hash_model_input_json(content, name=f"Model Input {name}")
-        existing = self._component_records.get(content_hash)
-        if existing is not None:
-            record_id, existing_content = existing
-            if canonical_model_input_json(
-                existing_content,
-                name="stored Model Input component",
-            ) != canonical_model_input_json(content, name=f"Model Input {name}"):
-                raise ModelInputIntegrityError("Model Input component hash collision")
-            return ModelInputComponentReference(
-                name=name,
-                record_id=record_id,
-                content_hash=content_hash,
+        outcome: PreparedModelCallOutcome,
+    ) -> None:
+        async with self._lock:
+            if self._outcome_recorded:
+                raise ModelInputIntegrityError(
+                    "model call invocation already has a terminal outcome"
+                )
+            self._require_current_transcript()
+            if self._invocation_id is None:
+                self._invocation_id = outcome.invocation_id
+            elif self._invocation_id != outcome.invocation_id:
+                raise ModelInputIntegrityError(
+                    "model call outcome changed logical invocation identity"
+                )
+            fact = ModelCallOutcome.from_prepared_outcome(
+                _outcome_with_request_metrics(outcome, self._latest_metrics),
+                model_input_snapshot_ids=tuple(
+                    commit.snapshot_id for commit in self._commits
+                ),
             )
-
-        component = ModelInputComponent(
-            content_hash=content_hash,
-            content=freeze_model_input_json(content, name=f"Model Input {name}"),
-        )
-        commit = await self._transcript.append_model_input_component(
-            component,
-            max_encoded_record_bytes=self._max_encoded_record_bytes,
-            expected_revision=self._expected_revision,
-            expected_leaf_id=self._expected_leaf_id,
-        )
-        receipt = commit.receipt
-        if receipt is None:
-            raise ModelInputIntegrityError(
-                "Model Input component did not reach the authoritative Store"
+            commit = await self._transcript.append_model_call_outcome(
+                fact,
+                expected_revision=self._expected_revision,
+                expected_leaf_id=self._expected_leaf_id,
             )
-        self._advance(commit.record.record_id, receipt.revision)
-        self._component_records[content_hash] = (
-            commit.record.record_id,
-            component.content,
-        )
-        return ModelInputComponentReference(
-            name=name,
-            record_id=commit.record.record_id,
-            content_hash=content_hash,
-        )
+            receipt = commit.receipt
+            if receipt is None:
+                raise ModelInputIntegrityError(
+                    "model call outcome did not reach the authoritative Store"
+                )
+            self._advance(commit.record.record_id, receipt.revision)
+            self._outcome_recorded = True
 
     def _require_current_transcript(self) -> None:
         if (
@@ -353,6 +381,32 @@ class ModelInputTranscriptCommitter(PreparedRequestCommitter):
     def _advance(self, record_id: str, revision: int) -> None:
         self._expected_leaf_id = record_id
         self._expected_revision = revision
+
+
+def _outcome_with_request_metrics(
+    outcome: PreparedModelCallOutcome,
+    metrics: PreparedRequestMetrics | None,
+) -> PreparedModelCallOutcome:
+    if outcome.disposition != "failed" or outcome.error_info is None or metrics is None:
+        return outcome
+    error_info = dict(outcome.error_info)
+    raw_details = error_info.get("details")
+    details = dict(raw_details) if isinstance(raw_details, Mapping) else {}
+    details.setdefault("canonicalBytes", metrics.canonical_bytes)
+    if metrics.estimated_wire_bytes is not None:
+        details.setdefault("estimatedWireBytes", metrics.estimated_wire_bytes)
+    if metrics.message_bytes is not None:
+        details.setdefault("messageBytes", metrics.message_bytes)
+    details.setdefault("messageCount", metrics.message_count)
+    details.setdefault("imageBytes", metrics.image_bytes)
+    details.setdefault("toolSchemaBytes", metrics.tool_schema_bytes)
+    if metrics.estimated_input_tokens is not None:
+        details.setdefault("estimatedInputTokens", metrics.estimated_input_tokens)
+    error_info["details"] = details
+    return replace(
+        outcome,
+        error_info=cast(Mapping[str, FrozenJSONValue], error_info),
+    )
 
 
 def rebuild_model_input(
@@ -384,7 +438,7 @@ def _rebuild_model_input(
         record
         for record in transcript.records
         if record.kind == MODEL_INPUT_PREPARED_KIND
-        and isinstance(record.payload, ModelInputSnapshot)
+        and isinstance(record.payload, ModelInputSnapshot | ModelInputSnapshotV2)
         and record.payload.snapshot_id == snapshot_id
     ]
     if len(matches) != 1:
@@ -392,14 +446,24 @@ def _rebuild_model_input(
             f"Model Input snapshot {snapshot_id!r} is not uniquely available"
         )
     snapshot_record = matches[0]
-    snapshot = cast(ModelInputSnapshot, snapshot_record.payload)
+    snapshot = cast(ModelInputSnapshot | ModelInputSnapshotV2, snapshot_record.payload)
+    expected_payload_version = (
+        MODEL_INPUT_V2_PAYLOAD_VERSION
+        if isinstance(snapshot, ModelInputSnapshotV2)
+        else 1
+    )
+    if snapshot_record.payload_version != expected_payload_version:
+        raise ModelInputIntegrityError(
+            "Model Input snapshot uses the wrong payload version"
+        )
     # Forks preserve historical records byte-for-byte.  The conversation id on
     # the fact is therefore provenance for the conversation that created it,
     # while reachability in this transcript is proved by the parent-linked
     # record graph below.
+    ancestry = transcript.records_to(snapshot_record.record_id)
     ancestors = {
         record.record_id: record
-        for record in transcript.records_to(snapshot_record.record_id)
+        for record in ancestry
         if record.record_id != snapshot_record.record_id
     }
     if snapshot.source_leaf_id not in ancestors:
@@ -418,22 +482,31 @@ def _rebuild_model_input(
             or source_record_revision > snapshot.source_revision
         ):
             raise ModelInputIntegrityError("Model Input origin revision is invalid")
-    logical_input = _rebuild_mapping(snapshot.logical_components, ancestors)
+    if isinstance(snapshot, ModelInputSnapshotV2):
+        rebuilt_v2 = ModelInputV2Resolver(ancestry).rebuild_snapshot(
+            snapshot_record,
+            snapshot,
+        )
+        logical_input = rebuilt_v2.logical_input
+        prepared_payload = rebuilt_v2.prepared_payload
+        model_visible_headers = rebuilt_v2.model_visible_headers
+    else:
+        logical_input = _rebuild_mapping(snapshot.logical_components, ancestors)
+        prepared_payload = _rebuild_mapping(
+            snapshot.prepared_payload_components,
+            ancestors,
+        )
+        raw_headers = _component_content(
+            snapshot.model_visible_headers_component,
+            ancestors,
+        )
+        if not isinstance(raw_headers, dict) or any(
+            not isinstance(name, str) or not isinstance(value, str)
+            for name, value in raw_headers.items()
+        ):
+            raise ModelInputIntegrityError("model-visible headers are not string pairs")
+        model_visible_headers = cast(dict[str, str], raw_headers)
     _validate_rebuilt_logical_input(logical_input)
-    prepared_payload = _rebuild_mapping(
-        snapshot.prepared_payload_components,
-        ancestors,
-    )
-    raw_headers = _component_content(
-        snapshot.model_visible_headers_component,
-        ancestors,
-    )
-    if not isinstance(raw_headers, dict) or any(
-        not isinstance(name, str) or not isinstance(value, str)
-        for name, value in raw_headers.items()
-    ):
-        raise ModelInputIntegrityError("model-visible headers are not string pairs")
-    model_visible_headers = cast(dict[str, str], raw_headers)
     canonical_prepared = canonical_model_input_json(
         {
             "model_visible_headers": model_visible_headers,
@@ -490,9 +563,8 @@ def _component_content(
         raise ModelInputIntegrityError(
             "Model Input component is outside snapshot ancestry"
         )
-    if (
-        getattr(record, "kind", None) != MODEL_INPUT_COMPONENT_KIND
-        or not isinstance(getattr(record, "payload", None), ModelInputComponent)
+    if getattr(record, "kind", None) != MODEL_INPUT_COMPONENT_KIND or not isinstance(
+        getattr(record, "payload", None), ModelInputComponent
     ):
         raise ModelInputIntegrityError(
             "Model Input component reference does not target a component fact"
@@ -509,39 +581,7 @@ def _validate_rebuilt_logical_input(value: Mapping[str, JSONValue]) -> None:
     if not isinstance(value.get("tools"), list):
         raise ModelInputIntegrityError("Model Input tools must be an array")
     if not isinstance(value.get("request_options"), dict):
-        raise ModelInputIntegrityError(
-            "Model Input request options must be an object"
-        )
-
-
-def _index_components(
-    records: tuple[object, ...],
-) -> dict[str, tuple[str, FrozenModelInputValue]]:
-    indexed: dict[str, tuple[str, FrozenModelInputValue]] = {}
-    for record in records:
-        if (
-            getattr(record, "kind", None) != MODEL_INPUT_COMPONENT_KIND
-            or not isinstance(getattr(record, "payload", None), ModelInputComponent)
-        ):
-            continue
-        component = cast(ModelInputComponent, getattr(record, "payload"))
-        record_id = getattr(record, "record_id", None)
-        if not isinstance(record_id, str):
-            raise ModelInputIntegrityError("Model Input component record id is invalid")
-        existing = indexed.get(component.content_hash)
-        if existing is not None and canonical_model_input_json(
-            existing[1],
-            name="stored Model Input component",
-        ) != canonical_model_input_json(
-            component.content,
-            name="stored Model Input component",
-        ):
-            raise ModelInputIntegrityError("stored Model Input component hash collision")
-        indexed.setdefault(
-            component.content_hash,
-            (record_id, component.content),
-        )
-    return indexed
+        raise ModelInputIntegrityError("Model Input request options must be an object")
 
 
 def _validate_prepared_request(

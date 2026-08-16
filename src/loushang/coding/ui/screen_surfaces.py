@@ -26,8 +26,10 @@ from loushang.harnesstui.surface.workflow import (
 )
 
 _CODING_MODEL_SELECTOR_PROFILE = SessionModelSelectorSurfaceProfile(
-    subtitle="Access legacy models by running loushang --model <provider:model>.",
-    footer="  Press number or enter to confirm or esc to go back",
+    subtitle=(
+        "Choose a model for this session · legacy: "
+        "loushang --model <provider:model>"
+    ),
     presentation="bottom-exclusive",
 )
 

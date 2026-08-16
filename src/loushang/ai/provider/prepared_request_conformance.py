@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 from loushang.ai.context import NormalizedContext
-from loushang.ai.errors import AIProviderError
+from loushang.ai.errors import AIError
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions
 from loushang.ai.prepared_request import (
@@ -24,7 +24,7 @@ class PreparedRequestBarrierConformanceReport:
     events: tuple[str, ...]
     prepared_requests: tuple[PreparedModelRequest, ...]
     transport_calls: int
-    error: AIProviderError | None = field(default=None, repr=False)
+    error: AIError | None = field(default=None, repr=False)
 
     @property
     def commit_completed(self) -> bool:
@@ -116,10 +116,10 @@ async def run_prepared_request_barrier_conformance(
         invocation_id="prepared-request-conformance",
     )
     stream = await call_api_adapter_stream(adapter, request)
-    error: AIProviderError | None = None
+    error: AIError | None = None
     try:
         await stream.result()
-    except AIProviderError as exc:
+    except AIError as exc:
         error = exc
 
     report = PreparedRequestBarrierConformanceReport(
