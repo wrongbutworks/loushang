@@ -6,13 +6,18 @@ from collections.abc import AsyncIterator
 import pytest
 
 from loushang.ai.context import NormalizedContext
-from loushang.ai.errors import AICancelledError, AIProviderError
+from loushang.ai.errors import (
+    AICancelledError,
+    AIProviderError,
+    AIRequestTooLargeError,
+)
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.prepared_request import (
     PreparedModelCallOutcome,
     PreparedModelRequest,
     PreparedRequestAdapter,
+    PreparedRequestLimits,
 )
 from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
 from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
@@ -176,6 +181,67 @@ def test_prepared_model_request_is_canonical_and_deeply_immutable() -> None:
         prepared.payload["messages"][0]["content"] = "changed"  # type: ignore[index]
 
 
+def test_prepared_model_request_measures_messages_tools_and_images() -> None:
+    prepared = PreparedModelRequest.from_provider_request(
+        _request(invocation_id="invocation-metrics"),
+        payload={
+            "messages": [
+                {"role": "user", "content": "hello"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": "aW1hZ2UtYnl0ZXM=",
+                            },
+                        }
+                    ],
+                },
+            ],
+            "tools": [{"name": "lookup", "input_schema": {"type": "object"}}],
+            "model": "faux-model",
+        },
+        estimated_wire_bytes=2_000,
+        estimated_input_tokens=100,
+    )
+
+    metrics = prepared.metrics
+    assert metrics.canonical_bytes == len(prepared.canonical_payload.encode("utf-8"))
+    assert metrics.estimated_wire_bytes == 2_000
+    assert metrics.message_bytes is not None
+    assert metrics.message_bytes > metrics.image_bytes
+    assert metrics.message_count == 2
+    assert metrics.image_bytes == len(b"image-bytes")
+    assert metrics.tool_schema_bytes > 0
+    assert metrics.estimated_input_tokens == 100
+
+
+def test_prepared_model_request_measures_openai_data_url_image() -> None:
+    prepared = PreparedModelRequest.from_provider_request(
+        _request(invocation_id="invocation-data-url"),
+        payload={
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_image",
+                            "image_url": "data:image/png;base64,aW1hZ2UtYnl0ZXM=",
+                        }
+                    ],
+                }
+            ],
+            "model": "faux-model",
+        },
+    )
+
+    assert prepared.metrics.message_count == 1
+    assert prepared.metrics.image_bytes == len(b"image-bytes")
+
+
 def test_transport_preserves_adapter_payload_key_order() -> None:
     prepared = PreparedModelRequest.from_provider_request(
         _request(invocation_id="invocation-order"),
@@ -299,6 +365,43 @@ def test_prepared_barrier_commits_before_each_retry_transport() -> None:
     assert [request.attempt for request in committer.requests] == [1, 2]
     assert len({request.invocation_id for request in committer.requests}) == 1
     assert len({request.payload_hash for request in committer.requests}) == 1
+
+
+def test_capacity_preflight_rejects_before_commit_and_transport() -> None:
+    async def _run() -> tuple[
+        _PreparedAdapter,
+        _OutcomeRecordingCommitter,
+        AIRequestTooLargeError,
+    ]:
+        committer = _OutcomeRecordingCommitter()
+        adapter = _PreparedAdapter(committer.events)
+        stream = await call_api_adapter_stream(
+            adapter,
+            _request(
+                options=CallOptions(
+                    request_limits=PreparedRequestLimits(max_canonical_bytes=1),
+                    prepared_request_committer=committer,
+                )
+            ),
+        )
+        with pytest.raises(AIRequestTooLargeError) as exc_info:
+            await stream.result()
+        return adapter, committer, exc_info.value
+
+    adapter, committer, error = asyncio.run(_run())
+
+    assert adapter.transport_calls == 0
+    assert committer.requests == []
+    assert committer.events == ["outcome:failed"]
+    assert error.info.code.value == "request_too_large"
+    assert error.info.retryable is False
+    assert error.info.details["capacityMetric"] == "canonicalBytes"
+    assert error.info.details["capacityMaximum"] == 1
+    assert len(committer.outcomes) == 1
+    outcome = committer.outcomes[0]
+    assert outcome.disposition == "failed"
+    assert outcome.error_info is not None
+    assert outcome.error_info["code"] == "request_too_large"
 
 
 def test_outcome_recorder_runs_once_after_all_internal_provider_retries() -> None:

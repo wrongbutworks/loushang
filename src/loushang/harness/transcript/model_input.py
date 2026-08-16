@@ -5,15 +5,17 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import cast
 from uuid import uuid4
 
 from loushang.ai.prepared_request import (
+    FrozenJSONValue,
     PreparedModelCallOutcome,
     PreparedModelCallOutcomeRecorder,
     PreparedModelRequest,
     PreparedRequestCommitter,
+    PreparedRequestMetrics,
 )
 from loushang.foundation.json import JSONValue
 from loushang.harness.capabilities import (
@@ -223,6 +225,7 @@ class ModelInputTranscriptCommitter(
         self._expected_leaf_id = transcript.leaf_id
         self._commits: list[ModelInputCommitResult] = []
         self._invocation_id: str | None = None
+        self._latest_metrics: PreparedRequestMetrics | None = None
         self._outcome_recorded = False
         self._lock = asyncio.Lock()
 
@@ -250,6 +253,7 @@ class ModelInputTranscriptCommitter(
             prepared_payload, model_visible_headers, canonical = (
                 _validate_prepared_request(request)
             )
+            self._latest_metrics = request.metrics
             logical_input = cast(
                 dict[str, JSONValue],
                 thaw_model_input_json(self._context.logical_input),
@@ -347,7 +351,7 @@ class ModelInputTranscriptCommitter(
                     "model call outcome changed logical invocation identity"
                 )
             fact = ModelCallOutcome.from_prepared_outcome(
-                outcome,
+                _outcome_with_request_metrics(outcome, self._latest_metrics),
                 model_input_snapshot_ids=tuple(
                     commit.snapshot_id for commit in self._commits
                 ),
@@ -377,6 +381,32 @@ class ModelInputTranscriptCommitter(
     def _advance(self, record_id: str, revision: int) -> None:
         self._expected_leaf_id = record_id
         self._expected_revision = revision
+
+
+def _outcome_with_request_metrics(
+    outcome: PreparedModelCallOutcome,
+    metrics: PreparedRequestMetrics | None,
+) -> PreparedModelCallOutcome:
+    if outcome.disposition != "failed" or outcome.error_info is None or metrics is None:
+        return outcome
+    error_info = dict(outcome.error_info)
+    raw_details = error_info.get("details")
+    details = dict(raw_details) if isinstance(raw_details, Mapping) else {}
+    details.setdefault("canonicalBytes", metrics.canonical_bytes)
+    if metrics.estimated_wire_bytes is not None:
+        details.setdefault("estimatedWireBytes", metrics.estimated_wire_bytes)
+    if metrics.message_bytes is not None:
+        details.setdefault("messageBytes", metrics.message_bytes)
+    details.setdefault("messageCount", metrics.message_count)
+    details.setdefault("imageBytes", metrics.image_bytes)
+    details.setdefault("toolSchemaBytes", metrics.tool_schema_bytes)
+    if metrics.estimated_input_tokens is not None:
+        details.setdefault("estimatedInputTokens", metrics.estimated_input_tokens)
+    error_info["details"] = details
+    return replace(
+        outcome,
+        error_info=cast(Mapping[str, FrozenJSONValue], error_info),
+    )
 
 
 def rebuild_model_input(

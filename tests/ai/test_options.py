@@ -83,6 +83,7 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "reasoning",
         "tool_choice",
         "output",
+        "request_limits",
         "prepared_request_committer",
     )
 
@@ -105,6 +106,7 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "reasoning",
         "tool_choice",
         "output",
+        "request_limits",
     }
     assert {
         "signal",
@@ -134,6 +136,8 @@ def test_call_options_rejects_invalid_non_auth_fields() -> None:
         CallOptions(cache_key="   ")
     with pytest.raises(ValueError, match="control characters"):
         CallOptions(cache_key="cache\nkey")
+    with pytest.raises(TypeError, match="request_limits"):
+        CallOptions(request_limits=object())  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

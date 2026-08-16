@@ -20,7 +20,8 @@ diagnostics. Local prepared-request validation errors are no longer relabeled
 as Provider errors, and `ModelInputRecordSizeError` is typed as request
 validation. MIR2 and MIR3 have since landed locally, and the first MIR4 slice
 now records terminal logical invocation outcomes without removing per-attempt
-prepared snapshots.
+prepared snapshots. The first MIR5 slice now measures every frozen request and
+supports explicit capacity limits before Model Input commit and transport.
 
 ## Summary
 
@@ -216,6 +217,18 @@ links remain for the subsequent recovery work.
 Exit gate: every summary request fits its selected budget, image semantics are
 never silently lost, and recovery cannot loop.
 
+Implementation result, first slice (2026-08-16): every prepared request now
+records canonical bytes, message bytes/count, decoded inline-image bytes, and
+Tool-schema bytes; adapters may additionally supply conservative wire-byte and
+input-token estimates. Explicit `CallOptions` limits are checked after payload
+freezing and before Model Input commit. A rejected request sends no transport
+and writes no prepared snapshot, but records one typed terminal failure with
+safe metrics. Requests with unknown limits remain observable and are not
+rejected. Provider HTTP 413 and safe structured `request_too_large` identities
+now retain that stable category instead of collapsing to generic Provider
+failure. Bounded summary planning, endpoint/account limit resolution, and
+one-shot recovery remain pending.
+
 ### MIR6: Optional Physical Reclamation
 
 Deferred to a separate accepted Store boundary. Evaluate only:
@@ -265,7 +278,7 @@ text.
 - [ ] Every compaction batch and merge passes Provider capacity preflight.
 - [ ] Image omission is explicit and degraded or refused.
 - [ ] Capacity recovery creates at most one new logical invocation.
-- [ ] Any failed prepared commit results in zero Provider transport calls.
+- [x] Any failed prepared commit results in zero Provider transport calls.
 
 ## Review Questions
 

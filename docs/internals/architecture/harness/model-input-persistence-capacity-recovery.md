@@ -2,11 +2,12 @@
 
 ## Status
 
-Proposed corrective boundary following the capability-runtime convergence merged
+Accepted corrective boundary following the capability-runtime convergence merged
 in PR #451. Three internal reviews and one independent external review have been
-incorporated into this draft. It does not describe current behavior, authorize a
-storage-format cutover, or amend the implemented Session/model-call boundary
-until its compatibility and regression gates are accepted.
+incorporated. MIR1 through MIR4 and the request-measurement/preflight portion of
+MIR5 are implemented locally; bounded compaction and recovery remain incomplete.
+The sections describing those remaining stages are normative targets rather than
+claims about current behavior.
 
 Current source and the following implemented documents remain authoritative:
 

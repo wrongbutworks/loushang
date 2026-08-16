@@ -14,7 +14,7 @@ from loushang.ai.auth.credentials import (
     OAuthBearerAuth,
     OAuthCredential,
 )
-from loushang.ai.prepared_request import PreparedRequestCommitter
+from loushang.ai.prepared_request import PreparedRequestCommitter, PreparedRequestLimits
 from loushang.ai.structured import StructuredOutputOptions
 
 PairingMode = Literal["strict", "repair"]
@@ -99,6 +99,7 @@ class CallOptions:
     reasoning: ReasoningOptions | None = None
     tool_choice: ToolChoice | None = None
     output: StructuredOutputOptions | None = None
+    request_limits: PreparedRequestLimits | None = None
     prepared_request_committer: PreparedRequestCommitter | None = field(
         default=None,
         repr=False,
@@ -166,6 +167,11 @@ class CallOptions:
                 "prepared_request_committer must implement "
                 "commit_prepared_request"
             )
+        if self.request_limits is not None and not isinstance(
+            self.request_limits,
+            PreparedRequestLimits,
+        ):
+            raise TypeError("request_limits must be PreparedRequestLimits or None")
         _validate_tool_choice(self.tool_choice)
 
 
@@ -358,6 +364,7 @@ __all__ = [
     "CallOptions",
     "PairingMode",
     "ReasoningOptions",
+    "PreparedRequestLimits",
     "RetryOptions",
     "StructuredOutputOptions",
     "ThinkingLevel",

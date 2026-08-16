@@ -465,6 +465,22 @@ def _request_options(options: CallOptions) -> dict[str, JSONValue]:
         )
     if options.output is not None:
         projected["output"] = _structured_output(options.output)
+    if options.request_limits is not None:
+        projected["request_limits"] = require_json_mapping(
+            {
+                name: value
+                for name in (
+                    "max_canonical_bytes",
+                    "max_estimated_wire_bytes",
+                    "max_message_count",
+                    "max_image_bytes",
+                    "max_tool_schema_bytes",
+                    "max_estimated_input_tokens",
+                )
+                if (value := getattr(options.request_limits, name)) is not None
+            },
+            name="Model Input request capacity limits",
+        )
     return projected
 
 

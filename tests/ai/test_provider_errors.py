@@ -7,6 +7,7 @@ from loushang.ai.errors import (
     AIAuthenticationError,
     AIProviderProtocolError,
     AIRateLimitError,
+    AIRequestTooLargeError,
 )
 from loushang.ai.provider.errors import (
     normalize_provider_error,
@@ -54,6 +55,7 @@ AnthropicAPITimeoutError = type(
         (401, AIErrorCode.AUTHENTICATION, False, "Provider authentication failed."),
         (403, AIErrorCode.AUTHENTICATION, False, "Provider authentication failed."),
         (408, AIErrorCode.TIMEOUT, True, "Provider request timed out."),
+        (413, AIErrorCode.REQUEST_TOO_LARGE, False, "Provider request is too large."),
         (429, AIErrorCode.RATE_LIMIT, True, "Provider rate limit exceeded."),
         (500, AIErrorCode.SERVICE_UNAVAILABLE, True, "Provider service unavailable."),
         (503, AIErrorCode.SERVICE_UNAVAILABLE, True, "Provider service unavailable."),
@@ -121,6 +123,8 @@ def test_provider_error_part_omits_non_http_status_code() -> None:
         ("request_timeout", "timeout", True),
         ("overloaded", "service_unavailable", True),
         ("invalid_api_key", "authentication", False),
+        ("request_too_large", "request_too_large", False),
+        ("context_length_exceeded", "context_overflow", False),
         ("unknown_error", "provider", False),
         (object(), "provider", False),
     ],
@@ -219,8 +223,42 @@ def test_normalized_provider_error_keeps_only_structured_body_identity() -> None
         "providerErrorType": "invalid_request_error",
         "providerErrorCode": "request_too_large",
     }
+    assert isinstance(normalized, AIRequestTooLargeError)
+    assert normalized.info.code is AIErrorCode.REQUEST_TOO_LARGE
+    assert normalized.info.message == "Provider request is too large."
     assert "private prompt" not in repr(normalized.info.details)
     assert "secret-token" not in repr(normalized.info.details)
+
+
+def test_raw_generic_http_failure_uses_safe_provider_capacity_identity() -> None:
+    info = provider_error_info_from_raw(
+        {
+            "type": "response_error",
+            "code": 400,
+            "error_info": {
+                "code": "provider",
+                "message": "unsafe",
+                "source": "custom-provider",
+                "retryable": False,
+                "statusCode": 400,
+                "details": {
+                    "providerErrorType": "invalid_request_error",
+                    "providerErrorCode": "request_too_large",
+                    "estimatedWireBytes": 900_000,
+                },
+            },
+        },
+        source="custom-provider",
+    )
+
+    assert info.code is AIErrorCode.REQUEST_TOO_LARGE
+    assert info.retryable is False
+    assert info.message == "Provider request is too large."
+    assert info.details == {
+        "providerErrorType": "invalid_request_error",
+        "providerErrorCode": "request_too_large",
+        "estimatedWireBytes": 900_000,
+    }
 
 
 def test_provider_response_summary_is_bounded_for_plain_text() -> None:

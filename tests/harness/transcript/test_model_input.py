@@ -518,7 +518,12 @@ def test_model_call_failure_outcome_persists_only_allowlisted_diagnostics() -> N
         assert outcome.failure.request_id == "request-safe-id"
         assert dict(outcome.failure.details) == {
             "exceptionType": "ProviderHTTPError",
+            "canonicalBytes": 220,
             "estimatedWireBytes": 900_000,
+            "messageBytes": 35,
+            "messageCount": 1,
+            "imageBytes": 0,
+            "toolSchemaBytes": 68,
             "providerErrorType": "invalid_request_error",
             "providerErrorCode": "request_too_large",
         }
@@ -628,6 +633,54 @@ def test_pre_transport_cancellation_outcome_allows_no_attempt_snapshot() -> None
         projected = project_model_call_invocations(transcript.active_path())
         assert len(projected) == 1
         assert projected[0].state == "cancelled"
+        assert projected[0].model_input_snapshot_ids == ()
+
+    asyncio.run(scenario())
+
+
+def test_preflight_failure_outcome_allows_no_attempt_snapshot() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+
+        await committer.record_model_call_outcome(
+            PreparedModelCallOutcome(
+                invocation_id="failed-before-preparation",
+                disposition="failed",
+                stop_reason="error",
+                usage=Usage(0, 0, 0, 0, 0, None),
+                error_info={
+                    "code": "request_too_large",
+                    "message": "Prepared request exceeded configured capacity.",
+                    "source": "loushang.ai.preflight",
+                    "retryable": False,
+                    "details": {
+                        "canonicalBytes": 900_000,
+                        "capacityMetric": "canonicalBytes",
+                        "capacityLimit": "maxCanonicalBytes",
+                        "capacityValue": 900_000,
+                        "capacityMaximum": 800_000,
+                    },
+                },
+            )
+        )
+
+        outcome = next(
+            record.payload
+            for record in transcript.records
+            if isinstance(record.payload, ModelCallOutcome)
+        )
+        assert outcome.model_input_snapshot_ids == ()
+        assert outcome.disposition == "failed"
+        assert outcome.failure is not None
+        assert outcome.failure.code == "request_too_large"
+        projected = project_model_call_invocations(transcript.active_path())
+        assert len(projected) == 1
+        assert projected[0].state == "failed"
         assert projected[0].model_input_snapshot_ids == ()
 
     asyncio.run(scenario())

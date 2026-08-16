@@ -12,7 +12,7 @@ from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions, RetryOptions
-from loushang.ai.prepared_request import PreparedModelRequest
+from loushang.ai.prepared_request import PreparedModelRequest, PreparedRequestLimits
 from loushang.ai.provider.protocol import ProviderRequest
 from loushang.ai.types import AssistantMessage, UserMessage
 from loushang.coding.compaction.profiles import (
@@ -439,15 +439,76 @@ def test_terminal_provider_failure_records_one_safe_model_call_outcome() -> None
         assert outcome.model_input_snapshot_ids == (snapshots[0].snapshot_id,)
         assert outcome.disposition == "failed"
         assert outcome.failure is not None
+        assert outcome.failure.code == "request_too_large"
         assert outcome.failure.status_code == 400
         assert outcome.failure.request_id == "request-terminal-400"
-        assert dict(outcome.failure.details) == {
+        failure_details = dict(outcome.failure.details)
+        assert {
+            "exceptionType": failure_details["exceptionType"],
+            "providerErrorType": failure_details["providerErrorType"],
+            "providerErrorCode": failure_details["providerErrorCode"],
+        } == {
             "exceptionType": "ProviderHTTPError",
             "providerErrorType": "invalid_request_error",
             "providerErrorCode": "request_too_large",
         }
+        assert failure_details["canonicalBytes"] > 0
+        assert failure_details["messageBytes"] > 0
+        assert failure_details["messageCount"] >= 1
+        assert failure_details["imageBytes"] == 0
+        assert failure_details["toolSchemaBytes"] == 2
         assert "secret-token" not in repr(outcome)
         assert "private prompt" not in repr(outcome)
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_capacity_preflight_records_failed_outcome_without_snapshot_or_transport() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        adapter = _PreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = "session-model-call-capacity-preflight-test"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            call_options=CallOptions(
+                request_limits=PreparedRequestLimits(max_canonical_bytes=1)
+            ),
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("hello")
+        finally:
+            registry.unregister_api_adapters(source_id)
+
+        snapshots = [
+            entry
+            for entry in session.get_entries()
+            if entry.kind == "model.input.prepared"
+        ]
+        outcomes = [
+            entry.payload
+            for entry in session.get_entries()
+            if isinstance(entry.payload, ModelCallOutcome)
+        ]
+        assert adapter.transport_calls == 0
+        assert snapshots == []
+        assert len(outcomes) == 1
+        outcome = outcomes[0]
+        assert outcome.model_input_snapshot_ids == ()
+        assert outcome.disposition == "failed"
+        assert outcome.failure is not None
+        assert outcome.failure.code == "request_too_large"
+        assert dict(outcome.failure.details)["capacityMetric"] == "canonicalBytes"
+        assert dict(outcome.failure.details)["capacityMaximum"] == 1
+        assert session.get_model_call_invocations()[0].state == "failed"
         await runtime.dispose()
 
     asyncio.run(scenario())

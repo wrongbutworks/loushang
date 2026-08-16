@@ -22,6 +22,8 @@ _SAFE_FAILURE_STRING_DETAILS = frozenset(
         "rawCode",
         "providerErrorType",
         "providerErrorCode",
+        "capacityMetric",
+        "capacityLimit",
     }
 )
 _SAFE_FAILURE_NUMERIC_DETAILS = frozenset(
@@ -32,12 +34,15 @@ _SAFE_FAILURE_NUMERIC_DETAILS = frozenset(
         "estimatedBytes",
         "canonicalBytes",
         "estimatedWireBytes",
+        "messageBytes",
         "messageCount",
         "imageBytes",
         "toolSchemaBytes",
         "estimatedInputTokens",
         "limitBytes",
         "limitMessages",
+        "capacityValue",
+        "capacityMaximum",
     }
 )
 
@@ -111,9 +116,9 @@ class ModelCallOutcome:
         )
         if len(snapshot_ids) != len(set(snapshot_ids)):
             raise ValueError("model call Model Input snapshot ids must be unique")
-        if not snapshot_ids and self.disposition != "cancelled":
+        if not snapshot_ids and self.disposition == "completed":
             raise ValueError(
-                "only a pre-transport cancellation may omit Model Input snapshots"
+                "a completed model call requires a Model Input snapshot"
             )
         expected_disposition: ModelCallDisposition
         if self.stop_reason == "error":
