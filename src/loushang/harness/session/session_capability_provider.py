@@ -4,25 +4,44 @@ from __future__ import annotations
 
 import hashlib
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from typing import Protocol, TypeVar, cast
 
 from loushang.foundation.json import dump_json_value
 from loushang.harness.capabilities.contracts import CapabilityContractRange
+from loushang.harness.capabilities.packs import (
+    CapabilityPack,
+    CapabilityPackComposition,
+)
+from loushang.harness.capabilities.prompt import PreparedPrompt, PromptSection
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
     CapabilityBundleValue,
+    CapabilityDependencyBinding,
     CapabilityFacetBinding,
     CapabilityProviderContext,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
+from loushang.harness.capabilities.resources_contracts import (
+    COMMAND_PACKS_FACET,
+    PROMPT_SECTIONS_FACET,
+    RESOURCE_RUNTIME_FACET,
+    RESOURCES_CAPABILITY_DEFINITION,
+    RESOURCES_SESSION_COMPOSITION_REQUIREMENT,
+    SKILL_ACTIVATION_FACET,
+    TOOL_PACKS_FACET,
+)
 from loushang.harness.capabilities.session_contracts import (
     COMPACTION_FACET,
     CONVERSATION_STORE_FACET,
+    RESOURCE_COMPOSITION_FACET,
     SESSION_CAPABILITY_DEFINITION,
     SIDE_QUESTION_FACET,
     TRANSCRIPT_PROFILE_FACET,
 )
+from loushang.harness.resources.activation import ResourceActivation
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime.side_question import (
     SideQuestionAnswer,
     SideQuestionCoordinator,
@@ -43,6 +62,31 @@ from loushang.harness.transcript.model_input import (
     ModelInputTranscriptCommitter,
     RebuiltModelInput,
 )
+
+T = TypeVar("T")
+
+
+class _ResourceRuntimeFacet(Protocol):
+    def activate(self, bundle: ResourceBundle | None) -> ResourceActivation: ...
+
+
+class _SkillActivationFacet(Protocol):
+    def apply(
+        self,
+        bundle: ResourceBundle,
+        disabled_skills: tuple[str, ...] | list[str],
+    ) -> ResourceBundle: ...
+
+
+class _PromptFacet(Protocol):
+    def compose(self, sections: Iterable[PromptSection]) -> PreparedPrompt: ...
+
+
+class _PackFacet(Protocol):
+    def compose(
+        self,
+        packs: Iterable[CapabilityPack[T]],
+    ) -> CapabilityPackComposition[T]: ...
 
 
 @dataclass(frozen=True)
@@ -105,6 +149,57 @@ class _TranscriptFacet:
         return self._candidate.compaction_capability()
 
 
+@dataclass(frozen=True)
+class _ResourceCompositionFacet:
+    _dependency: CapabilityDependencyBinding = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self._dependency.requirement != RESOURCES_SESSION_COMPOSITION_REQUIREMENT:
+            raise ValueError(
+                "Session Resource composition received the wrong dependency view"
+            )
+
+    def activate(self, bundle: ResourceBundle | None) -> ResourceActivation:
+        return cast(
+            _ResourceRuntimeFacet,
+            self._dependency.require(RESOURCE_RUNTIME_FACET),
+        ).activate(bundle)
+
+    def apply_skill_activation(
+        self,
+        bundle: ResourceBundle,
+        disabled_skills: tuple[str, ...] | list[str],
+    ) -> ResourceBundle:
+        return cast(
+            _SkillActivationFacet,
+            self._dependency.require(SKILL_ACTIVATION_FACET),
+        ).apply(bundle, disabled_skills)
+
+    def compose_prompt(self, sections: Iterable[PromptSection]) -> PreparedPrompt:
+        return cast(
+            _PromptFacet,
+            self._dependency.require(PROMPT_SECTIONS_FACET),
+        ).compose(sections)
+
+    def compose_tools(
+        self,
+        packs: Iterable[CapabilityPack[T]],
+    ) -> CapabilityPackComposition[T]:
+        return cast(
+            _PackFacet,
+            self._dependency.require(TOOL_PACKS_FACET),
+        ).compose(packs)
+
+    def compose_commands(
+        self,
+        packs: Iterable[CapabilityPack[T]],
+    ) -> CapabilityPackComposition[T]:
+        return cast(
+            _PackFacet,
+            self._dependency.require(COMMAND_PACKS_FACET),
+        ).compose(packs)
+
+
 def session_capability_provider_binding(
     *,
     scope_instance_id: str,
@@ -127,16 +222,20 @@ def session_capability_provider_binding(
     provider = CapabilityBundleProvider(
         capability_id=SESSION_CAPABILITY_DEFINITION.capability_id,
         provider_id=provider_id,
-        implementation_version=2,
+        implementation_version=3,
         compatible_contract=CapabilityContractRange.exact(
             SESSION_CAPABILITY_DEFINITION.contract_version
         ),
         facets=SESSION_CAPABILITY_DEFINITION.facets,
+        requirements=(RESOURCES_SESSION_COMPOSITION_REQUIREMENT,),
         source_id=source_id,
         selection_rule="Product-admitted sealed Session selection",
     )
 
-    def create(_context: CapabilityProviderContext) -> CapabilityBundleValue:
+    def create(context: CapabilityProviderContext) -> CapabilityBundleValue:
+        resource_facet = _ResourceCompositionFacet(
+            context.dependency(RESOURCES_CAPABILITY_DEFINITION.capability_id)
+        )
         side_begun = False
         transcript_begun = False
         try:
@@ -153,10 +252,12 @@ def session_capability_provider_binding(
                     close = getattr(selected_provider, "close", None)
                     if callable(close):
                         close()
-                    raise TypeError("side-question Provider binding must be synchronous")
-                if not callable(getattr(selected_provider, "ask", None)) or not callable(
-                    getattr(selected_provider, "cancel", None)
-                ):
+                    raise TypeError(
+                        "side-question Provider binding must be synchronous"
+                    )
+                if not callable(
+                    getattr(selected_provider, "ask", None)
+                ) or not callable(getattr(selected_provider, "cancel", None)):
                     raise TypeError(
                         "side-question factory returned an invalid Provider"
                     )
@@ -177,6 +278,10 @@ def session_capability_provider_binding(
                         transcript_facet,
                     ),
                     CapabilityFacetBinding(COMPACTION_FACET, transcript_facet),
+                    CapabilityFacetBinding(
+                        RESOURCE_COMPOSITION_FACET,
+                        resource_facet,
+                    ),
                 )
             )
             staged_side_question._commit_graph_ownership()
@@ -220,8 +325,7 @@ def session_capability_provider_binding(
             primary = errors[0]
             for cleanup_error in errors[1:]:
                 primary.add_note(
-                    "Additional Session Provider cleanup failure: "
-                    f"{cleanup_error!r}"
+                    f"Additional Session Provider cleanup failure: {cleanup_error!r}"
                 )
             raise primary
 
@@ -252,7 +356,7 @@ def _binding_input_fingerprint(
             "capabilityId": SESSION_CAPABILITY_DEFINITION.capability_id,
             "contractVersion": SESSION_CAPABILITY_DEFINITION.contract_version,
             "providerId": provider_id,
-            "providerVersion": 2,
+            "providerVersion": 3,
             "scopeInstanceId": scope_instance_id,
             "sideQuestionProfile": staged_side_question.profile.snapshot().to_json(),
             "transcriptProfile": staged_transcript.runtime_profile_snapshot.to_json(),

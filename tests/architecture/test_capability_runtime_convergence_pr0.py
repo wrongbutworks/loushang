@@ -76,10 +76,14 @@ WORKSPACE_CONSUMER_PATHS = (
     CAPABILITIES_ROOT / "workspace_tool_consumer.py",
     CAPABILITIES_ROOT / "workspace_process_consumer.py",
 )
+RESOURCES_DEFINITION_PATH = CAPABILITIES_ROOT / "resources_contracts.py"
+RESOURCES_PROVIDER_PATH = CAPABILITIES_ROOT / "resources_provider.py"
+RESOURCES_CONSUMER_PATH = CAPABILITIES_ROOT / "resources_consumers.py"
 SESSION_DEFINITION_PATH = CAPABILITIES_ROOT / "session_contracts.py"
 SESSION_PROVIDER_PATH = HARNESS_ROOT / "session" / "session_capability_provider.py"
 SESSION_CONSUMER_PATH = HARNESS_ROOT / "session" / "session_capability_consumer.py"
 SESSION_SUPPORT_PATHS = (
+    HARNESS_ROOT / "session" / "resource_capability_ports.py",
     HARNESS_ROOT / "session" / "session_transcript_capability_ports.py",
     HARNESS_ROOT / "transcript" / "capability_candidate.py",
 )
@@ -232,6 +236,40 @@ def _absolute_loushang_imports(path: Path) -> set[str]:
         ):
             imports.add(node.module)
     return imports
+
+
+def _resolved_import_targets(
+    path: Path,
+    tree: ast.Module | None = None,
+) -> set[str]:
+    """Resolve absolute and package-relative imports to canonical targets."""
+
+    module_parts = path.relative_to(Path("src")).with_suffix("").parts
+    package_parts = module_parts[:-1]
+    targets: set[str] = set()
+    for node in ast.walk(tree or _python_trees()[path]):
+        if isinstance(node, ast.Import):
+            targets.update(alias.name for alias in node.names)
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level:
+            keep = len(package_parts) - (node.level - 1)
+            if keep < 0:
+                continue
+            base_parts = package_parts[:keep]
+            if node.module:
+                base_parts = (*base_parts, *node.module.split("."))
+            module = ".".join(base_parts)
+        else:
+            module = node.module or ""
+        if module:
+            targets.add(module)
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            targets.add(".".join(part for part in (module, alias.name) if part))
+    return targets
 
 
 def test_pr0_inventory_keeps_required_rows_and_evidence() -> None:
@@ -430,6 +468,88 @@ def test_graph_runtime_and_workspace_definition_provider_consumer_boundaries() -
         assert "RuntimeCapabilityGraphRuntime" not in consumer_source
 
 
+def test_resources_definition_provider_consumer_boundaries() -> None:
+    definition_imports = _absolute_loushang_imports(RESOURCES_DEFINITION_PATH)
+    assert definition_imports == {"loushang.harness.capabilities.contracts"}
+
+    provider_imports = _absolute_loushang_imports(RESOURCES_PROVIDER_PATH)
+    assert "loushang.harness.capabilities.resources_contracts" in provider_imports
+    assert not any(item.startswith("loushang.coding") for item in provider_imports)
+
+    consumer_imports = _absolute_loushang_imports(RESOURCES_CONSUMER_PATH)
+    assert "loushang.harness.capabilities.resources_contracts" in consumer_imports
+    assert all("resources_provider" not in item for item in consumer_imports)
+
+    forbidden_symbols = {
+        *GRAPH_API_SYMBOLS,
+        "AgentProductSession",
+        "CapabilityDependencyBinding",
+        "ProductTranscriptSession",
+    }
+    forbidden_modules = {
+        "graph_binding",
+        "graph_planning",
+        "graph_projection",
+        "graph_runtime",
+    }
+    violations: list[str] = []
+    for path in (
+        RESOURCES_DEFINITION_PATH,
+        RESOURCES_PROVIDER_PATH,
+        RESOURCES_CONSUMER_PATH,
+    ):
+        resolved_imports = _resolved_import_targets(path)
+        if path != RESOURCES_PROVIDER_PATH:
+            for target in resolved_imports:
+                if target.startswith(
+                    "loushang.harness.capabilities.provider_binding"
+                ) or target.startswith(
+                    "loushang.harness.capabilities.resources_provider"
+                ):
+                    violations.append(f"{path}:resolved-import:{target}")
+        path_forbidden_modules = forbidden_modules
+        if path == RESOURCES_CONSUMER_PATH:
+            path_forbidden_modules = forbidden_modules - {"graph_runtime"}
+        for node in ast.walk(_python_trees()[path]):
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if path == RESOURCES_CONSUMER_PATH and any(
+                    alias.name == "graph_runtime" for alias in node.names
+                ):
+                    violations.append(
+                        f"{path}:{node.lineno}:module-alias:graph_runtime"
+                    )
+                if path == RESOURCES_CONSUMER_PATH and "graph_runtime" in module.split(
+                    "."
+                ):
+                    unexpected = {
+                        alias.name
+                        for alias in node.names
+                        if alias.name != "CapabilityFacetSet"
+                    }
+                    violations.extend(
+                        f"{path}:{node.lineno}:graph-runtime-symbol:{name}"
+                        for name in sorted(unexpected)
+                    )
+                if any(part in path_forbidden_modules for part in module.split(".")):
+                    violations.append(f"{path}:{node.lineno}:module:{module}")
+                for alias in node.names:
+                    if alias.name in forbidden_symbols:
+                        violations.append(f"{path}:{node.lineno}:symbol:{alias.name}")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if "graph_runtime" in alias.name.split("."):
+                        violations.append(f"{path}:{node.lineno}:module:{alias.name}")
+                    elif any(
+                        part in path_forbidden_modules for part in alias.name.split(".")
+                    ):
+                        violations.append(f"{path}:{node.lineno}:module:{alias.name}")
+            elif isinstance(node, ast.Name) and node.id in forbidden_symbols:
+                violations.append(f"{path}:{node.lineno}:name:{node.id}")
+
+    assert violations == []
+
+
 def test_session_definition_provider_consumer_boundaries() -> None:
     definition_imports = _absolute_loushang_imports(SESSION_DEFINITION_PATH)
     assert definition_imports == {"loushang.harness.capabilities.contracts"}
@@ -476,6 +596,21 @@ def test_session_definition_provider_consumer_boundaries() -> None:
         SESSION_CONSUMER_PATH,
         *SESSION_SUPPORT_PATHS,
     ):
+        resolved_imports = _resolved_import_targets(path)
+        if path != SESSION_PROVIDER_PATH:
+            for target in resolved_imports:
+                if target.startswith(
+                    "loushang.harness.capabilities.provider_binding"
+                ) or target.startswith(
+                    "loushang.harness.session.session_capability_provider"
+                ):
+                    violations.append(f"{path}:resolved-import:{target}")
+        path_forbidden_symbols = forbidden_symbols
+        if path != SESSION_PROVIDER_PATH:
+            path_forbidden_symbols = {
+                *forbidden_symbols,
+                "CapabilityDependencyBinding",
+            }
         path_forbidden_modules = forbidden_modules
         if path == SESSION_CONSUMER_PATH:
             path_forbidden_modules = forbidden_modules - {"graph_runtime"}
@@ -489,9 +624,8 @@ def test_session_definition_provider_consumer_boundaries() -> None:
                     violations.append(
                         f"{path}:{node.lineno}:module-alias:graph_runtime"
                     )
-                if (
-                    path == SESSION_CONSUMER_PATH
-                    and "graph_runtime" in module.split(".")
+                if path == SESSION_CONSUMER_PATH and "graph_runtime" in module.split(
+                    "."
                 ):
                     unexpected = {
                         alias.name
@@ -502,33 +636,24 @@ def test_session_definition_provider_consumer_boundaries() -> None:
                         f"{path}:{node.lineno}:graph-runtime-symbol:{name}"
                         for name in sorted(unexpected)
                     )
-                if any(
-                    part in path_forbidden_modules for part in module.split(".")
-                ):
+                if any(part in path_forbidden_modules for part in module.split(".")):
                     violations.append(f"{path}:{node.lineno}:module:{module}")
                 for alias in node.names:
-                    if alias.name in forbidden_symbols:
-                        violations.append(
-                            f"{path}:{node.lineno}:symbol:{alias.name}"
-                        )
+                    if alias.name in path_forbidden_symbols:
+                        violations.append(f"{path}:{node.lineno}:symbol:{alias.name}")
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     if (
                         path == SESSION_CONSUMER_PATH
                         and "graph_runtime" in alias.name.split(".")
                     ):
-                        violations.append(
-                            f"{path}:{node.lineno}:module:{alias.name}"
-                        )
+                        violations.append(f"{path}:{node.lineno}:module:{alias.name}")
                         continue
                     if any(
-                        part in path_forbidden_modules
-                        for part in alias.name.split(".")
+                        part in path_forbidden_modules for part in alias.name.split(".")
                     ):
-                        violations.append(
-                            f"{path}:{node.lineno}:module:{alias.name}"
-                        )
-            elif isinstance(node, ast.Name) and node.id in forbidden_symbols:
+                        violations.append(f"{path}:{node.lineno}:module:{alias.name}")
+            elif isinstance(node, ast.Name) and node.id in path_forbidden_symbols:
                 violations.append(f"{path}:{node.lineno}:name:{node.id}")
             elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 parameters = (
@@ -552,6 +677,39 @@ def test_session_definition_provider_consumer_boundaries() -> None:
                     f"{path}:{node.lineno}:field:{ast.unparse(node.target)}"
                 )
     assert violations == []
+
+    provider_tree = _python_trees()[SESSION_PROVIDER_PATH]
+    dependency_fields = [
+        node
+        for class_node in provider_tree.body
+        if isinstance(class_node, ast.ClassDef)
+        and class_node.name == "_ResourceCompositionFacet"
+        for node in class_node.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "_dependency"
+        and _annotation_name(node.annotation) == "CapabilityDependencyBinding"
+    ]
+    dependency_name_uses = [
+        node
+        for node in ast.walk(provider_tree)
+        if isinstance(node, ast.Name) and node.id == "CapabilityDependencyBinding"
+    ]
+    assert len(dependency_fields) == 1
+    assert dependency_name_uses == [dependency_fields[0].annotation]
+
+
+def test_relative_import_resolution_covers_capability_boundary_bypasses() -> None:
+    targets = _resolved_import_targets(
+        RESOURCES_CONSUMER_PATH,
+        ast.parse(
+            "from .resources_provider import resources_capability_provider_binding\n"
+            "from ..capabilities import provider_binding as raw\n"
+        ),
+    )
+
+    assert "loushang.harness.capabilities.resources_provider" in targets
+    assert "loushang.harness.capabilities.provider_binding" in targets
 
 
 def test_broad_annotation_syntax_gate_covers_obvious_locator_shapes() -> None:

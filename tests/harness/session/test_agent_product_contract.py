@@ -316,21 +316,23 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert effective_runtime.product_id == "research"
         graph_snapshot = research._capability_graph_runtime.snapshot
         assert graph_snapshot is not None
-        assert graph_snapshot.roots == (
-            "harness.model_input",
-            "harness.resources",
-        )
+        assert graph_snapshot.roots == ("harness.model_input",)
         nodes = {node.capability_id: node for node in graph_snapshot.nodes}
         assert tuple(
             requirement.capability_id
             for requirement in nodes["harness.model_input"].requirements
         ) == ("harness.session",)
         assert nodes["harness.resources"].requirements == ()
-        assert nodes["harness.session"].requirements == ()
+        assert tuple(
+            requirement.capability_id
+            for requirement in nodes["harness.session"].requirements
+        ) == ("harness.resources",)
+        assert nodes["harness.resources"].required_by == ("harness.session",)
+        assert nodes["harness.session"].required_by == ("harness.model_input",)
         assert tuple(node.capability_id for node in effective_runtime.capabilities) == (
+            "harness.resources",
             "harness.session",
             "harness.model_input",
-            "harness.resources",
         )
         assert effective_runtime.source_publication is not None
         assert effective_runtime.source_publication.owner_capability_id == (

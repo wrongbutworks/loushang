@@ -7,12 +7,12 @@ Requirement, Bundle Provider, pure Planner, transactional Binder, live Runtime,
 and read-only Projector described here are implemented. The generated
 [Harness Capability Catalog](capability-catalog.md) is the source-backed record
 of complete Definition / Provider / Consumer seams. `harness.workspace`,
-`harness.resources`, `harness.session` contract version 2, and
+`harness.resources`, `harness.session` contract version 3, and
 `harness.model_input` are production-mounted in the single Session-owned graph.
-Model Input directly requires the Session transcript trio; Resources remains an
-independent root, and Coding additionally mounts Workspace as an independent
-root. The Session contract contains the sealed
-side-question facet and the adopted transcript Store/Profile/Compaction trio;
+Model Input directly requires Session, and Session directly requires Resources;
+Coding additionally mounts Workspace as an independent root. The Session
+contract contains the sealed side-question facet, the adopted transcript
+Store/Profile/Compaction trio, and one focused Resources dependency facet;
 Process-scoped continuity remains staged rollout work. `coding.lsp` and
 `coding.arch` remain rollout targets rather than
 claimed runtime nodes. Runtime Profile slots remain the implemented finer
@@ -123,12 +123,12 @@ coding.arch -. optional .-> coding.lsp
 
 `harness.model_input -> harness.session` is already implemented because durable
 Model Input consumes the adopted transcript trio through a declared dependency.
-`harness.session` will consume the admitted resource composition and workspace
-facets used by the Session runtime, so both Harness edges remain required in
-the accepted target plan. Contract version 2 is reached through Model Input;
-Resources and optional Workspace remain co-roots. Co-location is not a
-fabricated dependency edge; the target Session edges are added only when a
-later Session Provider actually declares and consumes those requirements.
+`harness.session -> harness.resources` is implemented by the version 3 Session
+Provider and its focused Resource Consumer. Resources is therefore in the
+Model Input dependency closure rather than a peer root. Workspace remains a
+Coding-only co-root until its later Session Consumer cutover. Co-location is
+not a fabricated dependency edge; the Workspace edge is added only when a
+later Session Provider actually declares and consumes that requirement.
 
 The optional `coding.arch -> coding.lsp` edge is a permitted future shape, not
 part of the initial target. `coding.arch` must remain independently usable

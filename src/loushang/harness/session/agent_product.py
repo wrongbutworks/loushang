@@ -17,11 +17,7 @@ from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     MODEL_INPUT_PREPARATION_REQUIREMENT,
-    RESOURCES_ACTIVATION_REQUIREMENT,
     RESOURCES_CAPABILITY_DEFINITION,
-    RESOURCES_COMMAND_PACK_REQUIREMENT,
-    RESOURCES_PROMPT_REQUIREMENT,
-    RESOURCES_TOOL_PACK_REQUIREMENT,
     WORKSPACE_CAPABILITY_DEFINITION,
     WORKSPACE_PROCESS_REQUIREMENT,
     WORKSPACE_TOOL_REQUIREMENT,
@@ -43,17 +39,12 @@ from loushang.harness.capabilities import (
 from loushang.harness.capabilities.effective_runtime import (
     runtime_profile_fingerprint,
 )
-from loushang.harness.capabilities.resources_consumers import (
-    ResourceActivationCapabilityConsumer,
-    ResourceCommandPackCapabilityConsumer,
-    ResourcePromptCapabilityConsumer,
-    ResourceToolPackCapabilityConsumer,
-)
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
 )
 from loushang.harness.capabilities.session_contracts import (
     SESSION_CAPABILITY_DEFINITION,
+    SESSION_RESOURCE_COMPOSITION_REQUIREMENT,
     SESSION_SIDE_QUESTION_REQUIREMENT,
     SESSION_TRANSCRIPT_REQUIREMENT,
 )
@@ -144,6 +135,7 @@ from loushang.harness.session.resource_capability_ports import (
 )
 from loushang.harness.session.resource_refresh import ExtensionDeclarationPreflight
 from loushang.harness.session.session_capability_consumer import (
+    SessionResourceCompositionCapabilityConsumer,
     SessionSideQuestionCapabilityConsumer,
     SessionTranscriptCapabilityConsumer,
 )
@@ -328,13 +320,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
             if side_question_binding is not None
             else bind_legacy_side_question(capability_runtime.profile)
         )
-        self._session_capability_binding = (
-            session_capability_provider_binding(
-                scope_instance_id=runtime_id,
-                staged_side_question=self._staged_side_question_candidate,
-                staged_transcript=self._staged_transcript_candidate,
-                bind_provider=self._bind_selected_side_question_provider,
-            )
+        self._session_capability_binding = session_capability_provider_binding(
+            scope_instance_id=runtime_id,
+            staged_side_question=self._staged_side_question_candidate,
+            staged_transcript=self._staged_transcript_candidate,
+            bind_provider=self._bind_selected_side_question_provider,
         )
         self._model_call_capability_binding = (
             build_session_model_call_capability_binding(
@@ -342,18 +332,17 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 projector=self._capability_graph_projector,
                 product_id=initial_profile.product_id,
                 runtime_id=runtime_id,
-                conversation_id=(
-                    self.session_manager.get_session_record().session_id
-                ),
+                conversation_id=(self.session_manager.get_session_record().session_id),
                 is_current=self._is_current_model_call_session,
                 registration_entries_provider=self._effective_registration_entries,
                 profile_fingerprint_provider=self._current_profile_fingerprint,
                 session_provider=self._session_capability_binding.provider,
+                resources_provider=self._resource_capability_binding.provider,
             )
         )
-        self._side_question_consumer: (
-            SessionSideQuestionCapabilityConsumer | None
-        ) = None
+        self._side_question_consumer: SessionSideQuestionCapabilityConsumer | None = (
+            None
+        )
         self._transcript_consumer: SessionTranscriptCapabilityConsumer | None = None
         workspace_binding = self._workspace_capability_binding
         workspace_definitions = (
@@ -364,7 +353,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 product_id=initial_profile.product_id,
                 roots=(
                     MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-                    RESOURCES_CAPABILITY_DEFINITION.capability_id,
                     *(
                         (WORKSPACE_CAPABILITY_DEFINITION.capability_id,)
                         if workspace_binding is not None
@@ -1010,22 +998,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         MODEL_INPUT_PREPARATION_REQUIREMENT
                     )
                 )
-                resource_activation = ResourceActivationCapabilityConsumer(
+                resource_consumer = SessionResourceCompositionCapabilityConsumer(
                     self._capability_graph_runtime.capture(
-                        RESOURCES_ACTIVATION_REQUIREMENT
-                    )
-                )
-                resource_prompt = ResourcePromptCapabilityConsumer(
-                    self._capability_graph_runtime.capture(RESOURCES_PROMPT_REQUIREMENT)
-                )
-                resource_tools = ResourceToolPackCapabilityConsumer(
-                    self._capability_graph_runtime.capture(
-                        RESOURCES_TOOL_PACK_REQUIREMENT
-                    )
-                )
-                resource_commands = ResourceCommandPackCapabilityConsumer(
-                    self._capability_graph_runtime.capture(
-                        RESOURCES_COMMAND_PACK_REQUIREMENT
+                        SESSION_RESOURCE_COMPOSITION_REQUIREMENT
                     )
                 )
                 side_question = SessionSideQuestionCapabilityConsumer(
@@ -1135,10 +1110,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 # Graph reuse rejected the freshly supplied transcript candidate.
                 await self._staged_transcript_candidate.dispose_root_owned()
             self._resource_capability_ports.install(
-                activation=resource_activation,
-                prompt=resource_prompt,
-                tools=resource_tools,
-                commands=resource_commands,
+                consumer=resource_consumer,
             )
             if workspace_tools is not None and workspace_process is not None:
                 self._workspace_capability_ports.install(

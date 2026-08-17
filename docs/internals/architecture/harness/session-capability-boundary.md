@@ -2,14 +2,15 @@
 
 ## Status
 
-Implemented incrementally. Contract version 2 production-mounts the sealed
+Implemented incrementally. Contract version 3 production-mounts the sealed
 `interaction.side_question` facet and adopts the existing transcript lifecycle
-trio as one indivisible binding. Process continuity retains its Process owner
-until its stable-reference contract is implemented.
+trio as one indivisible binding. It also consumes the admitted Resources
+Bundle through one focused dependency facet. Workspace remains an independent
+Product root and Process continuity retains its Process owner.
 
-## Version 2 Decision
+## Version 3 Decision
 
-`harness.session` version 2 has four facets and two focused Consumers:
+`harness.session` version 3 has five facets and three focused Consumers:
 
 | Facet | Provider input | Consumer |
 | --- | --- | --- |
@@ -17,6 +18,7 @@ until its stable-reference contract is implemented.
 | `conversation.store` | the existing root-owned transcript lifecycle candidate | `SessionTranscriptCapabilityConsumer` |
 | `agent.transcript_profile` | the same transcript lifecycle candidate | `SessionTranscriptCapabilityConsumer` |
 | `context.compaction` | the same transcript lifecycle candidate and dynamic selected mechanism | `SessionTranscriptCapabilityConsumer` |
+| `resource.composition` | one declared `harness.resources` dependency view | `SessionResourceCompositionCapabilityConsumer` |
 
 The Product construction root resolves the side-question factory and binds the
 transcript Store/Profile/Compaction trio once, before AgentProduct graph
@@ -68,6 +70,23 @@ transcript binding. Failed runtime disposers retain only the failed entries and
 the graph-owned candidate, so Graph retirement can retry without repeating
 successful cleanup.
 
+The Session Provider declares one aggregate Resources requirement covering the
+resource runtime, skill activation, prompt sections, Tool packs, and Command
+packs. Provider construction wraps that least-authority dependency in a private
+method-only facet; it does not expose the raw dependency binding or install
+external ports. After Graph publication, `AgentProductSession` captures one
+generation-scoped Session Resource Consumer and switches the existing stable
+resource ports to it in the same no-await publication window. Bootstrap calls
+before Mount continue to use the single root-owned Resource candidate. After
+Mount, every resource call follows `Session Consumer -> Session facet ->
+Resources dependency` and becomes stale with the Session generation.
+
+The production dependency closure is therefore
+`harness.model_input -> harness.session -> harness.resources`. Resources is no
+longer a peer root. Resource content remains call data: content-only refresh
+changes the scoped source-publication reference without rebinding the Graph or
+changing Mount generation.
+
 ## Deferred Work
 
 - `continuity.provider_packs` is Process-scoped and is released by the Product
@@ -75,11 +94,11 @@ successful cleanup.
   only a typed stable lease/reference from that process owner. The concrete
   ContinuityHub must not be inserted into the Session Bundle.
 
-The accepted future `harness.session -> harness.resources/workspace` edges are
-also deferred until real Session Consumers use those facets. Version 2 is
-currently pulled into the graph by the direct
-`harness.model_input -> harness.session` transcript requirement; it does not
-fabricate either future Session dependency.
+The accepted future `harness.session -> harness.workspace` edge remains
+deferred until a real Session Consumer uses those facets. Version 3 is pulled
+into the graph by the direct `harness.model_input -> harness.session`
+transcript requirement; Coding continues to mount Workspace as an independent
+root during this slice.
 
 ## Dependency And Import Rules
 
@@ -91,10 +110,10 @@ fabricate either future Session dependency.
   import the Provider or a graph manager.
 - `AgentProductSession` remains the only production Graph/Binder/Projector
   owner and the only Provider-construction/Consumer-capture site.
-- Version 2 is a direct dependency of `harness.model_input`. It does not
-  fabricate dependencies on `harness.resources` or `harness.workspace`; those
-  target edges become real only when a later Session Provider actually consumes
-  their declared facets.
+- Version 3 directly consumes `harness.resources` and is itself a direct
+  dependency of `harness.model_input`. It does not fabricate a dependency on
+  `harness.workspace`; that target edge becomes real only when a later Session
+  Provider consumes its declared facets.
 
 ## Acceptance Evidence
 
@@ -108,4 +127,8 @@ fabricate either future Session dependency.
 - new/load/open/continue/in-memory/fork preserve the same transcript binding,
   header and Model Input reconstruction behavior; and
 - index publication precedes transcript release, failed cleanup is retryable,
-  and cached transcript Consumer leases become stale after retirement.
+  and cached transcript Consumer leases become stale after retirement;
+- all five Session resource operations traverse the declared dependency and a
+  cached Session Resource Consumer becomes stale after retirement; and
+- generic roots contain only `harness.model_input`, while Coding additionally
+  retains `harness.workspace` as the one deferred peer root.

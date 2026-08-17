@@ -2,21 +2,38 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from dataclasses import replace
 
 import pytest
 
 from loushang.harness.capabilities import (
+    CapabilityBundleValue,
+    CapabilityDependencyBinding,
+    CapabilityFacetBinding,
+    CapabilityGraphPlanningError,
     CapabilityGraphPlanRequest,
+    CapabilityPack,
     RuntimeCapabilityGraphBinder,
     RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphRuntime,
     standard_capability_composition_plan,
 )
+from loushang.harness.capabilities.prompt import PromptSection
+from loushang.harness.capabilities.resources_contracts import (
+    PROMPT_SECTIONS_FACET,
+    RESOURCES_CAPABILITY_DEFINITION,
+    RESOURCES_PROMPT_REQUIREMENT,
+)
+from loushang.harness.capabilities.resources_provider import (
+    resources_capability_provider_binding,
+)
 from loushang.harness.capabilities.session_contracts import (
     SESSION_CAPABILITY_DEFINITION,
+    SESSION_RESOURCE_COMPOSITION_REQUIREMENT,
     SESSION_SIDE_QUESTION_REQUIREMENT,
     SESSION_TRANSCRIPT_REQUIREMENT,
 )
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import (
     ResolvedRuntimeProfile,
     RuntimeProfileResolver,
@@ -24,10 +41,12 @@ from loushang.harness.runtime import (
 )
 from loushang.harness.session.legacy_side_question import bind_legacy_side_question
 from loushang.harness.session.session_capability_consumer import (
+    SessionResourceCompositionCapabilityConsumer,
     SessionSideQuestionCapabilityConsumer,
     SessionTranscriptCapabilityConsumer,
 )
 from loushang.harness.session.session_capability_provider import (
+    _ResourceCompositionFacet,
     session_capability_provider_binding,
 )
 
@@ -37,10 +56,14 @@ def _sha(value: str) -> str:
 
 
 def _candidate():  # type: ignore[no-untyped-def]
-    profile = RuntimeProfileResolver().resolve(
+    profile = _profile()
+    return bind_legacy_side_question(profile)
+
+
+def _profile():  # type: ignore[no-untyped-def]
+    return RuntimeProfileResolver().resolve(
         standard_capability_composition_plan(product_id="research")
     )
-    return bind_legacy_side_question(profile)
 
 
 class _TranscriptCandidate:
@@ -104,15 +127,105 @@ class _TranscriptCandidate:
         self.ownership_state = "disposed"
 
 
-def _plan(binding):  # type: ignore[no-untyped-def]
-    return RuntimeCapabilityGraphPlanner().plan(
+def _graph_inputs(binding, resources=None):  # type: ignore[no-untyped-def]
+    resources = resources or resources_capability_provider_binding(
+        profile=_profile(), scope_instance_id="session:research"
+    )
+    plan = RuntimeCapabilityGraphPlanner().plan(
         CapabilityGraphPlanRequest(
             product_id="research",
             roots=(SESSION_CAPABILITY_DEFINITION.capability_id,),
-            definitions=(SESSION_CAPABILITY_DEFINITION,),
-            providers=(binding.provider,),
+            definitions=(
+                RESOURCES_CAPABILITY_DEFINITION,
+                SESSION_CAPABILITY_DEFINITION,
+            ),
+            providers=(resources.provider, binding.provider),
         )
     )
+    return plan, (resources, binding)
+
+
+def test_session_binding_signature_includes_resources_dependency() -> None:
+    async def mounted_signatures(resource_marker: str):
+        side = _candidate()
+        transcript = _TranscriptCandidate()
+        session = session_capability_provider_binding(
+            scope_instance_id="session:research",
+            staged_side_question=side,
+            staged_transcript=transcript,
+            bind_provider=lambda _factory: _Provider(),
+        )
+        resources = resources_capability_provider_binding(
+            profile=_profile(),
+            scope_instance_id="session:research",
+        )
+        resources = replace(
+            resources,
+            binding_input_fingerprint=_sha(resource_marker),
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session",
+            profile_fingerprint=_sha("profile"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, *_graph_inputs(session, resources))
+        assert runtime.snapshot is not None
+        signatures = {
+            node.capability_id: node.binding_signature
+            for node in runtime.snapshot.nodes
+        }
+        await binder.dispose(runtime)
+        return session.binding_input_fingerprint, signatures
+
+    first_input, first = asyncio.run(mounted_signatures("resource-one"))
+    second_input, second = asyncio.run(mounted_signatures("resource-two"))
+
+    assert first_input == second_input
+    assert first["harness.resources"] != second["harness.resources"]
+    assert first["harness.session"] != second["harness.session"]
+
+
+def test_session_plan_requires_resources_before_candidate_construction() -> None:
+    side = _candidate()
+    transcript = _TranscriptCandidate()
+    binding = session_capability_provider_binding(
+        scope_instance_id="session:research",
+        staged_side_question=side,
+        staged_transcript=transcript,
+        bind_provider=lambda _factory: _Provider(),
+    )
+    try:
+        with pytest.raises(CapabilityGraphPlanningError) as caught:
+            RuntimeCapabilityGraphPlanner().plan(
+                CapabilityGraphPlanRequest(
+                    product_id="research",
+                    roots=(SESSION_CAPABILITY_DEFINITION.capability_id,),
+                    definitions=(SESSION_CAPABILITY_DEFINITION,),
+                    providers=(binding.provider,),
+                )
+            )
+
+        assert tuple(item.code for item in caught.value.diagnostics) == (
+            "unknown_capability",
+        )
+        assert side.ownership_state == "root_owned"
+        assert transcript.ownership_state == "root_owned"
+    finally:
+        side.dispose()
+        asyncio.run(transcript.dispose_root_owned())
+
+
+def test_session_resource_facet_rejects_a_narrower_dependency_view() -> None:
+    dependency = CapabilityDependencyBinding(
+        RESOURCES_PROMPT_REQUIREMENT,
+        CapabilityBundleValue(
+            (CapabilityFacetBinding(PROMPT_SECTIONS_FACET, object()),)
+        ),
+    )
+
+    with pytest.raises(ValueError, match="wrong dependency view"):
+        _ResourceCompositionFacet(dependency)
 
 
 class _Provider:
@@ -128,7 +241,9 @@ class _Provider:
         self.cancel_calls += 1
 
 
-def test_session_side_question_candidate_transfers_to_one_generation_lease() -> None:
+def test_session_side_question_candidate_transfers_to_one_generation_lease(
+    tmp_path,
+) -> None:
     async def scenario() -> None:
         candidate = _candidate()
         selected = _Provider()
@@ -146,12 +261,15 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease() -> 
         )
         binder = RuntimeCapabilityGraphBinder()
 
-        await binder.bind(runtime, _plan(binding), (binding,))
+        await binder.bind(runtime, *_graph_inputs(binding))
         consumer = SessionSideQuestionCapabilityConsumer(
             runtime.capture(SESSION_SIDE_QUESTION_REQUIREMENT)
         )
         transcript_consumer = SessionTranscriptCapabilityConsumer(
             runtime.capture(SESSION_TRANSCRIPT_REQUIREMENT)
+        )
+        resource_consumer = SessionResourceCompositionCapabilityConsumer(
+            runtime.capture(SESSION_RESOURCE_COMPOSITION_REQUIREMENT)
         )
 
         assert candidate.ownership_state == "graph_owned"
@@ -160,13 +278,33 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease() -> 
         assert (await consumer.ask("status?")).text == "status?"
         assert runtime.snapshot is not None
         assert SESSION_CAPABILITY_DEFINITION.phase == "final"
-        assert SESSION_CAPABILITY_DEFINITION.contract_version == 2
+        bundle = ResourceBundle(cwd=tmp_path)
+        activated_bundle = resource_consumer.apply_skill_activation(bundle, ())
+        assert resource_consumer.activate(activated_bundle).active_skills() == ()
+        assert (
+            resource_consumer.compose_prompt((PromptSection("base", "Base"),)).text
+            == "Base"
+        )
+        assert resource_consumer.compose_tools(
+            (CapabilityPack("tools", "product", ("tool",)),)
+        ).items == ("tool",)
+        assert resource_consumer.compose_commands(
+            (CapabilityPack("commands", "product", ("command",)),)
+        ).items == ("command",)
+        assert SESSION_CAPABILITY_DEFINITION.contract_version == 3
         assert SESSION_SIDE_QUESTION_REQUIREMENT.compatible_contract.accepts(1)
         assert SESSION_SIDE_QUESTION_REQUIREMENT.compatible_contract.accepts(2)
+        assert SESSION_SIDE_QUESTION_REQUIREMENT.compatible_contract.accepts(3)
         assert SESSION_TRANSCRIPT_REQUIREMENT.compatible_contract.accepts(2)
+        assert SESSION_TRANSCRIPT_REQUIREMENT.compatible_contract.accepts(3)
         assert tuple(node.capability_id for node in runtime.snapshot.nodes) == (
+            "harness.resources",
             "harness.session",
         )
+        session_node = runtime.snapshot.nodes[1]
+        assert tuple(
+            requirement.capability_id for requirement in session_node.requirements
+        ) == ("harness.resources",)
 
         await binder.dispose(runtime)
 
@@ -178,6 +316,8 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease() -> 
         assert transcript_consumer.facets.is_current is False
         with pytest.raises(RuntimeError, match="disposed"):
             await consumer.ask("again")
+        with pytest.raises(RuntimeError, match="disposed"):
+            resource_consumer.compose_prompt((PromptSection("base", "Base"),))
 
     asyncio.run(scenario())
 
@@ -198,7 +338,7 @@ def test_session_side_question_reuse_leaves_new_candidate_root_owned() -> None:
             profile_fingerprint=_sha("profile"),
         )
         binder = RuntimeCapabilityGraphBinder()
-        await binder.bind(runtime, _plan(first_binding), (first_binding,))
+        await binder.bind(runtime, *_graph_inputs(first_binding))
 
         rejected_candidate = _candidate()
         rejected_transcript = _TranscriptCandidate()
@@ -208,13 +348,12 @@ def test_session_side_question_reuse_leaves_new_candidate_root_owned() -> None:
             staged_transcript=rejected_transcript,
             bind_provider=lambda _factory: _Provider(),
         )
-        result = await binder.bind(
-            runtime,
-            _plan(rejected_binding),
-            (rejected_binding,),
-        )
+        result = await binder.bind(runtime, *_graph_inputs(rejected_binding))
 
-        assert result.reused_capability_ids == ("harness.session",)
+        assert result.reused_capability_ids == (
+            "harness.resources",
+            "harness.session",
+        )
         assert rejected_candidate.ownership_state == "root_owned"
         rejected_candidate.dispose()
         assert rejected_candidate.ownership_state == "disposed"
@@ -246,7 +385,7 @@ def test_session_side_question_optional_absence_is_a_mounted_unavailable_facet()
             profile_fingerprint=_sha("profile"),
         )
         binder = RuntimeCapabilityGraphBinder()
-        await binder.bind(runtime, _plan(binding), (binding,))
+        await binder.bind(runtime, *_graph_inputs(binding))
         consumer = SessionSideQuestionCapabilityConsumer(
             runtime.capture(SESSION_SIDE_QUESTION_REQUIREMENT)
         )
@@ -330,8 +469,7 @@ def test_session_side_question_construction_failure_restores_root_owner() -> Non
         with pytest.raises(RuntimeError, match="provider_construction_failed"):
             await RuntimeCapabilityGraphBinder().bind(
                 runtime,
-                _plan(binding),
-                (binding,),
+                *_graph_inputs(binding),
             )
 
         assert candidate.ownership_state == "root_owned"
@@ -360,7 +498,7 @@ def test_session_combined_provider_rolls_back_a_partial_ownership_commit() -> No
         binder = RuntimeCapabilityGraphBinder()
 
         with pytest.raises(RuntimeError, match="provider_construction_failed"):
-            await binder.bind(runtime, _plan(binding), (binding,))
+            await binder.bind(runtime, *_graph_inputs(binding))
 
         assert side.ownership_state == "root_owned"
         assert transcript.ownership_state == "root_owned"
@@ -395,8 +533,7 @@ def test_session_combined_provider_rolls_back_a_partial_ownership_begin() -> Non
         with pytest.raises(RuntimeError, match="provider_construction_failed"):
             await RuntimeCapabilityGraphBinder().bind(
                 runtime,
-                _plan(binding),
-                (binding,),
+                *_graph_inputs(binding),
             )
 
         assert side.ownership_state == "root_owned"
@@ -446,8 +583,7 @@ def test_session_side_question_cancellation_has_one_cleanup_owner(
         with pytest.raises(asyncio.CancelledError):
             await RuntimeCapabilityGraphBinder().bind(
                 runtime,
-                _plan(binding),
-                (binding,),
+                *_graph_inputs(binding),
             )
 
         assert candidate.ownership_state == state_after_bind
@@ -486,7 +622,7 @@ def test_session_side_question_graph_retries_only_failed_candidate_cleanup() -> 
             profile_fingerprint=_sha("profile"),
         )
         binder = RuntimeCapabilityGraphBinder()
-        await binder.bind(runtime, _plan(binding), (binding,))
+        await binder.bind(runtime, *_graph_inputs(binding))
 
         first_codes = await binder.dispose(runtime)
 
@@ -522,7 +658,7 @@ def test_session_graph_retries_transcript_release_without_reopening_side_owner()
             profile_fingerprint=_sha("profile"),
         )
         binder = RuntimeCapabilityGraphBinder()
-        await binder.bind(runtime, _plan(binding), (binding,))
+        await binder.bind(runtime, *_graph_inputs(binding))
 
         assert await binder.dispose(runtime) == ("provider_retirement_failed",)
         assert side.ownership_state == "disposed"

@@ -327,7 +327,9 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             ),
         )
         try:
-            read_tool = next(tool for tool in session.agent.tools if tool.name == "read")
+            read_tool = next(
+                tool for tool in session.agent.tools if tool.name == "read"
+            )
             read_result = await read_tool.execute(
                 "workspace-read",
                 {"path": "notes.txt"},
@@ -341,7 +343,6 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             assert snapshot is not None
             assert snapshot.roots == (
                 "harness.model_input",
-                "harness.resources",
                 "harness.workspace",
             )
             nodes = {node.capability_id: node for node in snapshot.nodes}
@@ -350,13 +351,18 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
                 for requirement in nodes["harness.model_input"].requirements
             ) == ("harness.session",)
             assert nodes["harness.resources"].requirements == ()
-            assert nodes["harness.session"].requirements == ()
+            assert tuple(
+                requirement.capability_id
+                for requirement in nodes["harness.session"].requirements
+            ) == ("harness.resources",)
+            assert nodes["harness.resources"].required_by == ("harness.session",)
+            assert nodes["harness.session"].required_by == ("harness.model_input",)
             assert nodes["harness.workspace"].requirements == ()
             view = session.get_effective_runtime_view()
             assert tuple(node.capability_id for node in view.capabilities) == (
+                "harness.resources",
                 "harness.session",
                 "harness.model_input",
-                "harness.resources",
                 "harness.workspace",
             )
             with pytest.raises(ExecutionAuthorizationError, match="outside"):

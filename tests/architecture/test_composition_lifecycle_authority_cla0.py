@@ -105,8 +105,14 @@ TRACKED_CALL_SYMBOLS = frozenset(
         "resources_capability_provider_binding",
         "session_capability_provider_binding",
         "workspace_capability_provider_binding",
+        "_ResourceCompositionFacet",
         "SessionSideQuestionCapabilityConsumer",
+        "SessionResourceCompositionCapabilityConsumer",
         "SessionTranscriptCapabilityConsumer",
+        "ResourceActivationCapabilityConsumer",
+        "ResourceCommandPackCapabilityConsumer",
+        "ResourcePromptCapabilityConsumer",
+        "ResourceToolPackCapabilityConsumer",
         "WorkspaceToolCapabilityConsumer",
         "WorkspaceProcessCapabilityConsumer",
     }
@@ -118,8 +124,14 @@ GUARDED_CONSTRUCTION_SYMBOLS = frozenset(
         "resources_capability_provider_binding",
         "session_capability_provider_binding",
         "workspace_capability_provider_binding",
+        "_ResourceCompositionFacet",
         "SessionSideQuestionCapabilityConsumer",
+        "SessionResourceCompositionCapabilityConsumer",
         "SessionTranscriptCapabilityConsumer",
+        "ResourceActivationCapabilityConsumer",
+        "ResourceCommandPackCapabilityConsumer",
+        "ResourcePromptCapabilityConsumer",
+        "ResourceToolPackCapabilityConsumer",
         "WorkspaceToolCapabilityConsumer",
         "WorkspaceProcessCapabilityConsumer",
     }
@@ -571,6 +583,13 @@ def test_cla4_resources_provider_has_one_production_mount_owner() -> None:
             ): 1
         }
     )
+    for consumer in (
+        "ResourceActivationCapabilityConsumer",
+        "ResourceCommandPackCapabilityConsumer",
+        "ResourcePromptCapabilityConsumer",
+        "ResourceToolPackCapabilityConsumer",
+    ):
+        assert _construction_sites(consumer) == Counter()
 
 
 def test_cla5_workspace_has_one_product_binding_and_one_session_consumer_owner() -> (
@@ -609,6 +628,14 @@ def test_cla7_session_has_one_combined_provider_and_typed_consumer_owner() -> No
             ): 1
         }
     )
+    assert _construction_sites("_ResourceCompositionFacet") == Counter(
+        {
+            (
+                Path("src/loushang/harness/session/session_capability_provider.py"),
+                "session_capability_provider_binding.create",
+            ): 1
+        }
+    )
     assert _construction_sites("SessionSideQuestionCapabilityConsumer") == Counter(
         {
             (
@@ -618,6 +645,16 @@ def test_cla7_session_has_one_combined_provider_and_typed_consumer_owner() -> No
         }
     )
     assert _construction_sites("SessionTranscriptCapabilityConsumer") == Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession._ensure_session_graph_prepared",
+            ): 1
+        }
+    )
+    assert _construction_sites(
+        "SessionResourceCompositionCapabilityConsumer"
+    ) == Counter(
         {
             (
                 Path("src/loushang/harness/session/agent_product.py"),

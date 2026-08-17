@@ -768,10 +768,13 @@ behavior, and stable-reference requirement are explicit.
    slice must preserve session-header/resume compatibility, index publication
    before release, turn-boundary compaction behavior, and cleanup retry. It may
    not reconstruct the store or split one disposer across logical owners.
-3. **CLA7c — target dependency cutover.** Only after real Session Consumers use
-   resource/workspace facets may the plan replace independent co-roots with
-   the accepted `harness.session -> harness.resources/workspace` edges.
-4. **CLA7d — continuity stable reference.** `continuity.provider_packs` remains
+3. **CLA7c-resources — Resources dependency cutover (implemented).** One
+   focused Session Consumer now uses the admitted Resource composition through
+   `harness.session -> harness.resources`; Resources is no longer a peer root.
+4. **CLA7c-workspace — Workspace dependency cutover.** Only after a real
+   Session Consumer uses Workspace facets may Coding replace its remaining
+   Workspace co-root with `harness.session -> harness.workspace`.
+5. **CLA7d — continuity stable reference.** `continuity.provider_packs` remains
    Process-scoped. It requires a process-owned typed stable lease/reference and
    shutdown order before a Session Consumer can observe it. The Session Graph
    never owns the concrete ContinuityHub.
@@ -807,6 +810,20 @@ Implemented CLA7b evidence:
   real Graph retirement retry; and
 - durable create/load/open/continue/fork, Model Input restart/rebuild, and
   compaction commit-point regressions remain the acceptance gates.
+
+Implemented CLA7c-resources evidence:
+
+- Session contract version 3 adds one bounded `resource.composition` facet and
+  the combined Provider declares one aggregate Resources requirement;
+- the Provider keeps the raw dependency binding private and exposes only
+  method-shaped operations through a generation-scoped Session Consumer;
+- existing stable resource ports use the root-owned candidate before Mount and
+  switch once to that Session Consumer after Graph publication;
+- production no longer constructs the four direct Resources Consumers;
+- generic roots are exactly `harness.model_input`; Coding additionally keeps
+  `harness.workspace` as the deferred co-root; and
+- content-only Resource/Extension refresh changes source-publication facts but
+  does not rebind the Graph or change Mount generation.
 
 ### CLA8: Legacy Authority Closure
 

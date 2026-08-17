@@ -170,10 +170,16 @@ from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_PROMPT_REQUIREMENT as RESOURCES_PROMPT_REQUIREMENT,
 )
 from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_SESSION_COMPOSITION_REQUIREMENT as RESOURCES_SESSION_COMPOSITION_REQUIREMENT,
+)
+from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_TOOL_PACK_REQUIREMENT as RESOURCES_TOOL_PACK_REQUIREMENT,
 )
 from loushang.harness.capabilities.session_contracts import (
     SESSION_CAPABILITY_DEFINITION as SESSION_CAPABILITY_DEFINITION,
+)
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_RESOURCE_COMPOSITION_REQUIREMENT as SESSION_RESOURCE_COMPOSITION_REQUIREMENT,
 )
 from loushang.harness.capabilities.session_contracts import (
     SESSION_SIDE_QUESTION_REQUIREMENT as SESSION_SIDE_QUESTION_REQUIREMENT,
@@ -238,8 +244,10 @@ __all__ = [
     "RESOURCES_CAPABILITY_DEFINITION",
     "RESOURCES_COMMAND_PACK_REQUIREMENT",
     "RESOURCES_PROMPT_REQUIREMENT",
+    "RESOURCES_SESSION_COMPOSITION_REQUIREMENT",
     "RESOURCES_TOOL_PACK_REQUIREMENT",
     "SESSION_CAPABILITY_DEFINITION",
+    "SESSION_RESOURCE_COMPOSITION_REQUIREMENT",
     "SESSION_SIDE_QUESTION_REQUIREMENT",
     "SESSION_TRANSCRIPT_REQUIREMENT",
     "ScopedSourcePublicationReference",

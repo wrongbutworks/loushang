@@ -50,6 +50,9 @@ from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_PREPARATION_FACET,
     MODEL_INPUT_PREPARATION_REQUIREMENT,
 )
+from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_CAPABILITY_DEFINITION,
+)
 from loushang.harness.capabilities.session_contracts import (
     SESSION_CAPABILITY_DEFINITION,
     SESSION_TRANSCRIPT_REQUIREMENT,
@@ -253,9 +256,18 @@ def build_session_model_call_capability_binding(
     profile_fingerprint_provider: CurrentProfileFingerprintProvider,
     conversation_id: str | None = None,
     session_provider: CapabilityBundleProvider | None = None,
+    resources_provider: CapabilityBundleProvider | None = None,
 ) -> SessionModelCallCapabilityBinding:
     """Build data-only graph inputs without acquiring graph lifecycle authority."""
 
+    if resources_provider is not None and session_provider is None:
+        raise ValueError(
+            "model-call binding cannot use a Resources Provider without a Session Provider"
+        )
+    if session_provider is not None and resources_provider is None:
+        raise ValueError(
+            "model-call binding requires the Session Provider's Resources dependency"
+        )
     _require_transcript_port(transcript, name="model-call binding")
     if not isinstance(projector, RuntimeCapabilityGraphProjector):
         raise TypeError("model-call binding requires graph projection")
@@ -286,9 +298,7 @@ def build_session_model_call_capability_binding(
         compatible_contract=CapabilityContractRange.exact(1),
         facets=MODEL_INPUT_CAPABILITY_DEFINITION.facets,
         requirements=(
-            (SESSION_TRANSCRIPT_REQUIREMENT,)
-            if session_provider is not None
-            else ()
+            (SESSION_TRANSCRIPT_REQUIREMENT,) if session_provider is not None else ()
         ),
         required_authorities=frozenset({"transcript"}),
         source_id="builtin",
@@ -301,8 +311,13 @@ def build_session_model_call_capability_binding(
             definitions=(
                 MODEL_INPUT_CAPABILITY_DEFINITION,
                 *((SESSION_CAPABILITY_DEFINITION,) if session_provider else ()),
+                *((RESOURCES_CAPABILITY_DEFINITION,) if resources_provider else ()),
             ),
-            providers=(provider, *((session_provider,) if session_provider else ())),
+            providers=(
+                provider,
+                *((session_provider,) if session_provider else ()),
+                *((resources_provider,) if resources_provider else ()),
+            ),
         )
     )
 
@@ -362,9 +377,7 @@ class SessionModelCallRuntime:
         self,
         *,
         transcript: ModelInputTranscriptPort,
-        ensure_consumer: Callable[
-            [], Awaitable[SessionModelCallCapabilityConsumer]
-        ],
+        ensure_consumer: Callable[[], Awaitable[SessionModelCallCapabilityConsumer]],
         projector: RuntimeCapabilityGraphProjector,
         registration_entries_provider: RegistrationEntriesProvider | None = None,
         source_publication_provider: SourcePublicationProvider | None = None,
@@ -377,7 +390,9 @@ class SessionModelCallRuntime:
         if registration_entries_provider is not None and not callable(
             registration_entries_provider
         ):
-            raise TypeError("model-call runtime registration inventory must be callable")
+            raise TypeError(
+                "model-call runtime registration inventory must be callable"
+            )
         if source_publication_provider is not None and not callable(
             source_publication_provider
         ):
@@ -386,11 +401,11 @@ class SessionModelCallRuntime:
         self._transcript = transcript
         self._ensure_consumer = ensure_consumer
         self._projector = projector
-        self._registration_entries_provider = (
-            registration_entries_provider or (lambda: ())
+        self._registration_entries_provider = registration_entries_provider or (
+            lambda: ()
         )
-        self._source_publication_provider = (
-            source_publication_provider or (lambda: None)
+        self._source_publication_provider = source_publication_provider or (
+            lambda: None
         )
 
     def effective_view(

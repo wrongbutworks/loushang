@@ -162,10 +162,10 @@ def resources_capability_provider_binding(
 ) -> CapabilityBundleProviderBinding:
     """Map private Profile selections into one graph-owned Bundle Provider.
 
-    The returned binding is source-complete but is not production-mounted by
-    CLA3.  Resource bundles, prompt text, disabled-skill selectors, Extension
-    content, and live registrations are call data and deliberately do not enter
-    the construction fingerprint.
+    The returned binding is production-mounted as the declared dependency of
+    ``harness.session``. Resource bundles, prompt text, disabled-skill
+    selectors, Extension content, and live registrations are call data and
+    deliberately do not enter the construction fingerprint.
     """
 
     focused_profile = resource_capability_profile(profile)

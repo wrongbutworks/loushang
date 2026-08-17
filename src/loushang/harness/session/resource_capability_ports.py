@@ -14,14 +14,11 @@ from loushang.harness.capabilities.packs import (
     CapabilityPackComposition,
 )
 from loushang.harness.capabilities.prompt import PreparedPrompt, PromptSection
-from loushang.harness.capabilities.resources_consumers import (
-    ResourceActivationCapabilityConsumer,
-    ResourceCommandPackCapabilityConsumer,
-    ResourcePromptCapabilityConsumer,
-    ResourceToolPackCapabilityConsumer,
-)
 from loushang.harness.resources.activation import ResourceActivation
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.session.session_capability_consumer import (
+    SessionResourceCompositionCapabilityConsumer,
+)
 
 T = TypeVar("T")
 
@@ -39,10 +36,7 @@ class SessionResourceCapabilityPorts:
         if candidate.ownership_state != "root_owned":
             raise ValueError("resource ports require a root-owned candidate")
         self._candidate: CapabilityCompositionRuntime | None = candidate
-        self._activation: ResourceActivationCapabilityConsumer | None = None
-        self._prompt: ResourcePromptCapabilityConsumer | None = None
-        self._tools: ResourceToolPackCapabilityConsumer | None = None
-        self._commands: ResourceCommandPackCapabilityConsumer | None = None
+        self._consumer: SessionResourceCompositionCapabilityConsumer | None = None
         self.activation = _ActivationPort(self)
         self.skills = _SkillActivationPort(self)
         self.prompt = _PromptPort(self)
@@ -52,25 +46,16 @@ class SessionResourceCapabilityPorts:
     def install(
         self,
         *,
-        activation: ResourceActivationCapabilityConsumer,
-        prompt: ResourcePromptCapabilityConsumer,
-        tools: ResourceToolPackCapabilityConsumer,
-        commands: ResourceCommandPackCapabilityConsumer,
+        consumer: SessionResourceCompositionCapabilityConsumer,
     ) -> None:
         if self._candidate is None:
             raise RuntimeError("resource Consumers are already installed")
-        self._activation = activation
-        self._prompt = prompt
-        self._tools = tools
-        self._commands = commands
+        self._consumer = consumer
         self._candidate = None
 
     def invalidate(self) -> None:
         self._candidate = None
-        self._activation = None
-        self._prompt = None
-        self._tools = None
-        self._commands = None
+        self._consumer = None
 
     def _candidate_or_raise(self) -> CapabilityCompositionRuntime:
         candidate = self._candidate
@@ -80,23 +65,23 @@ class SessionResourceCapabilityPorts:
 
     def _activation_or_candidate(
         self,
-    ) -> ResourceActivationCapabilityConsumer | CapabilityCompositionRuntime:
-        return self._activation or self._candidate_or_raise()
+    ) -> SessionResourceCompositionCapabilityConsumer | CapabilityCompositionRuntime:
+        return self._consumer or self._candidate_or_raise()
 
     def _prompt_or_candidate(
         self,
-    ) -> ResourcePromptCapabilityConsumer | CapabilityCompositionRuntime:
-        return self._prompt or self._candidate_or_raise()
+    ) -> SessionResourceCompositionCapabilityConsumer | CapabilityCompositionRuntime:
+        return self._consumer or self._candidate_or_raise()
 
     def _tools_or_candidate(
         self,
-    ) -> ResourceToolPackCapabilityConsumer | CapabilityCompositionRuntime:
-        return self._tools or self._candidate_or_raise()
+    ) -> SessionResourceCompositionCapabilityConsumer | CapabilityCompositionRuntime:
+        return self._consumer or self._candidate_or_raise()
 
     def _commands_or_candidate(
         self,
-    ) -> ResourceCommandPackCapabilityConsumer | CapabilityCompositionRuntime:
-        return self._commands or self._candidate_or_raise()
+    ) -> SessionResourceCompositionCapabilityConsumer | CapabilityCompositionRuntime:
+        return self._consumer or self._candidate_or_raise()
 
 
 @dataclass(frozen=True)
@@ -105,7 +90,7 @@ class _ActivationPort:
 
     def activate(self, bundle: ResourceBundle | None) -> ResourceActivation:
         target = self.owner._activation_or_candidate()
-        if isinstance(target, ResourceActivationCapabilityConsumer):
+        if isinstance(target, SessionResourceCompositionCapabilityConsumer):
             return target.activate(bundle)
         return target.activate_resources(bundle)
 
@@ -120,7 +105,7 @@ class _SkillActivationPort:
         disabled_skills: tuple[str, ...] | list[str],
     ) -> ResourceBundle:
         target = self.owner._activation_or_candidate()
-        if isinstance(target, ResourceActivationCapabilityConsumer):
+        if isinstance(target, SessionResourceCompositionCapabilityConsumer):
             return target.apply_skill_activation(bundle, disabled_skills)
         return target.apply_skill_activation(bundle, disabled_skills)
 
@@ -131,8 +116,8 @@ class _PromptPort:
 
     def compose(self, sections: Iterable[PromptSection]) -> PreparedPrompt:
         target = self.owner._prompt_or_candidate()
-        if isinstance(target, ResourcePromptCapabilityConsumer):
-            return target.compose(sections)
+        if isinstance(target, SessionResourceCompositionCapabilityConsumer):
+            return target.compose_prompt(sections)
         return target.prompt_section_composer.compose(sections)
 
 
@@ -145,8 +130,8 @@ class _ToolPackPort:
         packs: Iterable[CapabilityPack[T]],
     ) -> CapabilityPackComposition[T]:
         target = self.owner._tools_or_candidate()
-        if isinstance(target, ResourceToolPackCapabilityConsumer):
-            return target.compose(packs)
+        if isinstance(target, SessionResourceCompositionCapabilityConsumer):
+            return target.compose_tools(packs)
         return target.tool_pack_composer.compose(packs)
 
 
@@ -159,8 +144,8 @@ class _CommandPackPort:
         packs: Iterable[CapabilityPack[T]],
     ) -> CapabilityPackComposition[T]:
         target = self.owner._commands_or_candidate()
-        if isinstance(target, ResourceCommandPackCapabilityConsumer):
-            return target.compose(packs)
+        if isinstance(target, SessionResourceCompositionCapabilityConsumer):
+            return target.compose_commands(packs)
         return target.command_pack_composer.compose(packs)
 
 

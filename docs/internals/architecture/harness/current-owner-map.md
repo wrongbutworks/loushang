@@ -44,10 +44,11 @@ Definition / Provider / Consumer slice: Consumers receive only declared
 filesystem facets or the authorized process-launch port, never the graph
 Runtime, raw process host, approval gateway, or sandbox backend.
 
-`harness.resources`, `harness.session` contract version 2, and
+`harness.resources`, `harness.session` contract version 3, and
 `harness.workspace` are production-mounted with `harness.model_input` in the
 single Session-owned graph. Model Input directly requires the Session transcript
-trio; Resources and optional Workspace remain independent roots.
+trio; Session directly consumes Resources, while optional Workspace remains an
+independent Coding root.
 The Resources Session/bootstrap/sealed Bundle maps the
 private resource, prompt, skill, Tool-pack, and Command-pack Profile selections
 through focused Consumers. Synchronous bootstrap constructs one root-owned
@@ -64,8 +65,11 @@ Profile binding. Generation-scoped Consumers own live calls after publication;
 Model Input and compaction route through a stable narrow port rather than a raw
 Store or Profile binding. Shutdown joins active work, publishes the auxiliary
 transcript index, and then releases the transcript binding with retryable
-retirement semantics. Process-scoped continuity remains outside the Session
-Graph until its separate stable-reference contract is accepted.
+retirement semantics. A second focused Session Consumer routes resource,
+skill, prompt, Tool-pack, and Command-pack calls through the declared Resources
+dependency; the old direct Resources Consumer captures are no longer a
+production path. Process-scoped continuity remains outside the Session Graph
+until its separate stable-reference contract is accepted.
 
 The Workspace Bundle receives only Product-admitted, root-bounded filesystem
 operations and an already-authorized process launcher. Coding constructs one

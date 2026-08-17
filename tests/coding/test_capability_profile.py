@@ -418,17 +418,15 @@ def test_extension_reload_preflight_rejects_session_side_question_change() -> No
     )
 
     with pytest.raises(ExtensionGraphProviderRestartRequiredError) as caught:
-        CodingExtensionDeclarationPreflight(
-            baseline_profile=CODING_CAPABILITY_PROFILE
-        )(candidate)
+        CodingExtensionDeclarationPreflight(baseline_profile=CODING_CAPABILITY_PROFILE)(
+            candidate
+        )
 
     assert caught.value.changed_slots == (SIDE_QUESTION_PROVIDER_SLOT.key,)
     assert caught.value.capability_ids == ("harness.session",)
 
 
-def test_extension_reload_preflight_rejects_session_side_question_replacement() -> (
-    None
-):
+def test_extension_reload_preflight_rejects_session_side_question_replacement() -> None:
     original = RegisteredRuntimeCapabilityReplacement(
         slot=SIDE_QUESTION_PROVIDER_SLOT.key,
         name="original-side-question",
@@ -453,9 +451,7 @@ def test_extension_reload_preflight_rejects_session_side_question_replacement() 
     assert caught.value.capability_ids == ("harness.session",)
 
 
-def test_extension_reload_preflight_types_invalid_session_side_question_grant() -> (
-    None
-):
+def test_extension_reload_preflight_types_invalid_session_side_question_grant() -> None:
     replacement = RegisteredRuntimeCapabilityReplacement(
         slot=SIDE_QUESTION_PROVIDER_SLOT.key,
         name="ungranted-side-question",
@@ -472,9 +468,9 @@ def test_extension_reload_preflight_types_invalid_session_side_question_grant() 
     )
 
     with pytest.raises(ExtensionGraphProviderRestartRequiredError) as caught:
-        CodingExtensionDeclarationPreflight(
-            baseline_profile=CODING_CAPABILITY_PROFILE
-        )(candidate)
+        CodingExtensionDeclarationPreflight(baseline_profile=CODING_CAPABILITY_PROFILE)(
+            candidate
+        )
 
     assert caught.value.changed_slots == (SIDE_QUESTION_PROVIDER_SLOT.key,)
     assert caught.value.capability_ids == ("harness.session",)
@@ -717,14 +713,11 @@ def test_external_side_question_replacement_binds_to_the_live_coding_session(
         assert session._capability_graph_runtime.generation == 1
         snapshot = session._capability_graph_runtime.snapshot
         assert snapshot is not None
-        assert snapshot.roots == (
-            "harness.model_input",
-            "harness.resources",
-        )
+        assert snapshot.roots == ("harness.model_input",)
         assert tuple(node.capability_id for node in snapshot.nodes) == (
+            "harness.resources",
             "harness.session",
             "harness.model_input",
-            "harness.resources",
         )
         model_input_node = next(
             node
@@ -732,9 +725,14 @@ def test_external_side_question_replacement_binds_to_the_live_coding_session(
             if node.capability_id == "harness.model_input"
         )
         assert tuple(
-            requirement.capability_id
-            for requirement in model_input_node.requirements
+            requirement.capability_id for requirement in model_input_node.requirements
         ) == ("harness.session",)
+        session_node = next(
+            node for node in snapshot.nodes if node.capability_id == "harness.session"
+        )
+        assert tuple(
+            requirement.capability_id for requirement in session_node.requirements
+        ) == ("harness.resources",)
         assert (
             session.capability_profile.capability(SIDE_QUESTION_PROVIDER_SLOT.key)
             .selections[0]

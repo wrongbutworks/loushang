@@ -2,18 +2,28 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Protocol, TypeVar, cast
 
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
+from loushang.harness.capabilities.packs import (
+    CapabilityPack,
+    CapabilityPackComposition,
+)
+from loushang.harness.capabilities.prompt import PreparedPrompt, PromptSection
 from loushang.harness.capabilities.session_contracts import (
     COMPACTION_FACET,
     CONVERSATION_STORE_FACET,
+    RESOURCE_COMPOSITION_FACET,
+    SESSION_RESOURCE_COMPOSITION_REQUIREMENT,
     SESSION_SIDE_QUESTION_REQUIREMENT,
     SESSION_TRANSCRIPT_REQUIREMENT,
     SIDE_QUESTION_FACET,
     TRANSCRIPT_PROFILE_FACET,
 )
+from loushang.harness.resources.activation import ResourceActivation
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime.side_question import (
     SideQuestionAnswer,
     SideQuestionUpdate,
@@ -27,6 +37,8 @@ from loushang.harness.transcript.model_input import (
     ModelInputTranscriptCommitter,
     RebuiltModelInput,
 )
+
+T = TypeVar("T")
 
 
 class _SideQuestionFacet(Protocol):
@@ -132,7 +144,72 @@ class SessionTranscriptCapabilityConsumer:
         return cast(_TranscriptFacet, self.facets.require(COMPACTION_FACET))
 
 
+class _ResourceCompositionFacet(Protocol):
+    def activate(self, bundle: ResourceBundle | None) -> ResourceActivation: ...
+
+    def apply_skill_activation(
+        self,
+        bundle: ResourceBundle,
+        disabled_skills: tuple[str, ...] | list[str],
+    ) -> ResourceBundle: ...
+
+    def compose_prompt(self, sections: Iterable[PromptSection]) -> PreparedPrompt: ...
+
+    def compose_tools(
+        self,
+        packs: Iterable[CapabilityPack[T]],
+    ) -> CapabilityPackComposition[T]: ...
+
+    def compose_commands(
+        self,
+        packs: Iterable[CapabilityPack[T]],
+    ) -> CapabilityPackComposition[T]: ...
+
+
+@dataclass(frozen=True)
+class SessionResourceCompositionCapabilityConsumer:
+    """Generation-scoped Session access to its declared Resources dependency."""
+
+    facets: CapabilityFacetSet
+
+    def __post_init__(self) -> None:
+        if self.facets.requirement != SESSION_RESOURCE_COMPOSITION_REQUIREMENT:
+            raise ValueError("Session Resources Consumer received the wrong facet view")
+
+    def activate(self, bundle: ResourceBundle | None) -> ResourceActivation:
+        return self._facet().activate(bundle)
+
+    def apply_skill_activation(
+        self,
+        bundle: ResourceBundle,
+        disabled_skills: tuple[str, ...] | list[str],
+    ) -> ResourceBundle:
+        return self._facet().apply_skill_activation(bundle, disabled_skills)
+
+    def compose_prompt(self, sections: Iterable[PromptSection]) -> PreparedPrompt:
+        return self._facet().compose_prompt(sections)
+
+    def compose_tools(
+        self,
+        packs: Iterable[CapabilityPack[T]],
+    ) -> CapabilityPackComposition[T]:
+        return self._facet().compose_tools(packs)
+
+    def compose_commands(
+        self,
+        packs: Iterable[CapabilityPack[T]],
+    ) -> CapabilityPackComposition[T]:
+        return self._facet().compose_commands(packs)
+
+    def _facet(self) -> _ResourceCompositionFacet:
+        return cast(
+            _ResourceCompositionFacet,
+            self.facets.require(RESOURCE_COMPOSITION_FACET),
+        )
+
+
 __all__ = [
+    "SessionResourceCompositionCapabilityConsumer",
     "SessionSideQuestionCapabilityConsumer",
     "SessionTranscriptCapabilityConsumer",
 ]

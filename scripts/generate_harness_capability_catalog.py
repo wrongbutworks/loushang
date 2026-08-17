@@ -81,6 +81,14 @@ SOURCE_BACKED_SEAMS = (
                     "RESOURCES_COMMAND_PACK_REQUIREMENT",
                 ),
             ),
+            (
+                "loushang.harness.session.session_capability_provider:"
+                "_ResourceCompositionFacet",
+                (
+                    "loushang.harness.capabilities.resources_contracts:"
+                    "RESOURCES_SESSION_COMPOSITION_REQUIREMENT",
+                ),
+            ),
         ),
         production_mounts=(
             "loushang.harness.session.agent_product:AgentProductSession",
@@ -110,6 +118,14 @@ SOURCE_BACKED_SEAMS = (
                 (
                     "loushang.harness.capabilities.session_contracts:"
                     "SESSION_TRANSCRIPT_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.session.session_capability_consumer:"
+                "SessionResourceCompositionCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.session_contracts:"
+                    "SESSION_RESOURCE_COMPOSITION_REQUIREMENT",
                 ),
             ),
         ),

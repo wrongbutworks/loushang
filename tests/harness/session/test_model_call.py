@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -22,6 +23,7 @@ from loushang.coding.compaction.profiles import (
 )
 from loushang.harness.capabilities import (
     MODEL_INPUT_PREPARATION_REQUIREMENT,
+    CapabilityBundleProvider,
     RegistrationInventoryEntry,
     RuntimeCapabilityGraphBinder,
     RuntimeCapabilityGraphProjector,
@@ -38,6 +40,7 @@ from loushang.harness.conversation import (
 )
 from loushang.harness.runtime import RuntimeProfileResolver
 from loushang.harness.session.model_call import (
+    ModelInputTranscriptPort,
     SessionModelCallCapabilityConsumer,
     SessionModelCallRuntime,
     build_session_model_call_capability_binding,
@@ -177,6 +180,21 @@ def _model_call_runtime(
     )
 
 
+def test_model_call_binding_rejects_resources_without_session_provider() -> None:
+    with pytest.raises(ValueError, match="without a Session Provider"):
+        build_session_model_call_capability_binding(
+            transcript=cast(ModelInputTranscriptPort, object()),
+            projector=cast(RuntimeCapabilityGraphProjector, object()),
+            product_id="research",
+            runtime_id="session:model-call-test",
+            is_current=lambda: True,
+            registration_entries_provider=lambda: (),
+            profile_fingerprint_provider=lambda: "profile",
+            conversation_id="session-model-call",
+            resources_provider=cast(CapabilityBundleProvider, object()),
+        )
+
+
 class _PreparedAdapter:
     api = "session-model-call-test"
 
@@ -314,9 +332,11 @@ def test_current_session_prepares_and_rebuilds_main_model_call() -> None:
         assert [node.capability_id for node in graph_snapshot.nodes] == [
             "harness.model_input"
         ]
-        profile = RuntimeProfileResolver().resolve(
-            standard_capability_composition_plan(product_id="coding")
-        ).snapshot()
+        profile = (
+            RuntimeProfileResolver()
+            .resolve(standard_capability_composition_plan(product_id="coding"))
+            .snapshot()
+        )
         view = runtime.effective_view(
             profile,
             model_input_snapshot_id=snapshot_ids[0],
@@ -396,7 +416,9 @@ def test_provider_retry_commits_each_attempt_with_one_invocation_identity() -> N
         assert projected[0].state == "completed"
         assert projected[0].outcome == outcome
         for snapshot in snapshots:
-            assert session.rebuild_model_input(snapshot.snapshot_id).snapshot == snapshot
+            assert (
+                session.rebuild_model_input(snapshot.snapshot_id).snapshot == snapshot
+            )
         await runtime.dispose()
 
     asyncio.run(scenario())
@@ -465,7 +487,9 @@ def test_terminal_provider_failure_records_one_safe_model_call_outcome() -> None
     asyncio.run(scenario())
 
 
-def test_capacity_preflight_records_failed_outcome_without_snapshot_or_transport() -> None:
+def test_capacity_preflight_records_failed_outcome_without_snapshot_or_transport() -> (
+    None
+):
     async def scenario() -> None:
         session = await _transcript_session()
         runtime = _model_call_runtime(session, is_current=lambda: True)
@@ -644,8 +668,9 @@ def test_concurrent_session_model_inputs_allow_only_one_transport() -> None:
             if entry.kind == "model.input.prepared"
         ]
         assert len(snapshots) == 1
-        assert session.rebuild_model_input(snapshots[0].snapshot_id).snapshot == (
-            snapshots[0]
+        assert (
+            session.rebuild_model_input(snapshots[0].snapshot_id).snapshot
+            == (snapshots[0])
         )
         await runtime.dispose()
 

@@ -16,6 +16,12 @@ direct `harness.model_input -> harness.session` requirement for the transcript
 trio; the dependency signature is therefore part of its Mount identity rather
 than hidden in a host closure.
 
+CLA7c-resources makes that identity chain transitive:
+`harness.model_input -> harness.session -> harness.resources`. Resource
+Provider selection therefore participates in Session and Model Input binding
+signatures, while ResourceBundle content remains source-publication call data
+and does not trigger a Mount change.
+
 The implementation uses the Session-scoped `harness.model_input` Definition,
 Provider, and Consumer; Agent's per-sampling `prepare_model_call` seam; and AI's
 existing prepared-request committer. Compaction and branch-summary v2 payloads
