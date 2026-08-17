@@ -532,8 +532,17 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
     }
 
 
+@pytest.mark.parametrize(
+    ("slot", "expected_capability"),
+    (
+        ("prompt.sections", "harness.resources"),
+        ("interaction.side_question", "harness.session"),
+    ),
+)
 def test_agent_session_rejects_extension_graph_provider_change_before_reload(
     tmp_path,
+    slot: str,
+    expected_capability: str,
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.resource_runtime import CodingResourceLoader
@@ -552,11 +561,11 @@ def test_agent_session_rejects_extension_graph_provider_change_before_reload(
         declarations=(
             ExtensionRuntimeCapabilityDeclaration(
                 extension_id="demo",
-                slot="prompt.sections",
+                slot=slot,
                 name="replacement",
                 implementation_version=2,
                 priority=10,
-                granted_permissions=("prompt.sections",),
+                granted_permissions=(slot,),
             ),
         )
     )
@@ -625,6 +634,7 @@ def test_agent_session_rejects_extension_graph_provider_change_before_reload(
     assert len(records) == 1
     assert records[0].type == "error"
     assert records[0].details["restartRequired"] is True
+    assert records[0].details["capabilityIds"] == [expected_capability]
     asyncio.run(session.dispose())
 
 

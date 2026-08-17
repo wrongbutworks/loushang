@@ -313,9 +313,18 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert research.get_active_tool_names() == []
         assert design.get_active_tool_names() == []
         assert effective_runtime.product_id == "research"
+        graph_snapshot = research._capability_graph_runtime.snapshot
+        assert graph_snapshot is not None
+        assert graph_snapshot.roots == (
+            "harness.model_input",
+            "harness.resources",
+            "harness.session",
+        )
+        assert all(node.requirements == () for node in graph_snapshot.nodes)
         assert tuple(node.capability_id for node in effective_runtime.capabilities) == (
             "harness.model_input",
             "harness.resources",
+            "harness.session",
         )
         assert effective_runtime.source_publication is not None
         assert effective_runtime.source_publication.owner_capability_id == (
@@ -439,6 +448,17 @@ def test_failed_graph_preparation_is_disposed_without_leaving_agent_boundary(
             reserve_tokens=1_111,
             compact_percent=61.0,
         )
+        side_candidate = session._staged_side_question_candidate
+        assert side_candidate is not None
+        side_disposal_calls = 0
+        original_side_dispose = side_candidate.dispose
+
+        def count_side_dispose() -> None:
+            nonlocal side_disposal_calls
+            side_disposal_calls += 1
+            original_side_dispose()
+
+        side_candidate.dispose = count_side_dispose  # type: ignore[method-assign]
 
         async def fail_bind(*_args: object) -> None:
             raise RuntimeError("graph preparation failed")
@@ -468,6 +488,9 @@ def test_failed_graph_preparation_is_disposed_without_leaving_agent_boundary(
         assert session._capability_graph_runtime.snapshot is None
         assert session.agent.prepare_model_call is None
         assert session._capability_graph_runtime.is_closed is True
+        assert side_disposal_calls == 1
+        assert side_candidate.ownership_state == "disposed"
+        assert session._staged_side_question_candidate is None
         assert disposed_transcripts == ["bind-failure-session"]
 
     asyncio.run(scenario())
@@ -563,6 +586,54 @@ def test_unprepared_shutdown_retains_root_candidate_for_cleanup_retry(
         assert session._staged_resource_candidate is None
         assert capability_runtime.ownership_state == "disposed"
         assert disposed_transcripts == ["shutdown-retry-session"]
+
+    asyncio.run(scenario())
+
+
+def test_unprepared_shutdown_retries_the_side_question_candidate(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="side-shutdown-retry")
+        session = _ContractProductSession(
+            product_id="side-shutdown-retry",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("side-shutdown-retry"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        candidate = session._staged_side_question_candidate
+        assert candidate is not None
+        original_dispose = candidate.dispose
+        disposal_attempts = 0
+
+        def fail_first_disposal() -> None:
+            nonlocal disposal_attempts
+            disposal_attempts += 1
+            if disposal_attempts == 1:
+                raise RuntimeError("transient side-question cleanup failure")
+            original_dispose()
+
+        candidate.dispose = fail_first_disposal  # type: ignore[method-assign]
+
+        with pytest.raises(
+            RuntimeError,
+            match="transient side-question cleanup failure",
+        ):
+            await session.dispose()
+
+        assert disposal_attempts == 1
+        assert session._staged_side_question_candidate is candidate
+        assert candidate.ownership_state == "root_owned"
+
+        await session.dispose()
+
+        assert disposal_attempts == 2
+        assert session._staged_side_question_candidate is None
+        assert candidate.ownership_state == "disposed"
+        assert disposed_transcripts == ["side-shutdown-retry-session"]
 
     asyncio.run(scenario())
 

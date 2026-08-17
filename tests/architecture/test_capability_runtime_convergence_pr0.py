@@ -76,6 +76,9 @@ WORKSPACE_CONSUMER_PATHS = (
     CAPABILITIES_ROOT / "workspace_tool_consumer.py",
     CAPABILITIES_ROOT / "workspace_process_consumer.py",
 )
+SESSION_DEFINITION_PATH = CAPABILITIES_ROOT / "session_contracts.py"
+SESSION_PROVIDER_PATH = HARNESS_ROOT / "session" / "session_capability_provider.py"
+SESSION_CONSUMER_PATH = HARNESS_ROOT / "session" / "session_capability_consumer.py"
 
 REQUIRED_ROWS = {
     "SUR": 28,
@@ -119,7 +122,12 @@ BROAD_PARAMETER_NAMES = frozenset(
 )
 
 EXPECTED_SOURCE_BACKED_CAPABILITY_IDS = frozenset(
-    {"harness.model_input", "harness.resources", "harness.workspace"}
+    {
+        "harness.model_input",
+        "harness.resources",
+        "harness.session",
+        "harness.workspace",
+    }
 )
 
 
@@ -416,6 +424,129 @@ def test_graph_runtime_and_workspace_definition_provider_consumer_boundaries() -
         }.isdisjoint(consumer_imports)
         consumer_source = consumer_path.read_text(encoding="utf-8")
         assert "RuntimeCapabilityGraphRuntime" not in consumer_source
+
+
+def test_session_definition_provider_consumer_boundaries() -> None:
+    definition_imports = _absolute_loushang_imports(SESSION_DEFINITION_PATH)
+    assert definition_imports == {"loushang.harness.capabilities.contracts"}
+
+    provider_imports = _absolute_loushang_imports(SESSION_PROVIDER_PATH)
+    assert "loushang.harness.capabilities.session_contracts" in provider_imports
+    assert "loushang.harness.session.legacy_side_question" in provider_imports
+    assert not any(item.startswith("loushang.coding") for item in provider_imports)
+    assert {
+        "loushang.harness.capabilities.graph_binding",
+        "loushang.harness.capabilities.graph_planning",
+        "loushang.harness.capabilities.graph_projection",
+        "loushang.harness.capabilities.graph_runtime",
+    }.isdisjoint(provider_imports)
+
+    consumer_imports = _absolute_loushang_imports(SESSION_CONSUMER_PATH)
+    assert "loushang.harness.capabilities.session_contracts" in consumer_imports
+    assert all("session_capability_provider" not in item for item in consumer_imports)
+    assert {
+        "loushang.harness.capabilities.graph_binding",
+        "loushang.harness.capabilities.graph_planning",
+        "loushang.harness.capabilities.graph_projection",
+    }.isdisjoint(consumer_imports)
+
+    forbidden_symbols = {
+        "RuntimeCapabilityGraphBinder",
+        "RuntimeCapabilityGraphPlanner",
+        "RuntimeCapabilityGraphProjector",
+        "RuntimeCapabilityGraphRuntime",
+        "AgentProductSession",
+        "ProductTranscriptSession",
+        "RuntimeProfileBinding",
+    }
+    forbidden_modules = {
+        "graph_binding",
+        "graph_planning",
+        "graph_projection",
+        "graph_runtime",
+    }
+    violations: list[str] = []
+    for path in (
+        SESSION_DEFINITION_PATH,
+        SESSION_PROVIDER_PATH,
+        SESSION_CONSUMER_PATH,
+    ):
+        path_forbidden_modules = forbidden_modules
+        if path == SESSION_CONSUMER_PATH:
+            path_forbidden_modules = forbidden_modules - {"graph_runtime"}
+        tree = _python_trees()[path]
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if path == SESSION_CONSUMER_PATH and any(
+                    alias.name == "graph_runtime" for alias in node.names
+                ):
+                    violations.append(
+                        f"{path}:{node.lineno}:module-alias:graph_runtime"
+                    )
+                if (
+                    path == SESSION_CONSUMER_PATH
+                    and "graph_runtime" in module.split(".")
+                ):
+                    unexpected = {
+                        alias.name
+                        for alias in node.names
+                        if alias.name != "CapabilityFacetSet"
+                    }
+                    violations.extend(
+                        f"{path}:{node.lineno}:graph-runtime-symbol:{name}"
+                        for name in sorted(unexpected)
+                    )
+                if any(
+                    part in path_forbidden_modules for part in module.split(".")
+                ):
+                    violations.append(f"{path}:{node.lineno}:module:{module}")
+                for alias in node.names:
+                    if alias.name in forbidden_symbols:
+                        violations.append(
+                            f"{path}:{node.lineno}:symbol:{alias.name}"
+                        )
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if (
+                        path == SESSION_CONSUMER_PATH
+                        and "graph_runtime" in alias.name.split(".")
+                    ):
+                        violations.append(
+                            f"{path}:{node.lineno}:module:{alias.name}"
+                        )
+                        continue
+                    if any(
+                        part in path_forbidden_modules
+                        for part in alias.name.split(".")
+                    ):
+                        violations.append(
+                            f"{path}:{node.lineno}:module:{alias.name}"
+                        )
+            elif isinstance(node, ast.Name) and node.id in forbidden_symbols:
+                violations.append(f"{path}:{node.lineno}:name:{node.id}")
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                parameters = (
+                    *node.args.posonlyargs,
+                    *node.args.args,
+                    *node.args.kwonlyargs,
+                    *(() if node.args.vararg is None else (node.args.vararg,)),
+                    *(() if node.args.kwarg is None else (node.args.kwarg,)),
+                )
+                for parameter in parameters:
+                    if parameter.arg in {"self", "cls"}:
+                        continue
+                    if _is_broad_annotation(parameter.annotation):
+                        violations.append(
+                            f"{path}:{node.lineno}:parameter:{parameter.arg}"
+                        )
+            elif isinstance(node, ast.AnnAssign) and _is_broad_annotation(
+                node.annotation
+            ):
+                violations.append(
+                    f"{path}:{node.lineno}:field:{ast.unparse(node.target)}"
+                )
+    assert violations == []
 
 
 def test_broad_annotation_syntax_gate_covers_obvious_locator_shapes() -> None:

@@ -88,6 +88,29 @@ SOURCE_BACKED_SEAMS = (
     ),
     CapabilitySeam(
         definition=(
+            "loushang.harness.capabilities.session_contracts:"
+            "SESSION_CAPABILITY_DEFINITION"
+        ),
+        providers=(
+            "loushang.harness.session.session_capability_provider:"
+            "session_side_question_provider_binding",
+        ),
+        consumers=(
+            (
+                "loushang.harness.session.session_capability_consumer:"
+                "SessionSideQuestionCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.session_contracts:"
+                    "SESSION_SIDE_QUESTION_REQUIREMENT",
+                ),
+            ),
+        ),
+        production_mounts=(
+            "loushang.harness.session.agent_product:AgentProductSession",
+        ),
+    ),
+    CapabilitySeam(
+        definition=(
             "loushang.harness.capabilities.workspace_contracts:"
             "WORKSPACE_CAPABILITY_DEFINITION"
         ),
@@ -217,7 +240,7 @@ def render_catalog() -> str:
             "",
             "## Coverage Boundary",
             "",
-            "`harness.session`, `coding.lsp`, and `coding.arch` remain accepted rollout "
+            "`coding.lsp` and `coding.arch` remain accepted rollout "
             "targets, but they are deliberately absent from the "
             "table until each has a complete source-backed Definition / Provider /",
             "Consumer seam. Fine-grained Runtime Profile slots and individual Tools,",

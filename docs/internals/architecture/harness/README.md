@@ -22,6 +22,9 @@ planning, work event persistence, or AI provider behavior.
 - [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md)
   defines top-level Capability IDs, dependency direction, Mount identity,
   graph lifecycle, and graph diagnostics.
+- [Session Capability Boundary](session-capability-boundary.md) defines the
+  incremental Session Bundle contracts, ownership handoffs, and deferred
+  transcript/continuity facets.
 - [Harness Capability Catalog](capability-catalog.md) is the generated,
   source-backed inventory of role-complete Capability Definition / Provider /
   Consumer seams and their lifecycle metadata.

@@ -52,6 +52,10 @@ from loushang.harness.capabilities.resources_consumers import (
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
 )
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_CAPABILITY_DEFINITION,
+    SESSION_SIDE_QUESTION_REQUIREMENT,
+)
 from loushang.harness.capabilities.workspace_process_consumer import (
     WorkspaceProcessCapabilityConsumer,
 )
@@ -88,7 +92,8 @@ from loushang.harness.runtime import (
     CancellationSignal,
     ResolvedRuntimeProfile,
     SideQuestionAnswer,
-    SideQuestionCoordinator,
+    SideQuestionProvider,
+    SideQuestionProviderFactory,
     SideQuestionUpdate,
 )
 from loushang.harness.runtime.registration import (
@@ -137,6 +142,12 @@ from loushang.harness.session.resource_capability_ports import (
     SessionResourceCapabilityPorts,
 )
 from loushang.harness.session.resource_refresh import ExtensionDeclarationPreflight
+from loushang.harness.session.session_capability_consumer import (
+    SessionSideQuestionCapabilityConsumer,
+)
+from loushang.harness.session.session_capability_provider import (
+    session_side_question_provider_binding,
+)
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.side_question import (
     SIDE_QUESTION_BOUNDARY_PROMPT,
@@ -312,6 +323,21 @@ class AgentProductSession(AgentSessionAdapterMixin):
             staged_candidate=capability_runtime,
         )
         self._workspace_capability_binding = workspace_capability_binding
+        self._staged_side_question_candidate: LegacySideQuestionBinding | None = (
+            side_question_binding
+            if side_question_binding is not None
+            else bind_legacy_side_question(capability_runtime.profile)
+        )
+        self._session_side_question_capability_binding = (
+            session_side_question_provider_binding(
+                scope_instance_id=runtime_id,
+                staged_candidate=self._staged_side_question_candidate,
+                bind_provider=self._bind_selected_side_question_provider,
+            )
+        )
+        self._side_question_consumer: (
+            SessionSideQuestionCapabilityConsumer | None
+        ) = None
         workspace_binding = self._workspace_capability_binding
         workspace_definitions = (
             (WORKSPACE_CAPABILITY_DEFINITION,) if workspace_binding is not None else ()
@@ -322,6 +348,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 roots=(
                     MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
                     RESOURCES_CAPABILITY_DEFINITION.capability_id,
+                    SESSION_CAPABILITY_DEFINITION.capability_id,
                     *(
                         (WORKSPACE_CAPABILITY_DEFINITION.capability_id,)
                         if workspace_binding is not None
@@ -331,11 +358,13 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 definitions=(
                     MODEL_INPUT_CAPABILITY_DEFINITION,
                     RESOURCES_CAPABILITY_DEFINITION,
+                    SESSION_CAPABILITY_DEFINITION,
                     *workspace_definitions,
                 ),
                 providers=(
                     self._model_call_capability_binding.provider_binding.provider,
                     self._resource_capability_binding.provider,
+                    self._session_side_question_capability_binding.provider,
                     *(
                         (workspace_binding.provider,)
                         if workspace_binding is not None
@@ -363,22 +392,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
         self._tool_exec_service = tool_exec_service
-        self._side_question_binding: LegacySideQuestionBinding | None = (
-            side_question_binding
-            if side_question_binding is not None
-            else bind_legacy_side_question(capability_runtime.profile)
-        )
-        try:
-            side_question_factory = self._side_question_binding.provider_factory
-            self._side_question = (
-                SideQuestionCoordinator(side_question_factory.bind(self))
-                if side_question_factory is not None
-                else None
-            )
-        except BaseException:
-            self._side_question_binding.dispose()
-            self._side_question_binding = None
-            raise
         self.footer_data_provider = footer_data_provider
         self._base_prompt = (
             base_prompt if base_prompt is not None else self.agent.system_prompt
@@ -785,10 +798,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
         *,
         on_update: SideQuestionUpdate | None = None,
     ) -> SideQuestionAnswer:
-        coordinator = self._side_question
-        if coordinator is None:
-            raise RuntimeError("Side questions are not available for this session.")
-        return await coordinator.ask(question, on_update=on_update)
+        await self._ensure_session_graph_prepared()
+        consumer = self._side_question_consumer
+        if consumer is None:
+            raise RuntimeError("Session side-question Capability was not mounted")
+        return await consumer.ask(question, on_update=on_update)
 
     def create_side_question_provider(self) -> AgentSideQuestionProvider:
         return AgentSideQuestionProvider(
@@ -796,9 +810,15 @@ class AgentProductSession(AgentSessionAdapterMixin):
             boundary_prompt=SIDE_QUESTION_BOUNDARY_PROMPT,
         )
 
+    def _bind_selected_side_question_provider(
+        self,
+        factory: SideQuestionProviderFactory,
+    ) -> SideQuestionProvider:
+        return factory.bind(self)
+
     def cancel_side_question(self) -> bool:
-        coordinator = self._side_question
-        return coordinator.cancel() if coordinator is not None else False
+        consumer = self._side_question_consumer
+        return consumer.cancel() if consumer is not None else False
 
     async def dispose(
         self,
@@ -818,9 +838,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
         elif self._composition.navigation_runtime.owns_current_task():
             owner = "branch-summary"
         else:
-            coordinator = self._side_question
-            owns_current_task = getattr(coordinator, "owns_current_task", None)
-            if callable(owns_current_task) and owns_current_task():
+            consumer = self._side_question_consumer
+            if consumer is not None and consumer.owns_current_task():
                 owner = "side-question"
         if owner is not None:
             raise RuntimeError(
@@ -841,25 +860,20 @@ class AgentProductSession(AgentSessionAdapterMixin):
         base_dispose: Callable[[], Awaitable[None]],
     ) -> None:
         errors: list[BaseException] = []
-        coordinator = self._side_question
-        if coordinator is not None:
+        side_question_consumer = self._side_question_consumer
+        if side_question_consumer is not None:
             try:
-                await coordinator.cancel_and_wait()
-            except BaseException as exc:
-                errors.append(exc)
-        side_question_binding = self._side_question_binding
-        self._side_question_binding = None
-        if side_question_binding is not None:
-            try:
-                side_question_binding.dispose()
+                await side_question_consumer.cancel_and_wait()
             except BaseException as exc:
                 errors.append(exc)
         self._restore_agent_model_call_boundary()
         async with self._model_call_bind_lock:
             self._model_call_consumer = None
+            self._side_question_consumer = None
             self._resource_capability_ports.invalidate()
             self._workspace_capability_ports.invalidate()
             staged_candidate = self._staged_resource_candidate
+            staged_side_question = self._staged_side_question_candidate
             try:
                 cleanup_codes = await self._capability_graph_binder.dispose(
                     self._capability_graph_runtime
@@ -883,6 +897,21 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     errors.append(exc)
                 else:
                     self._staged_resource_candidate = None
+            if (
+                staged_side_question is not None
+                and staged_side_question.ownership_state == "root_owned"
+            ):
+                try:
+                    staged_side_question.dispose()
+                except BaseException as exc:
+                    errors.append(exc)
+                else:
+                    self._staged_side_question_candidate = None
+            elif (
+                staged_side_question is not None
+                and staged_side_question.ownership_state == "disposed"
+            ):
+                self._staged_side_question_candidate = None
         try:
             await base_dispose()
         except BaseException as exc:
@@ -949,6 +978,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         for item in (
                             binding.provider_binding,
                             self._resource_capability_binding,
+                            self._session_side_question_capability_binding,
                             self._workspace_capability_binding,
                         )
                         if item is not None
@@ -975,6 +1005,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 resource_commands = ResourceCommandPackCapabilityConsumer(
                     self._capability_graph_runtime.capture(
                         RESOURCES_COMMAND_PACK_REQUIREMENT
+                    )
+                )
+                side_question = SessionSideQuestionCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        SESSION_SIDE_QUESTION_REQUIREMENT
                     )
                 )
                 if self._workspace_capability_binding is not None:
@@ -1030,6 +1065,20 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         )
                     else:
                         self._staged_resource_candidate = None
+                staged_side_question = self._staged_side_question_candidate
+                if (
+                    staged_side_question is not None
+                    and staged_side_question.ownership_state == "root_owned"
+                ):
+                    try:
+                        staged_side_question.dispose()
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "staged side-question candidate cleanup also failed: "
+                            f"{cleanup_error!r}"
+                        )
+                    else:
+                        self._staged_side_question_candidate = None
                 raise
             staged_candidate = self._staged_resource_candidate
             if (
@@ -1039,6 +1088,14 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 # Graph-wide or node reuse intentionally skipped Provider.create().
                 staged_candidate.dispose()
             self._staged_resource_candidate = None
+            staged_side_question = self._staged_side_question_candidate
+            if (
+                staged_side_question is not None
+                and staged_side_question.ownership_state == "root_owned"
+            ):
+                # Graph-wide or node reuse intentionally skipped Provider.create().
+                staged_side_question.dispose()
+            self._staged_side_question_candidate = None
             self._resource_capability_ports.install(
                 activation=resource_activation,
                 prompt=resource_prompt,
@@ -1050,6 +1107,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     tools=workspace_tools,
                     process=workspace_process,
                 )
+            self._side_question_consumer = side_question
             self._model_call_consumer = consumer
             return consumer
 

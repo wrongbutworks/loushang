@@ -40,12 +40,18 @@ registrations, Mount generation, and Consumer leases. Losing declarations and
 content-only changes do not manufacture a Graph change. This bridge is not a
 Provider registry and does not implement graph hot replacement.
 
-Coding currently admits Extension replacement only for the legacy
-`interaction.side_question` slot. It fails construction if asked to protect an
-already mounted Extension-owned resource Provider, because the initial
-declaration/resolver state needed to verify later removal is not part of this
-contract. Opening that Provider seam requires the separate dependent-closure
-rebind decision; CLA6 does not imply partial support.
+Coding currently admits Extension replacement only for
+`interaction.side_question`. The initial selection is mounted by
+`harness.session` contract version 1; a later effective add, removal, or
+selection change is rejected by the same pre-discovery preflight with the typed
+restart-required diagnostic. An unchanged declaration may refresh its content
+without another Graph bind.
+
+Coding still fails construction if asked to protect an initially mounted
+Extension-owned resource Provider, because the initial declaration/resolver
+state needed to verify later removal is not part of this contract. Opening that
+Provider seam requires the separate dependent-closure rebind decision; CLA6
+does not imply partial support.
 
 ## Registration Ownership
 

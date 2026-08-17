@@ -116,23 +116,44 @@ class CodingExtensionDeclarationPreflight:
             )
 
     def __call__(self, candidate: ExtensionCapabilityDeclarationSnapshot) -> None:
-        baseline_resources = resource_capability_profile(self.baseline_profile)
-        baseline_fingerprint = runtime_profile_fingerprint(
-            baseline_resources.snapshot()
-        )
         try:
-            _resolve_coding_declaration_snapshot(candidate)
+            candidate_profile = _resolve_coding_declaration_snapshot(candidate)
         except Exception as error:
             changed_slots = _graph_slots_from_resolution_error(error)
             if changed_slots:
+                baseline_graph_input = _graph_profile_for_slots(
+                    self.baseline_profile,
+                    changed_slots,
+                )
                 raise ExtensionGraphProviderRestartRequiredError(
-                    capability_ids=("harness.resources",),
+                    capability_ids=_graph_capability_ids(changed_slots),
                     changed_slots=changed_slots,
-                    baseline_fingerprint=baseline_fingerprint,
+                    baseline_fingerprint=runtime_profile_fingerprint(
+                        baseline_graph_input.snapshot()
+                    ),
                     candidate_fingerprint=candidate.fingerprint,
                     candidate_fingerprint_kind="extension_declaration",
                 ) from error
             raise
+        baseline_side_question = _side_question_profile(self.baseline_profile)
+        candidate_side_question = _side_question_profile(candidate_profile)
+        if (
+            _has_extension_selection(baseline_side_question)
+            or _has_extension_selection(candidate_side_question)
+        ):
+            baseline_side_fingerprint = runtime_profile_fingerprint(
+                baseline_side_question.snapshot()
+            )
+            candidate_side_fingerprint = runtime_profile_fingerprint(
+                candidate_side_question.snapshot()
+            )
+            if baseline_side_fingerprint != candidate_side_fingerprint:
+                raise ExtensionGraphProviderRestartRequiredError(
+                    capability_ids=("harness.session",),
+                    changed_slots=(SIDE_QUESTION_PROVIDER_SLOT.key,),
+                    baseline_fingerprint=baseline_side_fingerprint,
+                    candidate_fingerprint=candidate_side_fingerprint,
+                )
 
 
 def _resolve_coding_declaration_snapshot(
@@ -203,9 +224,64 @@ def _graph_slots_from_resolution_error(error: Exception) -> tuple[str, ...]:
                 slot
                 for item in diagnostics
                 if isinstance((slot := getattr(item, "slot", None)), str)
-                and slot in RESOURCE_CAPABILITY_SLOT_KEYS
+                and slot
+                in {
+                    *RESOURCE_CAPABILITY_SLOT_KEYS,
+                    SIDE_QUESTION_PROVIDER_SLOT.key,
+                }
             }
         )
+    )
+
+
+def _graph_capability_ids(changed_slots: tuple[str, ...]) -> tuple[str, ...]:
+    capability_ids: list[str] = []
+    if any(slot in RESOURCE_CAPABILITY_SLOT_KEYS for slot in changed_slots):
+        capability_ids.append("harness.resources")
+    if SIDE_QUESTION_PROVIDER_SLOT.key in changed_slots:
+        capability_ids.append("harness.session")
+    return tuple(capability_ids)
+
+
+def _graph_profile_for_slots(
+    profile: ResolvedRuntimeProfile,
+    changed_slots: tuple[str, ...],
+) -> ResolvedRuntimeProfile:
+    graph_slots: set[str] = set()
+    if any(slot in RESOURCE_CAPABILITY_SLOT_KEYS for slot in changed_slots):
+        graph_slots.update(RESOURCE_CAPABILITY_SLOT_KEYS)
+    if SIDE_QUESTION_PROVIDER_SLOT.key in changed_slots:
+        graph_slots.add(SIDE_QUESTION_PROVIDER_SLOT.key)
+    return ResolvedRuntimeProfile(
+        product_id=profile.product_id,
+        capabilities=tuple(
+            capability
+            for capability in profile.capabilities
+            if capability.slot.key in graph_slots
+        ),
+        schema_version=profile.schema_version,
+    )
+
+
+def _side_question_profile(
+    profile: ResolvedRuntimeProfile,
+) -> ResolvedRuntimeProfile:
+    return ResolvedRuntimeProfile(
+        product_id=profile.product_id,
+        capabilities=tuple(
+            capability
+            for capability in profile.capabilities
+            if capability.slot.key == SIDE_QUESTION_PROVIDER_SLOT.key
+        ),
+        schema_version=profile.schema_version,
+    )
+
+
+def _has_extension_selection(profile: ResolvedRuntimeProfile) -> bool:
+    return any(
+        selection.source == "extension"
+        for capability in profile.capabilities
+        for selection in capability.selections
     )
 
 

@@ -44,8 +44,9 @@ Definition / Provider / Consumer slice: Consumers receive only declared
 filesystem facets or the authorized process-launch port, never the graph
 Runtime, raw process host, approval gateway, or sandbox backend.
 
-`harness.resources` and `harness.workspace` are production-mounted beside
-`harness.model_input` as independent roots in the single Session-owned graph.
+`harness.resources`, `harness.session` contract version 1, and
+`harness.workspace` are production-mounted beside `harness.model_input` as
+independent roots in the single Session-owned graph.
 The Resources Session/bootstrap/sealed Bundle maps the
 private resource, prompt, skill, Tool-pack, and Command-pack Profile selections
 through focused Consumers. Synchronous bootstrap constructs one root-owned
@@ -53,9 +54,16 @@ candidate; the Resource Provider transfers that same candidate to the Graph
 instead of constructing a peer binding. Long-lived controllers route through
 stable focused ports and generation-scoped Consumers after publication.
 Resource content remains call data and changes only the scoped source
-publication reference, not the Mount generation. `interaction.side_question`
-is excluded and remains a focused legacy binding owned and disposed by the
-Product Session.
+publication reference, not the Mount generation.
+
+The first `harness.session` slice contains only the sealed
+`interaction.side_question` facet. Product admission constructs one focused
+root-owned candidate; the Session Provider transfers that same candidate to
+the Graph and a generation-scoped Consumer owns all live use. Shutdown cancels
+and joins an active request before Graph retirement. Transcript store/profile/
+compaction remain one earlier transcript-lifecycle binding, and Process-scoped
+continuity remains outside the Session Graph until their distinct handoff
+contracts are accepted.
 
 The Workspace Bundle receives only Product-admitted, root-bounded filesystem
 operations and an already-authorized process launcher. Coding constructs one

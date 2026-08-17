@@ -30,6 +30,9 @@ from loushang.harness.capabilities import (
     standard_capability_composition_implementations,
     standard_capability_composition_plan,
 )
+from loushang.harness.capabilities.effective_runtime import (
+    runtime_profile_fingerprint,
+)
 from loushang.harness.capabilities.prompt import PromptSection
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.extensions.agent import (
@@ -403,9 +406,7 @@ def test_extension_reload_preflight_rejects_graph_owned_resource_declaration() -
     assert created == []
 
 
-def test_extension_reload_preflight_does_not_treat_legacy_side_question_as_graph() -> (
-    None
-):
+def test_extension_reload_preflight_rejects_session_side_question_change() -> None:
     replacement = RegisteredRuntimeCapabilityReplacement(
         slot=SIDE_QUESTION_PROVIDER_SLOT.key,
         name="next-side-question",
@@ -416,9 +417,112 @@ def test_extension_reload_preflight_does_not_treat_legacy_side_question_as_graph
         (_extension("acme.next-side-question", replacement),)
     )
 
-    CodingExtensionDeclarationPreflight(baseline_profile=CODING_CAPABILITY_PROFILE)(
-        candidate
+    with pytest.raises(ExtensionGraphProviderRestartRequiredError) as caught:
+        CodingExtensionDeclarationPreflight(
+            baseline_profile=CODING_CAPABILITY_PROFILE
+        )(candidate)
+
+    assert caught.value.changed_slots == (SIDE_QUESTION_PROVIDER_SLOT.key,)
+    assert caught.value.capability_ids == ("harness.session",)
+
+
+def test_extension_reload_preflight_rejects_session_side_question_replacement() -> (
+    None
+):
+    original = RegisteredRuntimeCapabilityReplacement(
+        slot=SIDE_QUESTION_PROVIDER_SLOT.key,
+        name="original-side-question",
+        create=lambda: object(),
     )
+    replacement = RegisteredRuntimeCapabilityReplacement(
+        slot=SIDE_QUESTION_PROVIDER_SLOT.key,
+        name="replacement-side-question",
+        create=lambda: object(),
+    )
+    baseline = resolve_coding_capability_profile(
+        (_extension("acme.original-side-question", original),)
+    ).profile
+    candidate = ExtensionCapabilityDeclarationSnapshot.from_extensions(
+        (_extension("acme.replacement-side-question", replacement),)
+    )
+
+    with pytest.raises(ExtensionGraphProviderRestartRequiredError) as caught:
+        CodingExtensionDeclarationPreflight(baseline_profile=baseline)(candidate)
+
+    assert caught.value.changed_slots == (SIDE_QUESTION_PROVIDER_SLOT.key,)
+    assert caught.value.capability_ids == ("harness.session",)
+
+
+def test_extension_reload_preflight_types_invalid_session_side_question_grant() -> (
+    None
+):
+    replacement = RegisteredRuntimeCapabilityReplacement(
+        slot=SIDE_QUESTION_PROVIDER_SLOT.key,
+        name="ungranted-side-question",
+        create=lambda: object(),
+    )
+    candidate = ExtensionCapabilityDeclarationSnapshot.from_extensions(
+        (
+            _extension(
+                "acme.ungranted-side-question",
+                replacement,
+                permissions=(),
+            ),
+        )
+    )
+
+    with pytest.raises(ExtensionGraphProviderRestartRequiredError) as caught:
+        CodingExtensionDeclarationPreflight(
+            baseline_profile=CODING_CAPABILITY_PROFILE
+        )(candidate)
+
+    assert caught.value.changed_slots == (SIDE_QUESTION_PROVIDER_SLOT.key,)
+    assert caught.value.capability_ids == ("harness.session",)
+    assert caught.value.candidate_fingerprint_kind == "extension_declaration"
+    side_profile = replace(
+        CODING_CAPABILITY_PROFILE,
+        capabilities=tuple(
+            capability
+            for capability in CODING_CAPABILITY_PROFILE.capabilities
+            if capability.slot.key == SIDE_QUESTION_PROVIDER_SLOT.key
+        ),
+    )
+    assert caught.value.baseline_fingerprint == runtime_profile_fingerprint(
+        side_profile.snapshot()
+    )
+
+
+def test_extension_reload_preflight_allows_unchanged_session_side_question() -> None:
+    replacement = RegisteredRuntimeCapabilityReplacement(
+        slot=SIDE_QUESTION_PROVIDER_SLOT.key,
+        name="same-side-question",
+        create=lambda: object(),
+        implementation_version=2,
+    )
+    extension = _extension("acme.same-side-question", replacement)
+    baseline = resolve_coding_capability_profile((extension,)).profile
+    candidate = ExtensionCapabilityDeclarationSnapshot.from_extensions((extension,))
+
+    CodingExtensionDeclarationPreflight(baseline_profile=baseline)(candidate)
+
+
+def test_extension_reload_preflight_rejects_session_side_question_removal() -> None:
+    replacement = RegisteredRuntimeCapabilityReplacement(
+        slot=SIDE_QUESTION_PROVIDER_SLOT.key,
+        name="removed-side-question",
+        create=lambda: object(),
+    )
+    baseline = resolve_coding_capability_profile(
+        (_extension("acme.removed-side-question", replacement),)
+    ).profile
+
+    with pytest.raises(ExtensionGraphProviderRestartRequiredError) as caught:
+        CodingExtensionDeclarationPreflight(baseline_profile=baseline)(
+            ExtensionCapabilityDeclarationSnapshot(declarations=())
+        )
+
+    assert caught.value.changed_slots == (SIDE_QUESTION_PROVIDER_SLOT.key,)
+    assert caught.value.capability_ids == ("harness.session",)
 
 
 def test_extension_reload_preflight_preserves_custom_product_resource_profile() -> None:
@@ -604,11 +708,21 @@ def test_external_side_question_replacement_binds_to_the_live_coding_session(
             capability_runtime=capability_runtime,
             extension_runner=extension_runtime,
         )
+        assert session._capability_graph_runtime.generation == 0
 
         answer = await session.ask_side_question("status?")
 
         assert answer.text == "external:status?"
         assert bound_contexts == [session]
+        assert session._capability_graph_runtime.generation == 1
+        snapshot = session._capability_graph_runtime.snapshot
+        assert snapshot is not None
+        assert snapshot.roots == (
+            "harness.model_input",
+            "harness.resources",
+            "harness.session",
+        )
+        assert tuple(node.capability_id for node in snapshot.nodes) == snapshot.roots
         assert (
             session.capability_profile.capability(SIDE_QUESTION_PROVIDER_SLOT.key)
             .selections[0]

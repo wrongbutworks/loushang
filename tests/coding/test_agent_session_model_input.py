@@ -503,6 +503,9 @@ def test_side_question_cancel_failure_does_not_skip_model_call_cleanup(tmp_path)
         def cancel(self) -> bool:
             return False
 
+        def owns_current_task(self) -> bool:
+            return False
+
     async def scenario() -> None:
         manager = await SessionManager.new(
             session_dir=tmp_path,
@@ -511,7 +514,7 @@ def test_side_question_cancel_failure_does_not_skip_model_call_cleanup(tmp_path)
         )
         agent = Agent()
         session = AgentSession(agent=agent, session_manager=manager)
-        session._side_question = _FailingCoordinator()  # type: ignore[assignment]
+        session._side_question_consumer = _FailingCoordinator()  # type: ignore[assignment]
 
         with pytest.raises(RuntimeError, match="side-question cancel failed"):
             await session.dispose()

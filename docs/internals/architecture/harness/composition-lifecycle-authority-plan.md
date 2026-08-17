@@ -733,27 +733,61 @@ whole Extension generation.
 Implemented evidence:
 
 - each prepared generation freezes a canonical, redacted declaration snapshot;
-- Coding reuses its pure admission and Profile resolver to distinguish the
-  admitted legacy side-question seam from graph-owned resource declarations;
+- Coding reuses its pure admission and Profile resolver to compare effective
+  graph-owned resource inputs; CLA7a extends the same preflight to the admitted
+  Session side-question input without comparing callback identity or content;
   losing or content-only declarations are not compared as Provider inputs;
 - the Product-injected preflight runs before resource discovery, candidate
   activation, registration publication, or another Graph bind;
 - content-only refresh advances Extension and Resource publication facts while
   preserving the current Mount generation and Consumer leases;
-- graph-owned input changes fail with the typed
+- graph-owned Resource or Session input changes fail with the typed
   `extension_graph_provider_restart_required` diagnostic exactly once, retain
-  the old Extension/Resource/Mount authorities, and join candidate rollback;
+  the old Extension/Resource/Session/Mount authorities, and join candidate
+  rollback;
   and
 - the bridge contains values and a narrow validation port only; it adds no
   Provider registry, graph manager, projector, or hot-replacement transaction.
 
 ### CLA7: `harness.session` Bundle
 
-Migrate conversation store, transcript profile, compaction, continuity, and
-side-question facets behind the Session Bundle incrementally. Reuse the
-Session-owned graph established by CLA2. Each facet moves only after its scope,
-refresh boundary, restart behavior, and stable-reference requirement are
-explicit.
+Migrate the Session facets in lifecycle-honest slices. Reuse the Session-owned
+graph established by CLA2; do not create a second graph or a broad Session
+facade. Each slice moves only after its scope, refresh boundary, restart
+behavior, and stable-reference requirement are explicit.
+
+1. **CLA7a — side question (implemented).** Contract version 1 defines the
+   sealed `interaction.side_question` facet. The already-focused legacy binding
+   becomes a staged candidate, transfers to the Graph exactly once, and is
+   consumed through a generation-scoped lease. Active work is cancelled and
+   joined before Provider disposal. Extension selection remains sealed and
+   restart-required rather than hot-replaced.
+2. **CLA7b — transcript lifecycle trio.** `conversation.store`,
+   `agent.transcript_profile`, and `context.compaction` share one existing
+   `AgentTranscriptProfileRuntime` binding and must transfer together. The
+   slice must preserve session-header/resume compatibility, index publication
+   before release, turn-boundary compaction behavior, and cleanup retry. It may
+   not reconstruct the store or split one disposer across logical owners.
+3. **CLA7c — target dependency cutover.** Only after real Session Consumers use
+   resource/workspace facets may the plan replace independent co-roots with
+   the accepted `harness.session -> harness.resources/workspace` edges.
+4. **CLA7d — continuity stable reference.** `continuity.provider_packs` remains
+   Process-scoped. It requires a process-owned typed stable lease/reference and
+   shutdown order before a Session Consumer can observe it. The Session Graph
+   never owns the concrete ContinuityHub.
+
+Implemented CLA7a evidence:
+
+- one source-backed Definition / Provider / Consumer seam is production
+  mounted by the existing `AgentProductSession` graph;
+- Product bootstrap and direct construction pass one root-owned candidate;
+- construction failure restores root ownership, graph publication transfers
+  ownership, graph/node reuse leaves a rejected candidate root-owned, and
+  release retries retain the exact graph owner;
+- the Consumer revalidates its facet lease on each call and cached access is
+  stale after Graph retirement; and
+- the generated catalog and architecture gates identify exactly one Provider
+  construction owner and one Consumer capture owner.
 
 ### CLA8: Legacy Authority Closure
 

@@ -6,12 +6,14 @@ Implemented Mount-runtime boundary with staged rollout. The Definition,
 Requirement, Bundle Provider, pure Planner, transactional Binder, live Runtime,
 and read-only Projector described here are implemented. The generated
 [Harness Capability Catalog](capability-catalog.md) is the source-backed record
-of complete Definition / Provider / Consumer seams. `harness.workspace` and
-`harness.resources` are production-mounted as independent roots beside
-`harness.model_input` in the single Session-owned graph. `harness.session`,
-`coding.lsp`, and `coding.arch` remain rollout targets rather than claimed
-runtime nodes. Runtime Profile slots remain the implemented finer binding layer
-inside those future Bundles.
+of complete Definition / Provider / Consumer seams. `harness.workspace`,
+`harness.resources`, and `harness.session` contract version 1 are
+production-mounted as independent roots beside `harness.model_input` in the
+single Session-owned graph. The first Session contract contains only the
+sealed side-question facet; transcript and continuity facets remain staged
+rollout work. `coding.lsp` and `coding.arch` remain rollout targets rather than
+claimed runtime nodes. Runtime Profile slots remain the implemented finer
+binding layer inside those Bundles.
 
 Canonical Product, Capability, Mount, Package, Plugin, and Extension terms are
 defined in the
@@ -115,12 +117,13 @@ coding.arch -> harness.workspace
 coding.arch -. optional .-> coding.lsp
 ```
 
-`harness.session` consumes the admitted resource composition and workspace
-facets used by the Session runtime, so both Harness edges are required in the
-accepted target plan. The current Session-owned graph does not yet mount a
-`harness.session` node; it co-mounts `harness.resources`, `harness.workspace`,
-and `harness.model_input` as independent roots. Co-location is not a fabricated
-dependency edge.
+`harness.session` will consume the admitted resource composition and workspace
+facets used by the Session runtime, so both Harness edges remain required in
+the accepted target plan. Contract version 1 currently mounts only the
+side-question facet as an independent root beside `harness.resources`,
+`harness.workspace`, and `harness.model_input`. Co-location is not a fabricated
+dependency edge; the target edges are added only when a later Session Provider
+actually declares and consumes those requirements.
 
 The optional `coding.arch -> coding.lsp` edge is a permitted future shape, not
 part of the initial target. `coding.arch` must remain independently usable
