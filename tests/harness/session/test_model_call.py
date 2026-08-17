@@ -195,6 +195,21 @@ def test_model_call_binding_rejects_resources_without_session_provider() -> None
         )
 
 
+def test_model_call_binding_rejects_workspace_without_session_provider() -> None:
+    with pytest.raises(ValueError, match="without a Session Provider"):
+        build_session_model_call_capability_binding(
+            transcript=cast(ModelInputTranscriptPort, object()),
+            projector=cast(RuntimeCapabilityGraphProjector, object()),
+            product_id="research",
+            runtime_id="session:model-call-test",
+            is_current=lambda: True,
+            registration_entries_provider=lambda: (),
+            profile_fingerprint_provider=lambda: "profile",
+            conversation_id="session-model-call",
+            workspace_provider=cast(CapabilityBundleProvider, object()),
+        )
+
+
 class _PreparedAdapter:
     api = "session-model-call-test"
 

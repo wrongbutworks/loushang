@@ -291,6 +291,81 @@ def test_create_agent_session_binds_always_on_lsp_to_sandbox_scope(
     asyncio.run(session.dispose())
 
 
+def test_deferred_lsp_launcher_first_use_mounts_workspace_and_keeps_authority(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp import LspServerDefinition
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.authorization import ExecutionAuthorizationError
+    from loushang.harness.sandbox import SandboxSettings
+    from loushang.harness.workspace.process import ProcessLaunchRequest
+
+    async def scenario() -> None:
+        workspace = tmp_path / "workspace"
+        outside = tmp_path / "outside"
+        workspace.mkdir()
+        outside.mkdir()
+        captured_launchers = []
+        bind_runtime = coding_bootstrap._bind_coding_lsp_runtime_from_launcher
+
+        def capture_launcher(**kwargs):
+            captured_launchers.append(kwargs["process_launcher"])
+            return bind_runtime(**kwargs)
+
+        monkeypatch.setattr(
+            coding_bootstrap,
+            "_bind_coding_lsp_runtime_from_launcher",
+            capture_launcher,
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=False,
+        )
+        session = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(
+                        capabilities={"coding.lsp": "always"},
+                        sandbox=SandboxSettings(enabled=False),
+                    )
+                )
+            ),
+            lsp_definitions=(
+                LspServerDefinition(
+                    id="python-test",
+                    command=("python-language-server", "--stdio"),
+                    language_extensions={"python": (".py",)},
+                ),
+            ),
+        )
+        try:
+            assert len(captured_launchers) == 1
+            assert session._capability_graph_runtime.generation == 0
+            with pytest.raises(ExecutionAuthorizationError, match="outside"):
+                await captured_launchers[0].start(
+                    ProcessLaunchRequest(
+                        command=("never-start",),
+                        cwd=str(outside),
+                        effective_environment=(),
+                    ),
+                    correlation_id="deferred-lsp-outside-workspace",
+                )
+            assert session._capability_graph_runtime.generation == 1
+            await session.prepare_model_call_runtime()
+            assert session._capability_graph_runtime.generation == 1
+        finally:
+            await session.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
     tmp_path,
 ) -> None:
@@ -341,10 +416,7 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             assert session._capability_graph_runtime.generation == first_generation
             snapshot = session._capability_graph_runtime.snapshot
             assert snapshot is not None
-            assert snapshot.roots == (
-                "harness.model_input",
-                "harness.workspace",
-            )
+            assert snapshot.roots == ("harness.model_input",)
             nodes = {node.capability_id: node for node in snapshot.nodes}
             assert tuple(
                 requirement.capability_id
@@ -354,16 +426,17 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             assert tuple(
                 requirement.capability_id
                 for requirement in nodes["harness.session"].requirements
-            ) == ("harness.resources",)
+            ) == ("harness.resources", "harness.workspace")
             assert nodes["harness.resources"].required_by == ("harness.session",)
+            assert nodes["harness.workspace"].required_by == ("harness.session",)
             assert nodes["harness.session"].required_by == ("harness.model_input",)
             assert nodes["harness.workspace"].requirements == ()
             view = session.get_effective_runtime_view()
             assert tuple(node.capability_id for node in view.capabilities) == (
                 "harness.resources",
+                "harness.workspace",
                 "harness.session",
                 "harness.model_input",
-                "harness.workspace",
             )
             with pytest.raises(ExecutionAuthorizationError, match="outside"):
                 await session.get_workspace_process_launcher().start(

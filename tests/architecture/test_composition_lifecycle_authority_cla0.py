@@ -106,9 +106,13 @@ TRACKED_CALL_SYMBOLS = frozenset(
         "session_capability_provider_binding",
         "workspace_capability_provider_binding",
         "_ResourceCompositionFacet",
+        "_WorkspaceProcessFacet",
+        "_WorkspaceToolFacet",
         "SessionSideQuestionCapabilityConsumer",
         "SessionResourceCompositionCapabilityConsumer",
         "SessionTranscriptCapabilityConsumer",
+        "SessionWorkspaceProcessCapabilityConsumer",
+        "SessionWorkspaceToolCapabilityConsumer",
         "ResourceActivationCapabilityConsumer",
         "ResourceCommandPackCapabilityConsumer",
         "ResourcePromptCapabilityConsumer",
@@ -125,9 +129,13 @@ GUARDED_CONSTRUCTION_SYMBOLS = frozenset(
         "session_capability_provider_binding",
         "workspace_capability_provider_binding",
         "_ResourceCompositionFacet",
+        "_WorkspaceProcessFacet",
+        "_WorkspaceToolFacet",
         "SessionSideQuestionCapabilityConsumer",
         "SessionResourceCompositionCapabilityConsumer",
         "SessionTranscriptCapabilityConsumer",
+        "SessionWorkspaceProcessCapabilityConsumer",
+        "SessionWorkspaceToolCapabilityConsumer",
         "ResourceActivationCapabilityConsumer",
         "ResourceCommandPackCapabilityConsumer",
         "ResourcePromptCapabilityConsumer",
@@ -592,7 +600,7 @@ def test_cla4_resources_provider_has_one_production_mount_owner() -> None:
         assert _construction_sites(consumer) == Counter()
 
 
-def test_cla5_workspace_has_one_product_binding_and_one_session_consumer_owner() -> (
+def test_cla5_workspace_has_one_product_binding_and_no_direct_session_consumer() -> (
     None
 ):
     assert _construction_sites("workspace_capability_provider_binding") == Counter(
@@ -603,20 +611,8 @@ def test_cla5_workspace_has_one_product_binding_and_one_session_consumer_owner()
             ): 1
         }
     )
-    expected_consumer_owner = Counter(
-        {
-            (
-                Path("src/loushang/harness/session/agent_product.py"),
-                "AgentProductSession._ensure_session_graph_prepared",
-            ): 1
-        }
-    )
-    assert _construction_sites("WorkspaceToolCapabilityConsumer") == (
-        expected_consumer_owner
-    )
-    assert _construction_sites("WorkspaceProcessCapabilityConsumer") == (
-        expected_consumer_owner
-    )
+    assert _construction_sites("WorkspaceToolCapabilityConsumer") == Counter()
+    assert _construction_sites("WorkspaceProcessCapabilityConsumer") == Counter()
 
 
 def test_cla7_session_has_one_combined_provider_and_typed_consumer_owner() -> None:
@@ -636,6 +632,16 @@ def test_cla7_session_has_one_combined_provider_and_typed_consumer_owner() -> No
             ): 1
         }
     )
+    expected_private_facet_owner = Counter(
+        {
+            (
+                Path("src/loushang/harness/session/session_capability_provider.py"),
+                "session_capability_provider_binding.create",
+            ): 1
+        }
+    )
+    assert _construction_sites("_WorkspaceToolFacet") == expected_private_facet_owner
+    assert _construction_sites("_WorkspaceProcessFacet") == expected_private_facet_owner
     assert _construction_sites("SessionSideQuestionCapabilityConsumer") == Counter(
         {
             (
@@ -661,6 +667,22 @@ def test_cla7_session_has_one_combined_provider_and_typed_consumer_owner() -> No
                 "AgentProductSession._ensure_session_graph_prepared",
             ): 1
         }
+    )
+    expected_session_consumer_owner = Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession._ensure_session_graph_prepared",
+            ): 1
+        }
+    )
+    assert (
+        _construction_sites("SessionWorkspaceToolCapabilityConsumer")
+        == expected_session_consumer_owner
+    )
+    assert (
+        _construction_sites("SessionWorkspaceProcessCapabilityConsumer")
+        == expected_session_consumer_owner
     )
 
 

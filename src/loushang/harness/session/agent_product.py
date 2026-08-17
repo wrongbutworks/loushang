@@ -19,8 +19,6 @@ from loushang.harness.capabilities import (
     MODEL_INPUT_PREPARATION_REQUIREMENT,
     RESOURCES_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
-    WORKSPACE_PROCESS_REQUIREMENT,
-    WORKSPACE_TOOL_REQUIREMENT,
     CapabilityBundleProviderBinding,
     CapabilityCompositionRuntime,
     CapabilityGraphExplanation,
@@ -47,12 +45,8 @@ from loushang.harness.capabilities.session_contracts import (
     SESSION_RESOURCE_COMPOSITION_REQUIREMENT,
     SESSION_SIDE_QUESTION_REQUIREMENT,
     SESSION_TRANSCRIPT_REQUIREMENT,
-)
-from loushang.harness.capabilities.workspace_process_consumer import (
-    WorkspaceProcessCapabilityConsumer,
-)
-from loushang.harness.capabilities.workspace_tool_consumer import (
-    WorkspaceToolCapabilityConsumer,
+    SESSION_WORKSPACE_PROCESS_REQUIREMENT,
+    SESSION_WORKSPACE_TOOL_REQUIREMENT,
 )
 from loushang.harness.config.agent import (
     CompactionSettings,
@@ -138,6 +132,8 @@ from loushang.harness.session.session_capability_consumer import (
     SessionResourceCompositionCapabilityConsumer,
     SessionSideQuestionCapabilityConsumer,
     SessionTranscriptCapabilityConsumer,
+    SessionWorkspaceProcessCapabilityConsumer,
+    SessionWorkspaceToolCapabilityConsumer,
 )
 from loushang.harness.session.session_capability_provider import (
     session_capability_provider_binding,
@@ -338,6 +334,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 profile_fingerprint_provider=self._current_profile_fingerprint,
                 session_provider=self._session_capability_binding.provider,
                 resources_provider=self._resource_capability_binding.provider,
+                workspace_provider=(
+                    workspace_capability_binding.provider
+                    if workspace_capability_binding is not None
+                    else None
+                ),
             )
         )
         self._side_question_consumer: SessionSideQuestionCapabilityConsumer | None = (
@@ -351,14 +352,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._session_capability_plan = RuntimeCapabilityGraphPlanner().plan(
             CapabilityGraphPlanRequest(
                 product_id=initial_profile.product_id,
-                roots=(
-                    MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-                    *(
-                        (WORKSPACE_CAPABILITY_DEFINITION.capability_id,)
-                        if workspace_binding is not None
-                        else ()
-                    ),
-                ),
+                roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
                 definitions=(
                     MODEL_INPUT_CAPABILITY_DEFINITION,
                     RESOURCES_CAPABILITY_DEFINITION,
@@ -1013,20 +1007,16 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         SESSION_TRANSCRIPT_REQUIREMENT
                     )
                 )
-                if self._workspace_capability_binding is not None:
-                    workspace_tools = WorkspaceToolCapabilityConsumer(
-                        self._capability_graph_runtime.capture(
-                            WORKSPACE_TOOL_REQUIREMENT
-                        )
+                workspace_tools = SessionWorkspaceToolCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        SESSION_WORKSPACE_TOOL_REQUIREMENT
                     )
-                    workspace_process = WorkspaceProcessCapabilityConsumer(
-                        self._capability_graph_runtime.capture(
-                            WORKSPACE_PROCESS_REQUIREMENT
-                        )
+                )
+                workspace_process = SessionWorkspaceProcessCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        SESSION_WORKSPACE_PROCESS_REQUIREMENT
                     )
-                else:
-                    workspace_tools = None
-                    workspace_process = None
+                )
             except BaseException as error:
                 if (
                     self._capability_graph_runtime.snapshot is not None
@@ -1112,11 +1102,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
             self._resource_capability_ports.install(
                 consumer=resource_consumer,
             )
-            if workspace_tools is not None and workspace_process is not None:
-                self._workspace_capability_ports.install(
-                    tools=workspace_tools,
-                    process=workspace_process,
-                )
+            self._workspace_capability_ports.install(
+                tools=workspace_tools,
+                process=workspace_process,
+            )
             self._transcript_capability_ports.install(transcript_consumer)
             self._transcript_consumer = transcript_consumer
             self._side_question_consumer = side_question

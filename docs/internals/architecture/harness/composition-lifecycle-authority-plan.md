@@ -771,9 +771,9 @@ behavior, and stable-reference requirement are explicit.
 3. **CLA7c-resources — Resources dependency cutover (implemented).** One
    focused Session Consumer now uses the admitted Resource composition through
    `harness.session -> harness.resources`; Resources is no longer a peer root.
-4. **CLA7c-workspace — Workspace dependency cutover.** Only after a real
-   Session Consumer uses Workspace facets may Coding replace its remaining
-   Workspace co-root with `harness.session -> harness.workspace`.
+4. **CLA7c-workspace — Workspace dependency cutover (implemented).** Two
+   least-authority Session Consumers use the optional admitted Workspace
+   dependency; Coding no longer keeps Workspace as a co-root.
 5. **CLA7d — continuity stable reference.** `continuity.provider_packs` remains
    Process-scoped. It requires a process-owned typed stable lease/reference and
    shutdown order before a Session Consumer can observe it. The Session Graph
@@ -820,10 +820,25 @@ Implemented CLA7c-resources evidence:
 - existing stable resource ports use the root-owned candidate before Mount and
   switch once to that Session Consumer after Graph publication;
 - production no longer constructs the four direct Resources Consumers;
-- generic roots are exactly `harness.model_input`; Coding additionally keeps
-  `harness.workspace` as the deferred co-root; and
+- generic roots are exactly `harness.model_input`; during this slice Coding
+  still kept `harness.workspace` as a deferred co-root; and
 - content-only Resource/Extension refresh changes source-publication facts but
   does not rebind the Graph or change Mount generation.
+
+Implemented CLA7c-workspace evidence:
+
+- Session contract version 4 adds separate Tool-operation and process-launch
+  facets backed by one optional aggregate Workspace dependency;
+- generic Products without a Workspace Provider omit that node, while Coding
+  realizes `harness.session -> harness.workspace` without a placeholder;
+- both generic and Coding production roots are exactly `harness.model_input`;
+- production constructs no direct Workspace Consumers; stable Workspace ports
+  switch to two Session Consumers only after the single Graph publication;
+- cached operation and launcher proxies revalidate the Session generation on
+  every call and become stale after Session retirement, including when the
+  Workspace node is reused; and
+- authority ceilings, raw policy/approval/Sandbox internals, the single process
+  launcher binding, and Workspace cleanup ownership remain unchanged.
 
 ### CLA8: Legacy Authority Closure
 

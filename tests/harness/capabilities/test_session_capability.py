@@ -32,6 +32,14 @@ from loushang.harness.capabilities.session_contracts import (
     SESSION_RESOURCE_COMPOSITION_REQUIREMENT,
     SESSION_SIDE_QUESTION_REQUIREMENT,
     SESSION_TRANSCRIPT_REQUIREMENT,
+    SESSION_WORKSPACE_PROCESS_REQUIREMENT,
+    SESSION_WORKSPACE_TOOL_REQUIREMENT,
+)
+from loushang.harness.capabilities.workspace_contracts import (
+    WORKSPACE_CAPABILITY_DEFINITION,
+)
+from loushang.harness.capabilities.workspace_provider import (
+    workspace_capability_provider_binding,
 )
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import (
@@ -44,11 +52,17 @@ from loushang.harness.session.session_capability_consumer import (
     SessionResourceCompositionCapabilityConsumer,
     SessionSideQuestionCapabilityConsumer,
     SessionTranscriptCapabilityConsumer,
+    SessionWorkspaceProcessCapabilityConsumer,
+    SessionWorkspaceToolCapabilityConsumer,
 )
 from loushang.harness.session.session_capability_provider import (
     _ResourceCompositionFacet,
+    _WorkspaceProcessFacet,
+    _WorkspaceToolFacet,
     session_capability_provider_binding,
 )
+from loushang.harness.workspace.operations import LOCAL_TOOL_OPERATIONS
+from loushang.harness.workspace.process import ProcessLaunchRequest
 
 
 def _sha(value: str) -> str:
@@ -127,7 +141,11 @@ class _TranscriptCandidate:
         self.ownership_state = "disposed"
 
 
-def _graph_inputs(binding, resources=None):  # type: ignore[no-untyped-def]
+def _graph_inputs(  # type: ignore[no-untyped-def]
+    binding,
+    resources=None,
+    workspace=None,
+):
     resources = resources or resources_capability_provider_binding(
         profile=_profile(), scope_instance_id="session:research"
     )
@@ -138,11 +156,33 @@ def _graph_inputs(binding, resources=None):  # type: ignore[no-untyped-def]
             definitions=(
                 RESOURCES_CAPABILITY_DEFINITION,
                 SESSION_CAPABILITY_DEFINITION,
+                *((WORKSPACE_CAPABILITY_DEFINITION,) if workspace else ()),
             ),
-            providers=(resources.provider, binding.provider),
+            providers=(
+                resources.provider,
+                binding.provider,
+                *((workspace.provider,) if workspace else ()),
+            ),
         )
     )
-    return plan, (resources, binding)
+    return plan, (resources, binding, *((workspace,) if workspace else ()))
+
+
+class _WorkspaceLauncher:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.handle = object()
+
+    async def start(  # type: ignore[no-untyped-def]
+        self,
+        request,
+        *,
+        correlation_id,
+        signal=None,
+    ):
+        del request, correlation_id, signal
+        self.calls += 1
+        return self.handle
 
 
 def test_session_binding_signature_includes_resources_dependency() -> None:
@@ -186,6 +226,46 @@ def test_session_binding_signature_includes_resources_dependency() -> None:
     assert first["harness.session"] != second["harness.session"]
 
 
+def test_session_binding_signature_includes_optional_workspace_dependency() -> None:
+    async def mounted_signatures(workspace_marker: str):
+        session = session_capability_provider_binding(
+            scope_instance_id="session:research",
+            staged_side_question=_candidate(),
+            staged_transcript=_TranscriptCandidate(),
+            bind_provider=lambda _factory: _Provider(),
+        )
+        workspace = workspace_capability_provider_binding(
+            operations=LOCAL_TOOL_OPERATIONS,
+            process_launcher=_WorkspaceLauncher(),
+            scope_instance_id="workspace:research",
+            binding_input_fingerprint=_sha(workspace_marker),
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session",
+            profile_fingerprint=_sha("profile"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(
+            runtime,
+            *_graph_inputs(session, workspace=workspace),
+        )
+        assert runtime.snapshot is not None
+        signatures = {
+            node.capability_id: node.binding_signature
+            for node in runtime.snapshot.nodes
+        }
+        await binder.dispose(runtime)
+        return session.binding_input_fingerprint, signatures
+
+    first_input, first = asyncio.run(mounted_signatures("workspace-one"))
+    second_input, second = asyncio.run(mounted_signatures("workspace-two"))
+
+    assert first_input == second_input
+    assert first["harness.workspace"] != second["harness.workspace"]
+    assert first["harness.session"] != second["harness.session"]
+
+
 def test_session_plan_requires_resources_before_candidate_construction() -> None:
     side = _candidate()
     transcript = _TranscriptCandidate()
@@ -226,6 +306,10 @@ def test_session_resource_facet_rejects_a_narrower_dependency_view() -> None:
 
     with pytest.raises(ValueError, match="wrong dependency view"):
         _ResourceCompositionFacet(dependency)
+    with pytest.raises(ValueError, match="wrong dependency view"):
+        _WorkspaceToolFacet(dependency)
+    with pytest.raises(ValueError, match="wrong dependency view"):
+        _WorkspaceProcessFacet(dependency)
 
 
 class _Provider:
@@ -271,6 +355,12 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease(
         resource_consumer = SessionResourceCompositionCapabilityConsumer(
             runtime.capture(SESSION_RESOURCE_COMPOSITION_REQUIREMENT)
         )
+        workspace_tools = SessionWorkspaceToolCapabilityConsumer(
+            runtime.capture(SESSION_WORKSPACE_TOOL_REQUIREMENT)
+        )
+        workspace_process = SessionWorkspaceProcessCapabilityConsumer(
+            runtime.capture(SESSION_WORKSPACE_PROCESS_REQUIREMENT)
+        )
 
         assert candidate.ownership_state == "graph_owned"
         assert transcript.ownership_state == "graph_owned"
@@ -291,12 +381,16 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease(
         assert resource_consumer.compose_commands(
             (CapabilityPack("commands", "product", ("command",)),)
         ).items == ("command",)
-        assert SESSION_CAPABILITY_DEFINITION.contract_version == 3
+        assert SESSION_CAPABILITY_DEFINITION.contract_version == 4
         assert SESSION_SIDE_QUESTION_REQUIREMENT.compatible_contract.accepts(1)
         assert SESSION_SIDE_QUESTION_REQUIREMENT.compatible_contract.accepts(2)
         assert SESSION_SIDE_QUESTION_REQUIREMENT.compatible_contract.accepts(3)
+        assert SESSION_SIDE_QUESTION_REQUIREMENT.compatible_contract.accepts(4)
         assert SESSION_TRANSCRIPT_REQUIREMENT.compatible_contract.accepts(2)
         assert SESSION_TRANSCRIPT_REQUIREMENT.compatible_contract.accepts(3)
+        assert SESSION_TRANSCRIPT_REQUIREMENT.compatible_contract.accepts(4)
+        assert SESSION_RESOURCE_COMPOSITION_REQUIREMENT.compatible_contract.accepts(3)
+        assert SESSION_RESOURCE_COMPOSITION_REQUIREMENT.compatible_contract.accepts(4)
         assert tuple(node.capability_id for node in runtime.snapshot.nodes) == (
             "harness.resources",
             "harness.session",
@@ -305,6 +399,17 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease(
         assert tuple(
             requirement.capability_id for requirement in session_node.requirements
         ) == ("harness.resources",)
+        with pytest.raises(RuntimeError, match="not available"):
+            workspace_tools.apply().read_operations.read_bytes(tmp_path / "missing")  # type: ignore[union-attr]
+        with pytest.raises(RuntimeError, match="not available"):
+            await workspace_process.process_launcher.start(
+                ProcessLaunchRequest(
+                    command=("never-start",),
+                    cwd=str(tmp_path),
+                    effective_environment=(),
+                ),
+                correlation_id="generic-no-workspace",
+            )
 
         await binder.dispose(runtime)
 
@@ -318,6 +423,167 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease(
             await consumer.ask("again")
         with pytest.raises(RuntimeError, match="disposed"):
             resource_consumer.compose_prompt((PromptSection("base", "Base"),))
+
+    asyncio.run(scenario())
+
+
+def test_session_workspace_dependency_is_optional_and_lease_scoped(tmp_path) -> None:
+    async def scenario() -> None:
+        candidate = _candidate()
+        transcript = _TranscriptCandidate()
+        session_binding = session_capability_provider_binding(
+            scope_instance_id="session:research",
+            staged_side_question=candidate,
+            staged_transcript=transcript,
+            bind_provider=lambda _factory: _Provider(),
+        )
+        launcher = _WorkspaceLauncher()
+        workspace_binding = workspace_capability_provider_binding(
+            operations=LOCAL_TOOL_OPERATIONS,
+            process_launcher=launcher,
+            scope_instance_id="workspace:research",
+            binding_input_fingerprint=_sha("workspace"),
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session",
+            profile_fingerprint=_sha("profile"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+
+        await binder.bind(
+            runtime,
+            *_graph_inputs(session_binding, workspace=workspace_binding),
+        )
+        assert runtime.snapshot is not None
+        assert runtime.snapshot.roots == ("harness.session",)
+        assert tuple(node.capability_id for node in runtime.snapshot.nodes) == (
+            "harness.resources",
+            "harness.workspace",
+            "harness.session",
+        )
+        session_node = runtime.snapshot.nodes[-1]
+        assert tuple(
+            requirement.capability_id for requirement in session_node.requirements
+        ) == ("harness.resources", "harness.workspace")
+
+        tools = SessionWorkspaceToolCapabilityConsumer(
+            runtime.capture(SESSION_WORKSPACE_TOOL_REQUIREMENT)
+        )
+        process = SessionWorkspaceProcessCapabilityConsumer(
+            runtime.capture(SESSION_WORKSPACE_PROCESS_REQUIREMENT)
+        )
+        source = tmp_path / "source.txt"
+        source.write_text("workspace-data", encoding="utf-8")
+        read_operations = tools.apply().read_operations
+        assert read_operations is not None
+        assert read_operations.read_bytes(source) == b"workspace-data"
+        process_launcher = process.process_launcher
+        handle = await process_launcher.start(
+            ProcessLaunchRequest(
+                command=("fake",),
+                cwd=str(tmp_path),
+                effective_environment=(),
+            ),
+            correlation_id="workspace-process",
+        )
+        assert handle is launcher.handle
+        assert launcher.calls == 1
+
+        await binder.dispose(runtime)
+
+        with pytest.raises(RuntimeError, match="disposed"):
+            read_operations.read_bytes(source)
+        with pytest.raises(RuntimeError, match="disposed"):
+            await process_launcher.start(
+                ProcessLaunchRequest(
+                    command=("stale",),
+                    cwd=str(tmp_path),
+                    effective_environment=(),
+                ),
+                correlation_id="stale-process",
+            )
+        assert launcher.calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_replaced_session_invalidates_workspace_proxies_when_workspace_is_reused(
+    tmp_path,
+) -> None:
+    async def scenario() -> None:
+        first_side = _candidate()
+        first_transcript = _TranscriptCandidate(profile_product_id="research-one")
+        first_session = session_capability_provider_binding(
+            scope_instance_id="session:research",
+            staged_side_question=first_side,
+            staged_transcript=first_transcript,
+            bind_provider=lambda _factory: _Provider(),
+        )
+        resources = resources_capability_provider_binding(
+            profile=_profile(),
+            scope_instance_id="session:research",
+        )
+        workspace = workspace_capability_provider_binding(
+            operations=LOCAL_TOOL_OPERATIONS,
+            process_launcher=_WorkspaceLauncher(),
+            scope_instance_id="workspace:research",
+            binding_input_fingerprint=_sha("stable-workspace"),
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session",
+            profile_fingerprint=_sha("profile"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(
+            runtime,
+            *_graph_inputs(first_session, resources, workspace),
+        )
+        first_tools = SessionWorkspaceToolCapabilityConsumer(
+            runtime.capture(SESSION_WORKSPACE_TOOL_REQUIREMENT)
+        )
+        cached_read = first_tools.apply().read_operations
+        assert cached_read is not None
+        source = tmp_path / "source.txt"
+        source.write_text("current", encoding="utf-8")
+        assert cached_read.read_bytes(source) == b"current"
+
+        second_side = _candidate()
+        second_transcript = _TranscriptCandidate(profile_product_id="research-two")
+        second_session = session_capability_provider_binding(
+            scope_instance_id="session:research",
+            staged_side_question=second_side,
+            staged_transcript=second_transcript,
+            bind_provider=lambda _factory: _Provider(),
+        )
+        result = await binder.bind(
+            runtime,
+            *_graph_inputs(second_session, resources, workspace),
+        )
+
+        assert result.reused_capability_ids == (
+            "harness.resources",
+            "harness.workspace",
+        )
+        assert result.created_capability_ids == ("harness.session",)
+        assert first_side.ownership_state == "disposed"
+        assert first_transcript.ownership_state == "disposed"
+        assert second_side.ownership_state == "graph_owned"
+        assert second_transcript.ownership_state == "graph_owned"
+        with pytest.raises(RuntimeError, match="stale"):
+            cached_read.read_bytes(source)
+
+        second_tools = SessionWorkspaceToolCapabilityConsumer(
+            runtime.capture(SESSION_WORKSPACE_TOOL_REQUIREMENT)
+        )
+        replacement_read = second_tools.apply().read_operations
+        assert replacement_read is not None
+        assert replacement_read.read_bytes(source) == b"current"
+
+        await binder.dispose(runtime)
+        assert second_side.ownership_state == "disposed"
+        assert second_transcript.ownership_state == "disposed"
 
     asyncio.run(scenario())
 

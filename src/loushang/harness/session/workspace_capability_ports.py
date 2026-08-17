@@ -7,11 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
-from loushang.harness.capabilities.workspace_process_consumer import (
-    WorkspaceProcessCapabilityConsumer,
-)
-from loushang.harness.capabilities.workspace_tool_consumer import (
-    WorkspaceToolCapabilityConsumer,
+from loushang.harness.session.session_capability_consumer import (
+    SessionWorkspaceProcessCapabilityConsumer,
+    SessionWorkspaceToolCapabilityConsumer,
 )
 from loushang.harness.tools.workspace.factory import ToolsOptions
 from loushang.harness.workspace.operations import (
@@ -38,7 +36,7 @@ class SessionWorkspaceCapabilityPorts:
     def __init__(self, ensure_mounted: EnsureWorkspaceMounted) -> None:
         self._ensure_mounted = ensure_mounted
         self._tool_options: ToolsOptions | None = None
-        self._process_consumer: WorkspaceProcessCapabilityConsumer | None = None
+        self._process_consumer: SessionWorkspaceProcessCapabilityConsumer | None = None
         self._invalidated = False
         read = _ReadOperations(self)
         listing = _ListOperations(self)
@@ -68,8 +66,8 @@ class SessionWorkspaceCapabilityPorts:
     def install(
         self,
         *,
-        tools: WorkspaceToolCapabilityConsumer,
-        process: WorkspaceProcessCapabilityConsumer,
+        tools: SessionWorkspaceToolCapabilityConsumer,
+        process: SessionWorkspaceProcessCapabilityConsumer,
     ) -> None:
         if self._invalidated:
             raise RuntimeError("Session workspace Capability ports are disposed")
@@ -94,7 +92,7 @@ class SessionWorkspaceCapabilityPorts:
             raise RuntimeError("Session workspace Capability was not mounted")
         return options
 
-    async def _process(self) -> WorkspaceProcessCapabilityConsumer:
+    async def _process(self) -> SessionWorkspaceProcessCapabilityConsumer:
         self._require_live()
         consumer = self._process_consumer
         if consumer is None:
@@ -280,7 +278,7 @@ class _ProcessLauncher:
         signal: object | None = None,
     ) -> ProcessHandle:
         consumer = await self.owner._process()
-        return await consumer.launcher.start(
+        return await consumer.process_launcher.start(
             request,
             correlation_id=correlation_id,
             signal=signal,

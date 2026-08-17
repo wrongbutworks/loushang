@@ -128,6 +128,22 @@ SOURCE_BACKED_SEAMS = (
                     "SESSION_RESOURCE_COMPOSITION_REQUIREMENT",
                 ),
             ),
+            (
+                "loushang.harness.session.session_capability_consumer:"
+                "SessionWorkspaceToolCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.session_contracts:"
+                    "SESSION_WORKSPACE_TOOL_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.session.session_capability_consumer:"
+                "SessionWorkspaceProcessCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.session_contracts:"
+                    "SESSION_WORKSPACE_PROCESS_REQUIREMENT",
+                ),
+            ),
         ),
         production_mounts=(
             "loushang.harness.session.agent_product:AgentProductSession",
@@ -157,6 +173,22 @@ SOURCE_BACKED_SEAMS = (
                 (
                     "loushang.harness.capabilities.workspace_contracts:"
                     "WORKSPACE_PROCESS_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.session.session_capability_provider:"
+                "_WorkspaceToolFacet",
+                (
+                    "loushang.harness.capabilities.workspace_contracts:"
+                    "WORKSPACE_SESSION_COMPOSITION_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.session.session_capability_provider:"
+                "_WorkspaceProcessFacet",
+                (
+                    "loushang.harness.capabilities.workspace_contracts:"
+                    "WORKSPACE_SESSION_COMPOSITION_REQUIREMENT",
                 ),
             ),
         ),

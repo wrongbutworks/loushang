@@ -58,6 +58,9 @@ from loushang.harness.capabilities.session_contracts import (
     SESSION_TRANSCRIPT_REQUIREMENT,
     TRANSCRIPT_PROFILE_FACET,
 )
+from loushang.harness.capabilities.workspace_contracts import (
+    WORKSPACE_CAPABILITY_DEFINITION,
+)
 from loushang.harness.runtime import RuntimeProfileSnapshot
 from loushang.harness.transcript import (
     ModelInputRuntimeReferences,
@@ -257,12 +260,17 @@ def build_session_model_call_capability_binding(
     conversation_id: str | None = None,
     session_provider: CapabilityBundleProvider | None = None,
     resources_provider: CapabilityBundleProvider | None = None,
+    workspace_provider: CapabilityBundleProvider | None = None,
 ) -> SessionModelCallCapabilityBinding:
     """Build data-only graph inputs without acquiring graph lifecycle authority."""
 
     if resources_provider is not None and session_provider is None:
         raise ValueError(
             "model-call binding cannot use a Resources Provider without a Session Provider"
+        )
+    if workspace_provider is not None and session_provider is None:
+        raise ValueError(
+            "model-call binding cannot use a Workspace Provider without a Session Provider"
         )
     if session_provider is not None and resources_provider is None:
         raise ValueError(
@@ -312,11 +320,13 @@ def build_session_model_call_capability_binding(
                 MODEL_INPUT_CAPABILITY_DEFINITION,
                 *((SESSION_CAPABILITY_DEFINITION,) if session_provider else ()),
                 *((RESOURCES_CAPABILITY_DEFINITION,) if resources_provider else ()),
+                *((WORKSPACE_CAPABILITY_DEFINITION,) if workspace_provider else ()),
             ),
             providers=(
                 provider,
                 *((session_provider,) if session_provider else ()),
                 *((resources_provider,) if resources_provider else ()),
+                *((workspace_provider,) if workspace_provider else ()),
             ),
         )
     )

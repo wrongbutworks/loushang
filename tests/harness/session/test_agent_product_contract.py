@@ -329,6 +329,16 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         ) == ("harness.resources",)
         assert nodes["harness.resources"].required_by == ("harness.session",)
         assert nodes["harness.session"].required_by == ("harness.model_input",)
+        assert "harness.workspace" not in nodes
+        with pytest.raises(RuntimeError, match="not available"):
+            await research.get_workspace_process_launcher().start(
+                ProcessLaunchRequest(
+                    command=("never-start",),
+                    cwd=str(tmp_path),
+                    effective_environment=(),
+                ),
+                correlation_id="generic-no-workspace",
+            )
         assert tuple(node.capability_id for node in effective_runtime.capabilities) == (
             "harness.resources",
             "harness.session",
@@ -899,13 +909,25 @@ def test_workspace_provider_cleanup_remains_owned_until_retry_succeeds(
 ) -> None:
     async def scenario() -> None:
         disposed_transcripts: list[str] = []
-        _bind_transcript_factory(disposed_transcripts)
+        release_events: list[str] = []
+        _bind_transcript_factory(
+            disposed_transcripts,
+            release_events=release_events,
+        )
         transcript = await _new_transcript(tmp_path, product_id="workspace-cleanup")
+        original_publish_index = transcript.publish_index_summary
+
+        async def publish_index() -> None:
+            release_events.append("index")
+            await original_publish_index()
+
+        transcript.publish_index_summary = publish_index  # type: ignore[method-assign]
         cleanup_attempts = 0
 
         async def cleanup() -> None:
             nonlocal cleanup_attempts
             cleanup_attempts += 1
+            release_events.append("workspace")
             if cleanup_attempts == 1:
                 raise RuntimeError("transient workspace cleanup failure")
 
@@ -932,6 +954,7 @@ def test_workspace_provider_cleanup_remains_owned_until_retry_succeeds(
             await session.dispose()
 
         assert cleanup_attempts == 1
+        assert release_events == ["index", "release", "workspace"]
         assert session._capability_graph_runtime.has_pending_retirements is True
         with pytest.raises(RuntimeError, match="disposed"):
             await cached_launcher.start(
@@ -946,8 +969,55 @@ def test_workspace_provider_cleanup_remains_owned_until_retry_succeeds(
         await session.dispose()
 
         assert cleanup_attempts == 2
+        assert release_events == ["index", "release", "workspace", "workspace"]
         assert session._capability_graph_runtime.has_pending_retirements is False
         assert disposed_transcripts == ["workspace-cleanup-session"]
+
+    asyncio.run(scenario())
+
+
+def test_workspace_signature_flows_through_session_into_model_input(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+
+        async def mounted_signatures(marker: str) -> dict[str, str]:
+            transcript = await _new_transcript(
+                tmp_path,
+                product_id="workspace-signature",
+            )
+            workspace_binding = workspace_capability_provider_binding(
+                operations=LocalToolOperations(),
+                process_launcher=_UnusedWorkspaceLauncher(),
+                scope_instance_id=f"workspace:{tmp_path}",
+                binding_input_fingerprint=hashlib.sha256(marker.encode()).hexdigest(),
+            )
+            session = _ContractProductSession(
+                product_id="workspace-signature",
+                transcript=transcript,
+                capability_runtime=_capability_runtime("workspace-signature"),
+                reserve_tokens=1_111,
+                compact_percent=61.0,
+                workspace_capability_binding=workspace_binding,
+            )
+            await session.prepare_model_call_runtime()
+            snapshot = session._capability_graph_runtime.snapshot
+            assert snapshot is not None
+            signatures = {
+                node.capability_id: node.binding_signature for node in snapshot.nodes
+            }
+            await session.dispose()
+            return signatures
+
+        first = await mounted_signatures("workspace-one")
+        second = await mounted_signatures("workspace-two")
+
+        assert first["harness.resources"] == second["harness.resources"]
+        assert first["harness.workspace"] != second["harness.workspace"]
+        assert first["harness.session"] != second["harness.session"]
+        assert first["harness.model_input"] != second["harness.model_input"]
 
     asyncio.run(scenario())
 

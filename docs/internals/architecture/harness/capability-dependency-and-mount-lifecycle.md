@@ -7,12 +7,13 @@ Requirement, Bundle Provider, pure Planner, transactional Binder, live Runtime,
 and read-only Projector described here are implemented. The generated
 [Harness Capability Catalog](capability-catalog.md) is the source-backed record
 of complete Definition / Provider / Consumer seams. `harness.workspace`,
-`harness.resources`, `harness.session` contract version 3, and
+`harness.resources`, `harness.session` contract version 4, and
 `harness.model_input` are production-mounted in the single Session-owned graph.
-Model Input directly requires Session, and Session directly requires Resources;
-Coding additionally mounts Workspace as an independent root. The Session
+Model Input directly requires Session; Session directly requires Resources and
+optionally requires Product-admitted Workspace. The Session
 contract contains the sealed side-question facet, the adopted transcript
-Store/Profile/Compaction trio, and one focused Resources dependency facet;
+Store/Profile/Compaction trio, one focused Resources facet, and two narrow
+Workspace dependency facets;
 Process-scoped continuity remains staged rollout work. `coding.lsp` and
 `coding.arch` remain rollout targets rather than
 claimed runtime nodes. Runtime Profile slots remain the implemented finer
@@ -123,12 +124,13 @@ coding.arch -. optional .-> coding.lsp
 
 `harness.model_input -> harness.session` is already implemented because durable
 Model Input consumes the adopted transcript trio through a declared dependency.
-`harness.session -> harness.resources` is implemented by the version 3 Session
+`harness.session -> harness.resources` is implemented by the version 4 Session
 Provider and its focused Resource Consumer. Resources is therefore in the
-Model Input dependency closure rather than a peer root. Workspace remains a
-Coding-only co-root until its later Session Consumer cutover. Co-location is
-not a fabricated dependency edge; the Workspace edge is added only when a
-later Session Provider actually declares and consumes that requirement.
+Model Input dependency closure rather than a peer root. The same Provider now
+declares one optional aggregate Workspace requirement and exposes separate Tool
+and process Consumers. Coding realizes this edge from its admitted Workspace
+Provider; generic Products omit the optional node. Both plans therefore have
+only `harness.model_input` as a root.
 
 The optional `coding.arch -> coding.lsp` edge is a permitted future shape, not
 part of the initial target. `coding.arch` must remain independently usable
@@ -186,6 +188,9 @@ harness.session
   agent.transcript_profile
   context.compaction
   interaction.side_question
+  resource.composition
+  workspace.tool_operations
+  workspace.process_launch
   continuity.provider_packs
 ```
 

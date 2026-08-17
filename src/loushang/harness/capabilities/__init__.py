@@ -187,11 +187,20 @@ from loushang.harness.capabilities.session_contracts import (
 from loushang.harness.capabilities.session_contracts import (
     SESSION_TRANSCRIPT_REQUIREMENT as SESSION_TRANSCRIPT_REQUIREMENT,
 )
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_WORKSPACE_PROCESS_REQUIREMENT as SESSION_WORKSPACE_PROCESS_REQUIREMENT,
+)
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_WORKSPACE_TOOL_REQUIREMENT as SESSION_WORKSPACE_TOOL_REQUIREMENT,
+)
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION as WORKSPACE_CAPABILITY_DEFINITION,
 )
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_PROCESS_REQUIREMENT as WORKSPACE_PROCESS_REQUIREMENT,
+)
+from loushang.harness.capabilities.workspace_contracts import (
+    WORKSPACE_SESSION_COMPOSITION_REQUIREMENT as WORKSPACE_SESSION_COMPOSITION_REQUIREMENT,
 )
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_TOOL_REQUIREMENT as WORKSPACE_TOOL_REQUIREMENT,
@@ -250,6 +259,8 @@ __all__ = [
     "SESSION_RESOURCE_COMPOSITION_REQUIREMENT",
     "SESSION_SIDE_QUESTION_REQUIREMENT",
     "SESSION_TRANSCRIPT_REQUIREMENT",
+    "SESSION_WORKSPACE_PROCESS_REQUIREMENT",
+    "SESSION_WORKSPACE_TOOL_REQUIREMENT",
     "ScopedSourcePublicationReference",
     "RuntimeCapabilityGraphBinder",
     "RuntimeCapabilityGraphPlan",
@@ -259,6 +270,7 @@ __all__ = [
     "RuntimeProfileSlotExplanation",
     "WORKSPACE_CAPABILITY_DEFINITION",
     "WORKSPACE_PROCESS_REQUIREMENT",
+    "WORKSPACE_SESSION_COMPOSITION_REQUIREMENT",
     "WORKSPACE_TOOL_REQUIREMENT",
     "bind_capability_composition_runtime",
     "compose_capability_packs",

@@ -2,15 +2,16 @@
 
 ## Status
 
-Implemented incrementally. Contract version 3 production-mounts the sealed
+Implemented incrementally. Contract version 4 production-mounts the sealed
 `interaction.side_question` facet and adopts the existing transcript lifecycle
 trio as one indivisible binding. It also consumes the admitted Resources
-Bundle through one focused dependency facet. Workspace remains an independent
-Product root and Process continuity retains its Process owner.
+Bundle and the optional Product-admitted Workspace Bundle through focused
+dependency facets. Generic Products do not acquire a synthetic Workspace;
+Process continuity retains its Process owner.
 
-## Version 3 Decision
+## Version 4 Decision
 
-`harness.session` version 3 has five facets and three focused Consumers:
+`harness.session` version 4 has seven facets and five focused Consumers:
 
 | Facet | Provider input | Consumer |
 | --- | --- | --- |
@@ -19,6 +20,8 @@ Product root and Process continuity retains its Process owner.
 | `agent.transcript_profile` | the same transcript lifecycle candidate | `SessionTranscriptCapabilityConsumer` |
 | `context.compaction` | the same transcript lifecycle candidate and dynamic selected mechanism | `SessionTranscriptCapabilityConsumer` |
 | `resource.composition` | one declared `harness.resources` dependency view | `SessionResourceCompositionCapabilityConsumer` |
+| `workspace.tool_operations` | one optional declared `harness.workspace` dependency view | `SessionWorkspaceToolCapabilityConsumer` |
+| `workspace.process_launch` | the same optional Workspace dependency view | `SessionWorkspaceProcessCapabilityConsumer` |
 
 The Product construction root resolves the side-question factory and binds the
 transcript Store/Profile/Compaction trio once, before AgentProduct graph
@@ -87,18 +90,29 @@ longer a peer root. Resource content remains call data: content-only refresh
 changes the scoped source-publication reference without rebinding the Graph or
 changing Mount generation.
 
+The same Provider declares one optional aggregate Workspace requirement. When
+a Product supplies an admitted Workspace Provider, it projects two separate
+least-authority Session facets for filesystem operations and authorized process
+launch. The private facets retain the raw dependency view; public Consumers and
+stable ports revalidate the Session lease for every operation or process start.
+When no Workspace Provider exists, the Planner omits the optional dependency
+and both facets fail closed without creating a Workspace node. The Session
+Provider never owns or disposes the borrowed Workspace mechanisms; the
+Session-owned Graph remains responsible for retiring the Workspace node.
+
+Production roots are therefore only `harness.model_input`. The realized Coding
+closure is `model_input -> session -> {resources, workspace}`; a generic Product
+has the same root with only the required Resources dependency. Workspace
+authority-ceiling facts flow through dependency signatures into Session and
+Model Input Mount identity, while raw policy, approval, Sandbox, and process
+host objects remain outside the Session Bundle.
+
 ## Deferred Work
 
 - `continuity.provider_packs` is Process-scoped and is released by the Product
   runtime, not by an individual Session. A later Session Consumer may receive
   only a typed stable lease/reference from that process owner. The concrete
   ContinuityHub must not be inserted into the Session Bundle.
-
-The accepted future `harness.session -> harness.workspace` edge remains
-deferred until a real Session Consumer uses those facets. Version 3 is pulled
-into the graph by the direct `harness.model_input -> harness.session`
-transcript requirement; Coding continues to mount Workspace as an independent
-root during this slice.
 
 ## Dependency And Import Rules
 
@@ -110,10 +124,10 @@ root during this slice.
   import the Provider or a graph manager.
 - `AgentProductSession` remains the only production Graph/Binder/Projector
   owner and the only Provider-construction/Consumer-capture site.
-- Version 3 directly consumes `harness.resources` and is itself a direct
-  dependency of `harness.model_input`. It does not fabricate a dependency on
-  `harness.workspace`; that target edge becomes real only when a later Session
-  Provider consumes its declared facets.
+- Version 4 directly consumes required `harness.resources` and optional
+  `harness.workspace`, and is itself a direct dependency of
+  `harness.model_input`. Missing optional Workspace input never becomes an
+  unavailable placeholder node.
 
 ## Acceptance Evidence
 
@@ -130,5 +144,8 @@ root during this slice.
   and cached transcript Consumer leases become stale after retirement;
 - all five Session resource operations traverse the declared dependency and a
   cached Session Resource Consumer becomes stale after retirement; and
-- generic roots contain only `harness.model_input`, while Coding additionally
-  retains `harness.workspace` as the one deferred peer root.
+- generic and Coding roots contain only `harness.model_input`; Coding realizes
+  Workspace through the Session dependency closure; and
+- cached Workspace operation and launcher proxies become stale with the
+  Session generation, while the Workspace Provider remains the sole owner of
+  its cleanup.

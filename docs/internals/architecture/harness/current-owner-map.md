@@ -44,11 +44,12 @@ Definition / Provider / Consumer slice: Consumers receive only declared
 filesystem facets or the authorized process-launch port, never the graph
 Runtime, raw process host, approval gateway, or sandbox backend.
 
-`harness.resources`, `harness.session` contract version 3, and
+`harness.resources`, `harness.session` contract version 4, and
 `harness.workspace` are production-mounted with `harness.model_input` in the
 single Session-owned graph. Model Input directly requires the Session transcript
-trio; Session directly consumes Resources, while optional Workspace remains an
-independent Coding root.
+trio; Session directly consumes Resources and optionally consumes Product-
+admitted Workspace. Both generic and Coding plans have only Model Input as a
+root; absent Workspace input produces no node.
 The Resources Session/bootstrap/sealed Bundle maps the
 private resource, prompt, skill, Tool-pack, and Command-pack Profile selections
 through focused Consumers. Synchronous bootstrap constructs one root-owned
@@ -74,9 +75,11 @@ until its separate stable-reference contract is accepted.
 The Workspace Bundle receives only Product-admitted, root-bounded filesystem
 operations and an already-authorized process launcher. Coding constructs one
 workspace-scoped binding fingerprinted from the effective authority ceiling;
-the Session captures typed Tool and process Consumers in the same Graph
-publication window. Long-lived callers retain lease-aware proxies, so Graph
-retirement invalidates previously obtained operations and launchers. Raw
+the combined Session Provider declares one optional aggregate dependency and
+projects two narrow Tool/process facets. The Session captures typed Consumers
+in the same Graph publication window. Long-lived callers retain lease-aware
+proxies, so Session retirement invalidates previously obtained operations and
+launchers even when the Workspace node itself is reusable. Raw
 process hosts, policy and approval gateways, Sandbox state, and their cleanup
 ownership stay outside the Bundle. LSP shares the same authorized launcher
 through the typed Consumer path rather than binding a second launcher.

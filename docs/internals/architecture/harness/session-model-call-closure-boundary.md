@@ -22,6 +22,13 @@ Provider selection therefore participates in Session and Model Input binding
 signatures, while ResourceBundle content remains source-publication call data
 and does not trigger a Mount change.
 
+CLA7c-workspace adds the optional sibling edge
+`harness.session -> harness.workspace`. Coding's admitted Workspace Provider is
+therefore in the same Model Input dependency closure instead of remaining a
+peer root. Generic Products omit that optional node entirely. The model-input
+Provider still depends only on Session; it neither captures Workspace services
+nor declares a second direct dependency.
+
 The implementation uses the Session-scoped `harness.model_input` Definition,
 Provider, and Consumer; Agent's per-sampling `prepare_model_call` seam; and AI's
 existing prepared-request committer. Compaction and branch-summary v2 payloads

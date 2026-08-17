@@ -39,6 +39,20 @@ from loushang.harness.capabilities.session_contracts import (
     SESSION_CAPABILITY_DEFINITION,
     SIDE_QUESTION_FACET,
     TRANSCRIPT_PROFILE_FACET,
+    WORKSPACE_TOOL_OPERATIONS_FACET,
+)
+from loushang.harness.capabilities.session_contracts import (
+    WORKSPACE_PROCESS_LAUNCH_FACET as SESSION_WORKSPACE_PROCESS_LAUNCH_FACET,
+)
+from loushang.harness.capabilities.workspace_contracts import (
+    WORKSPACE_CAPABILITY_DEFINITION,
+    WORKSPACE_EDIT_FACET,
+    WORKSPACE_LIST_FACET,
+    WORKSPACE_PROCESS_LAUNCH_FACET,
+    WORKSPACE_READ_FACET,
+    WORKSPACE_SEARCH_FACET,
+    WORKSPACE_SESSION_COMPOSITION_REQUIREMENT,
+    WORKSPACE_WRITE_FACET,
 )
 from loushang.harness.resources.activation import ResourceActivation
 from loushang.harness.resources.types import ResourceBundle
@@ -62,6 +76,15 @@ from loushang.harness.transcript.model_input import (
     ModelInputTranscriptCommitter,
     RebuiltModelInput,
 )
+from loushang.harness.workspace.operations import (
+    EditOperations,
+    FindOperations,
+    GrepOperations,
+    LsOperations,
+    ReadOperations,
+    WriteOperations,
+)
+from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 T = TypeVar("T")
 
@@ -200,6 +223,75 @@ class _ResourceCompositionFacet:
         ).compose(packs)
 
 
+@dataclass(frozen=True)
+class _WorkspaceToolFacet:
+    _dependency: CapabilityDependencyBinding | None = field(
+        repr=False,
+        compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        dependency = self._dependency
+        if (
+            dependency is not None
+            and dependency.requirement != WORKSPACE_SESSION_COMPOSITION_REQUIREMENT
+        ):
+            raise ValueError(
+                "Session Workspace Tool facet received the wrong dependency view"
+            )
+
+    def read_operations(self) -> ReadOperations:
+        return cast(ReadOperations, self._require(WORKSPACE_READ_FACET))
+
+    def list_operations(self) -> LsOperations:
+        return cast(LsOperations, self._require(WORKSPACE_LIST_FACET))
+
+    def find_operations(self) -> FindOperations:
+        return cast(FindOperations, self._require(WORKSPACE_SEARCH_FACET))
+
+    def grep_operations(self) -> GrepOperations:
+        return cast(GrepOperations, self._require(WORKSPACE_SEARCH_FACET))
+
+    def write_operations(self) -> WriteOperations:
+        return cast(WriteOperations, self._require(WORKSPACE_WRITE_FACET))
+
+    def edit_operations(self) -> EditOperations:
+        return cast(EditOperations, self._require(WORKSPACE_EDIT_FACET))
+
+    def _require(self, facet_id: str) -> object:
+        dependency = self._dependency
+        if dependency is None:
+            raise RuntimeError("Workspace Capability is not available for this session")
+        return dependency.require(facet_id)
+
+
+@dataclass(frozen=True)
+class _WorkspaceProcessFacet:
+    _dependency: CapabilityDependencyBinding | None = field(
+        repr=False,
+        compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        dependency = self._dependency
+        if (
+            dependency is not None
+            and dependency.requirement != WORKSPACE_SESSION_COMPOSITION_REQUIREMENT
+        ):
+            raise ValueError(
+                "Session Workspace Process facet received the wrong dependency view"
+            )
+
+    def process_launcher(self) -> AuthorizedProcessLauncher:
+        dependency = self._dependency
+        if dependency is None:
+            raise RuntimeError("Workspace Capability is not available for this session")
+        return cast(
+            AuthorizedProcessLauncher,
+            dependency.require(WORKSPACE_PROCESS_LAUNCH_FACET),
+        )
+
+
 def session_capability_provider_binding(
     *,
     scope_instance_id: str,
@@ -222,12 +314,15 @@ def session_capability_provider_binding(
     provider = CapabilityBundleProvider(
         capability_id=SESSION_CAPABILITY_DEFINITION.capability_id,
         provider_id=provider_id,
-        implementation_version=3,
+        implementation_version=4,
         compatible_contract=CapabilityContractRange.exact(
             SESSION_CAPABILITY_DEFINITION.contract_version
         ),
         facets=SESSION_CAPABILITY_DEFINITION.facets,
-        requirements=(RESOURCES_SESSION_COMPOSITION_REQUIREMENT,),
+        requirements=(
+            RESOURCES_SESSION_COMPOSITION_REQUIREMENT,
+            WORKSPACE_SESSION_COMPOSITION_REQUIREMENT,
+        ),
         source_id=source_id,
         selection_rule="Product-admitted sealed Session selection",
     )
@@ -236,6 +331,17 @@ def session_capability_provider_binding(
         resource_facet = _ResourceCompositionFacet(
             context.dependency(RESOURCES_CAPABILITY_DEFINITION.capability_id)
         )
+        workspace_dependency = next(
+            (
+                dependency
+                for dependency in context.dependencies
+                if dependency.capability_id
+                == WORKSPACE_CAPABILITY_DEFINITION.capability_id
+            ),
+            None,
+        )
+        workspace_tool_facet = _WorkspaceToolFacet(workspace_dependency)
+        workspace_process_facet = _WorkspaceProcessFacet(workspace_dependency)
         side_begun = False
         transcript_begun = False
         try:
@@ -281,6 +387,14 @@ def session_capability_provider_binding(
                     CapabilityFacetBinding(
                         RESOURCE_COMPOSITION_FACET,
                         resource_facet,
+                    ),
+                    CapabilityFacetBinding(
+                        WORKSPACE_TOOL_OPERATIONS_FACET,
+                        workspace_tool_facet,
+                    ),
+                    CapabilityFacetBinding(
+                        SESSION_WORKSPACE_PROCESS_LAUNCH_FACET,
+                        workspace_process_facet,
                     ),
                 )
             )
@@ -356,7 +470,7 @@ def _binding_input_fingerprint(
             "capabilityId": SESSION_CAPABILITY_DEFINITION.capability_id,
             "contractVersion": SESSION_CAPABILITY_DEFINITION.contract_version,
             "providerId": provider_id,
-            "providerVersion": 3,
+            "providerVersion": 4,
             "scopeInstanceId": scope_instance_id,
             "sideQuestionProfile": staged_side_question.profile.snapshot().to_json(),
             "transcriptProfile": staged_transcript.runtime_profile_snapshot.to_json(),
