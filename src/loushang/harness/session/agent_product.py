@@ -22,6 +22,10 @@ from loushang.harness.capabilities import (
     RESOURCES_COMMAND_PACK_REQUIREMENT,
     RESOURCES_PROMPT_REQUIREMENT,
     RESOURCES_TOOL_PACK_REQUIREMENT,
+    WORKSPACE_CAPABILITY_DEFINITION,
+    WORKSPACE_PROCESS_REQUIREMENT,
+    WORKSPACE_TOOL_REQUIREMENT,
+    CapabilityBundleProviderBinding,
     CapabilityCompositionRuntime,
     CapabilityGraphExplanation,
     CapabilityGraphPlanRequest,
@@ -47,6 +51,12 @@ from loushang.harness.capabilities.resources_consumers import (
 )
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
+)
+from loushang.harness.capabilities.workspace_process_consumer import (
+    WorkspaceProcessCapabilityConsumer,
+)
+from loushang.harness.capabilities.workspace_tool_consumer import (
+    WorkspaceToolCapabilityConsumer,
 )
 from loushang.harness.config.agent import (
     CompactionSettings,
@@ -107,6 +117,7 @@ from loushang.harness.session.composition import (
     SessionModelCatalogPort,
     SessionProductInputs,
     SessionResourceCompositionPorts,
+    SessionWorkspaceCompositionPorts,
     compose_session_runtime,
     supports_prepare_model_call,
 )
@@ -130,6 +141,9 @@ from loushang.harness.session.side_question import (
     SIDE_QUESTION_BOUNDARY_PROMPT,
     AgentSideQuestionProvider,
 )
+from loushang.harness.session.workspace_capability_ports import (
+    SessionWorkspaceCapabilityPorts,
+)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
     BranchSummaryOutput,
@@ -139,6 +153,7 @@ from loushang.harness.transcript import (
     ProductTranscriptSession,
 )
 from loushang.harness.workspace.exec import ExecService
+from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 BranchSummaryExecutor = Callable[..., Awaitable[BranchSummaryOutput]]
 ChangelogProvider = Callable[[str, str], object]
@@ -150,9 +165,7 @@ def _require_durable_summary_executor(
     callback: Callable[..., object], *, name: str
 ) -> None:
     if not supports_prepare_model_call(callback):
-        raise ValueError(
-            f"durable Product {name} must accept prepare_model_call"
-        )
+        raise ValueError(f"durable Product {name} must accept prepare_model_call")
 
 
 class FooterDataPort(Protocol):
@@ -203,6 +216,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         tool_exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
         tool_policy_evaluator: PolicyEvaluator | None = None,
+        workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model
@@ -245,19 +259,25 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 execute_branch_summary,
                 name="branch-summary executor",
             )
-        self._capability_profile_provider: Callable[
-            [], ResolvedRuntimeProfile
-        ] | None = lambda: capability_runtime.profile
+        self._capability_profile_provider: (
+            Callable[[], ResolvedRuntimeProfile] | None
+        ) = lambda: capability_runtime.profile
         self._staged_resource_candidate: CapabilityCompositionRuntime | None = (
             capability_runtime
         )
         self._resource_capability_ports = SessionResourceCapabilityPorts(
             capability_runtime
         )
-        runtime_id = (
-            "session:" + str(self.session_manager.get_session_record().session_id)
+        runtime_id = "session:" + str(
+            self.session_manager.get_session_record().session_id
         )
         initial_profile = capability_runtime.profile.snapshot()
+        if (
+            workspace_capability_binding is not None
+            and workspace_capability_binding.provider.capability_id
+            != WORKSPACE_CAPABILITY_DEFINITION.capability_id
+        ):
+            raise ValueError("Session workspace binding must provide harness.workspace")
         self._capability_graph_runtime = RuntimeCapabilityGraphRuntime(
             product_id=initial_profile.product_id,
             runtime_id=runtime_id,
@@ -269,6 +289,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
         )
         self._model_call_bind_lock = asyncio.Lock()
         self._model_call_consumer: SessionModelCallCapabilityConsumer | None = None
+        self._workspace_capability_ports = SessionWorkspaceCapabilityPorts(
+            self._ensure_session_graph_prepared
+        )
         self._model_call_capability_binding = (
             build_session_model_call_capability_binding(
                 transcript=session_manager,
@@ -285,20 +308,36 @@ class AgentProductSession(AgentSessionAdapterMixin):
             scope_instance_id=runtime_id,
             staged_candidate=capability_runtime,
         )
+        self._workspace_capability_binding = workspace_capability_binding
+        workspace_binding = self._workspace_capability_binding
+        workspace_definitions = (
+            (WORKSPACE_CAPABILITY_DEFINITION,) if workspace_binding is not None else ()
+        )
         self._session_capability_plan = RuntimeCapabilityGraphPlanner().plan(
             CapabilityGraphPlanRequest(
                 product_id=initial_profile.product_id,
                 roots=(
                     MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
                     RESOURCES_CAPABILITY_DEFINITION.capability_id,
+                    *(
+                        (WORKSPACE_CAPABILITY_DEFINITION.capability_id,)
+                        if workspace_binding is not None
+                        else ()
+                    ),
                 ),
                 definitions=(
                     MODEL_INPUT_CAPABILITY_DEFINITION,
                     RESOURCES_CAPABILITY_DEFINITION,
+                    *workspace_definitions,
                 ),
                 providers=(
                     self._model_call_capability_binding.provider_binding.provider,
                     self._resource_capability_binding.provider,
+                    *(
+                        (workspace_binding.provider,)
+                        if workspace_binding is not None
+                        else ()
+                    ),
                 ),
             )
         )
@@ -580,9 +619,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 owner_id=owner.owner_id,
                 runtime_id=owner.runtime_id,
                 owner_generation=owner.generation,
-                attachment=cast(
-                    Literal["effective", "pending_retirement"], attachment
-                ),
+                attachment=cast(Literal["effective", "pending_retirement"], attachment),
                 state=state,
             )
             existing = entries.get(entry.registration_id)
@@ -655,6 +692,13 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 tool_packs=self._resource_capability_ports.tools,
                 command_packs=self._resource_capability_ports.commands,
             ),
+            workspace=SessionWorkspaceCompositionPorts(
+                operation_bindings=(
+                    self._workspace_capability_ports.operation_bindings
+                    if self._workspace_capability_binding is not None
+                    else {}
+                ),
+            ),
             foundation=SessionFoundationInputs(
                 resource_loader=self._resource_loader,
                 get_resource_bundle=lambda: self.resource_bundle,
@@ -725,6 +769,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
         """Return the live session execution service for Product-owned runners."""
 
         return self._exec_service
+
+    def get_workspace_process_launcher(self) -> AuthorizedProcessLauncher:
+        """Return the Session's graph-backed authorized process port."""
+
+        return self._workspace_capability_ports.process_launcher
 
     async def ask_side_question(
         self,
@@ -805,11 +854,22 @@ class AgentProductSession(AgentSessionAdapterMixin):
         async with self._model_call_bind_lock:
             self._model_call_consumer = None
             self._resource_capability_ports.invalidate()
+            self._workspace_capability_ports.invalidate()
             staged_candidate = self._staged_resource_candidate
             try:
-                await self._capability_graph_binder.dispose(
+                cleanup_codes = await self._capability_graph_binder.dispose(
                     self._capability_graph_runtime
                 )
+                if (
+                    cleanup_codes
+                    and self._capability_graph_runtime.has_pending_retirements
+                ):
+                    errors.append(
+                        RuntimeError(
+                            "Session Capability graph cleanup remains pending: "
+                            + ", ".join(cleanup_codes)
+                        )
+                    )
             except BaseException as exc:
                 errors.append(exc)
             if staged_candidate is not None:
@@ -827,8 +887,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             primary = errors[0]
             for cleanup_error in errors[1:]:
                 primary.add_note(
-                    "Additional Session model-call cleanup failure: "
-                    f"{cleanup_error!r}"
+                    f"Additional Session model-call cleanup failure: {cleanup_error!r}"
                 )
             raise primary
 
@@ -881,9 +940,14 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 await self._capability_graph_binder.bind(
                     self._capability_graph_runtime,
                     self._session_capability_plan,
-                    (
-                        binding.provider_binding,
-                        self._resource_capability_binding,
+                    tuple(
+                        item
+                        for item in (
+                            binding.provider_binding,
+                            self._resource_capability_binding,
+                            self._workspace_capability_binding,
+                        )
+                        if item is not None
                     ),
                 )
                 consumer = SessionModelCallCapabilityConsumer(
@@ -897,9 +961,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     )
                 )
                 resource_prompt = ResourcePromptCapabilityConsumer(
-                    self._capability_graph_runtime.capture(
-                        RESOURCES_PROMPT_REQUIREMENT
-                    )
+                    self._capability_graph_runtime.capture(RESOURCES_PROMPT_REQUIREMENT)
                 )
                 resource_tools = ResourceToolPackCapabilityConsumer(
                     self._capability_graph_runtime.capture(
@@ -911,6 +973,20 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         RESOURCES_COMMAND_PACK_REQUIREMENT
                     )
                 )
+                if self._workspace_capability_binding is not None:
+                    workspace_tools = WorkspaceToolCapabilityConsumer(
+                        self._capability_graph_runtime.capture(
+                            WORKSPACE_TOOL_REQUIREMENT
+                        )
+                    )
+                    workspace_process = WorkspaceProcessCapabilityConsumer(
+                        self._capability_graph_runtime.capture(
+                            WORKSPACE_PROCESS_REQUIREMENT
+                        )
+                    )
+                else:
+                    workspace_tools = None
+                    workspace_process = None
             except BaseException as error:
                 if (
                     self._capability_graph_runtime.snapshot is not None
@@ -922,7 +998,15 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         )
                     )
                     try:
-                        await _await_cancellation_atomic(cleanup_task)
+                        cleanup_codes = await _await_cancellation_atomic(cleanup_task)
+                        if (
+                            cleanup_codes
+                            and self._capability_graph_runtime.has_pending_retirements
+                        ):
+                            error.add_note(
+                                "Session Capability graph cleanup remains pending: "
+                                + ", ".join(cleanup_codes)
+                            )
                     except BaseException as cleanup_error:
                         error.add_note(
                             "Session Capability graph cleanup also failed: "
@@ -957,6 +1041,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 tools=resource_tools,
                 commands=resource_commands,
             )
+            if workspace_tools is not None and workspace_process is not None:
+                self._workspace_capability_ports.install(
+                    tools=workspace_tools,
+                    process=workspace_process,
+                )
             self._model_call_consumer = consumer
             return consumer
 

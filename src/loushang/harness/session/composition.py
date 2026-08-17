@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from loushang.agent import Agent, PrepareModelCallFn
@@ -274,6 +275,13 @@ class SessionResourceCompositionPorts:
     command_packs: object
 
 
+@dataclass(frozen=True)
+class SessionWorkspaceCompositionPorts:
+    """Workspace operations already narrowed by typed Capability Consumers."""
+
+    operation_bindings: Mapping[str, object]
+
+
 @dataclass(frozen=True, init=False)
 class SessionCompositionPorts:
     """Cohesive inputs needed to assemble a standard Product session.
@@ -288,6 +296,7 @@ class SessionCompositionPorts:
     settings: SessionSettingsBinding
     product_id: str
     resources: SessionResourceCompositionPorts
+    workspace: SessionWorkspaceCompositionPorts
     foundation: SessionFoundationInputs
     maintenance: SessionMaintenanceInputs
     product: SessionProductInputs
@@ -301,6 +310,7 @@ class SessionCompositionPorts:
         capability_runtime: CapabilityCompositionRuntime | None = None,
         product_id: str | None = None,
         resources: SessionResourceCompositionPorts | None = None,
+        workspace: SessionWorkspaceCompositionPorts | None = None,
         foundation: SessionFoundationInputs | None = None,
         maintenance: SessionMaintenanceInputs | None = None,
         product: SessionProductInputs | None = None,
@@ -335,9 +345,7 @@ class SessionCompositionPorts:
 
         if resources is None:
             if capability_runtime is None:
-                raise TypeError(
-                    "Session composition requires focused resource ports"
-                )
+                raise TypeError("Session composition requires focused resource ports")
             resources = SessionResourceCompositionPorts(
                 activation=capability_runtime.resource_runtime,
                 skill_activation=capability_runtime.skill_activation,
@@ -349,12 +357,17 @@ class SessionCompositionPorts:
             if capability_runtime is None:
                 raise TypeError("Session composition requires a Product id")
             product_id = capability_runtime.profile.product_id
+        if workspace is None:
+            workspace = SessionWorkspaceCompositionPorts(
+                operation_bindings=MappingProxyType({})
+            )
 
         object.__setattr__(self, "agent", agent)
         object.__setattr__(self, "session_manager", session_manager)
         object.__setattr__(self, "settings", settings)
         object.__setattr__(self, "product_id", product_id)
         object.__setattr__(self, "resources", resources)
+        object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "foundation", resolved_foundation)
         object.__setattr__(self, "maintenance", resolved_maintenance)
         object.__setattr__(self, "product", resolved_product)
@@ -986,6 +999,7 @@ def _build_tool_controller(
         emit_tool_audit_event=inputs.dispatch_event,
         resource_activation_runtime=cast(Any, ports.resources.activation),
         prompt_section_composer=cast(Any, ports.resources.prompt_sections),
+        operation_bindings=ports.workspace.operation_bindings,
     )
 
 
@@ -1247,6 +1261,8 @@ __all__ = [
     "SessionFoundationInputs",
     "SessionMaintenanceInputs",
     "SessionProductInputs",
+    "SessionResourceCompositionPorts",
+    "SessionWorkspaceCompositionPorts",
     "apply_agent_session_model_selection",
     "compose_session_runtime",
     "sleep_for_retry",

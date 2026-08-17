@@ -19,7 +19,6 @@ from loushang.harness.session.tool_runtime import (
     SessionToolRuntime,
     ToolPromptRebuilder,
 )
-from loushang.harness.tools.authoring import ToolContext
 from loushang.harness.tools.contribution import resolve_tool_contributions
 from loushang.harness.tools.core import ToolDefinition, project_tool_definition
 from loushang.harness.tools.execution import (
@@ -146,6 +145,7 @@ class SessionToolController:
     get_exec_service: Callable[[], ExecService | None] | None = None
     get_approval_resolver: Callable[[], ApprovalResolver | None] | None = None
     policy_evaluator: ToolPolicyEvaluator | None = None
+    operation_bindings: Mapping[str, object] = field(default_factory=dict)
     _runtime: SessionToolRuntime = field(init=False, repr=False)
     _execution_host: ToolExecutionHost = field(init=False, repr=False)
 
@@ -228,8 +228,8 @@ class SessionToolController:
     def apply_active_tools(self, tool_names: list[str]) -> None:
         self._runtime.apply_active_tools(tool_names)
 
-    def build_tool_context(self, *, tool_call_id: str) -> ToolContext:
-        return ToolContext(
+    def build_tool_context(self, *, tool_call_id: str) -> ToolCallContext:
+        return ToolCallContext(
             tool_call_id=tool_call_id,
             cwd=self.get_cwd(),
             diagnostics=self.get_diagnostics_service(),
@@ -242,6 +242,7 @@ class SessionToolController:
                 if self.emit_tool_audit_event is not None
                 else None
             ),
+            operation_bindings=self.operation_bindings,
         )
 
     async def execute_tool_definition(
@@ -272,7 +273,10 @@ class SessionToolController:
                 event_sink=base.event_sink,
                 exec_service=base.exec_service,
                 on_update=on_update if callable(on_update) else None,
-                operation_bindings=operation_bindings or {},
+                operation_bindings={
+                    **(operation_bindings or {}),
+                    **self.operation_bindings,
+                },
             ),
         )
 

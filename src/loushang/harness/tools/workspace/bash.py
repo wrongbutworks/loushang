@@ -537,6 +537,7 @@ def create_bash_tool_definition(
         ),
         render_call=render_bash_call,
         render_result=render_bash_result,
+        operation_binding_key="bash_operations",
     )
 
 

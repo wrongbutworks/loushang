@@ -6,11 +6,12 @@ Implemented Mount-runtime boundary with staged rollout. The Definition,
 Requirement, Bundle Provider, pure Planner, transactional Binder, live Runtime,
 and read-only Projector described here are implemented. The generated
 [Harness Capability Catalog](capability-catalog.md) is the source-backed record
-of complete Definition / Provider / Consumer seams. `harness.workspace` is the
-first accepted top-level Bundle in that catalog; `harness.resources`,
-`harness.session`, `coding.lsp`, and `coding.arch` remain rollout targets rather
-than claimed runtime nodes. Runtime Profile slots remain the implemented finer
-binding layer inside those future Bundles.
+of complete Definition / Provider / Consumer seams. `harness.workspace` and
+`harness.resources` are production-mounted as independent roots beside
+`harness.model_input` in the single Session-owned graph. `harness.session`,
+`coding.lsp`, and `coding.arch` remain rollout targets rather than claimed
+runtime nodes. Runtime Profile slots remain the implemented finer binding layer
+inside those future Bundles.
 
 Canonical Product, Capability, Mount, Package, Plugin, and Extension terms are
 defined in the
@@ -116,9 +117,10 @@ coding.arch -. optional .-> coding.lsp
 
 `harness.session` consumes the admitted resource composition and workspace
 facets used by the Session runtime, so both Harness edges are required in the
-accepted target plan. Current Session assembly wires the not-yet-migrated
-Bundle dependencies directly until their complete seams enter the implemented
-Planner and Binder.
+accepted target plan. The current Session-owned graph does not yet mount a
+`harness.session` node; it co-mounts `harness.resources`, `harness.workspace`,
+and `harness.model_input` as independent roots. Co-location is not a fabricated
+dependency edge.
 
 The optional `coding.arch -> coding.lsp` edge is a permitted future shape, not
 part of the initial target. `coding.arch` must remain independently usable

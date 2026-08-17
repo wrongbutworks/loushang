@@ -54,9 +54,10 @@ def create_edit_tool_definition(
     operations: EditOperations | None = None,
     options: EditToolOptions | None = None,
 ) -> ToolDefinition:
-    ops = normalize_edit_operations(
-        operations or (options.operations if options is not None else None)
+    selected_operations = operations or (
+        options.operations if options is not None else None
     )
+    ops = normalize_edit_operations(selected_operations)
 
     @tool(
         name="edit",
@@ -72,18 +73,34 @@ def create_edit_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         resolved = resolve_tool_path(path, cwd=ctx.cwd)
         validated_edits = _validate_edits(edits)
+        active_operations = (
+            normalize_edit_operations(
+                ctx.operation_binding
+                if ctx.operation_binding is not None
+                else ops
+            )
+            if selected_operations is None
+            else ops
+        )
 
         async def execute_edit(_action: object) -> tuple[str, str]:
             raise_if_operation_aborted(ctx.signal)
             async with with_file_mutation_queue(str(resolved)):
-                original = await _read_existing_text(resolved, operations=ops)
+                original = await _read_existing_text(
+                    resolved,
+                    operations=active_operations,
+                )
                 raise_if_operation_aborted(ctx.signal)
                 updated = apply_text_edits(
                     original,
                     validated_edits,
                     path=str(resolved),
                 )
-                await _write_exact_text(resolved, updated, operations=ops)
+                await _write_exact_text(
+                    resolved,
+                    updated,
+                    operations=active_operations,
+                )
                 raise_if_operation_aborted(ctx.signal)
             return original, updated
 
@@ -114,6 +131,7 @@ def create_edit_tool_definition(
         prepare_arguments=_prepare_edit_arguments,
         render_call=render_edit_call,
         render_result=render_edit_result,
+        operation_binding_key="edit_operations",
     )
 
 

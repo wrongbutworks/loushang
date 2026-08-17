@@ -384,6 +384,19 @@ def test_graph_runtime_and_workspace_definition_provider_consumer_boundaries() -
 
     provider_imports = _absolute_loushang_imports(WORKSPACE_PROVIDER_PATH)
     assert "loushang.harness.capabilities.workspace_contracts" in provider_imports
+    forbidden_authority_imports = (
+        "loushang.harness.approval",
+        "loushang.harness.policy",
+        "loushang.harness.sandbox",
+        "loushang.harness.tools.process_hosting",
+        "loushang.harness.workspace.process.host",
+        "loushang.harness.workspace.process.local",
+    )
+    assert not any(
+        imported.startswith(forbidden)
+        for imported in provider_imports
+        for forbidden in forbidden_authority_imports
+    )
     provider_source = WORKSPACE_PROVIDER_PATH.read_text(encoding="utf-8")
     assert "ProcessHost" not in provider_source
     assert "SandboxBackend" not in provider_source
@@ -391,6 +404,16 @@ def test_graph_runtime_and_workspace_definition_provider_consumer_boundaries() -
         consumer_imports = _absolute_loushang_imports(consumer_path)
         assert "loushang.harness.capabilities.workspace_contracts" in consumer_imports
         assert all("workspace_provider" not in item for item in consumer_imports)
+        assert not any(
+            imported.startswith(forbidden)
+            for imported in consumer_imports
+            for forbidden in forbidden_authority_imports
+        )
+        assert {
+            "loushang.harness.capabilities.graph_binding",
+            "loushang.harness.capabilities.graph_planning",
+            "loushang.harness.capabilities.graph_projection",
+        }.isdisjoint(consumer_imports)
         consumer_source = consumer_path.read_text(encoding="utf-8")
         assert "RuntimeCapabilityGraphRuntime" not in consumer_source
 

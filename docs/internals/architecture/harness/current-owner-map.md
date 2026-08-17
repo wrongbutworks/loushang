@@ -44,8 +44,9 @@ Definition / Provider / Consumer slice: Consumers receive only declared
 filesystem facets or the authorized process-launch port, never the graph
 Runtime, raw process host, approval gateway, or sandbox backend.
 
-`harness.resources` is production-mounted beside `harness.model_input` in the
-single Session-owned graph. Its Session/bootstrap/sealed Bundle maps the
+`harness.resources` and `harness.workspace` are production-mounted beside
+`harness.model_input` as independent roots in the single Session-owned graph.
+The Resources Session/bootstrap/sealed Bundle maps the
 private resource, prompt, skill, Tool-pack, and Command-pack Profile selections
 through focused Consumers. Synchronous bootstrap constructs one root-owned
 candidate; the Resource Provider transfers that same candidate to the Graph
@@ -55,6 +56,16 @@ Resource content remains call data and changes only the scoped source
 publication reference, not the Mount generation. `interaction.side_question`
 is excluded and remains a focused legacy binding owned and disposed by the
 Product Session.
+
+The Workspace Bundle receives only Product-admitted, root-bounded filesystem
+operations and an already-authorized process launcher. Coding constructs one
+workspace-scoped binding fingerprinted from the effective authority ceiling;
+the Session captures typed Tool and process Consumers in the same Graph
+publication window. Long-lived callers retain lease-aware proxies, so Graph
+retirement invalidates previously obtained operations and launchers. Raw
+process hosts, policy and approval gateways, Sandbox state, and their cleanup
+ownership stay outside the Bundle. LSP shares the same authorized launcher
+through the typed Consumer path rather than binding a second launcher.
 
 The generated [Harness Capability Catalog](capability-catalog.md) is the
 source-backed coverage projection. A target Capability is not reported as

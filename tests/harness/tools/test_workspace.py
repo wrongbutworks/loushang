@@ -35,6 +35,62 @@ def test_workspace_read_tool_executes_without_product_adapter(tmp_path: Path) ->
     assert result.details["path"] == str(target.resolve())
 
 
+def test_workspace_read_prefers_the_session_consumer_without_overriding_explicit_ops(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.tools.workspace import (
+        ToolContext,
+        create_read_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    class _VirtualReadOperations:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+
+        def exists(self, path: Path) -> bool:
+            del path
+            return True
+
+        def is_file(self, path: Path) -> bool:
+            del path
+            return True
+
+        def read_bytes(self, path: Path) -> bytes:
+            del path
+            return self.content
+
+    target = tmp_path / "notes.txt"
+    target.write_text("disk", encoding="utf-8")
+    session_operations = _VirtualReadOperations(b"consumer")
+
+    def context(*, tool_call_id: str) -> ToolContext:
+        return ToolContext(
+            tool_call_id=tool_call_id,
+            cwd=str(tmp_path),
+            operation_binding=session_operations,
+        )
+
+    default_tool = wrap_tool_definition(
+        create_read_tool_definition(),
+        context_provider=context,
+    )
+    explicit_tool = wrap_tool_definition(
+        create_read_tool_definition(operations=_VirtualReadOperations(b"explicit")),
+        context_provider=context,
+    )
+
+    default_result = asyncio.run(
+        default_tool.execute("read-consumer", {"path": "notes.txt"})
+    )
+    explicit_result = asyncio.run(
+        explicit_tool.execute("read-explicit", {"path": "notes.txt"})
+    )
+
+    assert default_result.content[0].text == "consumer"
+    assert explicit_result.content[0].text == "explicit"
+
+
 def test_bash_tool_uses_the_live_session_execution_service(
     tmp_path: Path,
 ) -> None:

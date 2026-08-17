@@ -82,6 +82,7 @@ def test_session_composition_ports_are_grouped_by_assembly_phase() -> None:
         "settings",
         "product_id",
         "resources",
+        "workspace",
         "foundation",
         "maintenance",
         "product",

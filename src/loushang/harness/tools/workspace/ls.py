@@ -57,9 +57,10 @@ def create_ls_tool_definition(
     operations: LsOperations | None = None,
     options: LsToolOptions | None = None,
 ) -> ToolDefinition:
-    ops = normalize_ls_operations(
-        operations or (options.operations if options is not None else None)
+    selected_operations = operations or (
+        options.operations if options is not None else None
     )
+    ops = normalize_ls_operations(selected_operations)
 
     @tool(
         name="ls",
@@ -75,12 +76,26 @@ def create_ls_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         raise_if_operation_aborted(ctx.signal)
         resolved = resolve_tool_path(path or ".", cwd=ctx.cwd)
+        active_operations = (
+            normalize_ls_operations(
+                ctx.operation_binding
+                if ctx.operation_binding is not None
+                else ops
+            )
+            if selected_operations is None
+            else ops
+        )
 
         async def execute() -> AgentToolResult[dict[str, Any]]:
-            directory = await _require_directory(resolved, operations=ops)
+            directory = await _require_directory(
+                resolved,
+                operations=active_operations,
+            )
             effective_limit = _effective_limit(limit)
             lines, entry_limit_reached = await _list_entries(
-                directory, limit=effective_limit, operations=ops
+                directory,
+                limit=effective_limit,
+                operations=active_operations,
             )
             raise_if_operation_aborted(ctx.signal)
             raw_content = "\n".join(lines)
@@ -100,9 +115,7 @@ def create_ls_tool_definition(
                     **truncation_details(truncation),
                     "truncated": entry_limit_reached or truncation.truncated,
                     "entry_limit_reached": entry_limit_reached,
-                    "entry_limit": (
-                        effective_limit if entry_limit_reached else None
-                    ),
+                    "entry_limit": (effective_limit if entry_limit_reached else None),
                     "truncation": (
                         pi_truncation_details(truncation)
                         if truncation.truncated
@@ -123,6 +136,7 @@ def create_ls_tool_definition(
         ),
         render_call=render_ls_call,
         render_result=render_find_or_ls_result,
+        operation_binding_key="ls_operations",
     )
 
 

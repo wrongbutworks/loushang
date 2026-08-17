@@ -162,11 +162,30 @@ def bind_coding_lsp_runtime(
     """Bind Coding semantics to the sole Product-visible Harness launch port."""
 
     launcher = process_launcher_binder.bind_process_launcher(execution_scope)
+    return _bind_coding_lsp_runtime_from_launcher(
+        workspace_root=workspace_root,
+        definitions=definitions,
+        process_launcher=launcher,
+        read_text=read_text,
+        baseline_environment=baseline_environment,
+    )
+
+
+def _bind_coding_lsp_runtime_from_launcher(
+    *,
+    workspace_root: str | Path,
+    definitions: Iterable[LspServerDefinition],
+    process_launcher: AuthorizedProcessLauncher,
+    read_text: WorkspaceTextReader,
+    baseline_environment: Mapping[str, str],
+) -> CodingLspRuntime:
+    """Bind LSP semantics to an already-authorized process launch facet."""
+
     return CodingLspRuntime(
         CodingLspBinding(
             workspace_root=workspace_root,
             definitions=definitions,
-            launcher=launcher,
+            launcher=process_launcher,
             read_text=read_text,
             baseline_environment=baseline_environment,
         )

@@ -315,6 +315,7 @@ def create_shell_tool_definition(
             ),
             handler=_BashAuthorizedHandler(bash_operations=shell_operations),
         ),
+        operation_binding_key="bash_operations",
         prompt_snippet=(
             "- shell: Execute PowerShell scripts on Windows. Use PowerShell "
             "syntax, not Bash syntax."

@@ -4604,6 +4604,7 @@ def test_capability_docs_define_exact_top_level_id_budgets() -> None:
 
 
 def test_authorized_tool_context_does_not_become_a_capability_bag() -> None:
+    from loushang.harness.tools.authoring import ToolContext
     from loushang.harness.tools.execution import AuthorizedToolContext
 
     assert tuple(field.name for field in fields(AuthorizedToolContext)) == (
@@ -4617,12 +4618,23 @@ def test_authorized_tool_context_does_not_become_a_capability_bag() -> None:
         "on_update",
         "operation_bindings",
     )
+    assert tuple(field.name for field in fields(ToolContext)) == (
+        "tool_call_id",
+        "cwd",
+        "diagnostics",
+        "signal",
+        "model",
+        "event_sink",
+        "exec_service",
+        "operation_binding",
+    )
 
     workspace_root = Path("src/loushang/harness/tools/workspace")
     for tool_name in ("read", "write", "edit", "grep", "find", "ls"):
         source = (workspace_root / f"{tool_name}.py").read_text(encoding="utf-8")
         assert "context.exec_service" not in source, tool_name
         assert "context.operation_bindings" not in source, tool_name
+        assert "ctx.operation_bindings" not in source, tool_name
 
     boundary = " ".join(
         Path("docs/internals/architecture/harness/tool-execution-binding-boundary.md")

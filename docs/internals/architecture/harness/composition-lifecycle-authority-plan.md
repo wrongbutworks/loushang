@@ -700,6 +700,21 @@ A future `harness.resources -> harness.workspace` dependency requires a concrete
 Resource Consumer and a separate accepted loader cutover; it is not implied by
 co-location in one graph.
 
+Implemented evidence:
+
+- Coding supplies a root-bounded filesystem adapter and one authorized process
+  launcher under a deterministic workspace-scope fingerprint;
+- generic Products without a workspace binding retain the two-root
+  model-input/resources graph, while Coding mounts Workspace as the third
+  independent root;
+- Session Tool and process callers route through typed, lease-aware Consumers;
+  each Tool receives only its explicitly declared operation binding;
+- LSP shares the graph-backed process port without binding another launcher;
+- raw Sandbox, approval, policy, and process-host services remain outside the
+  Bundle and retain their existing Product cleanup owner; and
+- Provider-owned derived cleanup failures remain visible and retryable through
+  the Session Graph retirement path.
+
 ### CLA6: Extension Declaration Bridge
 
 After the resource milestone is stable:

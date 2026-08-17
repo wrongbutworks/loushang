@@ -96,6 +96,9 @@ TRACKED_CALL_SYMBOLS = frozenset(
         "bind_capability_composition_runtime",
         "_publish_generation",
         "resources_capability_provider_binding",
+        "workspace_capability_provider_binding",
+        "WorkspaceToolCapabilityConsumer",
+        "WorkspaceProcessCapabilityConsumer",
     }
 )
 GUARDED_CONSTRUCTION_SYMBOLS = frozenset(
@@ -103,6 +106,9 @@ GUARDED_CONSTRUCTION_SYMBOLS = frozenset(
         *EXPECTED_CONSTRUCTION_SITES,
         "bind_capability_composition_runtime",
         "resources_capability_provider_binding",
+        "workspace_capability_provider_binding",
+        "WorkspaceToolCapabilityConsumer",
+        "WorkspaceProcessCapabilityConsumer",
     }
 )
 
@@ -201,9 +207,7 @@ def _guarded_alias_violations(
         if isinstance(node, ast.AnnAssign):
             value_name = None if node.value is None else _call_name(node.value)
             if value_name in GUARDED_CONSTRUCTION_SYMBOLS:
-                violations.add(
-                    (path, "constructor_alias", ast.unparse(node.target))
-                )
+                violations.add((path, "constructor_alias", ast.unparse(node.target)))
             continue
 
         if isinstance(node, ast.ClassDef) and any(
@@ -289,9 +293,8 @@ def test_graph_and_profile_construction_sites_match_cla0_allowlist() -> None:
 
 
 def test_composition_binding_entrypoint_families_match_cla0_allowlist() -> None:
-    assert (
-        _construction_sites("bind_capability_composition_runtime")
-        == Counter(EXPECTED_COMPOSITION_BIND_CALLERS)
+    assert _construction_sites("bind_capability_composition_runtime") == Counter(
+        EXPECTED_COMPOSITION_BIND_CALLERS
     )
 
 
@@ -466,7 +469,7 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
     assert statuses == {
         "harness.model_input": "production-mounted",
         "harness.resources": "production-mounted",
-        "harness.workspace": "source-complete",
+        "harness.workspace": "production-mounted",
     }
 
 
@@ -478,6 +481,33 @@ def test_cla4_resources_provider_has_one_production_mount_owner() -> None:
                 "AgentProductSession.__init__",
             ): 1
         }
+    )
+
+
+def test_cla5_workspace_has_one_product_binding_and_one_session_consumer_owner() -> (
+    None
+):
+    assert _construction_sites("workspace_capability_provider_binding") == Counter(
+        {
+            (
+                Path("src/loushang/coding/bootstrap.py"),
+                "_create_agent_session._create_session",
+            ): 1
+        }
+    )
+    expected_consumer_owner = Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession._ensure_session_graph_prepared",
+            ): 1
+        }
+    )
+    assert _construction_sites("WorkspaceToolCapabilityConsumer") == (
+        expected_consumer_owner
+    )
+    assert _construction_sites("WorkspaceProcessCapabilityConsumer") == (
+        expected_consumer_owner
     )
 
 

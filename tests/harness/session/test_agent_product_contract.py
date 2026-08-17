@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -19,6 +20,12 @@ from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
     standard_capability_composition_plan,
+)
+from loushang.harness.capabilities.provider_binding import (
+    CapabilityBundleProviderBinding,
+)
+from loushang.harness.capabilities.workspace_provider import (
+    workspace_capability_provider_binding,
 )
 from loushang.harness.config.agent import (
     CompactionSettings,
@@ -53,6 +60,8 @@ from loushang.harness.transcript import (
     ContextCompactionCheckpoint,
     ProductTranscriptSession,
 )
+from loushang.harness.workspace.operations import LocalToolOperations
+from loushang.harness.workspace.process import ProcessLaunchRequest
 
 
 class _ContractTranscriptSession(ProductTranscriptSession[str, str]):
@@ -90,6 +99,7 @@ class _ContractProductSession(AgentProductSession):
         capability_runtime: CapabilityCompositionRuntime,
         reserve_tokens: int,
         compact_percent: float,
+        workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
     ) -> None:
         self.product_id = product_id
         self.executor_calls: list[tuple[str, str | None]] = []
@@ -159,6 +169,7 @@ class _ContractProductSession(AgentProductSession):
                     ),
                 )
             ),
+            workspace_capability_binding=workspace_capability_binding,
         )
 
     async def _before_product_compaction(
@@ -195,9 +206,7 @@ def test_session_registration_inventory_keeps_retirement_retry_facts() -> None:
     )
     session._extension_runner = SimpleNamespace(  # type: ignore[attr-defined]
         registration_inventory=(),
-        retired_registration_inventory=(
-            (owner, identity, "failed_retryable"),
-        ),
+        retired_registration_inventory=((owner, identity, "failed_retryable"),),
     )
 
     entries = session._effective_registration_entries()
@@ -267,9 +276,7 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
             )
         )
         await asyncio.wait_for(graph_bind_started.wait(), timeout=1)
-        lifecycle_prepare = asyncio.create_task(
-            research.prepare_model_call_runtime()
-        )
+        lifecycle_prepare = asyncio.create_task(research.prepare_model_call_runtime())
         try:
             await asyncio.sleep(0)
             assert lifecycle_prepare.done() is False
@@ -306,9 +313,10 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert research.get_active_tool_names() == []
         assert design.get_active_tool_names() == []
         assert effective_runtime.product_id == "research"
-        assert tuple(
-            node.capability_id for node in effective_runtime.capabilities
-        ) == ("harness.model_input", "harness.resources")
+        assert tuple(node.capability_id for node in effective_runtime.capabilities) == (
+            "harness.model_input",
+            "harness.resources",
+        )
         assert effective_runtime.source_publication is not None
         assert effective_runtime.source_publication.owner_capability_id == (
             "harness.resources"
@@ -316,12 +324,14 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert effective_runtime.source_publication.resource_revision == 0
         assert effective_runtime.clocks.model_surface is None
         assert effective_runtime.skew == ()
-        assert research.explain_runtime_capability(
-            "harness.model_input"
-        ).clocks.mount == effective_runtime.clocks.mount
-        assert research.effective_runtime_to_json(effective_runtime)[
-            "runtime_id"
-        ] == effective_runtime.runtime_id
+        assert (
+            research.explain_runtime_capability("harness.model_input").clocks.mount
+            == effective_runtime.clocks.mount
+        )
+        assert (
+            research.effective_runtime_to_json(effective_runtime)["runtime_id"]
+            == effective_runtime.runtime_id
+        )
         research._composition.resource_refresh_runtime._commit_resource_bundle(
             ResourceBundle(cwd=tmp_path)
         )
@@ -377,9 +387,10 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
             research.get_effective_runtime_view()
         with pytest.raises(RuntimeError, match="not mounted"):
             research._resource_capability_ports.activation.activate(None)
-        assert research.effective_runtime_to_json(effective_runtime)[
-            "runtime_id"
-        ] == effective_runtime.runtime_id
+        assert (
+            research.effective_runtime_to_json(effective_runtime)["runtime_id"]
+            == effective_runtime.runtime_id
+        )
         detached_diff = research.diff_effective_runtime(
             effective_runtime,
             effective_runtime,
@@ -703,6 +714,64 @@ def test_agent_product_finalizes_shutdown_when_capability_disposal_fails(
     asyncio.run(scenario())
 
 
+def test_workspace_provider_cleanup_remains_owned_until_retry_succeeds(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="workspace-cleanup")
+        cleanup_attempts = 0
+
+        async def cleanup() -> None:
+            nonlocal cleanup_attempts
+            cleanup_attempts += 1
+            if cleanup_attempts == 1:
+                raise RuntimeError("transient workspace cleanup failure")
+
+        workspace_binding = workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id=f"workspace:{tmp_path}",
+            binding_input_fingerprint=hashlib.sha256(b"workspace-cleanup").hexdigest(),
+            cleanup=cleanup,
+            source_id="contract-test",
+        )
+        session = _ContractProductSession(
+            product_id="workspace-cleanup",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("workspace-cleanup"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            workspace_capability_binding=workspace_binding,
+        )
+        await session.prepare_model_call_runtime()
+        cached_launcher = session.get_workspace_process_launcher()
+
+        with pytest.raises(RuntimeError, match="cleanup remains pending"):
+            await session.dispose()
+
+        assert cleanup_attempts == 1
+        assert session._capability_graph_runtime.has_pending_retirements is True
+        with pytest.raises(RuntimeError, match="disposed"):
+            await cached_launcher.start(
+                ProcessLaunchRequest(
+                    command=("never-start",),
+                    cwd=str(tmp_path),
+                    effective_environment=(),
+                ),
+                correlation_id="disposed-workspace",
+            )
+
+        await session.dispose()
+
+        assert cleanup_attempts == 2
+        assert session._capability_graph_runtime.has_pending_retirements is False
+        assert disposed_transcripts == ["workspace-cleanup-session"]
+
+    asyncio.run(scenario())
+
+
 def _bind_transcript_factory(disposed: list[str]) -> None:
     async def bind_runtime(context, binding: str):
         assert context.persist is False
@@ -773,6 +842,11 @@ def _capability_runtime(product_id: str) -> CapabilityCompositionRuntime:
         standard_capability_composition_plan(product_id=product_id)
     )
     return bind_capability_composition_runtime(profile)
+
+
+class _UnusedWorkspaceLauncher:
+    async def start(self, *_args: object, **_kwargs: object) -> object:
+        raise AssertionError("workspace cleanup does not start a process")
 
 
 def _model(product_id: str) -> Model:

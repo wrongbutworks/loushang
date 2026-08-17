@@ -5,6 +5,9 @@ import json
 import subprocess
 from dataclasses import replace
 from datetime import date
+from pathlib import Path
+
+import pytest
 
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import (
@@ -281,12 +284,86 @@ def test_create_agent_session_binds_always_on_lsp_to_sandbox_scope(
     assert INSPECT_SYMBOL_TOOL_NAME in session.get_active_tool_names()
     assert len(scopes) == 1
     assert scopes[0].audit_sink is not None
-    assert scopes[0].execution_profile_ceiling is getattr(
-        session._sandbox_runtime.exec_service,
-        "execution_profile",
-        None,
+    assert scopes[0].execution_profile_ceiling is not None
+    assert Path(project).resolve() in (
+        scopes[0].execution_profile_ceiling.readable_roots
     )
     asyncio.run(session.dispose())
+
+
+def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.authorization import ExecutionAuthorizationError
+    from loushang.harness.sandbox import SandboxSettings
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+    from loushang.harness.workspace.process import ProcessLaunchRequest
+
+    async def scenario() -> None:
+        workspace = tmp_path / "workspace"
+        outside = tmp_path / "outside"
+        workspace.mkdir()
+        outside.mkdir()
+        (workspace / "notes.txt").write_text("graph-backed", encoding="utf-8")
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=False,
+        )
+        registry = WorkspaceToolRegistry()
+        register_coding_builtin_tools(registry)
+        session = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            tool_registry=registry,
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(sandbox=SandboxSettings(enabled=False))
+                )
+            ),
+        )
+        try:
+            read_tool = next(tool for tool in session.agent.tools if tool.name == "read")
+            read_result = await read_tool.execute(
+                "workspace-read",
+                {"path": "notes.txt"},
+            )
+            assert read_result.content[0].text == "graph-backed"
+            first_generation = session._capability_graph_runtime.generation
+            assert first_generation == 1
+            await session.prepare_model_call_runtime()
+            assert session._capability_graph_runtime.generation == first_generation
+            snapshot = session._capability_graph_runtime.snapshot
+            assert snapshot is not None
+            assert snapshot.roots == (
+                "harness.model_input",
+                "harness.resources",
+                "harness.workspace",
+            )
+            assert all(node.requirements == () for node in snapshot.nodes)
+            view = session.get_effective_runtime_view()
+            assert tuple(node.capability_id for node in view.capabilities) == (
+                "harness.model_input",
+                "harness.resources",
+                "harness.workspace",
+            )
+            with pytest.raises(ExecutionAuthorizationError, match="outside"):
+                await session.get_workspace_process_launcher().start(
+                    ProcessLaunchRequest(
+                        command=("never-start",),
+                        cwd=str(outside),
+                        effective_environment=(),
+                    ),
+                    correlation_id="outside-workspace",
+                )
+        finally:
+            await session.dispose()
+
+    asyncio.run(scenario())
 
 
 def test_create_agent_session_projects_default_lsp_environment(tmp_path) -> None:
@@ -338,7 +415,7 @@ def test_on_demand_lsp_discovers_installed_product_defaults(
     project = tmp_path / "project"
     project.mkdir()
     captured_definitions: list[LspServerDefinition] = []
-    bind_runtime = coding_bootstrap.bind_coding_lsp_runtime
+    bind_runtime = coding_bootstrap._bind_coding_lsp_runtime_from_launcher
 
     def capture_definitions(**kwargs):
         captured_definitions.extend(kwargs["definitions"])
@@ -346,7 +423,7 @@ def test_on_demand_lsp_discovers_installed_product_defaults(
 
     monkeypatch.setattr(
         coding_bootstrap,
-        "bind_coding_lsp_runtime",
+        "_bind_coding_lsp_runtime_from_launcher",
         capture_definitions,
     )
     services = create_services(

@@ -150,11 +150,21 @@ def create_grep_tool_definition(
         context_lines = _validate_context(context)
         raise_if_operation_aborted(ctx.signal)
         resolved_path = resolve_tool_path(path or ".", cwd=ctx.cwd)
+        active_operations = (
+            normalize_grep_operations(
+                ctx.operation_binding
+                if ctx.operation_binding is not None
+                else ops
+            )
+            if selected_operations is None
+            else ops
+        )
+        active_external_tools = use_external_tools
 
         async def execute() -> AgentToolResult[dict[str, Any]]:
             search_path, base_dir = await _require_search_path(
                 resolved_path,
-                operations=ops,
+                operations=active_operations,
             )
             effective_limit = _effective_limit(limit)
             matches, match_limit_reached = await _search_contents(
@@ -165,27 +175,26 @@ def create_grep_tool_definition(
                 ignore_case=bool(ignoreCase),
                 literal=bool(literal),
                 limit=effective_limit,
-                operations=ops,
-                use_external_tools=use_external_tools,
+                operations=active_operations,
+                use_external_tools=active_external_tools,
                 external_tool_resolver=external_tool_resolver,
                 require_external_tool=require_external_tool,
                 signal=ctx.signal,
             )
             rendered_entries = await _render_grep_entries(
-                base_dir, matches, context=context_lines, operations=ops
+                base_dir,
+                matches,
+                context=context_lines,
+                operations=active_operations,
             )
             raise_if_operation_aborted(ctx.signal)
-            raw_output = "\n".join(
-                entry["rendered"] for entry in rendered_entries
-            )
+            raw_output = "\n".join(entry["rendered"] for entry in rendered_entries)
             truncation = truncate_head(raw_output, max_lines=1_000_000)
             visible_matches = _visible_grep_matches(
                 rendered_entries,
                 truncation.content,
             )
-            lines_truncated = any(
-                entry["line_truncated"] for entry in rendered_entries
-            )
+            lines_truncated = any(entry["line_truncated"] for entry in rendered_entries)
             rendered = truncation.content if matches else "No matches found"
             if matches:
                 rendered = _append_grep_notices(
@@ -203,9 +212,7 @@ def create_grep_tool_definition(
                     **truncation_details(truncation),
                     "truncated": match_limit_reached or truncation.truncated,
                     "match_limit_reached": match_limit_reached,
-                    "match_limit": (
-                        effective_limit if match_limit_reached else None
-                    ),
+                    "match_limit": (effective_limit if match_limit_reached else None),
                     "lines_truncated": lines_truncated,
                     "truncation": (
                         pi_truncation_details(truncation)
@@ -232,6 +239,7 @@ def create_grep_tool_definition(
         ),
         render_call=render_grep_call,
         render_result=render_grep_result,
+        operation_binding_key="grep_operations",
     )
 
 

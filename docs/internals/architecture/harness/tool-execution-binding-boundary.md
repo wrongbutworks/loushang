@@ -147,6 +147,7 @@ class ToolDefinition:
     description: str
     parameters: dict[str, object]
     execution: DirectExecution | AuthorizedExecution
+    operation_binding_key: str | None = None
     # existing prompt, rendering, and concurrency metadata
 ```
 
@@ -356,12 +357,20 @@ profile.
 
 `AuthorizedToolContext` is a closed invocation-state contract, not a
 capability registry or service locator. Its existing `exec_service` and
-`operation_bindings` fields support the current session-scoped process/Bash
-override; filesystem tools must not consume them. New filesystem, network,
-publication, credential, or Product service clients must not be added to this
-context. A second demonstrated need for a live protected-resource port requires
-a separate boundary decision based on the real consumers rather than another
-optional context field.
+`operation_bindings` fields support session-scoped execution overrides. The
+action adapter receives no live operation bindings before authorization. The
+host also prepares a handler view filtered by the Definition's single optional
+`operation_binding_key`, then passes that view to the Gateway; it reaches the
+handler only after authorization succeeds. Undeclared keys never reach either
+stage. Decorated tools receive only the selected object as
+`ToolContext.operation_binding`, not the string-keyed mapping. The standard
+filesystem Definitions use this one port to consume their typed Workspace
+Consumer facet while retaining their existing Gateway revalidation. New
+network, publication, credential, or Product service clients must not be added
+to these contexts. A second
+demonstrated need for a live protected-resource port requires a separate
+boundary decision based on the real consumers rather than another optional
+context field.
 
 The handler does not receive `PolicyEngine` or `ApprovalResolver`.
 

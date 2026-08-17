@@ -32,6 +32,7 @@ from loushang.coding.runtime_capability_admission import (
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
+    CapabilityBundleProviderBinding,
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
 )
@@ -147,6 +148,7 @@ class AgentSession(AgentProductSession):
         sandbox_runtime: SandboxExecutionRuntime | None = None,
         lsp_runtime: CodingLspRuntime | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
+        workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
     ) -> None:
         self._sandbox_runtime = sandbox_runtime
         self._lsp_runtime = lsp_runtime
@@ -220,6 +222,7 @@ class AgentSession(AgentProductSession):
                 ),
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
+                workspace_capability_binding=workspace_capability_binding,
             )
         except BaseException as error:
             if locally_created_side_question_binding is not None:

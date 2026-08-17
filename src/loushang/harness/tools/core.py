@@ -41,9 +41,16 @@ from loushang.harness.tools.execution import (
 _TOOL_SPEC_ATTR = "__loushang_tool_spec__"
 
 ToolRenderOutput = str | Mapping[str, Any] | None
-ToolRenderCall = Callable[[object, Mapping[str, str], ToolRenderContext], ToolRenderOutput]
+ToolRenderCall = Callable[
+    [object, Mapping[str, str], ToolRenderContext], ToolRenderOutput
+]
 ToolRenderResult = Callable[
-    [AgentToolResult[Any], ToolRenderResultOptions, Mapping[str, str], ToolRenderContext],
+    [
+        AgentToolResult[Any],
+        ToolRenderResultOptions,
+        Mapping[str, str],
+        ToolRenderContext,
+    ],
     ToolRenderOutput,
 ]
 
@@ -62,7 +69,9 @@ _SCALAR_TYPES: dict[type[object], str] = {
 }
 
 
-def _as_tuple_of_strings(value: tuple[str, ...] | list[str], field_name: str) -> tuple[str, ...]:
+def _as_tuple_of_strings(
+    value: tuple[str, ...] | list[str], field_name: str
+) -> tuple[str, ...]:
     if isinstance(value, str):
         raise TypeError(f"{field_name} must be a sequence of strings, not a string")
     normalized: list[str] = []
@@ -73,7 +82,9 @@ def _as_tuple_of_strings(value: tuple[str, ...] | list[str], field_name: str) ->
     return tuple(normalized)
 
 
-def _validate_execution_mode(value: ToolExecutionMode, field_name: str) -> ToolExecutionMode:
+def _validate_execution_mode(
+    value: ToolExecutionMode, field_name: str
+) -> ToolExecutionMode:
     if value not in {"sequential", "parallel"}:
         raise ValueError(f"{field_name} must be 'sequential' or 'parallel'")
     return value
@@ -93,6 +104,7 @@ class ToolDefinition:
     render_call: ToolRenderCall | None = None
     render_result: ToolRenderResult | None = None
     provider_parameters: dict[str, Any] | None = None
+    operation_binding_key: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -105,16 +117,21 @@ class ToolDefinition:
             "execution_mode",
             _validate_execution_mode(self.execution_mode, "execution_mode"),
         )
+        if self.operation_binding_key is not None and (
+            not isinstance(self.operation_binding_key, str)
+            or not self.operation_binding_key
+        ):
+            raise ValueError("operation_binding_key must be a non-empty string")
         if self.render_call is not None and not callable(self.render_call):
             raise TypeError("render_call must be callable")
         if self.render_result is not None and not callable(self.render_result):
             raise TypeError("render_result must be callable")
-        if self.provider_parameters is not None and not isinstance(self.provider_parameters, dict):
+        if self.provider_parameters is not None and not isinstance(
+            self.provider_parameters, dict
+        ):
             raise TypeError("provider_parameters must be a dict")
         if not isinstance(self.execution, DirectExecution | AuthorizedExecution):
-            raise TypeError(
-                "execution must be DirectExecution or AuthorizedExecution"
-            )
+            raise TypeError("execution must be DirectExecution or AuthorizedExecution")
 
     @property
     def renderCall(self) -> ToolRenderCall | None:
@@ -136,7 +153,9 @@ def project_tool_definition(
         "name": definition.name,
         "description": definition.description,
         "parameters": definition.parameters,
-        "sourceInfo": _project_tool_source_info(source_info, definition.name, builtin_names),
+        "sourceInfo": _project_tool_source_info(
+            source_info, definition.name, builtin_names
+        ),
     }
 
 
@@ -239,7 +258,9 @@ def _unwrap_annotation(annotation: object) -> object:
     return annotation
 
 
-def _merge_schema(base: dict[str, object], overrides: dict[str, object]) -> dict[str, object]:
+def _merge_schema(
+    base: dict[str, object], overrides: dict[str, object]
+) -> dict[str, object]:
     merged: dict[str, object] = dict(base)
     for key, value in overrides.items():
         existing = merged.get(key)
@@ -250,7 +271,9 @@ def _merge_schema(base: dict[str, object], overrides: dict[str, object]) -> dict
     return merged
 
 
-def apply_schema_overrides(schema: dict[str, object], overrides: dict[str, object] | None) -> dict[str, object]:
+def apply_schema_overrides(
+    schema: dict[str, object], overrides: dict[str, object] | None
+) -> dict[str, object]:
     if overrides in (None, {}):
         return schema
     if not isinstance(overrides, dict):
@@ -272,9 +295,13 @@ def infer_schema_from_signature(
         if param.name in excluded:
             continue
         if param.kind == Parameter.POSITIONAL_ONLY:
-            raise TypeError("positional-only parameters are not supported for schema inference")
+            raise TypeError(
+                "positional-only parameters are not supported for schema inference"
+            )
         if param.kind in (Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD):
-            raise TypeError("variadic parameters are not supported for schema inference")
+            raise TypeError(
+                "variadic parameters are not supported for schema inference"
+            )
         if param.name not in hints:
             raise TypeError(f"parameter {param.name!r} must be annotated")
         annotation = hints[param.name]
@@ -341,7 +368,10 @@ def _infer_schema_from_dataclass(cls: type[object]) -> dict[str, object]:
     for dataclass_field in fields(cast(Any, cls)):
         annotation = type_hints.get(dataclass_field.name, dataclass_field.type)
         properties[dataclass_field.name] = infer_schema_from_type(annotation)
-        if dataclass_field.default is MISSING and dataclass_field.default_factory is MISSING:
+        if (
+            dataclass_field.default is MISSING
+            and dataclass_field.default_factory is MISSING
+        ):
             required.append(dataclass_field.name)
 
     return schema
@@ -416,7 +446,9 @@ def _infer_schema_from_pydantic_model(annotation: type[object]) -> dict[str, obj
     return schema
 
 
-def _raise_on_unresolved_pydantic_refs(value: object, *, in_properties_map: bool = False) -> None:
+def _raise_on_unresolved_pydantic_refs(
+    value: object, *, in_properties_map: bool = False
+) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
             if not in_properties_map and key in {"$ref", "$defs", "definitions"}:
@@ -488,6 +520,7 @@ class WrappedToolDefinition:
             signal=signal,
             on_update=on_update,
             context_provider=self.context_provider,
+            operation_binding_key=self.definition.operation_binding_key,
         )
         return await self.execution_host.dispatch(
             self.definition,
@@ -507,6 +540,7 @@ def _build_tool_call_context(
     signal: object | None,
     on_update: object | None,
     context_provider: ToolContextProvider | None,
+    operation_binding_key: str | None,
 ) -> ToolCallContext:
     provided = (
         context_provider(tool_call_id=tool_call_id)
@@ -525,6 +559,7 @@ def _build_tool_call_context(
             on_update=on_update if callable(on_update) else None,
             operation_bindings=provided.operation_bindings,
         )
+    operation_binding = getattr(provided, "operation_binding", None)
     return ToolCallContext(
         tool_call_id=tool_call_id,
         cwd=getattr(provided, "cwd", None),
@@ -534,6 +569,11 @@ def _build_tool_call_context(
         event_sink=getattr(provided, "event_sink", None),
         exec_service=getattr(provided, "exec_service", None),
         on_update=on_update if callable(on_update) else None,
+        operation_bindings=(
+            {operation_binding_key: operation_binding}
+            if operation_binding_key is not None and operation_binding is not None
+            else {}
+        ),
     )
 
 
@@ -799,7 +839,10 @@ class ToolRegistry:
                 if current_layers is None:
                     return RegistrationDisposalResult(state="already_removed")
                 for current_index, current in enumerate(current_layers):
-                    if current.identity.registration_id != resolved_identity.registration_id:
+                    if (
+                        current.identity.registration_id
+                        != resolved_identity.registration_id
+                    ):
                         continue
                     if current.owner != owner:
                         return RegistrationDisposalResult(
