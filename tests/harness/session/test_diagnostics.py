@@ -91,6 +91,23 @@ def test_session_diagnostics_scopes_queries_and_syncs_extensions_once() -> None:
     assert records[1].entry_id == "entry-1"
 
 
+def test_session_diagnostics_treats_graph_provider_restart_as_error() -> None:
+    diagnostics = DiagnosticsService()
+    runtime = _runtime(diagnostics)
+
+    runtime.record_extension_runtime_diagnostic(
+        DiagnosticDraft(
+            code="extension_graph_provider_restart_required",
+            message="restart required",
+            details={"restartRequired": True},
+        )
+    )
+
+    record = diagnostics.get_diagnostics()[0]
+    assert record.type == "error"
+    assert record.details["restartRequired"] is True
+
+
 def test_session_diagnostics_records_agent_and_policy_tool_failures() -> None:
     diagnostics = DiagnosticsService()
     runtime = _runtime(diagnostics)

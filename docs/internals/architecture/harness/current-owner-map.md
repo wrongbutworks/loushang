@@ -97,6 +97,11 @@ resource bundle, then reverse-retires the replaced generation. It reuses
 `RegistrationLease` and `RegistrationScope`; it is not a second Capability
 graph or runtime projector. Historical model-visible Tool schemas remain owned
 by committed Model Input facts rather than the current Extension generation.
+The runner freezes candidate declaration facts, while the Product/Session
+composition root owns the accepted declaration baseline and injects the pure
+admission preflight. Graph-owned input drift is restart-required before live
+candidate effects; content-only reload remains source-local and does not
+publish another Mount generation.
 
 The initial live Binder supports direct dependency facets. A planned
 `stable_reference` edge fails closed before Provider construction until a

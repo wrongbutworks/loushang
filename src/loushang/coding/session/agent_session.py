@@ -27,6 +27,7 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.resource_runtime import summarize_coding_package_root
 from loushang.coding.runtime_capability_admission import (
+    CodingExtensionDeclarationPreflight,
     resolve_coding_capability_profile,
 )
 from loushang.coding.session_manager import SessionManager
@@ -223,6 +224,13 @@ class AgentSession(AgentProductSession):
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
                 workspace_capability_binding=workspace_capability_binding,
+                extension_declaration_preflight=(
+                    CodingExtensionDeclarationPreflight(
+                        baseline_profile=resolved_capability_runtime.profile
+                    )
+                    if extension_runner is not None
+                    else None
+                ),
             )
         except BaseException as error:
             if locally_created_side_question_binding is not None:

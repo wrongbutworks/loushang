@@ -8,9 +8,11 @@ existing Harness resource refresh coordinator with a small session port set:
 
 1. optionally prepare the bound Product runtime;
 2. reload the bundle for the current Product cwd;
-3. allow an optional extension runtime to contribute discovered resources;
-4. apply the shared disabled-skill activation policy; and
-5. commit the new bundle and rebuild the Product's prompt and tool view.
+3. when the staged-generation seam exists, prepare an unpublished Extension
+   generation and run an optional Product declaration preflight;
+4. allow the candidate extension runtime to contribute discovered resources;
+5. apply the shared disabled-skill activation policy; and
+6. commit the new bundle and rebuild the Product's prompt and tool view.
 
 When the bound Extension runtime exposes the staged-generation seam, reload
 uses the stronger
@@ -30,7 +32,9 @@ code or user-visible wording.
 Products supply the resource loader, resource bundle holder, cwd, settings,
 optional extension discovery runtime, bundle commit callback, and view rebuild
 callback. They also choose when a refresh is requested and how a failure is
-recorded or rendered.
+recorded or rendered. A Product that admits runtime-capability declarations may
+also supply a synchronous, pure preflight over the candidate's redacted value
+snapshot. Harness does not import the Product resolver or infer its grants.
 
 ## Coding Binding
 
@@ -60,5 +64,7 @@ protocols.
   failure-contained requests.
 - Coding `AgentSession` regressions retain its refresh, watcher, and extension
   API behavior, while staged reload failures preserve the previous generation.
+- Coding production tests prove graph-owned declaration changes are rejected
+  before discovery and content-only reload does not rebind the Session Graph.
 - Architecture tests forbid Coding imports in the runtime, require the Coding
   binding, and prevent reintroducing the old Coding controller.

@@ -136,6 +136,7 @@ from loushang.harness.session.operations_runtime import SessionOperationsPorts
 from loushang.harness.session.resource_capability_ports import (
     SessionResourceCapabilityPorts,
 )
+from loushang.harness.session.resource_refresh import ExtensionDeclarationPreflight
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.side_question import (
     SIDE_QUESTION_BOUNDARY_PROMPT,
@@ -217,6 +218,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         approval_resolver: InteractiveApprovalResolver | None = None,
         tool_policy_evaluator: PolicyEvaluator | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
+        extension_declaration_preflight: ExtensionDeclarationPreflight | None = None,
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model
@@ -236,6 +238,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._resource_loader = resource_loader
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
+        self._extension_declaration_preflight = extension_declaration_preflight
         self._extension_bridge = AgentSessionExtensionBridge()
         if (
             session_manager.persist
@@ -726,6 +729,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 record_extension_runtime_diagnostic=(
                     self._record_extension_runtime_diagnostic
                 ),
+                extension_declaration_preflight=(self._extension_declaration_preflight),
             ),
             maintenance=SessionMaintenanceInputs(
                 execute_compaction=self._execute_product_compaction,

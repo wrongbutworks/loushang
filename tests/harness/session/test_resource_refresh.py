@@ -5,6 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.extensions.declarations import (
+    ExtensionCapabilityDeclarationSnapshot,
+    ExtensionGraphProviderRestartRequiredError,
+    ExtensionRuntimeCapabilityDeclaration,
+)
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
@@ -80,6 +85,7 @@ class _StagedCandidate:
         rollback_started: asyncio.Event | None = None,
         release_rollback: asyncio.Event | None = None,
         publication_error: BaseException | None = None,
+        capability_declarations: ExtensionCapabilityDeclarationSnapshot | None = None,
     ) -> None:
         self.events = events
         self.activation_error = activation_error
@@ -87,6 +93,11 @@ class _StagedCandidate:
         self.rollback_started = rollback_started
         self.release_rollback = release_rollback
         self.publication_error = publication_error
+        self.capability_declarations = (
+            capability_declarations
+            if capability_declarations is not None
+            else ExtensionCapabilityDeclarationSnapshot(declarations=())
+        )
 
     async def discover_resources_async(
         self,
@@ -166,6 +177,7 @@ def _runtime(
     rebuilds: list[str] | None = None,
     failures: list[Exception] | None = None,
     syncs: list[str] | None = None,
+    extension_declaration_preflight=None,
 ) -> SessionResourceRefreshRuntime:
     return SessionResourceRefreshRuntime(
         get_resource_loader=lambda: loader,
@@ -181,6 +193,7 @@ def _runtime(
         sync_extension_diagnostics=lambda: (syncs if syncs is not None else []).append(
             "resource_loading"
         ),
+        extension_declaration_preflight=extension_declaration_preflight,
     )
 
 
@@ -331,6 +344,73 @@ def test_staged_extension_reload_publishes_resource_before_retiring_old_generati
     ]
 
 
+def test_staged_extension_reload_rejects_graph_provider_change_before_discovery() -> (
+    None
+):
+    events: list[str] = []
+    candidate_snapshot = ExtensionCapabilityDeclarationSnapshot(
+        declarations=(
+            ExtensionRuntimeCapabilityDeclaration(
+                extension_id="example",
+                slot="prompt.sections",
+                name="replacement",
+                implementation_version=2,
+                priority=10,
+                granted_permissions=("prompt.sections",),
+            ),
+        )
+    )
+    candidate = _StagedCandidate(
+        events,
+        capability_declarations=candidate_snapshot,
+    )
+    seen: list[ExtensionCapabilityDeclarationSnapshot] = []
+
+    def preflight(snapshot: ExtensionCapabilityDeclarationSnapshot) -> None:
+        seen.append(snapshot)
+        raise ExtensionGraphProviderRestartRequiredError(
+            capability_ids=("harness.resources",),
+            changed_slots=("prompt.sections",),
+            baseline_fingerprint="a" * 64,
+            candidate_fingerprint="b" * 64,
+        )
+
+    runtime = _runtime(
+        loader=_Loader(ResourceBundle(cwd=Path("/tmp/project"))),
+        extension_runtime=_StagedExtensionRuntime(candidate),
+        extension_declaration_preflight=preflight,
+    )
+
+    with pytest.raises(ExtensionGraphProviderRestartRequiredError):
+        asyncio.run(runtime.reload_extension_generation(object()))
+
+    assert seen == [candidate_snapshot]
+    assert events == ["rollback"]
+    assert runtime.resource_revision == 0
+
+
+def test_staged_extension_reload_rejects_async_preflight_before_effects() -> None:
+    events: list[str] = []
+    candidate = _StagedCandidate(events)
+
+    async def invalid_preflight(
+        _snapshot: ExtensionCapabilityDeclarationSnapshot,
+    ) -> None:
+        events.append("preflight")
+
+    runtime = _runtime(
+        loader=_Loader(ResourceBundle(cwd=Path("/tmp/project"))),
+        extension_runtime=_StagedExtensionRuntime(candidate),
+        extension_declaration_preflight=invalid_preflight,
+    )
+
+    with pytest.raises(TypeError, match="must be synchronous"):
+        asyncio.run(runtime.reload_extension_generation(object()))
+
+    assert events == ["rollback"]
+    assert runtime.resource_revision == 0
+
+
 def test_staged_extension_reload_rolls_back_failed_candidate_without_commit() -> None:
     events: list[str] = []
     refreshed: list[ResourceBundle] = []
@@ -390,9 +470,7 @@ def test_staged_extension_reload_restores_resource_when_publication_fails() -> N
         events.append("restored")
 
     runtime = SessionResourceRefreshRuntime(
-        get_resource_loader=lambda: _Loader(
-            ResourceBundle(cwd=Path("/tmp/project"))
-        ),
+        get_resource_loader=lambda: _Loader(ResourceBundle(cwd=Path("/tmp/project"))),
         get_resource_bundle=lambda: current[0],
         get_cwd=lambda: "/tmp/project",
         get_extension_runtime=lambda: _StagedExtensionRuntime(candidate),

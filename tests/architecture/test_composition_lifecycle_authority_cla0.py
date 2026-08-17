@@ -19,6 +19,13 @@ README_PATH = Path("docs/internals/architecture/harness/README.md")
 CATALOG_PATH = Path("docs/internals/architecture/harness/capability-catalog.md")
 CATALOG_GENERATOR_PATH = Path("scripts/generate_harness_capability_catalog.py")
 SOURCE_ROOT = Path("src/loushang")
+EXTENSION_DECLARATION_PATH = Path("src/loushang/harness/extensions/declarations.py")
+EXTENSION_PREFLIGHT_PATHS = (
+    EXTENSION_DECLARATION_PATH,
+    Path("src/loushang/harness/extensions/runner.py"),
+    Path("src/loushang/harness/extensions/session_runtime.py"),
+    Path("src/loushang/harness/session/resource_refresh.py"),
+)
 
 REQUIRED_ROWS = {
     "AUTH": 15,
@@ -415,6 +422,81 @@ def test_extension_generation_has_one_private_publication_entrypoint() -> None:
         )
         == 1
     )
+
+
+def test_cla6_extension_declaration_preflight_is_value_only_and_precedes_effects() -> (
+    None
+):
+    declaration_tree = _source_trees()[EXTENSION_DECLARATION_PATH]
+    dto_names = {
+        "ExtensionRuntimeCapabilityDeclaration",
+        "ExtensionCapabilityDeclarationSnapshot",
+    }
+    dto_nodes = {
+        node.name: node
+        for node in declaration_tree.body
+        if isinstance(node, ast.ClassDef) and node.name in dto_names
+    }
+    assert set(dto_nodes) == dto_names
+    forbidden_annotation_parts = ("Any", "Callable", "Mapping", "object")
+    for dto in dto_nodes.values():
+        annotations = (
+            ast.unparse(node.annotation)
+            for node in dto.body
+            if isinstance(node, ast.AnnAssign)
+        )
+        assert all(
+            part not in annotation
+            for annotation in annotations
+            for part in forbidden_annotation_parts
+        )
+
+    for path in EXTENSION_PREFLIGHT_PATHS:
+        tree = _source_trees()[path]
+        imported_modules = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+        } | {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        assert not any(
+            module.startswith("loushang.harness.capabilities")
+            for module in imported_modules
+        )
+        calls = {
+            _call_name(node.func)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+        }
+        assert (
+            not {
+                "RuntimeCapabilityGraphRuntime",
+                "RuntimeCapabilityGraphBinder",
+                "RuntimeCapabilityGraphProjector",
+            }
+            & calls
+        )
+
+    reload_generation = _method_node(
+        Path("src/loushang/harness/session/resource_refresh.py"),
+        "SessionResourceRefreshRuntime",
+        "reload_extension_generation",
+    )
+    call_lines: dict[str, list[int]] = {}
+    for node in ast.walk(reload_generation):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _call_name(node.func)
+        if name is not None:
+            call_lines.setdefault(name, []).append(node.lineno)
+    preflight_line = min(call_lines["declaration_preflight"])
+    assert preflight_line < min(call_lines["discover_resources_async"])
+    assert preflight_line < min(call_lines["activate"])
+    assert preflight_line < min(call_lines["publish"])
 
 
 def test_graph_binder_reuse_and_validation_precede_provider_construction() -> None:

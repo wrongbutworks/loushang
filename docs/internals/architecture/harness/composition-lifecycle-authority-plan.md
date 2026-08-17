@@ -730,6 +730,23 @@ This PR does not implement graph hot replacement. It adds failure-evidence tests
 for the typed restart-required diagnostic rather than silently replacing the
 whole Extension generation.
 
+Implemented evidence:
+
+- each prepared generation freezes a canonical, redacted declaration snapshot;
+- Coding reuses its pure admission and Profile resolver to distinguish the
+  admitted legacy side-question seam from graph-owned resource declarations;
+  losing or content-only declarations are not compared as Provider inputs;
+- the Product-injected preflight runs before resource discovery, candidate
+  activation, registration publication, or another Graph bind;
+- content-only refresh advances Extension and Resource publication facts while
+  preserving the current Mount generation and Consumer leases;
+- graph-owned input changes fail with the typed
+  `extension_graph_provider_restart_required` diagnostic exactly once, retain
+  the old Extension/Resource/Mount authorities, and join candidate rollback;
+  and
+- the bridge contains values and a narrow validation port only; it adds no
+  Provider registry, graph manager, projector, or hot-replacement transaction.
+
 ### CLA7: `harness.session` Bundle
 
 Migrate conversation store, transcript profile, compaction, continuity, and

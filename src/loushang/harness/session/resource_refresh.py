@@ -12,6 +12,9 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
+from loushang.harness.extensions.declarations import (
+    ExtensionCapabilityDeclarationSnapshot,
+)
 from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.refresh import (
     ResourceRefreshCoordinator,
@@ -39,6 +42,7 @@ ResourceLoaderProvider = Callable[[], ResourceLoaderPort | None]
 ResourceBundleProvider = Callable[[], ResourceBundle | None]
 ResourceSettingsProvider = Callable[[], ResourceSettingsPort | None]
 RefreshFailureRecorder = Callable[[Exception], None]
+ExtensionDeclarationPreflight = Callable[[ExtensionCapabilityDeclarationSnapshot], None]
 
 
 @dataclass
@@ -58,6 +62,7 @@ class SessionResourceRefreshRuntime:
     skill_activation_runtime: SkillActivationRuntime = field(
         default_factory=SkillActivationRuntime
     )
+    extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
     _coordinator: ResourceRefreshCoordinator[ResourceBundle] = field(init=False)
     _discovery: RuntimeResourceDiscovery[ResourceBundle] = field(init=False)
     _resource_revision: int = field(init=False, default=0)
@@ -145,6 +150,30 @@ class SessionResourceRefreshRuntime:
         previous_resource = self.get_resource_bundle()
         previous_resource_revision = self._resource_revision
         try:
+            declaration_preflight = self.extension_declaration_preflight
+            if declaration_preflight is not None:
+                candidate_declarations = getattr(
+                    candidate,
+                    "capability_declarations",
+                    None,
+                )
+                if not isinstance(
+                    candidate_declarations,
+                    ExtensionCapabilityDeclarationSnapshot,
+                ):
+                    raise TypeError(
+                        "staged Extension generation does not expose capability "
+                        "declarations"
+                    )
+                preflight_result = declaration_preflight(candidate_declarations)
+                if inspect.isawaitable(preflight_result):
+                    if inspect.iscoroutine(preflight_result):
+                        preflight_result.close()
+                    raise TypeError(
+                        "Extension declaration preflight must be synchronous"
+                    )
+                if preflight_result is not None:
+                    raise TypeError("Extension declaration preflight must return None")
             discovered = await candidate.discover_resources_async(
                 resource_bundle,
                 reason=reason,
@@ -233,5 +262,6 @@ __all__ = [
     "ResourceLoaderProvider",
     "ResourceSettingsPort",
     "ResourceSettingsProvider",
+    "ExtensionDeclarationPreflight",
     "SessionResourceRefreshRuntime",
 ]

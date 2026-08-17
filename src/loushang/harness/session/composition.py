@@ -84,6 +84,7 @@ from loushang.harness.session.extension_composition import (
 )
 from loushang.harness.session.inspection import AgentSessionInspector
 from loushang.harness.session.resource_refresh import (
+    ExtensionDeclarationPreflight,
     ResourceLoaderPort,
     ResourceSettingsPort,
     SessionResourceRefreshRuntime,
@@ -228,6 +229,7 @@ class SessionFoundationInputs:
     rebuild_prompt_and_tools_view: Callable[[], None]
     set_resource_bundle: Callable[[ResourceBundle | None], None]
     record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
+    extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
 
 
 @dataclass(frozen=True)
@@ -413,6 +415,10 @@ def _legacy_composition_inputs(
         rebuild_prompt_and_tools_view=take("rebuild_prompt_and_tools_view"),
         set_resource_bundle=take("set_resource_bundle"),
         record_extension_runtime_diagnostic=take("record_extension_runtime_diagnostic"),
+        extension_declaration_preflight=remaining.pop(
+            "extension_declaration_preflight",
+            None,
+        ),
     )
     maintenance = SessionMaintenanceInputs(
         execute_compaction=take("execute_compaction"),
@@ -706,6 +712,7 @@ def _build_foundation_runtimes(
         ),
         prepare_resource_refresh=inputs.prepare_resource_refresh,
         skill_activation_runtime=cast(Any, ports.resources.skill_activation),
+        extension_declaration_preflight=inputs.extension_declaration_preflight,
     )
     resource_watch_controller = ResourceChangeWatcher(
         get_paths=inputs.get_resource_watch_paths,
