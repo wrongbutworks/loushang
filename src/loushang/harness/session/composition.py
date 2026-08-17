@@ -106,6 +106,7 @@ from loushang.harness.transcript import (
     AgentTranscriptCompactionRuntime,
     AgentTranscriptContext,
     AgentTranscriptNavigationRuntime,
+    AgentTranscriptRecord,
     AgentTranscriptRetryRuntime,
     AgentTranscriptSelectionRuntime,
     AutoCompactionOutcome,
@@ -242,6 +243,9 @@ class SessionMaintenanceInputs:
     ]
     after_compaction: Callable[[CompactionResult, str, bool], Awaitable[None]]
     sleep_for_retry: Callable[[int, CancellationSignal], Awaitable[None]]
+    get_compaction_capability: (
+        Callable[[], AgentTranscriptCompactionCapability] | None
+    ) = None
 
 
 @dataclass(frozen=True)
@@ -425,6 +429,10 @@ def _legacy_composition_inputs(
         before_compaction=take("before_compaction"),
         after_compaction=take("after_compaction"),
         sleep_for_retry=take("sleep_for_retry"),
+        get_compaction_capability=remaining.pop(
+            "get_compaction_capability",
+            None,
+        ),
     )
     product = SessionProductInputs(
         model_registry=take("model_registry"),
@@ -495,7 +503,7 @@ class SessionComposition:
 
     @property
     def compaction_capability(self) -> AgentTranscriptCompactionCapability:
-        return self.maintenance.compaction_capability
+        return self.maintenance.get_compaction_capability()
 
     @property
     def compaction_runtime(self) -> AgentTranscriptCompactionRuntime:
@@ -563,6 +571,7 @@ class _FoundationRuntimes:
 @dataclass(frozen=True)
 class _MaintenanceRuntimes:
     compaction_capability: AgentTranscriptCompactionCapability
+    get_compaction_capability: Callable[[], AgentTranscriptCompactionCapability]
     compaction_runtime: AgentTranscriptCompactionRuntime
     retry_runtime: AgentTranscriptRetryRuntime
 
@@ -763,10 +772,27 @@ def _build_maintenance_runtimes(
     session = ports.session_manager
     foundation = ports.foundation
     maintenance = ports.maintenance
-    compaction_capability = _resolve_compaction_capability(session)
+    get_compaction_capability = maintenance.get_compaction_capability
+    compaction_capability = (
+        get_compaction_capability()
+        if get_compaction_capability is not None
+        else _resolve_compaction_capability(session)
+    )
+
+    def current_compaction_capability() -> AgentTranscriptCompactionCapability:
+        if get_compaction_capability is not None:
+            return get_compaction_capability()
+        return compaction_capability
 
     def get_compaction_policy() -> TranscriptCompactionPolicy:
-        return _current_compaction_policy(ports, compaction_capability)
+        return _current_compaction_policy(ports, current_compaction_capability())
+
+    def prepare_compaction(
+        entries: list[AgentTranscriptRecord],
+        keep_recent_tokens: int | None = None,
+    ) -> CompactionPreparation:
+        current = current_compaction_capability()
+        return current.prepare(entries, keep_recent_tokens)
 
     compaction_runtime = AgentTranscriptCompactionRuntime(
         transcript=session,
@@ -774,7 +800,7 @@ def _build_maintenance_runtimes(
         get_model=lambda: agent.model,
         get_context_messages=lambda: list(session.build_session_context().messages),
         refresh_context=foundation.refresh_agent_messages,
-        prepare_compaction=compaction_capability.prepare,
+        prepare_compaction=prepare_compaction,
         execute_compaction=lambda preparation, custom_instructions: _execute_compaction(
             maintenance.execute_compaction,
             agent,
@@ -801,6 +827,7 @@ def _build_maintenance_runtimes(
     )
     return _MaintenanceRuntimes(
         compaction_capability=compaction_capability,
+        get_compaction_capability=current_compaction_capability,
         compaction_runtime=compaction_runtime,
         retry_runtime=retry_runtime,
     )
@@ -889,7 +916,10 @@ def _build_product_bindings(
     )
 
     def get_compaction_policy() -> TranscriptCompactionPolicy:
-        return _current_compaction_policy(ports, maintenance.compaction_capability)
+        return _current_compaction_policy(
+            ports,
+            maintenance.get_compaction_capability(),
+        )
 
     model_binding = SessionModelBinding(
         get_model_selection_callback=selection_runtime.get_model_selection,

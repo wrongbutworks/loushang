@@ -720,9 +720,21 @@ def test_external_side_question_replacement_binds_to_the_live_coding_session(
         assert snapshot.roots == (
             "harness.model_input",
             "harness.resources",
-            "harness.session",
         )
-        assert tuple(node.capability_id for node in snapshot.nodes) == snapshot.roots
+        assert tuple(node.capability_id for node in snapshot.nodes) == (
+            "harness.session",
+            "harness.model_input",
+            "harness.resources",
+        )
+        model_input_node = next(
+            node
+            for node in snapshot.nodes
+            if node.capability_id == "harness.model_input"
+        )
+        assert tuple(
+            requirement.capability_id
+            for requirement in model_input_node.requirements
+        ) == ("harness.session",)
         assert (
             session.capability_profile.capability(SIDE_QUESTION_PROVIDER_SLOT.key)
             .selections[0]

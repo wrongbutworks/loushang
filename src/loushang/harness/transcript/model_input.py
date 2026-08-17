@@ -48,6 +48,8 @@ from loushang.harness.transcript.model_input_v2_types import (
 )
 from loushang.harness.transcript.unit_of_work import AgentTranscriptUnitOfWork
 
+ModelInputLogicalProjection = dict[str, object]
+
 
 @dataclass(frozen=True)
 class ModelInputCommitContext:

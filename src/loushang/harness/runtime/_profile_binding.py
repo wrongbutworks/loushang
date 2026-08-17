@@ -162,8 +162,16 @@ class RuntimeProfileBinding:
         self._bound = dict(bound)
         self._closed = False
         self._dispose_task: (
-            asyncio.Task[tuple[RuntimeCapabilityBindingError, ...]] | None
+            asyncio.Task[
+                tuple[
+                    tuple[RuntimeCapabilityBindingError, ...],
+                    tuple[_BoundRuntimeCapability, ...],
+                ]
+            ]
+            | None
         ) = None
+        self._async_disposal_pending: tuple[_BoundRuntimeCapability, ...] | None = None
+        self._async_dispose_lock = asyncio.Lock()
         self._sync_disposal_pending: tuple[_BoundRuntimeCapability, ...] | None = None
 
     @property
@@ -348,26 +356,36 @@ class RuntimeProfileBinder:
         )
 
     async def dispose(self, binding: RuntimeProfileBinding) -> None:
-        task = binding._dispose_task
-        if task is not None and task.done():
-            return
-        if task is None:
-            if binding._closed:
-                return
-            entries = tuple(
-                entry for bound in binding._bound.values() for entry in bound
-            )
-            binding._closed = True
-            binding._state.invalidate("runtime profile binding was disposed")
-            task = asyncio.create_task(
-                self._dispose_entries_collecting(
-                    entries,
-                    context=binding._context,
+        async with binding._async_dispose_lock:
+            task = binding._dispose_task
+            if task is None:
+                pending = binding._async_disposal_pending
+                if binding._closed and not pending:
+                    return
+                entries = pending or tuple(
+                    entry for bound in binding._bound.values() for entry in bound
                 )
-            )
-            binding._dispose_task = task
-        errors = await self._await_disposal_task(task)
-        _raise_disposal_errors(errors)
+                if not binding._closed:
+                    binding._closed = True
+                    binding._state.invalidate("runtime profile binding was disposed")
+                task = asyncio.create_task(
+                    self._dispose_entries_collecting_retryable(
+                        entries,
+                        context=binding._context,
+                    )
+                )
+                binding._dispose_task = task
+            try:
+                errors, failed = await _await_cancellation_atomic(task)
+            except asyncio.CancelledError as exc:
+                errors, failed = task.result()
+                binding._async_disposal_pending = failed
+                binding._dispose_task = None
+                _annotate_cleanup_errors(exc, errors)
+                raise
+            binding._async_disposal_pending = failed
+            binding._dispose_task = None
+            _raise_disposal_errors(errors)
 
     def dispose_sync(self, binding: RuntimeProfileBinding) -> None:
         """Dispose a binding created from synchronous factories."""
@@ -585,6 +603,32 @@ class RuntimeProfileBinder:
             except Exception as exc:
                 errors.append(_disposal_error(entry, cause=exc))
         return tuple(errors)
+
+    async def _dispose_entries_collecting_retryable(
+        self,
+        entries: Iterable[_BoundRuntimeCapability],
+        *,
+        context: object | None,
+    ) -> tuple[
+        tuple[RuntimeCapabilityBindingError, ...],
+        tuple[_BoundRuntimeCapability, ...],
+    ]:
+        errors: list[RuntimeCapabilityBindingError] = []
+        failed: list[_BoundRuntimeCapability] = []
+        for entry in reversed(tuple(entries)):
+            if entry.implementation.dispose is None:
+                continue
+            try:
+                await _await_result(entry.implementation.dispose(entry.value, context))
+                await asyncio.sleep(0)
+            except asyncio.CancelledError as exc:
+                errors.append(_disposal_error(entry, cause=exc))
+                failed.append(entry)
+            except Exception as exc:
+                errors.append(_disposal_error(entry, cause=exc))
+                failed.append(entry)
+        # A retry reverses again, so retain the original construction order.
+        return tuple(errors), tuple(reversed(failed))
 
     def _dispose_entries_collecting_sync(
         self,

@@ -73,6 +73,13 @@ class LegacySideQuestionBinding:
             raise RuntimeError("side-question binding is not being graph-constructed")
         self._ownership_state = "root_owned"
 
+    def _rollback_unpublished_graph_ownership(self) -> None:
+        """Return an unpublished Provider candidate to its construction root."""
+
+        if self._ownership_state not in {"graph_constructing", "graph_owned"}:
+            raise RuntimeError("side-question binding is not an unpublished candidate")
+        self._ownership_state = "root_owned"
+
     def _dispose_graph_owned(self) -> None:
         self._dispose_owned(expected="graph_owned")
 

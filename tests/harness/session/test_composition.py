@@ -93,6 +93,7 @@ def test_session_composition_ports_are_grouped_by_assembly_phase() -> None:
         "before_compaction",
         "after_compaction",
         "sleep_for_retry",
+        "get_compaction_capability",
     }
     assert {field.name for field in fields(SessionProductInputs)}.issuperset(
         {"model_registry", "extension_runner", "command_controller"}

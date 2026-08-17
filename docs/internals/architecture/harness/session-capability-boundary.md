@@ -2,23 +2,27 @@
 
 ## Status
 
-Implemented incrementally. Contract version 1 production-mounts only the
-sealed `interaction.side_question` facet. The accepted `harness.session`
-Capability budget also includes the transcript lifecycle and process
-continuity seams, but those mechanisms retain their focused owners until their
-different scopes and handoff contracts are implemented.
+Implemented incrementally. Contract version 2 production-mounts the sealed
+`interaction.side_question` facet and adopts the existing transcript lifecycle
+trio as one indivisible binding. Process continuity retains its Process owner
+until its stable-reference contract is implemented.
 
-## Version 1 Decision
+## Version 2 Decision
 
-`harness.session` version 1 has one facet and one focused Consumer:
+`harness.session` version 2 has four facets and two focused Consumers:
 
 | Facet | Provider input | Consumer |
 | --- | --- | --- |
 | `interaction.side_question` | one Product-admitted, root-owned `LegacySideQuestionBinding` candidate | `SessionSideQuestionCapabilityConsumer` |
+| `conversation.store` | the existing root-owned transcript lifecycle candidate | `SessionTranscriptCapabilityConsumer` |
+| `agent.transcript_profile` | the same transcript lifecycle candidate | `SessionTranscriptCapabilityConsumer` |
+| `context.compaction` | the same transcript lifecycle candidate and dynamic selected mechanism | `SessionTranscriptCapabilityConsumer` |
 
-The Product construction root resolves and binds the selected factory once.
-The Session Provider does not construct a second Runtime Profile binding. It
-transfers the same candidate through these states:
+The Product construction root resolves the side-question factory and binds the
+transcript Store/Profile/Compaction trio once, before AgentProduct graph
+construction. The combined Session Provider constructs neither a second
+Runtime Profile Binder nor another Store. It transfers both focused candidates
+through these states:
 
 ```text
 root_owned -> graph_constructing -> graph_owned -> disposed
@@ -42,26 +46,40 @@ Provider. Session shutdown cancels and joins an active request before Graph
 retirement; Provider disposal repeats that operation idempotently before
 releasing the Profile binding.
 
-## Deferred Facets
+The three transcript facets deliberately share one facet implementation and
+one disposer because `AgentTranscriptProfileRuntime.bind_lifecycle()` binds
+them as one unit. Model Input and compaction callers use a stable narrow port:
+before Mount, synchronous compaction reads the root-owned candidate; after the
+single Graph publication window, Model Input and compaction revalidate the
+typed transcript Consumer lease on each use. The durable transcript header,
+Runtime Profile snapshot, Store identity, UoW, and Model Input record schema
+are unchanged and are not persisted as Graph facts.
 
-The remaining accepted Session facets are not version-1 placeholders:
+The two transcript Runtime-binding fields used by this handoff are additive.
+A generic Product that still returns the earlier Store/key/profile/binding/
+disposer shape receives a stable `harness.transcript.legacy` selection snapshot
+and its previously selected custom-or-default compaction capability. This keeps
+the old AgentProduct path constructible without pretending that legacy Product
+facts came from the standard Profile resolver.
 
-- `conversation.store`, `agent.transcript_profile`, and `context.compaction`
-  share one `AgentTranscriptProfileRuntime` binding created before the
-  AgentProduct Session Graph. They must move together through an explicit
-  transcript-lifecycle ownership handoff; the Graph must not reconstruct or
-  partially own that binding.
-- `context.compaction` additionally requires its turn-refresh, active-task
-  quiescence, and restart behavior to be explicit before the handoff.
+Session shutdown first joins active compaction and side-question work. The
+Provider then attempts auxiliary index publication before releasing the
+transcript binding. Failed runtime disposers retain only the failed entries and
+the graph-owned candidate, so Graph retirement can retry without repeating
+successful cleanup.
+
+## Deferred Work
+
 - `continuity.provider_packs` is Process-scoped and is released by the Product
   runtime, not by an individual Session. A later Session Consumer may receive
   only a typed stable lease/reference from that process owner. The concrete
   ContinuityHub must not be inserted into the Session Bundle.
 
-Adding those facets requires a new compatible contract version, updated
-Provider fingerprints and Consumers, and its own lifecycle tests. It must not
-silently change the meaning of the current Capability Profile fingerprint or
-the persisted transcript Runtime Profile snapshot.
+The accepted future `harness.session -> harness.resources/workspace` edges are
+also deferred until real Session Consumers use those facets. Version 2 is
+currently pulled into the graph by the direct
+`harness.model_input -> harness.session` transcript requirement; it does not
+fabricate either future Session dependency.
 
 ## Dependency And Import Rules
 
@@ -73,9 +91,10 @@ the persisted transcript Runtime Profile snapshot.
   import the Provider or a graph manager.
 - `AgentProductSession` remains the only production Graph/Binder/Projector
   owner and the only Provider-construction/Consumer-capture site.
-- Version 1 is an independent Session root. It does not fabricate dependencies
-  on `harness.resources` or `harness.workspace`; those target edges become real
-  only when a later Session Provider actually consumes their declared facets.
+- Version 2 is a direct dependency of `harness.model_input`. It does not
+  fabricate dependencies on `harness.resources` or `harness.workspace`; those
+  target edges become real only when a later Session Provider actually consumes
+  their declared facets.
 
 ## Acceptance Evidence
 
@@ -85,4 +104,8 @@ the persisted transcript Runtime Profile snapshot.
 - active request cancellation and join before factory disposal;
 - one graph bind and one Provider construction for one signature; and
 - durable transcript resume remains independent of the auxiliary
-  side-question selection.
+  side-question selection;
+- new/load/open/continue/in-memory/fork preserve the same transcript binding,
+  header and Model Input reconstruction behavior; and
+- index publication precedes transcript release, failed cleanup is retryable,
+  and cached transcript Consumer leases become stale after retirement.

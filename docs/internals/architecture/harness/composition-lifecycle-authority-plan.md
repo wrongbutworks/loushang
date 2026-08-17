@@ -762,7 +762,7 @@ behavior, and stable-reference requirement are explicit.
    consumed through a generation-scoped lease. Active work is cancelled and
    joined before Provider disposal. Extension selection remains sealed and
    restart-required rather than hot-replaced.
-2. **CLA7b — transcript lifecycle trio.** `conversation.store`,
+2. **CLA7b — transcript lifecycle trio (implemented).** `conversation.store`,
    `agent.transcript_profile`, and `context.compaction` share one existing
    `AgentTranscriptProfileRuntime` binding and must transfer together. The
    slice must preserve session-header/resume compatibility, index publication
@@ -788,6 +788,25 @@ Implemented CLA7a evidence:
   stale after Graph retirement; and
 - the generated catalog and architecture gates identify exactly one Provider
   construction owner and one Consumer capture owner.
+
+Implemented CLA7b evidence:
+
+- contract version 2 adds the Store/Profile/Compaction facets to the same
+  `harness.session` Provider; no second Provider, Binder, graph, or host-hidden
+  dependency is introduced;
+- the existing `AgentTranscriptProfileRuntime` binding transfers as one
+  root-owned candidate, so Store/Profile/Compaction identity and the persisted
+  Runtime Profile header remain unchanged;
+- `harness.model_input` declares its direct transcript requirement on
+  `harness.session`, so Session is in the dependency closure rather than a
+  peer root or hidden host closure;
+- Model Input and compaction use a stable narrow port that switches to one
+  generation-scoped transcript Consumer in the Graph publication window;
+- shutdown joins active work, attempts index publication, then retires the
+  transcript binding; failed async disposers retain only failed entries for a
+  real Graph retirement retry; and
+- durable create/load/open/continue/fork, Model Input restart/rebuild, and
+  compaction commit-point regressions remain the acceptance gates.
 
 ### CLA8: Legacy Authority Closure
 

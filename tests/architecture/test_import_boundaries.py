@@ -5156,6 +5156,7 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
             "RESOURCES_TOOL_PACK_REQUIREMENT",
             "SESSION_CAPABILITY_DEFINITION",
             "SESSION_SIDE_QUESTION_REQUIREMENT",
+            "SESSION_TRANSCRIPT_REQUIREMENT",
             "RuntimeCapabilityGraphBinder",
         "RuntimeCapabilityGraphPlan",
         "RuntimeCapabilityGraphPlanner",

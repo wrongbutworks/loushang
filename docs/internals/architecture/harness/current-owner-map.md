@@ -44,9 +44,10 @@ Definition / Provider / Consumer slice: Consumers receive only declared
 filesystem facets or the authorized process-launch port, never the graph
 Runtime, raw process host, approval gateway, or sandbox backend.
 
-`harness.resources`, `harness.session` contract version 1, and
-`harness.workspace` are production-mounted beside `harness.model_input` as
-independent roots in the single Session-owned graph.
+`harness.resources`, `harness.session` contract version 2, and
+`harness.workspace` are production-mounted with `harness.model_input` in the
+single Session-owned graph. Model Input directly requires the Session transcript
+trio; Resources and optional Workspace remain independent roots.
 The Resources Session/bootstrap/sealed Bundle maps the
 private resource, prompt, skill, Tool-pack, and Command-pack Profile selections
 through focused Consumers. Synchronous bootstrap constructs one root-owned
@@ -56,14 +57,15 @@ stable focused ports and generation-scoped Consumers after publication.
 Resource content remains call data and changes only the scoped source
 publication reference, not the Mount generation.
 
-The first `harness.session` slice contains only the sealed
-`interaction.side_question` facet. Product admission constructs one focused
-root-owned candidate; the Session Provider transfers that same candidate to
-the Graph and a generation-scoped Consumer owns all live use. Shutdown cancels
-and joins an active request before Graph retirement. Transcript store/profile/
-compaction remain one earlier transcript-lifecycle binding, and Process-scoped
-continuity remains outside the Session Graph until their distinct handoff
-contracts are accepted.
+The combined `harness.session` Provider transfers two already-bound candidates:
+the sealed `interaction.side_question` selection and the indivisible transcript
+Store/Profile/Compaction lifecycle binding. It does not reconstruct either
+Profile binding. Generation-scoped Consumers own live calls after publication;
+Model Input and compaction route through a stable narrow port rather than a raw
+Store or Profile binding. Shutdown joins active work, publishes the auxiliary
+transcript index, and then releases the transcript binding with retryable
+retirement semantics. Process-scoped continuity remains outside the Session
+Graph until its separate stable-reference contract is accepted.
 
 The Workspace Bundle receives only Product-admitted, root-bounded filesystem
 operations and an already-authorized process launcher. Coding constructs one

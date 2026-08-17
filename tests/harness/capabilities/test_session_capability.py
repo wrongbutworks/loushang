@@ -15,6 +15,7 @@ from loushang.harness.capabilities import (
 from loushang.harness.capabilities.session_contracts import (
     SESSION_CAPABILITY_DEFINITION,
     SESSION_SIDE_QUESTION_REQUIREMENT,
+    SESSION_TRANSCRIPT_REQUIREMENT,
 )
 from loushang.harness.runtime import (
     ResolvedRuntimeProfile,
@@ -24,9 +25,10 @@ from loushang.harness.runtime import (
 from loushang.harness.session.legacy_side_question import bind_legacy_side_question
 from loushang.harness.session.session_capability_consumer import (
     SessionSideQuestionCapabilityConsumer,
+    SessionTranscriptCapabilityConsumer,
 )
 from loushang.harness.session.session_capability_provider import (
-    session_side_question_provider_binding,
+    session_capability_provider_binding,
 )
 
 
@@ -39,6 +41,67 @@ def _candidate():  # type: ignore[no-untyped-def]
         standard_capability_composition_plan(product_id="research")
     )
     return bind_legacy_side_question(profile)
+
+
+class _TranscriptCandidate:
+    def __init__(
+        self,
+        *,
+        fail_begin: bool = False,
+        fail_commit: bool = False,
+        fail_dispose_once: bool = False,
+        profile_product_id: str = "research",
+    ) -> None:
+        self.ownership_state = "root_owned"
+        self.runtime_profile_snapshot = ResolvedRuntimeProfile(
+            product_id=profile_product_id,
+            capabilities=(),
+        ).snapshot()
+        self.publish_calls = 0
+        self.dispose_calls = 0
+        self.events: list[str] = []
+        self._fail_begin = fail_begin
+        self._fail_commit = fail_commit
+        self._fail_dispose_once = fail_dispose_once
+
+    def _begin_graph_construction(self) -> None:
+        assert self.ownership_state == "root_owned"
+        if self._fail_begin:
+            raise RuntimeError("transcript ownership begin failed")
+        self.ownership_state = "graph_constructing"
+
+    def _commit_graph_ownership(self) -> None:
+        assert self.ownership_state == "graph_constructing"
+        if self._fail_commit:
+            raise RuntimeError("transcript ownership commit failed")
+        self.ownership_state = "graph_owned"
+
+    def _restore_root_ownership(self) -> None:
+        assert self.ownership_state == "graph_constructing"
+        self.ownership_state = "root_owned"
+
+    def _rollback_unpublished_graph_ownership(self) -> None:
+        assert self.ownership_state in {"graph_constructing", "graph_owned"}
+        self.ownership_state = "root_owned"
+
+    async def dispose_root_owned(self) -> None:
+        assert self.ownership_state == "root_owned"
+        self.dispose_calls += 1
+        self.ownership_state = "disposed"
+
+    async def publish_index_summary(self) -> None:
+        self.publish_calls += 1
+        self.events.append("index")
+
+    async def _dispose_graph_owned(self) -> None:
+        if self.ownership_state == "disposed":
+            return
+        assert self.ownership_state == "graph_owned"
+        self.dispose_calls += 1
+        self.events.append("release")
+        if self._fail_dispose_once and self.dispose_calls == 1:
+            raise RuntimeError("transient transcript cleanup failure")
+        self.ownership_state = "disposed"
 
 
 def _plan(binding):  # type: ignore[no-untyped-def]
@@ -69,9 +132,11 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease() -> 
     async def scenario() -> None:
         candidate = _candidate()
         selected = _Provider()
-        binding = session_side_question_provider_binding(
+        transcript = _TranscriptCandidate()
+        binding = session_capability_provider_binding(
             scope_instance_id="session:research",
-            staged_candidate=candidate,
+            staged_side_question=candidate,
+            staged_transcript=transcript,
             bind_provider=lambda _factory: selected,
         )
         runtime = RuntimeCapabilityGraphRuntime(
@@ -85,11 +150,20 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease() -> 
         consumer = SessionSideQuestionCapabilityConsumer(
             runtime.capture(SESSION_SIDE_QUESTION_REQUIREMENT)
         )
+        transcript_consumer = SessionTranscriptCapabilityConsumer(
+            runtime.capture(SESSION_TRANSCRIPT_REQUIREMENT)
+        )
 
         assert candidate.ownership_state == "graph_owned"
+        assert transcript.ownership_state == "graph_owned"
+        assert transcript_consumer.facets.is_current is True
         assert (await consumer.ask("status?")).text == "status?"
         assert runtime.snapshot is not None
         assert SESSION_CAPABILITY_DEFINITION.phase == "final"
+        assert SESSION_CAPABILITY_DEFINITION.contract_version == 2
+        assert SESSION_SIDE_QUESTION_REQUIREMENT.compatible_contract.accepts(1)
+        assert SESSION_SIDE_QUESTION_REQUIREMENT.compatible_contract.accepts(2)
+        assert SESSION_TRANSCRIPT_REQUIREMENT.compatible_contract.accepts(2)
         assert tuple(node.capability_id for node in runtime.snapshot.nodes) == (
             "harness.session",
         )
@@ -97,6 +171,11 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease() -> 
         await binder.dispose(runtime)
 
         assert candidate.ownership_state == "disposed"
+        assert transcript.ownership_state == "disposed"
+        assert transcript.publish_calls == 1
+        assert transcript.dispose_calls == 1
+        assert transcript.events == ["index", "release"]
+        assert transcript_consumer.facets.is_current is False
         with pytest.raises(RuntimeError, match="disposed"):
             await consumer.ask("again")
 
@@ -106,9 +185,11 @@ def test_session_side_question_candidate_transfers_to_one_generation_lease() -> 
 def test_session_side_question_reuse_leaves_new_candidate_root_owned() -> None:
     async def scenario() -> None:
         first_candidate = _candidate()
-        first_binding = session_side_question_provider_binding(
+        first_transcript = _TranscriptCandidate()
+        first_binding = session_capability_provider_binding(
             scope_instance_id="session:research",
-            staged_candidate=first_candidate,
+            staged_side_question=first_candidate,
+            staged_transcript=first_transcript,
             bind_provider=lambda _factory: _Provider(),
         )
         runtime = RuntimeCapabilityGraphRuntime(
@@ -120,9 +201,11 @@ def test_session_side_question_reuse_leaves_new_candidate_root_owned() -> None:
         await binder.bind(runtime, _plan(first_binding), (first_binding,))
 
         rejected_candidate = _candidate()
-        rejected_binding = session_side_question_provider_binding(
+        rejected_transcript = _TranscriptCandidate()
+        rejected_binding = session_capability_provider_binding(
             scope_instance_id="session:research",
-            staged_candidate=rejected_candidate,
+            staged_side_question=rejected_candidate,
+            staged_transcript=rejected_transcript,
             bind_provider=lambda _factory: _Provider(),
         )
         result = await binder.bind(
@@ -150,9 +233,11 @@ def test_session_side_question_optional_absence_is_a_mounted_unavailable_facet()
         candidate = bind_legacy_side_question(
             ResolvedRuntimeProfile(product_id="research", capabilities=())
         )
-        binding = session_side_question_provider_binding(
+        transcript = _TranscriptCandidate()
+        binding = session_capability_provider_binding(
             scope_instance_id="session:research",
-            staged_candidate=candidate,
+            staged_side_question=candidate,
+            staged_transcript=transcript,
             bind_provider=lambda _factory: _Provider(),
         )
         runtime = RuntimeCapabilityGraphRuntime(
@@ -180,29 +265,46 @@ def test_session_side_question_fingerprint_excludes_live_binding_callback() -> N
     first_candidate = _candidate()
     second_candidate = _candidate()
     third_candidate = _candidate()
+    fourth_candidate = _candidate()
     try:
-        first = session_side_question_provider_binding(
+        first = session_capability_provider_binding(
             scope_instance_id="session:research",
-            staged_candidate=first_candidate,
+            staged_side_question=first_candidate,
+            staged_transcript=_TranscriptCandidate(),
             bind_provider=lambda _factory: _Provider(),
         )
-        second = session_side_question_provider_binding(
+        second = session_capability_provider_binding(
             scope_instance_id="session:research",
-            staged_candidate=second_candidate,
+            staged_side_question=second_candidate,
+            staged_transcript=_TranscriptCandidate(),
             bind_provider=lambda _factory: _Provider(),
         )
-        other_scope = session_side_question_provider_binding(
+        other_scope = session_capability_provider_binding(
             scope_instance_id="session:other",
-            staged_candidate=third_candidate,
+            staged_side_question=third_candidate,
+            staged_transcript=_TranscriptCandidate(),
+            bind_provider=lambda _factory: _Provider(),
+        )
+        other_transcript = session_capability_provider_binding(
+            scope_instance_id="session:research",
+            staged_side_question=fourth_candidate,
+            staged_transcript=_TranscriptCandidate(
+                profile_product_id="marker-secret-profile"
+            ),
             bind_provider=lambda _factory: _Provider(),
         )
 
         assert first.binding_input_fingerprint == second.binding_input_fingerprint
         assert first.binding_input_fingerprint != other_scope.binding_input_fingerprint
+        assert first.binding_input_fingerprint != (
+            other_transcript.binding_input_fingerprint
+        )
+        assert "marker-secret-profile" not in repr(other_transcript)
     finally:
         first_candidate.dispose()
         second_candidate.dispose()
         third_candidate.dispose()
+        fourth_candidate.dispose()
 
 
 def test_session_side_question_construction_failure_restores_root_owner() -> None:
@@ -212,9 +314,11 @@ def test_session_side_question_construction_failure_restores_root_owner() -> Non
         def fail(_factory):  # type: ignore[no-untyped-def]
             raise RuntimeError("cannot bind side-question Provider")
 
-        binding = session_side_question_provider_binding(
+        transcript = _TranscriptCandidate()
+        binding = session_capability_provider_binding(
             scope_instance_id="session:research",
-            staged_candidate=candidate,
+            staged_side_question=candidate,
+            staged_transcript=transcript,
             bind_provider=fail,
         )
         runtime = RuntimeCapabilityGraphRuntime(
@@ -234,6 +338,73 @@ def test_session_side_question_construction_failure_restores_root_owner() -> Non
         assert runtime.snapshot is None
         candidate.dispose()
         assert candidate.ownership_state == "disposed"
+
+    asyncio.run(scenario())
+
+
+def test_session_combined_provider_rolls_back_a_partial_ownership_commit() -> None:
+    async def scenario() -> None:
+        side = _candidate()
+        transcript = _TranscriptCandidate(fail_commit=True)
+        binding = session_capability_provider_binding(
+            scope_instance_id="session:research",
+            staged_side_question=side,
+            staged_transcript=transcript,
+            bind_provider=lambda _factory: _Provider(),
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session",
+            profile_fingerprint=_sha("profile"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+
+        with pytest.raises(RuntimeError, match="provider_construction_failed"):
+            await binder.bind(runtime, _plan(binding), (binding,))
+
+        assert side.ownership_state == "root_owned"
+        assert transcript.ownership_state == "root_owned"
+        assert runtime.snapshot is None
+        assert runtime.has_pending_retirements is False
+        assert await binder.dispose(runtime) == ()
+        side.dispose()
+        await transcript.dispose_root_owned()
+        assert side.ownership_state == "disposed"
+        assert transcript.ownership_state == "disposed"
+        assert transcript.dispose_calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_session_combined_provider_rolls_back_a_partial_ownership_begin() -> None:
+    async def scenario() -> None:
+        side = _candidate()
+        transcript = _TranscriptCandidate(fail_begin=True)
+        binding = session_capability_provider_binding(
+            scope_instance_id="session:research",
+            staged_side_question=side,
+            staged_transcript=transcript,
+            bind_provider=lambda _factory: _Provider(),
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session",
+            profile_fingerprint=_sha("profile"),
+        )
+
+        with pytest.raises(RuntimeError, match="provider_construction_failed"):
+            await RuntimeCapabilityGraphBinder().bind(
+                runtime,
+                _plan(binding),
+                (binding,),
+            )
+
+        assert side.ownership_state == "root_owned"
+        assert transcript.ownership_state == "root_owned"
+        assert runtime.snapshot is None
+        assert runtime.has_pending_retirements is False
+        side.dispose()
+        await transcript.dispose_root_owned()
 
     asyncio.run(scenario())
 
@@ -259,9 +430,11 @@ def test_session_side_question_cancellation_has_one_cleanup_owner(
             task.cancel()
 
         candidate._commit_graph_ownership = cancel_during_commit  # type: ignore[method-assign]
-        binding = session_side_question_provider_binding(
+        transcript = _TranscriptCandidate()
+        binding = session_capability_provider_binding(
             scope_instance_id="session:research",
-            staged_candidate=candidate,
+            staged_side_question=candidate,
+            staged_transcript=transcript,
             bind_provider=lambda _factory: _Provider(),
         )
         runtime = RuntimeCapabilityGraphRuntime(
@@ -300,9 +473,11 @@ def test_session_side_question_graph_retries_only_failed_candidate_cleanup() -> 
             original_dispose(binding)
 
         candidate._binder.dispose_sync = fail_once  # type: ignore[method-assign]
-        binding = session_side_question_provider_binding(
+        transcript = _TranscriptCandidate()
+        binding = session_capability_provider_binding(
             scope_instance_id="session:research",
-            staged_candidate=candidate,
+            staged_side_question=candidate,
+            staged_transcript=transcript,
             bind_provider=lambda _factory: _Provider(),
         )
         runtime = RuntimeCapabilityGraphRuntime(
@@ -325,5 +500,37 @@ def test_session_side_question_graph_retries_only_failed_candidate_cleanup() -> 
         assert runtime.has_pending_retirements is False
         assert candidate.ownership_state == "disposed"
         assert attempts == 2
+
+    asyncio.run(scenario())
+
+
+def test_session_graph_retries_transcript_release_without_reopening_side_owner() -> (
+    None
+):
+    async def scenario() -> None:
+        side = _candidate()
+        transcript = _TranscriptCandidate(fail_dispose_once=True)
+        binding = session_capability_provider_binding(
+            scope_instance_id="session:research",
+            staged_side_question=side,
+            staged_transcript=transcript,
+            bind_provider=lambda _factory: _Provider(),
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="research",
+            runtime_id="research-session",
+            profile_fingerprint=_sha("profile"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, _plan(binding), (binding,))
+
+        assert await binder.dispose(runtime) == ("provider_retirement_failed",)
+        assert side.ownership_state == "disposed"
+        assert transcript.ownership_state == "graph_owned"
+        assert await binder.dispose(runtime) == ()
+
+        assert transcript.ownership_state == "disposed"
+        assert transcript.dispose_calls == 2
+        assert runtime.has_pending_retirements is False
 
     asyncio.run(scenario())

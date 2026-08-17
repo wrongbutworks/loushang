@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
-from typing import cast
+from typing import Protocol, cast
 
 from loushang.agent import ModelCallPreparation
 from loushang.ai.json_codec import serialize_message
@@ -24,6 +24,7 @@ from loushang.harness.capabilities import (
     CapabilityBundleProviderBinding,
     CapabilityBundleValue,
     CapabilityContractRange,
+    CapabilityDependencyBinding,
     CapabilityFacetBinding,
     CapabilityGraphPlanRequest,
     CapabilityProviderContext,
@@ -49,10 +50,18 @@ from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_PREPARATION_FACET,
     MODEL_INPUT_PREPARATION_REQUIREMENT,
 )
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_CAPABILITY_DEFINITION,
+    SESSION_TRANSCRIPT_REQUIREMENT,
+    TRANSCRIPT_PROFILE_FACET,
+)
 from loushang.harness.runtime import RuntimeProfileSnapshot
 from loushang.harness.transcript import (
-    AgentTranscriptSession,
     ModelInputRuntimeReferences,
+)
+from loushang.harness.transcript.model_input import (
+    ModelInputTranscriptCommitter,
+    RebuiltModelInput,
 )
 
 CurrentSessionPredicate = Callable[[], bool]
@@ -61,20 +70,59 @@ CurrentProfileFingerprintProvider = Callable[[], str]
 SourcePublicationProvider = Callable[[], ScopedSourcePublicationReference | None]
 
 
+class ModelInputTranscriptPort(Protocol):
+    def create_model_input_committer(
+        self,
+        *,
+        purpose: str,
+        logical_input: dict[str, object],
+        runtime_references: ModelInputRuntimeReferences,
+    ) -> ModelInputTranscriptCommitter: ...
+
+    def rebuild_model_input(self, snapshot_id: str) -> RebuiltModelInput: ...
+
+
+@dataclass(frozen=True)
+class _DependencyModelInputTranscriptPort:
+    """Expose only Model Input operations from the declared Session dependency."""
+
+    dependency: CapabilityDependencyBinding
+
+    def create_model_input_committer(
+        self,
+        *,
+        purpose: str,
+        logical_input: dict[str, object],
+        runtime_references: ModelInputRuntimeReferences,
+    ) -> ModelInputTranscriptCommitter:
+        return self._facet().create_model_input_committer(
+            purpose=purpose,
+            logical_input=logical_input,
+            runtime_references=runtime_references,
+        )
+
+    def rebuild_model_input(self, snapshot_id: str) -> RebuiltModelInput:
+        return self._facet().rebuild_model_input(snapshot_id)
+
+    def _facet(self) -> ModelInputTranscriptPort:
+        value = self.dependency.require(TRANSCRIPT_PROFILE_FACET)
+        _require_transcript_port(value, name="model-input Session dependency")
+        return cast(ModelInputTranscriptPort, value)
+
+
 class SessionModelCallPreparer:
     """Bind one fresh transcript committer to a final Agent-level model input."""
 
     def __init__(
         self,
         *,
-        transcript: AgentTranscriptSession,
+        transcript: ModelInputTranscriptPort,
         projector: RuntimeCapabilityGraphProjector,
         is_current: CurrentSessionPredicate,
         registration_entries_provider: RegistrationEntriesProvider,
         profile_fingerprint_provider: CurrentProfileFingerprintProvider,
     ) -> None:
-        if not isinstance(transcript, AgentTranscriptSession):
-            raise TypeError("model-call preparation requires AgentTranscriptSession")
+        _require_transcript_port(transcript, name="model-call preparation")
         if not isinstance(projector, RuntimeCapabilityGraphProjector):
             raise TypeError("model-call preparation requires graph projection")
         if not callable(is_current):
@@ -196,18 +244,19 @@ class SessionModelCallCapabilityBinding:
 
 def build_session_model_call_capability_binding(
     *,
-    transcript: AgentTranscriptSession,
+    transcript: ModelInputTranscriptPort,
     projector: RuntimeCapabilityGraphProjector,
     product_id: str,
     runtime_id: str,
     is_current: CurrentSessionPredicate,
     registration_entries_provider: RegistrationEntriesProvider,
     profile_fingerprint_provider: CurrentProfileFingerprintProvider,
+    conversation_id: str | None = None,
+    session_provider: CapabilityBundleProvider | None = None,
 ) -> SessionModelCallCapabilityBinding:
     """Build data-only graph inputs without acquiring graph lifecycle authority."""
 
-    if not isinstance(transcript, AgentTranscriptSession):
-        raise TypeError("model-call binding requires AgentTranscriptSession")
+    _require_transcript_port(transcript, name="model-call binding")
     if not isinstance(projector, RuntimeCapabilityGraphProjector):
         raise TypeError("model-call binding requires graph projection")
     if not isinstance(product_id, str) or not product_id.strip():
@@ -222,12 +271,25 @@ def build_session_model_call_capability_binding(
         if not callable(callback):
             raise TypeError(f"model-call binding requires {name}")
 
+    resolved_conversation_id = conversation_id or getattr(
+        getattr(transcript, "header", None),
+        "conversation_id",
+        None,
+    )
+    if not isinstance(resolved_conversation_id, str) or not resolved_conversation_id:
+        raise ValueError("model-call binding requires a conversation id")
+
     provider = CapabilityBundleProvider(
         capability_id=MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
         provider_id="harness.model_input.standard",
         implementation_version=1,
         compatible_contract=CapabilityContractRange.exact(1),
         facets=MODEL_INPUT_CAPABILITY_DEFINITION.facets,
+        requirements=(
+            (SESSION_TRANSCRIPT_REQUIREMENT,)
+            if session_provider is not None
+            else ()
+        ),
         required_authorities=frozenset({"transcript"}),
         source_id="builtin",
         selection_rule="Product durable Model Input selection",
@@ -236,18 +298,23 @@ def build_session_model_call_capability_binding(
         CapabilityGraphPlanRequest(
             product_id=product_id,
             roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-            definitions=(MODEL_INPUT_CAPABILITY_DEFINITION,),
-            providers=(provider,),
+            definitions=(
+                MODEL_INPUT_CAPABILITY_DEFINITION,
+                *((SESSION_CAPABILITY_DEFINITION,) if session_provider else ()),
+            ),
+            providers=(provider, *((session_provider,) if session_provider else ())),
         )
     )
 
-    def create(_context: CapabilityProviderContext) -> CapabilityBundleValue:
+    def build_value(
+        transcript_port: ModelInputTranscriptPort,
+    ) -> CapabilityBundleValue:
         return CapabilityBundleValue(
             (
                 CapabilityFacetBinding(
                     MODEL_INPUT_PREPARATION_FACET,
                     SessionModelCallPreparer(
-                        transcript=transcript,
+                        transcript=transcript_port,
                         projector=projector,
                         is_current=is_current,
                         registration_entries_provider=registration_entries_provider,
@@ -257,6 +324,21 @@ def build_session_model_call_capability_binding(
             )
         )
 
+    if session_provider is None:
+
+        def create(context: CapabilityProviderContext) -> CapabilityBundleValue:
+            del context
+            return build_value(transcript)
+
+    else:
+
+        def create(context: CapabilityProviderContext) -> CapabilityBundleValue:
+            return build_value(
+                _DependencyModelInputTranscriptPort(
+                    context.dependency(SESSION_CAPABILITY_DEFINITION.capability_id)
+                )
+            )
+
     return SessionModelCallCapabilityBinding(
         plan=plan,
         provider_binding=CapabilityBundleProviderBinding(
@@ -264,7 +346,7 @@ def build_session_model_call_capability_binding(
             scope_instance_id=runtime_id,
             binding_input_fingerprint=_fingerprint(
                 {
-                    "conversation_id": transcript.header.conversation_id,
+                    "conversation_id": resolved_conversation_id,
                     "runtime_id": runtime_id,
                 }
             ),
@@ -279,7 +361,7 @@ class SessionModelCallRuntime:
     def __init__(
         self,
         *,
-        transcript: AgentTranscriptSession,
+        transcript: ModelInputTranscriptPort,
         ensure_consumer: Callable[
             [], Awaitable[SessionModelCallCapabilityConsumer]
         ],
@@ -287,8 +369,7 @@ class SessionModelCallRuntime:
         registration_entries_provider: RegistrationEntriesProvider | None = None,
         source_publication_provider: SourcePublicationProvider | None = None,
     ) -> None:
-        if not isinstance(transcript, AgentTranscriptSession):
-            raise TypeError("model-call runtime requires AgentTranscriptSession")
+        _require_transcript_port(transcript, name="model-call runtime")
         if not callable(ensure_consumer):
             raise TypeError("model-call runtime requires a typed Consumer port")
         if not isinstance(projector, RuntimeCapabilityGraphProjector):
@@ -423,6 +504,17 @@ def _fingerprint(value: object) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _require_transcript_port(
+    value: object,
+    *,
+    name: str,
+) -> None:
+    if not callable(getattr(value, "create_model_input_committer", None)):
+        raise TypeError(f"{name} requires a Model Input transcript port")
+    if not callable(getattr(value, "rebuild_model_input", None)):
+        raise TypeError(f"{name} requires a Model Input transcript port")
 
 
 def _logical_input(preparation: ModelCallPreparation) -> dict[str, object]:

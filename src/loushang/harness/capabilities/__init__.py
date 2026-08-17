@@ -178,6 +178,9 @@ from loushang.harness.capabilities.session_contracts import (
 from loushang.harness.capabilities.session_contracts import (
     SESSION_SIDE_QUESTION_REQUIREMENT as SESSION_SIDE_QUESTION_REQUIREMENT,
 )
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_TRANSCRIPT_REQUIREMENT as SESSION_TRANSCRIPT_REQUIREMENT,
+)
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION as WORKSPACE_CAPABILITY_DEFINITION,
 )
@@ -238,6 +241,7 @@ __all__ = [
     "RESOURCES_TOOL_PACK_REQUIREMENT",
     "SESSION_CAPABILITY_DEFINITION",
     "SESSION_SIDE_QUESTION_REQUIREMENT",
+    "SESSION_TRANSCRIPT_REQUIREMENT",
     "ScopedSourcePublicationReference",
     "RuntimeCapabilityGraphBinder",
     "RuntimeCapabilityGraphPlan",

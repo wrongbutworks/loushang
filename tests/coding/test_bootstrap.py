@@ -342,15 +342,21 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             assert snapshot.roots == (
                 "harness.model_input",
                 "harness.resources",
-                "harness.session",
                 "harness.workspace",
             )
-            assert all(node.requirements == () for node in snapshot.nodes)
+            nodes = {node.capability_id: node for node in snapshot.nodes}
+            assert tuple(
+                requirement.capability_id
+                for requirement in nodes["harness.model_input"].requirements
+            ) == ("harness.session",)
+            assert nodes["harness.resources"].requirements == ()
+            assert nodes["harness.session"].requirements == ()
+            assert nodes["harness.workspace"].requirements == ()
             view = session.get_effective_runtime_view()
             assert tuple(node.capability_id for node in view.capabilities) == (
+                "harness.session",
                 "harness.model_input",
                 "harness.resources",
-                "harness.session",
                 "harness.workspace",
             )
             with pytest.raises(ExecutionAuthorizationError, match="outside"):

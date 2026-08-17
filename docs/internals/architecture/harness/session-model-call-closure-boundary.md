@@ -7,6 +7,15 @@ refinement. The acceptance matrix is enforced by the Session Model Input,
 Agent-loop, transcript lineage, lifecycle, and architecture tests referenced
 below.
 
+CLA7b preserves this commit contract while changing only the live ownership
+route: the model-input Provider receives a narrow `ModelInputTranscriptPort`
+whose implementation switches to `SessionTranscriptCapabilityConsumer` after
+the single Graph publication window. It does not receive the Store, transcript
+Runtime Profile binding, or Graph manager. The Model Input Provider declares a
+direct `harness.model_input -> harness.session` requirement for the transcript
+trio; the dependency signature is therefore part of its Mount identity rather
+than hidden in a host closure.
+
 The implementation uses the Session-scoped `harness.model_input` Definition,
 Provider, and Consumer; Agent's per-sampling `prepare_model_call` seam; and AI's
 existing prepared-request committer. Compaction and branch-summary v2 payloads

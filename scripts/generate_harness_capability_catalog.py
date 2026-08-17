@@ -93,7 +93,7 @@ SOURCE_BACKED_SEAMS = (
         ),
         providers=(
             "loushang.harness.session.session_capability_provider:"
-            "session_side_question_provider_binding",
+            "session_capability_provider_binding",
         ),
         consumers=(
             (
@@ -102,6 +102,14 @@ SOURCE_BACKED_SEAMS = (
                 (
                     "loushang.harness.capabilities.session_contracts:"
                     "SESSION_SIDE_QUESTION_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.session.session_capability_consumer:"
+                "SessionTranscriptCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.session_contracts:"
+                    "SESSION_TRANSCRIPT_REQUIREMENT",
                 ),
             ),
         ),

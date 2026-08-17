@@ -59,6 +59,7 @@ from loushang.harness.transcript import (
     CompactionResult,
     ContextCompactionCheckpoint,
     ProductTranscriptSession,
+    create_agent_transcript_compaction_capability,
 )
 from loushang.harness.workspace.operations import LocalToolOperations
 from loushang.harness.workspace.process import ProcessLaunchRequest
@@ -318,13 +319,18 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert graph_snapshot.roots == (
             "harness.model_input",
             "harness.resources",
-            "harness.session",
         )
-        assert all(node.requirements == () for node in graph_snapshot.nodes)
+        nodes = {node.capability_id: node for node in graph_snapshot.nodes}
+        assert tuple(
+            requirement.capability_id
+            for requirement in nodes["harness.model_input"].requirements
+        ) == ("harness.session",)
+        assert nodes["harness.resources"].requirements == ()
+        assert nodes["harness.session"].requirements == ()
         assert tuple(node.capability_id for node in effective_runtime.capabilities) == (
+            "harness.session",
             "harness.model_input",
             "harness.resources",
-            "harness.session",
         )
         assert effective_runtime.source_publication is not None
         assert effective_runtime.source_publication.owner_capability_id == (
@@ -429,6 +435,61 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert design.footer.disposed is True
         assert design_capabilities.binding.is_closed is True
         assert disposed_transcripts == ["research-session", "design-session"]
+
+    asyncio.run(scenario())
+
+
+def test_graph_owned_compaction_views_follow_the_current_profile_selection(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="turn-profile")
+        session = _ContractProductSession(
+            product_id="turn-profile",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("turn-profile"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+        mounted_generation = session._capability_graph_runtime.generation
+        replacement = create_agent_transcript_compaction_capability(
+            implementation="agent_transcript.turn_aware_summary",
+            implementation_version=1,
+            config={
+                "enabled": False,
+                "compactPercent": 33.0,
+                "reserveTokens": 999,
+                "keepRecentTokens": 7,
+            },
+        )
+        object.__setattr__(
+            session._staged_transcript_candidate,
+            "_get_compaction_capability",
+            lambda: replacement,
+        )
+        settings_manager = session._settings_controller.get_settings_manager()
+        assert settings_manager is not None
+        settings_manager.update_settings(
+            scope="session",
+            compaction=CompactionSettings(),
+        )
+
+        assert session._composition.compaction_capability is replacement
+        assert session._composition.compaction_runtime._get_policy() == (
+            replacement.policy
+        )
+        assert session.auto_compaction_enabled is False
+        usage = session._composition.session_inspector.get_context_usage()
+        assert usage.reserve_tokens == 999
+        assert usage.compact_percent == 33.0
+        assert usage.keep_recent_tokens == 7
+        assert session._capability_graph_runtime.generation == mounted_generation
+
+        await session.dispose()
+        assert disposed_transcripts == ["turn-profile-session"]
 
     asyncio.run(scenario())
 
@@ -638,6 +699,52 @@ def test_unprepared_shutdown_retries_the_side_question_candidate(
     asyncio.run(scenario())
 
 
+def test_graph_owned_transcript_release_retries_after_index_publication(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        events: list[str] = []
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(
+            disposed_transcripts,
+            release_events=events,
+            fail_release_once=True,
+        )
+        transcript = await _new_transcript(tmp_path, product_id="transcript-retry")
+        original_publish_index = transcript.publish_index_summary
+
+        async def publish_index() -> None:
+            events.append("index")
+            await original_publish_index()
+
+        transcript.publish_index_summary = publish_index  # type: ignore[method-assign]
+        session = _ContractProductSession(
+            product_id="transcript-retry",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("transcript-retry"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+
+        with pytest.raises(RuntimeError, match="cleanup remains pending"):
+            await session.dispose()
+
+        assert events == ["index", "release"]
+        assert transcript._lifecycle_session.ownership_state == "graph_owned"
+        assert session._capability_graph_runtime.has_pending_retirements is True
+        assert disposed_transcripts == []
+
+        await session.dispose()
+
+        assert events == ["index", "release", "index", "release"]
+        assert transcript._lifecycle_session.ownership_state == "disposed"
+        assert session._capability_graph_runtime.has_pending_retirements is False
+        assert disposed_transcripts == ["transcript-retry-session"]
+
+    asyncio.run(scenario())
+
+
 def test_source_publication_does_not_mix_partial_extension_provenance(
     tmp_path: Path,
 ) -> None:
@@ -843,12 +950,26 @@ def test_workspace_provider_cleanup_remains_owned_until_retry_succeeds(
     asyncio.run(scenario())
 
 
-def _bind_transcript_factory(disposed: list[str]) -> None:
+def _bind_transcript_factory(
+    disposed: list[str],
+    *,
+    release_events: list[str] | None = None,
+    fail_release_once: bool = False,
+) -> None:
+    release_attempts = 0
+
     async def bind_runtime(context, binding: str):
+        nonlocal release_attempts
         assert context.persist is False
         conversation_id = context.header.conversation_id
 
         async def dispose() -> None:
+            nonlocal release_attempts
+            release_attempts += 1
+            if release_events is not None:
+                release_events.append("release")
+            if fail_release_once and release_attempts == 1:
+                raise RuntimeError("transient transcript release failure")
             disposed.append(conversation_id)
 
         return AgentTranscriptRuntimeBinding(

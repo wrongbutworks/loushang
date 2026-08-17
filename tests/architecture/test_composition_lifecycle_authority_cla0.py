@@ -103,9 +103,10 @@ TRACKED_CALL_SYMBOLS = frozenset(
         "bind_capability_composition_runtime",
         "_publish_generation",
         "resources_capability_provider_binding",
-        "session_side_question_provider_binding",
+        "session_capability_provider_binding",
         "workspace_capability_provider_binding",
         "SessionSideQuestionCapabilityConsumer",
+        "SessionTranscriptCapabilityConsumer",
         "WorkspaceToolCapabilityConsumer",
         "WorkspaceProcessCapabilityConsumer",
     }
@@ -115,9 +116,10 @@ GUARDED_CONSTRUCTION_SYMBOLS = frozenset(
         *EXPECTED_CONSTRUCTION_SITES,
         "bind_capability_composition_runtime",
         "resources_capability_provider_binding",
-        "session_side_question_provider_binding",
+        "session_capability_provider_binding",
         "workspace_capability_provider_binding",
         "SessionSideQuestionCapabilityConsumer",
+        "SessionTranscriptCapabilityConsumer",
         "WorkspaceToolCapabilityConsumer",
         "WorkspaceProcessCapabilityConsumer",
     }
@@ -598,8 +600,8 @@ def test_cla5_workspace_has_one_product_binding_and_one_session_consumer_owner()
     )
 
 
-def test_cla7_session_side_question_has_one_provider_and_consumer_owner() -> None:
-    assert _construction_sites("session_side_question_provider_binding") == Counter(
+def test_cla7_session_has_one_combined_provider_and_typed_consumer_owner() -> None:
+    assert _construction_sites("session_capability_provider_binding") == Counter(
         {
             (
                 Path("src/loushang/harness/session/agent_product.py"),
@@ -608,6 +610,14 @@ def test_cla7_session_side_question_has_one_provider_and_consumer_owner() -> Non
         }
     )
     assert _construction_sites("SessionSideQuestionCapabilityConsumer") == Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession._ensure_session_graph_prepared",
+            ): 1
+        }
+    )
+    assert _construction_sites("SessionTranscriptCapabilityConsumer") == Counter(
         {
             (
                 Path("src/loushang/harness/session/agent_product.py"),

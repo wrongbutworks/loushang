@@ -1,4 +1,4 @@
-"""Side-question Provider slice for the ``harness.session`` Capability."""
+"""Combined Provider for the sealed ``harness.session`` Capability."""
 
 from __future__ import annotations
 
@@ -17,8 +17,11 @@ from loushang.harness.capabilities.provider_binding import (
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.capabilities.session_contracts import (
+    COMPACTION_FACET,
+    CONVERSATION_STORE_FACET,
     SESSION_CAPABILITY_DEFINITION,
     SIDE_QUESTION_FACET,
+    TRANSCRIPT_PROFILE_FACET,
 )
 from loushang.harness.runtime.side_question import (
     SideQuestionAnswer,
@@ -28,6 +31,18 @@ from loushang.harness.runtime.side_question import (
     SideQuestionUpdate,
 )
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
+from loushang.harness.transcript.capability_candidate import (
+    AgentTranscriptCapabilityCandidate,
+)
+from loushang.harness.transcript.compaction import (
+    AgentTranscriptCompactionCapability,
+)
+from loushang.harness.transcript.model_input import (
+    ModelInputLogicalProjection,
+    ModelInputRuntimeReferences,
+    ModelInputTranscriptCommitter,
+    RebuiltModelInput,
+)
 
 
 @dataclass(frozen=True)
@@ -63,38 +78,73 @@ class _SideQuestionFacet:
         return await coordinator.cancel_and_wait()
 
 
-def session_side_question_provider_binding(
+@dataclass(frozen=True)
+class _TranscriptFacet:
+    _candidate: AgentTranscriptCapabilityCandidate = field(
+        repr=False,
+        compare=False,
+    )
+
+    def create_model_input_committer(
+        self,
+        *,
+        purpose: str,
+        logical_input: ModelInputLogicalProjection,
+        runtime_references: ModelInputRuntimeReferences,
+    ) -> ModelInputTranscriptCommitter:
+        return self._candidate.create_model_input_committer(
+            purpose=purpose,
+            logical_input=logical_input,
+            runtime_references=runtime_references,
+        )
+
+    def rebuild_model_input(self, snapshot_id: str) -> RebuiltModelInput:
+        return self._candidate.rebuild_model_input(snapshot_id)
+
+    def compaction_capability(self) -> AgentTranscriptCompactionCapability:
+        return self._candidate.compaction_capability()
+
+
+def session_capability_provider_binding(
     *,
     scope_instance_id: str,
-    staged_candidate: LegacySideQuestionBinding,
+    staged_side_question: LegacySideQuestionBinding,
+    staged_transcript: AgentTranscriptCapabilityCandidate,
     bind_provider: Callable[[SideQuestionProviderFactory], SideQuestionProvider],
-    provider_id: str = "harness.session.side-question.standard",
+    provider_id: str = "harness.session.standard",
     source_id: str = "builtin",
 ) -> CapabilityBundleProviderBinding:
-    """Transfer one focused Profile binding into the Session graph.
+    """Transfer the focused side-question and transcript candidates together.
 
     ``bind_provider`` is the narrow Product port that binds the selected factory
     to its live Session context. It is never fingerprinted or projected.
     """
 
-    if staged_candidate.ownership_state != "root_owned":
+    if staged_side_question.ownership_state != "root_owned":
         raise RuntimeError("side-question candidate is not root-owned")
+    if staged_transcript.ownership_state != "root_owned":
+        raise RuntimeError("transcript candidate is not root-owned")
     provider = CapabilityBundleProvider(
         capability_id=SESSION_CAPABILITY_DEFINITION.capability_id,
         provider_id=provider_id,
-        implementation_version=1,
+        implementation_version=2,
         compatible_contract=CapabilityContractRange.exact(
             SESSION_CAPABILITY_DEFINITION.contract_version
         ),
         facets=SESSION_CAPABILITY_DEFINITION.facets,
         source_id=source_id,
-        selection_rule="Product-admitted side-question selection",
+        selection_rule="Product-admitted sealed Session selection",
     )
 
     def create(_context: CapabilityProviderContext) -> CapabilityBundleValue:
-        staged_candidate._begin_graph_construction()
+        side_begun = False
+        transcript_begun = False
         try:
-            factory = staged_candidate.provider_factory
+            staged_side_question._begin_graph_construction()
+            side_begun = True
+            staged_transcript._begin_graph_construction()
+            transcript_begun = True
+            factory = staged_side_question.provider_factory
             if factory is None:
                 coordinator = None
             else:
@@ -111,18 +161,37 @@ def session_side_question_provider_binding(
                         "side-question factory returned an invalid Provider"
                     )
                 coordinator = SideQuestionCoordinator(selected_provider)
+            transcript_facet = _TranscriptFacet(staged_transcript)
             value = CapabilityBundleValue(
                 facets=(
                     CapabilityFacetBinding(
                         SIDE_QUESTION_FACET,
                         _SideQuestionFacet(coordinator),
                     ),
+                    CapabilityFacetBinding(
+                        CONVERSATION_STORE_FACET,
+                        transcript_facet,
+                    ),
+                    CapabilityFacetBinding(
+                        TRANSCRIPT_PROFILE_FACET,
+                        transcript_facet,
+                    ),
+                    CapabilityFacetBinding(COMPACTION_FACET, transcript_facet),
                 )
             )
-            staged_candidate._commit_graph_ownership()
+            staged_side_question._commit_graph_ownership()
+            staged_transcript._commit_graph_ownership()
         except BaseException:
-            if staged_candidate.ownership_state == "graph_constructing":
-                staged_candidate._restore_root_ownership()
+            if transcript_begun and staged_transcript.ownership_state in {
+                "graph_constructing",
+                "graph_owned",
+            }:
+                staged_transcript._rollback_unpublished_graph_ownership()
+            if side_begun and staged_side_question.ownership_state in {
+                "graph_constructing",
+                "graph_owned",
+            }:
+                staged_side_question._rollback_unpublished_graph_ownership()
             raise
         return value
 
@@ -136,14 +205,22 @@ def session_side_question_provider_binding(
         except BaseException as exc:
             errors.append(exc)
         try:
-            staged_candidate._dispose_graph_owned()
+            staged_side_question._dispose_graph_owned()
+        except BaseException as exc:
+            errors.append(exc)
+        try:
+            await staged_transcript.publish_index_summary()
+        except BaseException as exc:
+            errors.append(exc)
+        try:
+            await staged_transcript._dispose_graph_owned()
         except BaseException as exc:
             errors.append(exc)
         if errors:
             primary = errors[0]
             for cleanup_error in errors[1:]:
                 primary.add_note(
-                    "Additional side-question Provider cleanup failure: "
+                    "Additional Session Provider cleanup failure: "
                     f"{cleanup_error!r}"
                 )
             raise primary
@@ -152,7 +229,8 @@ def session_side_question_provider_binding(
         provider=provider,
         scope_instance_id=scope_instance_id,
         binding_input_fingerprint=_binding_input_fingerprint(
-            staged_candidate=staged_candidate,
+            staged_side_question=staged_side_question,
+            staged_transcript=staged_transcript,
             scope_instance_id=scope_instance_id,
             provider_id=provider_id,
         ),
@@ -163,7 +241,8 @@ def session_side_question_provider_binding(
 
 def _binding_input_fingerprint(
     *,
-    staged_candidate: LegacySideQuestionBinding,
+    staged_side_question: LegacySideQuestionBinding,
+    staged_transcript: AgentTranscriptCapabilityCandidate,
     scope_instance_id: str,
     provider_id: str,
 ) -> str:
@@ -173,14 +252,15 @@ def _binding_input_fingerprint(
             "capabilityId": SESSION_CAPABILITY_DEFINITION.capability_id,
             "contractVersion": SESSION_CAPABILITY_DEFINITION.contract_version,
             "providerId": provider_id,
-            "providerVersion": 1,
+            "providerVersion": 2,
             "scopeInstanceId": scope_instance_id,
-            "profile": staged_candidate.profile.snapshot().to_json(),
+            "sideQuestionProfile": staged_side_question.profile.snapshot().to_json(),
+            "transcriptProfile": staged_transcript.runtime_profile_snapshot.to_json(),
         },
-        name="Session side-question binding-input fingerprint",
+        name="Session binding-input fingerprint",
         sort_keys=True,
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
-__all__ = ["session_side_question_provider_binding"]
+__all__ = ["session_capability_provider_binding"]

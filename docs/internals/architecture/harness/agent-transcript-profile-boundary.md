@@ -206,6 +206,13 @@ default to no-op, missing context projectors to invisible, and missing
 checkpoint resolvers to no checkpoint. A missing codec means opaque data, not a
 second replay path.
 
+The selected transcript profile, Conversation Store, and compaction mechanism
+are bound by one `AgentTranscriptProfileRuntime` binding. `harness.session` v2
+adopts that binding as one Graph-owned lifecycle candidate; it does not create
+three logical disposers or rebuild any selected mechanism. Internal
+turn-boundary compaction selection may change through the existing Profile
+binding without fabricating a new Mount generation.
+
 Durable-record projection remains split by audience: profile code projects
 state and Agent/model context; Product, Work, RPC, HTML, and TUI adapters own
 their display or transport projections. A UI must not reconstruct durable

@@ -1347,9 +1347,13 @@ def test_async_binder_cleanup_continues_after_disposer_failure() -> None:
     )
     calls: list[str] = []
 
+    attempts = 0
+
     async def dispose(value: object, _context: object) -> None:
+        nonlocal attempts
         calls.append(f"dispose:{value}")
-        if value == "second":
+        if value == "second" and attempts == 0:
+            attempts += 1
             raise RuntimeError("second cleanup failed")
 
     binder = RuntimeProfileBinder(
@@ -1372,10 +1376,12 @@ def test_async_binder_cleanup_continues_after_disposer_failure() -> None:
         with pytest.raises(RuntimeCapabilityBindingError, match="second"):
             await binder.dispose(binding)
         assert binding.is_closed is True
+        await binder.dispose(binding)
+        await binder.dispose(binding)
 
     asyncio.run(scenario())
 
-    assert calls == ["dispose:second", "dispose:first"]
+    assert calls == ["dispose:second", "dispose:first", "dispose:second"]
 
 
 def test_sync_binder_rollback_continues_after_disposer_failure() -> None:

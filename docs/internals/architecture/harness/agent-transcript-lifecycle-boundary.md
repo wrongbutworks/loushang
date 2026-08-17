@@ -27,7 +27,12 @@ through three small values:
   do not provide a file path.
 - `AgentTranscriptRuntimeBinding` supplies one sealed
   `ConversationStore[ConversationHeader, AgentTranscriptRecord]`, its key,
-  transcript profile, opaque Product binding, and async disposer.
+  transcript profile, opaque Product binding, and async disposer. Standard
+  Profile-backed Products also supply the canonical Runtime Profile snapshot
+  and dynamic selected compaction port. Existing generic Product bindings may
+  omit those additive fields; AgentProduct adoption then freezes an explicit
+  legacy snapshot and the same default/custom compaction selection that the old
+  Session composition path used.
 - `AgentTranscriptLifecycleSession` returns the bound transcript, standard
   label indexes, and the Product binding for the duration of that session.
 
@@ -63,9 +68,15 @@ owns only Conversation JSONL file deletion and rejects a path that is the active
 transcript.
 
 If create or restore fails after a runtime binding has been acquired, Harness
-releases that binding before propagating the error. A returned lifecycle session
-releases its binding exactly once. Commit, queue, retry, compaction, and Product
-event presentation remain outside this lifecycle boundary.
+releases that binding before propagating the error. A returned standalone
+lifecycle session releases its root-owned binding exactly once. When an
+AgentProduct mounts `harness.session` v2, that same lifecycle session transfers
+through `root_owned -> graph_constructing -> graph_owned -> disposed`;
+compatibility disposal no longer competes with the Graph owner. Failed disposal
+preserves its owner state for retry. The Graph never rebuilds the
+Store/Profile/Compaction trio or splits their disposer. Commit, queue, retry,
+compaction task ownership, and Product event presentation remain outside this
+lifecycle boundary.
 
 ## Product Boundary
 

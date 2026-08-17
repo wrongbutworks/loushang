@@ -79,6 +79,10 @@ WORKSPACE_CONSUMER_PATHS = (
 SESSION_DEFINITION_PATH = CAPABILITIES_ROOT / "session_contracts.py"
 SESSION_PROVIDER_PATH = HARNESS_ROOT / "session" / "session_capability_provider.py"
 SESSION_CONSUMER_PATH = HARNESS_ROOT / "session" / "session_capability_consumer.py"
+SESSION_SUPPORT_PATHS = (
+    HARNESS_ROOT / "session" / "session_transcript_capability_ports.py",
+    HARNESS_ROOT / "transcript" / "capability_candidate.py",
+)
 
 REQUIRED_ROWS = {
     "SUR": 28,
@@ -470,6 +474,7 @@ def test_session_definition_provider_consumer_boundaries() -> None:
         SESSION_DEFINITION_PATH,
         SESSION_PROVIDER_PATH,
         SESSION_CONSUMER_PATH,
+        *SESSION_SUPPORT_PATHS,
     ):
         path_forbidden_modules = forbidden_modules
         if path == SESSION_CONSUMER_PATH:

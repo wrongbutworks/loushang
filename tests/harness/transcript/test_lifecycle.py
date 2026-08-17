@@ -120,6 +120,56 @@ def test_lifecycle_creates_restores_and_disposes_native_session(tmp_path: Path) 
     asyncio.run(scenario())
 
 
+def test_lifecycle_graph_ownership_retries_failed_runtime_release(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        attempts = 0
+
+        async def bind_runtime(context, binding: str):
+            nonlocal attempts
+
+            async def dispose() -> None:
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    raise RuntimeError("transient transcript cleanup")
+
+            return AgentTranscriptRuntimeBinding(
+                store=MemoryConversationStore(
+                    record_id=lambda record: record.record_id
+                ),
+                key=ConversationKey("memory", context.header.conversation_id),
+                profile=AgentTranscriptProfile.default(),
+                product_binding=binding,
+                dispose=dispose,
+            )
+
+        lifecycle = AgentTranscriptLifecycle(bind_runtime=bind_runtime)
+        session = await lifecycle.create(
+            lifecycle.new_context(
+                session_dir=tmp_path,
+                cwd="/workspace",
+                persist=False,
+                header=_header(),
+            ),
+            "graph-owned",
+        )
+        session._begin_graph_construction()
+        session._commit_graph_ownership()
+
+        with pytest.raises(RuntimeError, match="transient transcript cleanup"):
+            await session._dispose_graph_owned()
+        assert session.ownership_state == "graph_owned"
+        await session._dispose_graph_owned()
+        await session.dispose()
+
+        assert session.ownership_state == "disposed"
+        assert attempts == 2
+
+    asyncio.run(scenario())
+
+
 def test_lifecycle_detaches_conversation_jsonl_source_before_writing(
     tmp_path: Path,
 ) -> None:

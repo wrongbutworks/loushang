@@ -7,10 +7,11 @@ and disposal mechanics shared by Conversation JSONL Agent transcripts.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 from uuid import uuid4
 
 from loushang.harness.conversation import (
@@ -33,6 +34,12 @@ from loushang.harness.transcript.session_catalog import (
 )
 from loushang.harness.transcript.types import AgentTranscriptRecord
 from loushang.harness.transcript.unit_of_work import AgentTranscriptUnitOfWork
+
+if TYPE_CHECKING:
+    from loushang.harness.runtime import RuntimeProfileSnapshot
+    from loushang.harness.transcript.compaction import (
+        AgentTranscriptCompactionCapability,
+    )
 
 BindingInputT = TypeVar("BindingInputT")
 ProductBindingT = TypeVar("ProductBindingT")
@@ -72,6 +79,10 @@ class AgentTranscriptRuntimeBinding(Generic[ProductBindingT]):
     profile: AgentTranscriptProfile
     product_binding: ProductBindingT
     dispose: AsyncDisposer
+    runtime_profile_snapshot: RuntimeProfileSnapshot | None = None
+    get_compaction_capability: (
+        Callable[[], AgentTranscriptCompactionCapability] | None
+    ) = None
 
 
 @dataclass
@@ -84,18 +95,62 @@ class AgentTranscriptLifecycleSession(Generic[ProductBindingT]):
     labels_by_target_id: dict[str, str]
     label_timestamps_by_target_id: dict[str, str]
     _disposed: bool = field(default=False, init=False, repr=False)
+    _ownership_state: str = field(default="root_owned", init=False, repr=False)
+    _dispose_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
 
     @property
     def product_binding(self) -> ProductBindingT:
         return self.runtime_binding.product_binding
 
+    @property
+    def ownership_state(self) -> str:
+        return self._ownership_state
+
+    def _begin_graph_construction(self) -> None:
+        if self._ownership_state != "root_owned":
+            raise RuntimeError("transcript candidate is not root-owned")
+        self._ownership_state = "graph_constructing"
+
+    def _commit_graph_ownership(self) -> None:
+        if self._ownership_state != "graph_constructing":
+            raise RuntimeError("transcript candidate is not being graph-constructed")
+        self._ownership_state = "graph_owned"
+
+    def _restore_root_ownership(self) -> None:
+        if self._ownership_state != "graph_constructing":
+            raise RuntimeError("transcript candidate cannot restore root ownership")
+        self._ownership_state = "root_owned"
+
+    def _rollback_unpublished_graph_ownership(self) -> None:
+        """Return a not-yet-returned Provider value to its construction root."""
+
+        if self._ownership_state not in {"graph_constructing", "graph_owned"}:
+            raise RuntimeError("transcript candidate is not unpublished")
+        self._ownership_state = "root_owned"
+
+    async def _dispose_graph_owned(self) -> None:
+        await self._dispose_owned("graph_owned")
+
     async def dispose(self) -> None:
         """Release the Product runtime binding exactly once."""
 
-        if self._disposed:
+        if self._ownership_state in {"graph_owned", "graph_constructing"}:
+            # Graph construction/release owns this binding. The Product wrapper
+            # may still run its compatibility disposer after Graph retirement.
             return
-        self._disposed = True
-        await self.runtime_binding.dispose()
+        await self._dispose_owned("root_owned")
+
+    async def _dispose_owned(self, expected_state: str) -> None:
+        async with self._dispose_lock:
+            if self._ownership_state == "disposed":
+                return
+            if self._ownership_state != expected_state:
+                raise RuntimeError(
+                    "transcript candidate ownership changed during disposal"
+                )
+            await self.runtime_binding.dispose()
+            self._ownership_state = "disposed"
+            self._disposed = True
 
 
 RuntimeBinder = Callable[

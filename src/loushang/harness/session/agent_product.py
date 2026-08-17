@@ -55,6 +55,7 @@ from loushang.harness.capabilities.resources_provider import (
 from loushang.harness.capabilities.session_contracts import (
     SESSION_CAPABILITY_DEFINITION,
     SESSION_SIDE_QUESTION_REQUIREMENT,
+    SESSION_TRANSCRIPT_REQUIREMENT,
 )
 from loushang.harness.capabilities.workspace_process_consumer import (
     WorkspaceProcessCapabilityConsumer,
@@ -144,9 +145,13 @@ from loushang.harness.session.resource_capability_ports import (
 from loushang.harness.session.resource_refresh import ExtensionDeclarationPreflight
 from loushang.harness.session.session_capability_consumer import (
     SessionSideQuestionCapabilityConsumer,
+    SessionTranscriptCapabilityConsumer,
 )
 from loushang.harness.session.session_capability_provider import (
-    session_side_question_provider_binding,
+    session_capability_provider_binding,
+)
+from loushang.harness.session.session_transcript_capability_ports import (
+    SessionTranscriptCapabilityPorts,
 )
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.side_question import (
@@ -306,16 +311,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._workspace_capability_ports = SessionWorkspaceCapabilityPorts(
             self._ensure_session_graph_prepared
         )
-        self._model_call_capability_binding = (
-            build_session_model_call_capability_binding(
-                transcript=session_manager,
-                projector=self._capability_graph_projector,
-                product_id=initial_profile.product_id,
-                runtime_id=runtime_id,
-                is_current=self._is_current_model_call_session,
-                registration_entries_provider=self._effective_registration_entries,
-                profile_fingerprint_provider=self._current_profile_fingerprint,
-            )
+        self._staged_transcript_candidate = (
+            session_manager.transcript_capability_candidate()
+        )
+        self._transcript_capability_ports = SessionTranscriptCapabilityPorts(
+            self._staged_transcript_candidate
         )
         self._resource_capability_binding = resources_capability_provider_binding(
             profile=capability_runtime.profile,
@@ -328,16 +328,33 @@ class AgentProductSession(AgentSessionAdapterMixin):
             if side_question_binding is not None
             else bind_legacy_side_question(capability_runtime.profile)
         )
-        self._session_side_question_capability_binding = (
-            session_side_question_provider_binding(
+        self._session_capability_binding = (
+            session_capability_provider_binding(
                 scope_instance_id=runtime_id,
-                staged_candidate=self._staged_side_question_candidate,
+                staged_side_question=self._staged_side_question_candidate,
+                staged_transcript=self._staged_transcript_candidate,
                 bind_provider=self._bind_selected_side_question_provider,
+            )
+        )
+        self._model_call_capability_binding = (
+            build_session_model_call_capability_binding(
+                transcript=self._transcript_capability_ports,
+                projector=self._capability_graph_projector,
+                product_id=initial_profile.product_id,
+                runtime_id=runtime_id,
+                conversation_id=(
+                    self.session_manager.get_session_record().session_id
+                ),
+                is_current=self._is_current_model_call_session,
+                registration_entries_provider=self._effective_registration_entries,
+                profile_fingerprint_provider=self._current_profile_fingerprint,
+                session_provider=self._session_capability_binding.provider,
             )
         )
         self._side_question_consumer: (
             SessionSideQuestionCapabilityConsumer | None
         ) = None
+        self._transcript_consumer: SessionTranscriptCapabilityConsumer | None = None
         workspace_binding = self._workspace_capability_binding
         workspace_definitions = (
             (WORKSPACE_CAPABILITY_DEFINITION,) if workspace_binding is not None else ()
@@ -348,7 +365,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 roots=(
                     MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
                     RESOURCES_CAPABILITY_DEFINITION.capability_id,
-                    SESSION_CAPABILITY_DEFINITION.capability_id,
                     *(
                         (WORKSPACE_CAPABILITY_DEFINITION.capability_id,)
                         if workspace_binding is not None
@@ -364,7 +380,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 providers=(
                     self._model_call_capability_binding.provider_binding.provider,
                     self._resource_capability_binding.provider,
-                    self._session_side_question_capability_binding.provider,
+                    self._session_capability_binding.provider,
                     *(
                         (workspace_binding.provider,)
                         if workspace_binding is not None
@@ -374,7 +390,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             )
         )
         self._model_call_runtime = SessionModelCallRuntime(
-            transcript=session_manager,
+            transcript=self._transcript_capability_ports,
             ensure_consumer=self._ensure_session_graph_prepared,
             projector=self._capability_graph_projector,
             registration_entries_provider=self._effective_registration_entries,
@@ -749,6 +765,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 before_compaction=self._before_product_compaction,
                 after_compaction=self._after_product_compaction,
                 sleep_for_retry=self._retry_sleep,
+                get_compaction_capability=(
+                    self._transcript_capability_ports.compaction_capability
+                ),
             ),
             product=SessionProductInputs(
                 model_registry=self.model_registry,
@@ -870,8 +889,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
         async with self._model_call_bind_lock:
             self._model_call_consumer = None
             self._side_question_consumer = None
+            self._transcript_consumer = None
             self._resource_capability_ports.invalidate()
             self._workspace_capability_ports.invalidate()
+            self._transcript_capability_ports.invalidate()
             staged_candidate = self._staged_resource_candidate
             staged_side_question = self._staged_side_question_candidate
             try:
@@ -978,7 +999,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         for item in (
                             binding.provider_binding,
                             self._resource_capability_binding,
-                            self._session_side_question_capability_binding,
+                            self._session_capability_binding,
                             self._workspace_capability_binding,
                         )
                         if item is not None
@@ -1010,6 +1031,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 side_question = SessionSideQuestionCapabilityConsumer(
                     self._capability_graph_runtime.capture(
                         SESSION_SIDE_QUESTION_REQUIREMENT
+                    )
+                )
+                transcript_consumer = SessionTranscriptCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        SESSION_TRANSCRIPT_REQUIREMENT
                     )
                 )
                 if self._workspace_capability_binding is not None:
@@ -1079,6 +1105,15 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         )
                     else:
                         self._staged_side_question_candidate = None
+                staged_transcript = self._staged_transcript_candidate
+                if staged_transcript.ownership_state == "root_owned":
+                    try:
+                        await staged_transcript.dispose_root_owned()
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "staged transcript candidate cleanup also failed: "
+                            f"{cleanup_error!r}"
+                        )
                 raise
             staged_candidate = self._staged_resource_candidate
             if (
@@ -1096,6 +1131,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 # Graph-wide or node reuse intentionally skipped Provider.create().
                 staged_side_question.dispose()
             self._staged_side_question_candidate = None
+            if self._staged_transcript_candidate.ownership_state == "root_owned":
+                # Graph reuse rejected the freshly supplied transcript candidate.
+                await self._staged_transcript_candidate.dispose_root_owned()
             self._resource_capability_ports.install(
                 activation=resource_activation,
                 prompt=resource_prompt,
@@ -1107,6 +1145,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     tools=workspace_tools,
                     process=workspace_process,
                 )
+            self._transcript_capability_ports.install(transcript_consumer)
+            self._transcript_consumer = transcript_consumer
             self._side_question_consumer = side_question
             self._model_call_consumer = consumer
             return consumer

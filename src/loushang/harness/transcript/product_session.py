@@ -14,6 +14,16 @@ from pathlib import Path
 from typing import Generic, Self, TypeVar
 
 from loushang.foundation.json import require_json_value
+from loushang.harness.runtime import RuntimeProfileSnapshot
+from loushang.harness.transcript.capability_candidate import (
+    AgentTranscriptCapabilityCandidate,
+)
+from loushang.harness.transcript.compaction import (
+    TURN_AWARE_SUMMARY_IMPLEMENTATION,
+    TURN_AWARE_SUMMARY_VERSION,
+    AgentTranscriptCompactionCapability,
+    create_agent_transcript_compaction_capability,
+)
 from loushang.harness.transcript.lifecycle import (
     AgentTranscriptLifecycleSession,
     delete_agent_transcript_jsonl,
@@ -92,10 +102,70 @@ class ProductTranscriptSession(
     async def dispose_runtime_profile(self) -> None:
         """Release the Product-owned runtime binding for this session."""
 
+        if self._lifecycle_session.ownership_state != "root_owned":
+            # The combined Session Provider owns index publication and release
+            # once the transcript trio enters Graph construction. Compatibility
+            # disposal must not race or duplicate that owner.
+            await self._lifecycle_session.dispose()
+            return
         try:
             await self.publish_index_summary()
         finally:
             await self._lifecycle_session.dispose()
+
+    def transcript_capability_candidate(self) -> AgentTranscriptCapabilityCandidate:
+        """Project the already-bound transcript trio for Session graph adoption."""
+
+        runtime_binding = self._lifecycle_session.runtime_binding
+        snapshot = runtime_binding.runtime_profile_snapshot or RuntimeProfileSnapshot(
+            product_id="harness.transcript.legacy",
+            capabilities=(),
+        )
+        get_compaction = runtime_binding.get_compaction_capability
+        if get_compaction is None:
+            legacy_compaction = self._legacy_compaction_capability()
+
+            def resolved_get_compaction() -> AgentTranscriptCompactionCapability:
+                return legacy_compaction
+
+        else:
+            resolved_get_compaction = get_compaction
+        return AgentTranscriptCapabilityCandidate(
+            _lifecycle=self._lifecycle_session,
+            conversation_id=self.header.conversation_id,
+            runtime_profile_snapshot=snapshot,
+            _get_compaction_capability=resolved_get_compaction,
+            _create_model_input_committer=(
+                lambda purpose, logical_input, runtime_references: (
+                    self.create_model_input_committer(
+                        purpose=purpose,
+                        logical_input=logical_input,
+                        runtime_references=runtime_references,
+                    )
+                )
+            ),
+            _rebuild_model_input=self.rebuild_model_input,
+            _publish_index_summary=self.publish_index_summary,
+        )
+
+    def _legacy_compaction_capability(
+        self,
+    ) -> AgentTranscriptCompactionCapability:
+        get_runtime_capability = getattr(self, "get_runtime_capability", None)
+        if callable(get_runtime_capability):
+            selected = get_runtime_capability("context.compaction")
+            if isinstance(selected, AgentTranscriptCompactionCapability):
+                return selected
+        return create_agent_transcript_compaction_capability(
+            implementation=TURN_AWARE_SUMMARY_IMPLEMENTATION,
+            implementation_version=TURN_AWARE_SUMMARY_VERSION,
+            config={
+                "enabled": True,
+                "compactPercent": 80.0,
+                "reserveTokens": 8_192,
+                "keepRecentTokens": 32_768,
+            },
+        )
 
     async def publish_index_summary(self) -> None:
         """Publish this session's latest summary when a local index exists."""
