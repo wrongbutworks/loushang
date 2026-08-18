@@ -6,11 +6,18 @@ Implemented Mount-runtime boundary with staged rollout. The Definition,
 Requirement, Bundle Provider, pure Planner, transactional Binder, live Runtime,
 and read-only Projector described here are implemented. The generated
 [Harness Capability Catalog](capability-catalog.md) is the source-backed record
-of complete Definition / Provider / Consumer seams. `harness.workspace` is the
-first accepted top-level Bundle in that catalog; `harness.resources`,
-`harness.session`, `coding.lsp`, and `coding.arch` remain rollout targets rather
-than claimed runtime nodes. Runtime Profile slots remain the implemented finer
-binding layer inside those future Bundles.
+of complete Definition / Provider / Consumer seams. `harness.workspace`,
+`harness.resources`, `harness.session` contract version 4, and
+`harness.model_input` are production-mounted in the single Session-owned graph.
+Model Input directly requires Session; Session directly requires Resources and
+optionally requires Product-admitted Workspace. The Session
+contract contains the sealed side-question facet, the adopted transcript
+Store/Profile/Compaction trio, one focused Resources facet, and two narrow
+Workspace dependency facets;
+Process-scoped continuity remains staged rollout work. `coding.lsp` and
+`coding.arch` remain rollout targets rather than
+claimed runtime nodes. Runtime Profile slots remain the implemented finer
+binding layer inside those Bundles.
 
 Canonical Product, Capability, Mount, Package, Plugin, and Extension terms are
 defined in the
@@ -106,6 +113,7 @@ public dependency identities.
 
 ```text
                                      # accepted target Harness composition
+harness.model_input -> harness.session
 harness.session -> harness.resources
 harness.session -> harness.workspace
 
@@ -114,11 +122,15 @@ coding.arch -> harness.workspace
 coding.arch -. optional .-> coding.lsp
 ```
 
-`harness.session` consumes the admitted resource composition and workspace
-facets used by the Session runtime, so both Harness edges are required in the
-accepted target plan. Current Session assembly wires the not-yet-migrated
-Bundle dependencies directly until their complete seams enter the implemented
-Planner and Binder.
+`harness.model_input -> harness.session` is already implemented because durable
+Model Input consumes the adopted transcript trio through a declared dependency.
+`harness.session -> harness.resources` is implemented by the version 4 Session
+Provider and its focused Resource Consumer. Resources is therefore in the
+Model Input dependency closure rather than a peer root. The same Provider now
+declares one optional aggregate Workspace requirement and exposes separate Tool
+and process Consumers. Coding realizes this edge from its admitted Workspace
+Provider; generic Products omit the optional node. Both plans therefore have
+only `harness.model_input` as a root.
 
 The optional `coding.arch -> coding.lsp` edge is a permitted future shape, not
 part of the initial target. `coding.arch` must remain independently usable
@@ -176,6 +188,9 @@ harness.session
   agent.transcript_profile
   context.compaction
   interaction.side_question
+  resource.composition
+  workspace.tool_operations
+  workspace.process_launch
   continuity.provider_packs
 ```
 

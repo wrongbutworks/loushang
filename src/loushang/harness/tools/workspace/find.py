@@ -130,16 +130,29 @@ def create_find_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         raise_if_operation_aborted(ctx.signal)
         resolved_root = resolve_tool_path(path or ".", cwd=ctx.cwd)
+        active_operations = (
+            normalize_find_operations(
+                ctx.operation_binding
+                if ctx.operation_binding is not None
+                else ops
+            )
+            if selected_operations is None
+            else ops
+        )
+        active_external_tools = use_external_tools
 
         async def execute() -> AgentToolResult[dict[str, Any]]:
-            root = await _require_directory(resolved_root, operations=ops)
+            root = await _require_directory(
+                resolved_root,
+                operations=active_operations,
+            )
             effective_limit = _effective_limit(limit)
             matches, result_limit_reached = await _walk_matching_paths(
                 root,
                 pattern=pattern,
                 limit=effective_limit,
-                operations=ops,
-                use_external_tools=use_external_tools,
+                operations=active_operations,
+                use_external_tools=active_external_tools,
                 external_tool_resolver=external_tool_resolver,
                 require_external_tool=require_external_tool,
                 signal=ctx.signal,
@@ -149,9 +162,7 @@ def create_find_tool_definition(
             truncation = truncate_head(raw_output)
             visible_matches = _visible_find_matches(matches, truncation.content)
             rendered = (
-                truncation.content
-                if matches
-                else "No files found matching pattern"
+                truncation.content if matches else "No files found matching pattern"
             )
             if matches:
                 rendered = _append_find_notices(
@@ -168,9 +179,7 @@ def create_find_tool_definition(
                     **truncation_details(truncation),
                     "truncated": result_limit_reached or truncation.truncated,
                     "result_limit_reached": result_limit_reached,
-                    "result_limit": (
-                        effective_limit if result_limit_reached else None
-                    ),
+                    "result_limit": (effective_limit if result_limit_reached else None),
                     "truncation": (
                         pi_truncation_details(truncation)
                         if truncation.truncated
@@ -195,6 +204,7 @@ def create_find_tool_definition(
         ),
         render_call=render_find_call,
         render_result=render_find_or_ls_result,
+        operation_binding_key="find_operations",
     )
 
 

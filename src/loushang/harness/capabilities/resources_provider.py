@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from loushang.foundation.json import dump_json_value
 from loushang.harness.capabilities.composition_runtime import (
     RESOURCE_CAPABILITY_SLOT_KEYS,
+    CapabilityCompositionRuntime,
     resource_capability_profile,
     standard_capability_composition_implementations,
 )
@@ -66,9 +67,25 @@ class _BoundResources:
         self.binder.dispose_sync(self.binding)
 
 
+@dataclass
+class _StagedResources:
+    candidate: CapabilityCompositionRuntime = field(repr=False)
+
+    def value(self, slot: str) -> object:
+        value = self.candidate.binding.value(slot)
+        if isinstance(value, tuple):
+            if len(value) != 1:
+                raise TypeError(f"resource facet requires one selected value: {slot}")
+            return value[0]
+        return value
+
+    def dispose(self) -> None:
+        self.candidate._dispose_graph_owned()
+
+
 @dataclass(frozen=True)
 class _ResourceRuntimeFacet:
-    _owner: _BoundResources = field(repr=False, compare=False)
+    _owner: _BoundResources | _StagedResources = field(repr=False, compare=False)
 
     def activate(self, bundle: ResourceBundle | None) -> ResourceActivation:
         runtime = self._owner.value(RESOURCE_RUNTIME_SLOT.key)
@@ -83,7 +100,7 @@ class _ResourceRuntimeFacet:
 
 @dataclass(frozen=True)
 class _SkillActivationFacet:
-    _owner: _BoundResources = field(repr=False, compare=False)
+    _owner: _BoundResources | _StagedResources = field(repr=False, compare=False)
 
     def apply(
         self,
@@ -102,7 +119,7 @@ class _SkillActivationFacet:
 
 @dataclass(frozen=True)
 class _PromptSectionsFacet:
-    _owner: _BoundResources = field(repr=False, compare=False)
+    _owner: _BoundResources | _StagedResources = field(repr=False, compare=False)
 
     def compose(self, sections: Iterable[PromptSection]) -> PreparedPrompt:
         composer = self._owner.value(PROMPT_SECTIONS_SLOT.key)
@@ -117,7 +134,7 @@ class _PromptSectionsFacet:
 
 @dataclass(frozen=True)
 class _PackFacet:
-    _owner: _BoundResources = field(repr=False, compare=False)
+    _owner: _BoundResources | _StagedResources = field(repr=False, compare=False)
     _slot: str
 
     def compose(
@@ -141,16 +158,23 @@ def resources_capability_provider_binding(
     additional_implementations: Iterable[RuntimeCapabilityImplementation] = (),
     provider_id: str = "harness.resources.standard",
     source_id: str = "builtin",
+    staged_candidate: CapabilityCompositionRuntime | None = None,
 ) -> CapabilityBundleProviderBinding:
     """Map private Profile selections into one graph-owned Bundle Provider.
 
-    The returned binding is source-complete but is not production-mounted by
-    CLA3.  Resource bundles, prompt text, disabled-skill selectors, Extension
-    content, and live registrations are call data and deliberately do not enter
-    the construction fingerprint.
+    The returned binding is production-mounted as the declared dependency of
+    ``harness.session``. Resource bundles, prompt text, disabled-skill
+    selectors, Extension content, and live registrations are call data and
+    deliberately do not enter the construction fingerprint.
     """
 
     focused_profile = resource_capability_profile(profile)
+    if staged_candidate is not None:
+        staged_profile = resource_capability_profile(staged_candidate.profile)
+        if staged_profile.snapshot().to_json() != focused_profile.snapshot().to_json():
+            raise ValueError(
+                "staged resource candidate does not match the declared Profile"
+            )
     implementations = tuple(
         implementation
         for implementation in (
@@ -172,11 +196,16 @@ def resources_capability_provider_binding(
     )
 
     def create(_context: CapabilityProviderContext) -> CapabilityBundleValue:
-        binder = RuntimeProfileBinder(RuntimeCapabilityRegistry(implementations))
-        binding = binder.bind_sync(focused_profile)
-        owner = _BoundResources(binding=binding, binder=binder)
+        owner: _BoundResources | _StagedResources
+        if staged_candidate is None:
+            binder = RuntimeProfileBinder(RuntimeCapabilityRegistry(implementations))
+            binding = binder.bind_sync(focused_profile)
+            owner = _BoundResources(binding=binding, binder=binder)
+        else:
+            staged_candidate._begin_graph_construction()
+            owner = _StagedResources(staged_candidate)
         try:
-            return CapabilityBundleValue(
+            value = CapabilityBundleValue(
                 facets=(
                     CapabilityFacetBinding(
                         RESOURCE_RUNTIME_FACET,
@@ -200,9 +229,15 @@ def resources_capability_provider_binding(
                     ),
                 )
             )
+            if staged_candidate is not None:
+                staged_candidate._commit_graph_ownership()
         except BaseException:
-            owner.dispose()
+            if staged_candidate is None:
+                owner.dispose()
+            elif staged_candidate.ownership_state == "graph_constructing":
+                staged_candidate._restore_root_ownership()
             raise
+        return value
 
     def dispose(value: CapabilityBundleValue) -> None:
         resource_facet = value.require(RESOURCE_RUNTIME_FACET)

@@ -44,9 +44,10 @@ def create_write_tool_definition(
     operations: WriteOperations | None = None,
     options: WriteToolOptions | None = None,
 ) -> ToolDefinition:
-    ops = normalize_write_operations(
-        operations or (options.operations if options is not None else None)
+    selected_operations = operations or (
+        options.operations if options is not None else None
     )
+    ops = normalize_write_operations(selected_operations)
 
     @tool(
         name="write",
@@ -62,6 +63,15 @@ def create_write_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         resolved = resolve_tool_path(path, cwd=ctx.cwd)
         _validate_content(content)
+        active_operations = (
+            normalize_write_operations(
+                ctx.operation_binding
+                if ctx.operation_binding is not None
+                else ops
+            )
+            if selected_operations is None
+            else ops
+        )
 
         async def execute_write(_action: object) -> tuple[str, int]:
             raise_if_operation_aborted(ctx.signal)
@@ -69,7 +79,7 @@ def create_write_tool_definition(
                 operation = await _write_text_payload(
                     resolved,
                     content,
-                    operations=ops,
+                    operations=active_operations,
                 )
                 raise_if_operation_aborted(ctx.signal)
                 bytes_written = len(content.encode("utf-8"))
@@ -103,6 +113,7 @@ def create_write_tool_definition(
         ),
         render_call=render_write_call,
         render_result=render_write_result,
+        operation_binding_key="write_operations",
     )
 
 

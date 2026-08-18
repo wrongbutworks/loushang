@@ -22,6 +22,37 @@ generations reuse its composition state and existing registration primitives;
 they are not a second plugin container, service locator, Capability graph, or
 event bus.
 
+## Declaration Preflight
+
+Every prepared generation freezes a canonical, redacted snapshot of its
+runtime-capability declarations and granted permissions. A Product may inject
+one synchronous, value-only preflight that projects the candidate through the
+same admission and resolution rules used at initial Session construction. The
+preflight runs after candidate preparation but before resource discovery,
+activation, registration publication, or any Capability Graph mutation.
+
+If an effective graph-owned Provider input would change, the Product rejects
+the candidate with `extension_graph_provider_restart_required`. The diagnostic
+identifies changed slots and redacted fingerprints, never factories, callback
+objects, paths, environment values, or credentials. The existing candidate
+rollback path then preserves the old Extension generation, Resource bundle,
+registrations, Mount generation, and Consumer leases. Losing declarations and
+content-only changes do not manufacture a Graph change. This bridge is not a
+Provider registry and does not implement graph hot replacement.
+
+Coding currently admits Extension replacement only for
+`interaction.side_question`. The initial selection is mounted by
+`harness.session` contract version 1; a later effective add, removal, or
+selection change is rejected by the same pre-discovery preflight with the typed
+restart-required diagnostic. An unchanged declaration may refresh its content
+without another Graph bind.
+
+Coding still fails construction if asked to protect an initially mounted
+Extension-owned resource Provider, because the initial declaration/resolver
+state needed to verify later removal is not part of this contract. Opening that
+Provider seam requires the separate dependent-closure rebind decision; CLA6
+does not imply partial support.
+
 ## Registration Ownership
 
 Each admitted Extension has a `RegistrationOwner` containing Extension ID,
@@ -127,5 +158,9 @@ outside this boundary.
 - owner-scoped Provider removal masks and restores associated API adapters;
 - session shutdown excludes concurrent candidate publication and retains
   retryable cleanup ownership; and
+- declaration preflight rejects graph-owned input changes before candidate
+  discovery or activation and emits one typed restart-required diagnostic;
+- content-only generation reload advances source publication without rebinding
+  the Capability Graph; and
 - Tool schemas loaded through an actual Extension and effective Tool registry
   rebuild from committed Model Input facts after unload and source removal.

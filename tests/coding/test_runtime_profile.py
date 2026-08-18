@@ -294,7 +294,9 @@ def test_agent_session_uses_and_disposes_selected_compaction_runtime(tmp_path) -
         )
 
         session = create_agent_session(session_manager=manager, model=_model())
-        capability_runtime = session._capability_runtime
+        staged_candidate = session._staged_resource_candidate
+        resource_ports = session._resource_capability_ports
+        assert staged_candidate is not None
 
         mirrored_runtime_names = {
             "_bash_runtime",
@@ -324,18 +326,24 @@ def test_agent_session_uses_and_disposes_selected_compaction_runtime(tmp_path) -
             session._composition.compaction_runtime._get_policy()
             == compaction_capability.policy
         )
-        assert capability_runtime is not None
         assert (
             session._composition.tool_controller.prompt_section_composer
-            is capability_runtime.prompt_section_composer
+            is resource_ports.prompt
         )
         assert (
             session._composition.command_controller.pack_composer
-            is capability_runtime.command_pack_composer
+            is resource_ports.commands
         )
 
+        await session.prepare_model_call_runtime()
+
+        assert session._staged_resource_candidate is None
+        assert staged_candidate.ownership_state == "graph_owned"
+        assert session._capability_graph_runtime.snapshot is not None
+
         await session.dispose()
-        assert capability_runtime.binding.is_closed
+        assert staged_candidate.binding.is_closed
+        assert staged_candidate.ownership_state == "disposed"
         with pytest.raises(RuntimeError, match="closed"):
             manager.get_runtime_capability("context.compaction")
 

@@ -44,13 +44,45 @@ Definition / Provider / Consumer slice: Consumers receive only declared
 filesystem facets or the authorized process-launch port, never the graph
 Runtime, raw process host, approval gateway, or sandbox backend.
 
-`harness.resources` is also source-complete but is not production-mounted. Its
-Session/bootstrap/sealed Bundle maps the private resource, prompt, skill, Tool
-pack, and Command pack Profile selections through focused Consumers. The
-Provider temporarily owns its private Profile Binder and computes one complete
-construction fingerprint; resource content remains call data and does not
-publish a Mount. `interaction.side_question` is excluded and remains a focused
-legacy binding owned and disposed by the Product Session.
+`harness.resources`, `harness.session` contract version 4, and
+`harness.workspace` are production-mounted with `harness.model_input` in the
+single Session-owned graph. Model Input directly requires the Session transcript
+trio; Session directly consumes Resources and optionally consumes Product-
+admitted Workspace. Both generic and Coding plans have only Model Input as a
+root; absent Workspace input produces no node.
+The Resources Session/bootstrap/sealed Bundle maps the
+private resource, prompt, skill, Tool-pack, and Command-pack Profile selections
+through focused Consumers. Synchronous bootstrap constructs one root-owned
+candidate; the Resource Provider transfers that same candidate to the Graph
+instead of constructing a peer binding. Long-lived controllers route through
+stable focused ports and generation-scoped Consumers after publication.
+Resource content remains call data and changes only the scoped source
+publication reference, not the Mount generation.
+
+The combined `harness.session` Provider transfers two already-bound candidates:
+the sealed `interaction.side_question` selection and the indivisible transcript
+Store/Profile/Compaction lifecycle binding. It does not reconstruct either
+Profile binding. Generation-scoped Consumers own live calls after publication;
+Model Input and compaction route through a stable narrow port rather than a raw
+Store or Profile binding. Shutdown joins active work, publishes the auxiliary
+transcript index, and then releases the transcript binding with retryable
+retirement semantics. A second focused Session Consumer routes resource,
+skill, prompt, Tool-pack, and Command-pack calls through the declared Resources
+dependency; the old direct Resources Consumer captures are no longer a
+production path. Process-scoped continuity remains outside the Session Graph
+until its separate stable-reference contract is accepted.
+
+The Workspace Bundle receives only Product-admitted, root-bounded filesystem
+operations and an already-authorized process launcher. Coding constructs one
+workspace-scoped binding fingerprinted from the effective authority ceiling;
+the combined Session Provider declares one optional aggregate dependency and
+projects two narrow Tool/process facets. The Session captures typed Consumers
+in the same Graph publication window. Long-lived callers retain lease-aware
+proxies, so Session retirement invalidates previously obtained operations and
+launchers even when the Workspace node itself is reusable. Raw
+process hosts, policy and approval gateways, Sandbox state, and their cleanup
+ownership stay outside the Bundle. LSP shares the same authorized launcher
+through the typed Consumer path rather than binding a second launcher.
 
 The generated [Harness Capability Catalog](capability-catalog.md) is the
 source-backed coverage projection. A target Capability is not reported as
@@ -82,6 +114,11 @@ resource bundle, then reverse-retires the replaced generation. It reuses
 `RegistrationLease` and `RegistrationScope`; it is not a second Capability
 graph or runtime projector. Historical model-visible Tool schemas remain owned
 by committed Model Input facts rather than the current Extension generation.
+The runner freezes candidate declaration facts, while the Product/Session
+composition root owns the accepted declaration baseline and injects the pure
+admission preflight. Graph-owned input drift is restart-required before live
+candidate effects; content-only reload remains source-local and does not
+publish another Mount generation.
 
 The initial live Binder supports direct dependency facets. A planned
 `stable_reference` edge fails closed before Provider construction until a

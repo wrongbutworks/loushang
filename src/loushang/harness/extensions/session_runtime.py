@@ -8,6 +8,9 @@ from typing import Generic, Protocol, TypeVar
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.context import SessionRefreshEvent, SessionStartEvent
+from loushang.harness.extensions.declarations import (
+    ExtensionGraphProviderRestartRequiredError,
+)
 from loushang.harness.extensions.lifecycle import (
     ExtensionRuntimeCoordinator,
     ExtensionRuntimeOperation,
@@ -105,6 +108,12 @@ class ExtensionSessionRuntime(Generic[BindingT]):
         operation: ExtensionRuntimeOperation,
         error: Exception,
     ) -> None:
+        if operation == "resource_refresh" and isinstance(
+            error,
+            ExtensionGraphProviderRestartRequiredError,
+        ):
+            self.record_runtime_diagnostic(error.diagnostic)
+            return
         code, prefix = _FAILURE_DIAGNOSTICS[operation]
         self.record_runtime_diagnostic(
             DiagnosticDraft(code=code, message=f"{prefix}: {error}")

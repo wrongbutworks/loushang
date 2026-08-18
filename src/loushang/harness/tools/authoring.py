@@ -70,6 +70,7 @@ class ToolContext:
     model: object | None = None
     event_sink: ToolEventSink | None = None
     exec_service: ExecService | None = None
+    operation_binding: object | None = None
 
 
 def _titleize_tool_name(name: str) -> str:
@@ -170,12 +171,14 @@ class _DecoratedAuthorizedHandler:
                 else None,
                 signal=context.signal,
                 model=context.model,
-                event_sink=context.event_sink
-                if callable(context.event_sink)
-                else None,
+                event_sink=context.event_sink if callable(context.event_sink) else None,
                 exec_service=context.exec_service
                 if isinstance(context.exec_service, ExecService)
                 else None,
+                operation_binding=next(
+                    iter(context.operation_bindings.values()),
+                    None,
+                ),
             ),
         )
 
@@ -188,8 +191,7 @@ async def _invoke_decorated_tool(
     context: ToolContext,
 ) -> AgentToolResult[Any]:
     call_params = {
-        str(name): _thaw_execution_value(value)
-        for name, value in params.items()
+        str(name): _thaw_execution_value(value) for name, value in params.items()
     }
     if context_parameter_name is not None:
         call_params[context_parameter_name] = context
@@ -202,10 +204,7 @@ async def _invoke_decorated_tool(
 
 def _thaw_execution_value(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return {
-            str(name): _thaw_execution_value(item)
-            for name, item in value.items()
-        }
+        return {str(name): _thaw_execution_value(item) for name, item in value.items()}
     if isinstance(value, tuple):
         return [_thaw_execution_value(item) for item in value]
     return value
@@ -280,9 +279,7 @@ def _build_decorated_definition(
         infer_schema_from_signature(
             obj.fn,
             exclude_names=(
-                {context_parameter_name}
-                if context_parameter_name is not None
-                else None
+                {context_parameter_name} if context_parameter_name is not None else None
             ),
         ),
         obj.schema_overrides,
@@ -314,16 +311,12 @@ class FilesystemActionAdapter:
     ) -> PreparedToolAction:
         raw_path = call.arguments.get(self.path_argument, self.default_path)
         if not isinstance(raw_path, str) or not raw_path:
-            raise TypeError(
-                f"{self.path_argument} must be a non-empty string"
-            )
+            raise TypeError(f"{self.path_argument} must be a non-empty string")
         resolved = _resolve_path(raw_path, cwd=context.cwd)
         authorization_arguments: dict[str, Any] = {"path": resolved}
         for field_name in self.authorization_fields:
             if field_name not in call.arguments:
-                raise TypeError(
-                    f"authorized filesystem action requires {field_name!r}"
-                )
+                raise TypeError(f"authorized filesystem action requires {field_name!r}")
             authorization_arguments[field_name] = call.arguments[field_name]
         effect = FilesystemEffect(self.operation, (resolved,))
         return PreparedToolAction(
@@ -352,8 +345,10 @@ class ProcessActionAdapter:
             if not raw_command:
                 raise TypeError("command must be non-empty")
             command = ("/bin/sh", "-lc", raw_command)
-        elif isinstance(raw_command, (list, tuple)) and raw_command and all(
-            isinstance(part, str) and part for part in raw_command
+        elif (
+            isinstance(raw_command, (list, tuple))
+            and raw_command
+            and all(isinstance(part, str) and part for part in raw_command)
         ):
             command = tuple(raw_command)
         else:
@@ -410,9 +405,7 @@ class NetworkActionAdapter:
     ) -> PreparedToolAction:
         target = call.arguments.get(self.target_argument)
         if not isinstance(target, str) or not target:
-            raise TypeError(
-                f"{self.target_argument} must be a non-empty string"
-            )
+            raise TypeError(f"{self.target_argument} must be a non-empty string")
         effect = NetworkEffect(target=target, mutation=self.mutation)
         return _effect_action(call, context, effect)
 
@@ -430,9 +423,7 @@ class PublicationActionAdapter:
     ) -> PreparedToolAction:
         target = call.arguments.get(self.target_argument)
         if not isinstance(target, str) or not target:
-            raise TypeError(
-                f"{self.target_argument} must be a non-empty string"
-            )
+            raise TypeError(f"{self.target_argument} must be a non-empty string")
         repository = _optional_argument(
             call.arguments,
             self.repository_argument,

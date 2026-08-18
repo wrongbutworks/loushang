@@ -27,11 +27,13 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.resource_runtime import summarize_coding_package_root
 from loushang.coding.runtime_capability_admission import (
+    CodingExtensionDeclarationPreflight,
     resolve_coding_capability_profile,
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
+    CapabilityBundleProviderBinding,
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
 )
@@ -147,6 +149,7 @@ class AgentSession(AgentProductSession):
         sandbox_runtime: SandboxExecutionRuntime | None = None,
         lsp_runtime: CodingLspRuntime | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
+        workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
     ) -> None:
         self._sandbox_runtime = sandbox_runtime
         self._lsp_runtime = lsp_runtime
@@ -170,6 +173,8 @@ class AgentSession(AgentProductSession):
                     CODING_CAPABILITY_PROFILE
                 )
             locally_created_capability_runtime = resolved_capability_runtime
+        elif resolution is not None:
+            resolved_capability_runtime.select_final_profile(resolution.profile)
         try:
             if side_question_binding is None:
                 side_question_binding = (
@@ -218,6 +223,14 @@ class AgentSession(AgentProductSession):
                 ),
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
+                workspace_capability_binding=workspace_capability_binding,
+                extension_declaration_preflight=(
+                    CodingExtensionDeclarationPreflight(
+                        baseline_profile=resolved_capability_runtime.profile
+                    )
+                    if extension_runner is not None
+                    else None
+                ),
             )
         except BaseException as error:
             if locally_created_side_question_binding is not None:

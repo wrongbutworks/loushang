@@ -30,6 +30,7 @@ from loushang.harness.extensions.types import ResolvedCommand
 _EXTENSION_ERROR_DIAGNOSTIC_CODES: frozenset[str] = frozenset(
     {
         "extension_runtime_bind_failed",
+        "extension_graph_provider_restart_required",
         "extension_resource_refresh_failed",
         "extension_session_start_failed",
         "extension_session_refresh_failed",

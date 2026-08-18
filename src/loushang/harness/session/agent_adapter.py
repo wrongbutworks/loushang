@@ -19,7 +19,6 @@ from loushang.harness.approval import (
     ApprovalPermissionsSnapshot,
     InteractiveApprovalResolver,
 )
-from loushang.harness.capabilities import CapabilityCompositionRuntime
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticPhase
 from loushang.harness.events import (
@@ -113,7 +112,6 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     model_registry: SessionModelCatalogPort | None
     diagnostics_service: DiagnosticsService | None
     _approval_runtime: AgentSessionApprovalRuntime
-    _capability_runtime: CapabilityCompositionRuntime | None
     _composition: SessionComposition
     _exec_service: ExecService
     _extension_provider_controller: ExtensionProviderRuntime
@@ -771,7 +769,6 @@ def initialize_composed_session(
         raise RuntimeError("Agent Product sessions require package operations.")
 
     session._composition = composition
-    session._capability_runtime = composition.capability_runtime
     session._package_controller = package_controller
     session._extension_provider_controller = composition.extension_provider_controller
     session._extension_replacement_controller = (

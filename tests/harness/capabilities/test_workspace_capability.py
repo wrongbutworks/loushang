@@ -25,6 +25,7 @@ from loushang.harness.capabilities.workspace_tool_consumer import (
     WorkspaceToolCapabilityConsumer,
 )
 from loushang.harness.workspace.operations import LocalToolOperations, resolve_operation
+from loushang.harness.workspace.process import ProcessLaunchRequest
 
 
 def _sha(value: str) -> str:
@@ -85,6 +86,7 @@ async def _non_coding_product_swaps_workspace_provider_without_consumer_changes(
     process_consumer = WorkspaceProcessCapabilityConsumer(
         runtime.capture(WORKSPACE_PROCESS_REQUIREMENT)
     )
+    first_process_launcher = process_consumer.launcher
 
     sample = tmp_path / "sample.txt"
     sample.write_text("virtual content", encoding="utf-8")
@@ -122,9 +124,25 @@ async def _non_coding_product_swaps_workspace_provider_without_consumer_changes(
 
     with pytest.raises(RuntimeError, match="stale"):
         first_facets.require("read")
+    with pytest.raises(RuntimeError, match="stale"):
+        assert first_options.read_operations is not None
+        first_options.read_operations.read_bytes(sample)
+    with pytest.raises(RuntimeError, match="stale"):
+        await first_process_launcher.start(
+            ProcessLaunchRequest(
+                command=("echo", "stale"),
+                cwd=str(tmp_path),
+                effective_environment=(),
+            ),
+            correlation_id="stale-launch",
+        )
     second_consumer = WorkspaceToolCapabilityConsumer(
         runtime.capture(WORKSPACE_TOOL_REQUIREMENT)
     )
     second_options = second_consumer.apply()
     assert second_options.read_operations is not None
     assert second_options.read_operations is not first_options.read_operations
+
+    await binder.dispose(runtime)
+    with pytest.raises(RuntimeError, match="stale|disposed"):
+        second_options.read_operations.read_bytes(sample)

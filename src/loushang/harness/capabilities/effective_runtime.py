@@ -25,6 +25,14 @@ EffectiveRuntimeSkewCode = Literal[
     "model_runtime_reference_skew",
     "model_mount_reference_skew",
     "model_registration_reference_skew",
+    "registration_source_generation_skew",
+]
+EffectiveRuntimeSkewDisposition = Literal[
+    "expected_history",
+    "expected_refresh",
+    "transitional_retirement",
+    "invariant_violation",
+    "unclassified",
 ]
 
 
@@ -106,6 +114,34 @@ class ModelSurfaceReference:
 
 
 @dataclass(frozen=True)
+class ScopedSourcePublicationReference:
+    """One source-local publication fact owned by a mounted Capability."""
+
+    schema_version: int
+    owner_capability_id: str
+    source_runtime_id: str
+    extension_generation: int | None
+    declaration_revision: int | None
+    resource_revision: int
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1:
+            raise ValueError("unsupported source-publication schema version")
+        _require_text(self.owner_capability_id, name="source owner Capability id")
+        _require_text(self.source_runtime_id, name="source runtime id")
+        for value, name in (
+            (self.extension_generation, "Extension generation"),
+            (self.declaration_revision, "declaration revision"),
+        ):
+            if value is not None:
+                _require_non_negative_int(value, name=name)
+        _require_non_negative_int(
+            self.resource_revision,
+            name="resource revision",
+        )
+
+
+@dataclass(frozen=True)
 class EffectiveRuntimeClocks:
     profile: RuntimeProfileClock
     mount: MountGraphClock
@@ -121,6 +157,20 @@ class EffectiveRuntimeSkew:
     right_clock: str
     right_value: str
     classification: Literal["clock_skew"] = "clock_skew"
+    disposition_schema_version: int = 1
+    disposition: EffectiveRuntimeSkewDisposition = "unclassified"
+
+    def __post_init__(self) -> None:
+        if self.disposition_schema_version != 1:
+            raise ValueError("unsupported effective-runtime skew disposition schema")
+        if self.disposition not in (
+            "expected_history",
+            "expected_refresh",
+            "transitional_retirement",
+            "invariant_violation",
+            "unclassified",
+        ):
+            raise ValueError("unsupported effective-runtime skew disposition")
 
 
 @dataclass(frozen=True)
@@ -134,6 +184,7 @@ class EffectiveRuntimeView:
     registrations: tuple[RegistrationInventoryEntry, ...]
     skew: tuple[EffectiveRuntimeSkew, ...]
     assembly_fingerprint: str
+    source_publication: ScopedSourcePublicationReference | None = None
 
 
 @dataclass(frozen=True)
@@ -159,6 +210,9 @@ class EffectiveRuntimeDiff:
     added_registration_ids: tuple[str, ...]
     removed_registration_ids: tuple[str, ...]
     replaced_registration_ids: tuple[str, ...]
+    before_source_publication: ScopedSourcePublicationReference | None = None
+    after_source_publication: ScopedSourcePublicationReference | None = None
+    source_publication_changed: bool = False
 
 
 def compose_effective_runtime_view(
@@ -167,6 +221,7 @@ def compose_effective_runtime_view(
     profile: RuntimeProfileSnapshot,
     *,
     model_surface: ModelSurfaceReference | None = None,
+    source_publication: ScopedSourcePublicationReference | None = None,
 ) -> EffectiveRuntimeView:
     if not isinstance(profile, RuntimeProfileSnapshot):
         raise TypeError("effective runtime view requires RuntimeProfileSnapshot")
@@ -182,6 +237,7 @@ def compose_effective_runtime_view(
     ):
         raise ValueError("registration inventory and Mount graph ids differ")
     _require_model_surface_identity(graph, model_surface)
+    _require_source_publication(graph, source_publication)
     clocks = effective_runtime_clocks(
         graph,
         registrations,
@@ -189,7 +245,7 @@ def compose_effective_runtime_view(
         model_surface=model_surface,
     )
     profile_slots = _profile_slots(profile)
-    skew = _clock_skew(clocks)
+    skew = _clock_skew(clocks, registrations, source_publication)
     payload = {
         "schema_version": EFFECTIVE_RUNTIME_SCHEMA_VERSION,
         "product_id": graph.product_id,
@@ -200,6 +256,8 @@ def compose_effective_runtime_view(
         "registrations": registrations.entries,
         "skew": skew,
     }
+    if source_publication is not None:
+        payload["source_publication"] = source_publication
     return EffectiveRuntimeView(
         schema_version=EFFECTIVE_RUNTIME_SCHEMA_VERSION,
         product_id=graph.product_id,
@@ -210,6 +268,7 @@ def compose_effective_runtime_view(
         registrations=registrations.entries,
         skew=skew,
         assembly_fingerprint=_fingerprint(payload),
+        source_publication=source_publication,
     )
 
 
@@ -370,6 +429,11 @@ def diff_effective_runtime_views(
             before_registrations,
             after_registrations,
         ),
+        before_source_publication=before.source_publication,
+        after_source_publication=after.source_publication,
+        source_publication_changed=(
+            before.source_publication != after.source_publication
+        ),
     )
 
 
@@ -406,7 +470,11 @@ def _profile_slots(
     )
 
 
-def _clock_skew(clocks: EffectiveRuntimeClocks) -> tuple[EffectiveRuntimeSkew, ...]:
+def _clock_skew(
+    clocks: EffectiveRuntimeClocks,
+    registrations: RegistrationInventorySnapshot,
+    source_publication: ScopedSourcePublicationReference | None,
+) -> tuple[EffectiveRuntimeSkew, ...]:
     skew: list[EffectiveRuntimeSkew] = []
     if clocks.profile.fingerprint != clocks.mount.profile_fingerprint:
         skew.append(
@@ -416,6 +484,7 @@ def _clock_skew(clocks: EffectiveRuntimeClocks) -> tuple[EffectiveRuntimeSkew, .
                 clocks.profile.fingerprint,
                 "mount.profile_fingerprint",
                 clocks.mount.profile_fingerprint,
+                disposition="unclassified",
             )
         )
     registration_mount = (
@@ -430,11 +499,19 @@ def _clock_skew(clocks: EffectiveRuntimeClocks) -> tuple[EffectiveRuntimeSkew, .
                 registration_mount,
                 "mount.generation",
                 mount,
+                disposition="invariant_violation",
             )
         )
     model = clocks.model_surface
     if model is not None:
-        if model.runtime_id != clocks.mount.runtime_id:
+        same_runtime = model.runtime_id == clocks.mount.runtime_id
+        model_mount_is_history = (
+            same_runtime and model.mount_generation < clocks.mount.generation
+        )
+        model_mount_is_future = (
+            same_runtime and model.mount_generation > clocks.mount.generation
+        )
+        if not same_runtime:
             skew.append(
                 _skew(
                     "model_runtime_reference_skew",
@@ -442,6 +519,7 @@ def _clock_skew(clocks: EffectiveRuntimeClocks) -> tuple[EffectiveRuntimeSkew, .
                     model.runtime_id,
                     "mount.runtime_id",
                     clocks.mount.runtime_id,
+                    disposition="expected_history",
                 )
             )
         if model.profile_fingerprint != clocks.profile.fingerprint:
@@ -452,9 +530,18 @@ def _clock_skew(clocks: EffectiveRuntimeClocks) -> tuple[EffectiveRuntimeSkew, .
                     model.profile_fingerprint,
                     "profile.fingerprint",
                     clocks.profile.fingerprint,
+                    disposition=(
+                        "expected_history"
+                        if not same_runtime or model_mount_is_history
+                        else (
+                            "invariant_violation"
+                            if model_mount_is_future
+                            else "unclassified"
+                        )
+                    ),
                 )
             )
-        if model.mount_generation != clocks.mount.generation:
+        if same_runtime and model.mount_generation != clocks.mount.generation:
             skew.append(
                 _skew(
                     "model_mount_reference_skew",
@@ -462,9 +549,14 @@ def _clock_skew(clocks: EffectiveRuntimeClocks) -> tuple[EffectiveRuntimeSkew, .
                     model.mount_generation,
                     "mount.generation",
                     clocks.mount.generation,
+                    disposition=(
+                        "expected_history"
+                        if model.mount_generation < clocks.mount.generation
+                        else "invariant_violation"
+                    ),
                 )
             )
-        if model.registration_revision != clocks.registration.revision:
+        if same_runtime and model.registration_revision != clocks.registration.revision:
             skew.append(
                 _skew(
                     "model_registration_reference_skew",
@@ -472,6 +564,41 @@ def _clock_skew(clocks: EffectiveRuntimeClocks) -> tuple[EffectiveRuntimeSkew, .
                     model.registration_revision,
                     "registration.revision",
                     clocks.registration.revision,
+                    disposition=(
+                        "expected_history"
+                        if model_mount_is_history
+                        else (
+                            "invariant_violation"
+                            if model_mount_is_future
+                            else "expected_refresh"
+                        )
+                    ),
+                )
+            )
+    if (
+        source_publication is not None
+        and source_publication.extension_generation is not None
+    ):
+        for entry in registrations.entries:
+            if (
+                entry.owner_kind != "extension"
+                or entry.runtime_id != source_publication.source_runtime_id
+                or entry.owner_generation
+                == source_publication.extension_generation
+            ):
+                continue
+            skew.append(
+                _skew(
+                    "registration_source_generation_skew",
+                    "registration.owner_generation",
+                    entry.owner_generation,
+                    "source.extension_generation",
+                    source_publication.extension_generation,
+                    disposition=(
+                        "transitional_retirement"
+                        if entry.attachment == "pending_retirement"
+                        else "invariant_violation"
+                    ),
                 )
             )
     return tuple(sorted(skew, key=lambda item: item.code))
@@ -489,12 +616,30 @@ def _require_model_surface_identity(
         raise ValueError("Model Surface and Mount graph Product ids differ")
 
 
+def _require_source_publication(
+    graph: MountGraphSnapshot,
+    reference: ScopedSourcePublicationReference | None,
+) -> None:
+    if reference is None:
+        return
+    if not isinstance(reference, ScopedSourcePublicationReference):
+        raise TypeError(
+            "source_publication must be ScopedSourcePublicationReference"
+        )
+    if reference.owner_capability_id not in {
+        node.capability_id for node in graph.nodes
+    }:
+        raise ValueError("source-publication owner is not mounted")
+
+
 def _skew(
     code: EffectiveRuntimeSkewCode,
     left_clock: str,
     left_value: object,
     right_clock: str,
     right_value: object,
+    *,
+    disposition: EffectiveRuntimeSkewDisposition,
 ) -> EffectiveRuntimeSkew:
     return EffectiveRuntimeSkew(
         code=code,
@@ -502,6 +647,7 @@ def _skew(
         left_value=str(left_value),
         right_clock=right_clock,
         right_value=str(right_value),
+        disposition=disposition,
     )
 
 
@@ -593,6 +739,7 @@ __all__ = [
     "RuntimeProfileClock",
     "RuntimeProfileSelectionReference",
     "RuntimeProfileSlotReference",
+    "ScopedSourcePublicationReference",
     "compose_effective_runtime_view",
     "compose_registration_inventory",
     "diff_effective_runtime_views",

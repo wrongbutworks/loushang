@@ -583,6 +583,27 @@ Acceptance:
 - no generic transaction manager or new lifecycle lock hierarchy is added; and
 - successful publish/retire behavior is unchanged.
 
+Status: implemented. The disposal/join window is closed by the Extension
+runner generation gate; no production API or behavior contract beyond that
+window changed.
+
+Implemented evidence:
+
+- `src/loushang/harness/extensions/runner.py` retains the generation gate
+  until staged-candidate rollback has disposed its registrations, so Session
+  shutdown joins in-flight candidate cleanup instead of reporting completion
+  early;
+- `tests/harness/extensions/test_generation.py::test_cancelled_failed_publication_holds_gate_and_retries_candidate_cleanup`
+  covers publication failure racing cancellation with retryable candidate
+  cleanup;
+- cancellation-atomic shutdown, retired-generation cleanup join, and
+  shutdown/retry behavior remain covered by the existing generation tests
+  (`test_cancelled_retirement_joins_cleanup_and_keeps_new_generation`,
+  `test_candidate_cannot_publish_after_runtime_shutdown_begins`,
+  `test_cancelled_shutdown_finishes_retired_and_current_generation_cleanup`,
+  `test_shutdown_retains_retryable_retired_generation_cleanup`); and
+- no generic transaction manager or new lifecycle lock hierarchy was added.
+
 ### CLA2: Session-Owned Graph Runtime
 
 Move graph ownership from `SessionModelCallRuntime` to the Session composition
@@ -700,6 +721,21 @@ A future `harness.resources -> harness.workspace` dependency requires a concrete
 Resource Consumer and a separate accepted loader cutover; it is not implied by
 co-location in one graph.
 
+Implemented evidence:
+
+- Coding supplies a root-bounded filesystem adapter and one authorized process
+  launcher under a deterministic workspace-scope fingerprint;
+- generic Products without a workspace binding retain the two-root
+  model-input/resources graph, while Coding mounts Workspace as the third
+  independent root;
+- Session Tool and process callers route through typed, lease-aware Consumers;
+  each Tool receives only its explicitly declared operation binding;
+- LSP shares the graph-backed process port without binding another launcher;
+- raw Sandbox, approval, policy, and process-host services remain outside the
+  Bundle and retain their existing Product cleanup owner; and
+- Provider-owned derived cleanup failures remain visible and retryable through
+  the Session Graph retirement path.
+
 ### CLA6: Extension Declaration Bridge
 
 After the resource milestone is stable:
@@ -715,13 +751,115 @@ This PR does not implement graph hot replacement. It adds failure-evidence tests
 for the typed restart-required diagnostic rather than silently replacing the
 whole Extension generation.
 
+Implemented evidence:
+
+- each prepared generation freezes a canonical, redacted declaration snapshot;
+- Coding reuses its pure admission and Profile resolver to compare effective
+  graph-owned resource inputs; CLA7a extends the same preflight to the admitted
+  Session side-question input without comparing callback identity or content;
+  losing or content-only declarations are not compared as Provider inputs;
+- the Product-injected preflight runs before resource discovery, candidate
+  activation, registration publication, or another Graph bind;
+- content-only refresh advances Extension and Resource publication facts while
+  preserving the current Mount generation and Consumer leases;
+- graph-owned Resource or Session input changes fail with the typed
+  `extension_graph_provider_restart_required` diagnostic exactly once, retain
+  the old Extension/Resource/Session/Mount authorities, and join candidate
+  rollback;
+  and
+- the bridge contains values and a narrow validation port only; it adds no
+  Provider registry, graph manager, projector, or hot-replacement transaction.
+
 ### CLA7: `harness.session` Bundle
 
-Migrate conversation store, transcript profile, compaction, continuity, and
-side-question facets behind the Session Bundle incrementally. Reuse the
-Session-owned graph established by CLA2. Each facet moves only after its scope,
-refresh boundary, restart behavior, and stable-reference requirement are
-explicit.
+Migrate the Session facets in lifecycle-honest slices. Reuse the Session-owned
+graph established by CLA2; do not create a second graph or a broad Session
+facade. Each slice moves only after its scope, refresh boundary, restart
+behavior, and stable-reference requirement are explicit.
+
+1. **CLA7a — side question (implemented).** Contract version 1 defines the
+   sealed `interaction.side_question` facet. The already-focused legacy binding
+   becomes a staged candidate, transfers to the Graph exactly once, and is
+   consumed through a generation-scoped lease. Active work is cancelled and
+   joined before Provider disposal. Extension selection remains sealed and
+   restart-required rather than hot-replaced.
+2. **CLA7b — transcript lifecycle trio (implemented).** `conversation.store`,
+   `agent.transcript_profile`, and `context.compaction` share one existing
+   `AgentTranscriptProfileRuntime` binding and must transfer together. The
+   slice must preserve session-header/resume compatibility, index publication
+   before release, turn-boundary compaction behavior, and cleanup retry. It may
+   not reconstruct the store or split one disposer across logical owners.
+3. **CLA7c-resources — Resources dependency cutover (implemented).** One
+   focused Session Consumer now uses the admitted Resource composition through
+   `harness.session -> harness.resources`; Resources is no longer a peer root.
+4. **CLA7c-workspace — Workspace dependency cutover (implemented).** Two
+   least-authority Session Consumers use the optional admitted Workspace
+   dependency; Coding no longer keeps Workspace as a co-root.
+5. **CLA7d — continuity stable reference.** `continuity.provider_packs` remains
+   Process-scoped. It requires a process-owned typed stable lease/reference and
+   shutdown order before a Session Consumer can observe it. The Session Graph
+   never owns the concrete ContinuityHub.
+
+Implemented CLA7a evidence:
+
+- one source-backed Definition / Provider / Consumer seam is production
+  mounted by the existing `AgentProductSession` graph;
+- Product bootstrap and direct construction pass one root-owned candidate;
+- construction failure restores root ownership, graph publication transfers
+  ownership, graph/node reuse leaves a rejected candidate root-owned, and
+  release retries retain the exact graph owner;
+- the Consumer revalidates its facet lease on each call and cached access is
+  stale after Graph retirement; and
+- the generated catalog and architecture gates identify exactly one Provider
+  construction owner and one Consumer capture owner.
+
+Implemented CLA7b evidence:
+
+- contract version 2 adds the Store/Profile/Compaction facets to the same
+  `harness.session` Provider; no second Provider, Binder, graph, or host-hidden
+  dependency is introduced;
+- the existing `AgentTranscriptProfileRuntime` binding transfers as one
+  root-owned candidate, so Store/Profile/Compaction identity and the persisted
+  Runtime Profile header remain unchanged;
+- `harness.model_input` declares its direct transcript requirement on
+  `harness.session`, so Session is in the dependency closure rather than a
+  peer root or hidden host closure;
+- Model Input and compaction use a stable narrow port that switches to one
+  generation-scoped transcript Consumer in the Graph publication window;
+- shutdown joins active work, attempts index publication, then retires the
+  transcript binding; failed async disposers retain only failed entries for a
+  real Graph retirement retry; and
+- durable create/load/open/continue/fork, Model Input restart/rebuild, and
+  compaction commit-point regressions remain the acceptance gates.
+
+Implemented CLA7c-resources evidence:
+
+- Session contract version 3 adds one bounded `resource.composition` facet and
+  the combined Provider declares one aggregate Resources requirement;
+- the Provider keeps the raw dependency binding private and exposes only
+  method-shaped operations through a generation-scoped Session Consumer;
+- existing stable resource ports use the root-owned candidate before Mount and
+  switch once to that Session Consumer after Graph publication;
+- production no longer constructs the four direct Resources Consumers;
+- generic roots are exactly `harness.model_input`; during this slice Coding
+  still kept `harness.workspace` as a deferred co-root; and
+- content-only Resource/Extension refresh changes source-publication facts but
+  does not rebind the Graph or change Mount generation.
+
+Implemented CLA7c-workspace evidence:
+
+- Session contract version 4 adds separate Tool-operation and process-launch
+  facets backed by one optional aggregate Workspace dependency;
+- generic Products without a Workspace Provider omit that node, while Coding
+  realizes `harness.session -> harness.workspace` without a placeholder;
+- both generic and Coding production roots are exactly `harness.model_input`;
+- production constructs no direct Workspace Consumers; stable Workspace ports
+  switch to two Session Consumers only after the single Graph publication;
+- cached operation and launcher proxies revalidate the Session generation on
+  every call and become stale after Session retirement, including when the
+  Workspace node is reused; and
+- authority ceilings, raw policy/approval/Sandbox internals, the single process
+  launcher binding, and Workspace cleanup ownership remain unchanged.
 
 ### CLA8: Legacy Authority Closure
 

@@ -12,6 +12,9 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
+from loushang.harness.extensions.declarations import (
+    ExtensionCapabilityDeclarationSnapshot,
+)
 from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.refresh import (
     ResourceRefreshCoordinator,
@@ -39,6 +42,7 @@ ResourceLoaderProvider = Callable[[], ResourceLoaderPort | None]
 ResourceBundleProvider = Callable[[], ResourceBundle | None]
 ResourceSettingsProvider = Callable[[], ResourceSettingsPort | None]
 RefreshFailureRecorder = Callable[[Exception], None]
+ExtensionDeclarationPreflight = Callable[[ExtensionCapabilityDeclarationSnapshot], None]
 
 
 @dataclass
@@ -58,10 +62,13 @@ class SessionResourceRefreshRuntime:
     skill_activation_runtime: SkillActivationRuntime = field(
         default_factory=SkillActivationRuntime
     )
+    extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
     _coordinator: ResourceRefreshCoordinator[ResourceBundle] = field(init=False)
     _discovery: RuntimeResourceDiscovery[ResourceBundle] = field(init=False)
+    _resource_revision: int = field(init=False, default=0)
 
     def __post_init__(self) -> None:
+        self._resource_revision = 1 if self.get_resource_bundle() is not None else 0
         self._discovery = RuntimeResourceDiscovery(self.get_extension_runtime)
         self._coordinator = ResourceRefreshCoordinator(
             load_resource=self._load_resource_bundle,
@@ -71,14 +78,13 @@ class SessionResourceRefreshRuntime:
             prepare_refresh=self.prepare_resource_refresh,
         )
 
+    @property
+    def resource_revision(self) -> int:
+        """Return the Session-local ordinal of the effective resource view."""
+
+        return self._resource_revision
+
     def get_prompt_templates(self) -> list[PromptFragmentDescriptor]:
-        resource_loader = self.get_resource_loader()
-        if resource_loader is not None:
-            get_prompts = getattr(resource_loader, "get_prompts", None)
-            if not callable(get_prompts):
-                return []
-            prompts = get_prompts().get("prompts", [])
-            return list(prompts) if isinstance(prompts, list) else []
         resource_bundle = self.get_resource_bundle()
         if resource_bundle is not None:
             return list(resource_bundle.prompts)
@@ -142,7 +148,32 @@ class SessionResourceRefreshRuntime:
         published = False
         publication_started = False
         previous_resource = self.get_resource_bundle()
+        previous_resource_revision = self._resource_revision
         try:
+            declaration_preflight = self.extension_declaration_preflight
+            if declaration_preflight is not None:
+                candidate_declarations = getattr(
+                    candidate,
+                    "capability_declarations",
+                    None,
+                )
+                if not isinstance(
+                    candidate_declarations,
+                    ExtensionCapabilityDeclarationSnapshot,
+                ):
+                    raise TypeError(
+                        "staged Extension generation does not expose capability "
+                        "declarations"
+                    )
+                preflight_result = declaration_preflight(candidate_declarations)
+                if inspect.isawaitable(preflight_result):
+                    if inspect.iscoroutine(preflight_result):
+                        preflight_result.close()
+                    raise TypeError(
+                        "Extension declaration preflight must be synchronous"
+                    )
+                if preflight_result is not None:
+                    raise TypeError("Extension declaration preflight must return None")
             discovered = await candidate.discover_resources_async(
                 resource_bundle,
                 reason=reason,
@@ -159,12 +190,15 @@ class SessionResourceRefreshRuntime:
             if not published:
                 if publication_started:
                     try:
-                        self.set_resource_bundle(previous_resource)
-                        self.rebuild_prompt_and_tools_view()
+                        if self.get_resource_bundle() is not previous_resource:
+                            self.set_resource_bundle(previous_resource)
+                            self.rebuild_prompt_and_tools_view()
                     except BaseException:
                         publication_error.add_note(
                             "previous resource bundle view restoration failed"
                         )
+                    finally:
+                        self._resource_revision = previous_resource_revision
                 await candidate.rollback()
             raise
 
@@ -201,8 +235,21 @@ class SessionResourceRefreshRuntime:
             resource_bundle = self.skill_activation_runtime.apply(
                 resource_bundle, disabled_skills
             )
-        self.set_resource_bundle(resource_bundle)
-        self.rebuild_prompt_and_tools_view()
+        previous = self.get_resource_bundle()
+        try:
+            self.set_resource_bundle(resource_bundle)
+            self.rebuild_prompt_and_tools_view()
+        except BaseException as error:
+            try:
+                self.set_resource_bundle(previous)
+                self.rebuild_prompt_and_tools_view()
+            except BaseException as restoration_error:
+                error.add_note(
+                    "previous resource bundle view restoration also failed: "
+                    f"{restoration_error!r}"
+                )
+            raise
+        self._resource_revision += 1
 
     def _commit_resource_generation(self, resource_bundle: ResourceBundle) -> None:
         self._commit_resource_bundle(resource_bundle)
@@ -215,5 +262,6 @@ __all__ = [
     "ResourceLoaderProvider",
     "ResourceSettingsPort",
     "ResourceSettingsProvider",
+    "ExtensionDeclarationPreflight",
     "SessionResourceRefreshRuntime",
 ]

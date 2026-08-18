@@ -42,6 +42,31 @@ class ToolCallContext:
             on_update=self.on_update,
         )
 
+    def restricted(
+        self,
+        operation_binding_key: str | None,
+    ) -> ToolCallContext:
+        return ToolCallContext(
+            tool_call_id=self.tool_call_id,
+            cwd=self.cwd,
+            diagnostics=self.diagnostics,
+            signal=self.signal,
+            model=self.model,
+            event_sink=self.event_sink,
+            exec_service=self.exec_service,
+            on_update=self.on_update,
+            operation_bindings=MappingProxyType(
+                {}
+                if operation_binding_key is None
+                or operation_binding_key not in self.operation_bindings
+                else {
+                    operation_binding_key: self.operation_bindings[
+                        operation_binding_key
+                    ]
+                }
+            ),
+        )
+
     def authorized(self) -> AuthorizedToolContext:
         return AuthorizedToolContext(
             tool_call_id=self.tool_call_id,
@@ -240,7 +265,11 @@ class ToolExecutionHost:
                 raise RuntimeError(
                     f"authorized tool {definition.name!r} requires a session gateway"
                 )
-            prepared = binding.action_adapter.prepare(call, context)
+            adapter_context = context.restricted(None)
+            handler_context = context.restricted(
+                getattr(definition, "operation_binding_key", None)
+            )
+            prepared = binding.action_adapter.prepare(call, adapter_context)
             if prepared.tool_name != definition.name:
                 raise ValueError(
                     "authorized action tool name must match its ToolDefinition"
@@ -248,7 +277,7 @@ class ToolExecutionHost:
             return await self._gateway.execute(
                 prepared,
                 binding.handler,
-                context.authorized(),
+                handler_context.authorized(),
             )
         raise TypeError(f"unsupported execution binding: {type(binding).__name__}")
 

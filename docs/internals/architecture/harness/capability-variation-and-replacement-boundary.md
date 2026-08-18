@@ -238,6 +238,17 @@ replace it, but a binding failure does not silently retry the baseline.
 Introducing such fallback requires a separately declared failure policy,
 durable provenance, and lifecycle tests.
 
+Live Extension refresh does not hot-replace a graph-owned Provider. The Product
+projects the candidate declaration snapshot through the same pure admission
+and resolution rules used initially. A changed effective graph Provider input
+fails before candidate discovery or activation with a typed restart-required
+diagnostic; an unchanged projection continues through the existing
+Extension/Resource generation transaction without changing Mount generation.
+Dependent-closure rebind remains a separate, unimplemented contract.
+Coding therefore rejects an initially mounted Extension-owned resource
+Provider rather than pretending a later deletion can be validated without the
+initial Product resolver inputs.
+
 ## Application To Coding Language Services
 
 A future Coding H3 language-service design should apply the decision as

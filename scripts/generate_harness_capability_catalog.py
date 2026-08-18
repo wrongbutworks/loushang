@@ -11,12 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = ROOT / "src"
 CATALOG_PATH = (
-    ROOT
-    / "docs"
-    / "internals"
-    / "architecture"
-    / "harness"
-    / "capability-catalog.md"
+    ROOT / "docs" / "internals" / "architecture" / "harness" / "capability-catalog.md"
 )
 
 if str(SOURCE_ROOT) not in sys.path:
@@ -86,6 +81,72 @@ SOURCE_BACKED_SEAMS = (
                     "RESOURCES_COMMAND_PACK_REQUIREMENT",
                 ),
             ),
+            (
+                "loushang.harness.session.session_capability_provider:"
+                "_ResourceCompositionFacet",
+                (
+                    "loushang.harness.capabilities.resources_contracts:"
+                    "RESOURCES_SESSION_COMPOSITION_REQUIREMENT",
+                ),
+            ),
+        ),
+        production_mounts=(
+            "loushang.harness.session.agent_product:AgentProductSession",
+        ),
+    ),
+    CapabilitySeam(
+        definition=(
+            "loushang.harness.capabilities.session_contracts:"
+            "SESSION_CAPABILITY_DEFINITION"
+        ),
+        providers=(
+            "loushang.harness.session.session_capability_provider:"
+            "session_capability_provider_binding",
+        ),
+        consumers=(
+            (
+                "loushang.harness.session.session_capability_consumer:"
+                "SessionSideQuestionCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.session_contracts:"
+                    "SESSION_SIDE_QUESTION_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.session.session_capability_consumer:"
+                "SessionTranscriptCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.session_contracts:"
+                    "SESSION_TRANSCRIPT_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.session.session_capability_consumer:"
+                "SessionResourceCompositionCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.session_contracts:"
+                    "SESSION_RESOURCE_COMPOSITION_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.session.session_capability_consumer:"
+                "SessionWorkspaceToolCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.session_contracts:"
+                    "SESSION_WORKSPACE_TOOL_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.session.session_capability_consumer:"
+                "SessionWorkspaceProcessCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.session_contracts:"
+                    "SESSION_WORKSPACE_PROCESS_REQUIREMENT",
+                ),
+            ),
+        ),
+        production_mounts=(
+            "loushang.harness.session.agent_product:AgentProductSession",
         ),
     ),
     CapabilitySeam(
@@ -114,6 +175,25 @@ SOURCE_BACKED_SEAMS = (
                     "WORKSPACE_PROCESS_REQUIREMENT",
                 ),
             ),
+            (
+                "loushang.harness.session.session_capability_provider:"
+                "_WorkspaceToolFacet",
+                (
+                    "loushang.harness.capabilities.workspace_contracts:"
+                    "WORKSPACE_SESSION_COMPOSITION_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.harness.session.session_capability_provider:"
+                "_WorkspaceProcessFacet",
+                (
+                    "loushang.harness.capabilities.workspace_contracts:"
+                    "WORKSPACE_SESSION_COMPOSITION_REQUIREMENT",
+                ),
+            ),
+        ),
+        production_mounts=(
+            "loushang.harness.session.agent_product:AgentProductSession",
         ),
     ),
     CapabilitySeam(
@@ -157,7 +237,9 @@ def load_catalog_entries() -> tuple[tuple[CapabilitySeam, CapabilityDefinition],
     for seam in SOURCE_BACKED_SEAMS:
         definition = _resolve(seam.definition)
         if not isinstance(definition, CapabilityDefinition):
-            raise TypeError(f"catalog Definition has wrong type: {_label(seam.definition)}")
+            raise TypeError(
+                f"catalog Definition has wrong type: {_label(seam.definition)}"
+            )
         if definition.capability_id in capability_ids:
             raise RuntimeError(
                 f"duplicate catalog Capability id: {definition.capability_id}"
@@ -171,7 +253,9 @@ def load_catalog_entries() -> tuple[tuple[CapabilitySeam, CapabilityDefinition],
 
 
 def render_catalog() -> str:
-    rows = [_render_row(seam, definition) for seam, definition in load_catalog_entries()]
+    rows = [
+        _render_row(seam, definition) for seam, definition in load_catalog_entries()
+    ]
     return "\n".join(
         (
             "<!-- Generated by scripts/generate_harness_capability_catalog.py; "
@@ -212,7 +296,7 @@ def render_catalog() -> str:
             "",
             "## Coverage Boundary",
             "",
-            "`harness.session`, `coding.lsp`, and `coding.arch` remain accepted rollout "
+            "`coding.lsp` and `coding.arch` remain accepted rollout "
             "targets, but they are deliberately absent from the "
             "table until each has a complete source-backed Definition / Provider /",
             "Consumer seam. Fine-grained Runtime Profile slots and individual Tools,",
@@ -235,8 +319,7 @@ def _render_row(seam: CapabilitySeam, definition: CapabilityDefinition) -> str:
     )
     facets = "<br>".join(f"`{facet}`" for facet in definition.facets)
     lifecycle = (
-        f"`{definition.scope}` / `{definition.refresh_boundary}` / "
-        f"`{definition.phase}`"
+        f"`{definition.scope}` / `{definition.refresh_boundary}` / `{definition.phase}`"
     )
     mount_status = f"`{seam.mount_status}`"
     if seam.production_mounts:
@@ -292,12 +375,16 @@ def _validate_consumers(
         if not callable(_resolve(consumer)):
             raise TypeError(f"catalog Consumer is not callable: {_label(consumer)}")
         if not requirements:
-            raise RuntimeError(f"catalog Consumer has no requirement: {_label(consumer)}")
+            raise RuntimeError(
+                f"catalog Consumer has no requirement: {_label(consumer)}"
+            )
         tree = _parse_source(consumer)
         for reference in requirements:
             requirement = _resolve(reference)
             if not isinstance(requirement, CapabilityRequirement):
-                raise TypeError(f"catalog requirement has wrong type: {_label(reference)}")
+                raise TypeError(
+                    f"catalog requirement has wrong type: {_label(reference)}"
+                )
             if requirement.capability != definition.capability_id:
                 raise RuntimeError(
                     f"{_label(reference)} targets {requirement.capability}, expected "
@@ -337,11 +424,16 @@ def _discover_definition_refs() -> frozenset[SymbolRef]:
                 value, targets = node.value, (node.target,)
             else:
                 continue
-            if not isinstance(value, ast.Call) or _call_name(value.func) not in call_names:
+            if (
+                not isinstance(value, ast.Call)
+                or _call_name(value.func) not in call_names
+            ):
                 continue
             declared.add(id(value))
             discovered.update(
-                f"{module}:{target.id}" for target in targets if isinstance(target, ast.Name)
+                f"{module}:{target.id}"
+                for target in targets
+                if isinstance(target, ast.Name)
             )
         if undeclared := calls.keys() - declared:
             lines = sorted(calls[identity].lineno for identity in undeclared)
@@ -391,7 +483,9 @@ def _call_name(node: ast.expr) -> str | None:
 
 
 def _mentions(tree: ast.AST, symbol: str) -> bool:
-    return any(isinstance(node, ast.Name) and node.id == symbol for node in ast.walk(tree))
+    return any(
+        isinstance(node, ast.Name) and node.id == symbol for node in ast.walk(tree)
+    )
 
 
 def _check(rendered: str) -> int:

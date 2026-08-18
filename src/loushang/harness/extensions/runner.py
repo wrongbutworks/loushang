@@ -31,6 +31,9 @@ from loushang.harness.extensions.context import (
     SessionRefreshEvent,
     UnboundExtensionContext,
 )
+from loushang.harness.extensions.declarations import (
+    ExtensionCapabilityDeclarationSnapshot,
+)
 from loushang.harness.extensions.generation import (
     ExtensionGenerationDisposalResult,
     ExtensionGenerationRegistrations,
@@ -101,9 +104,16 @@ class PreparedExtensionGeneration:
     def __init__(self, host: ExtensionRunner, candidate: ExtensionRunner) -> None:
         self._host = host
         self._candidate = candidate
+        self._capability_declarations = candidate.capability_declarations
         self._activated = False
         self._published = False
         self._owns_lifecycle = False
+
+    @property
+    def capability_declarations(self) -> ExtensionCapabilityDeclarationSnapshot:
+        """Return pure candidate facts before any live registration is staged."""
+
+        return self._capability_declarations
 
     async def discover_resources_async(
         self,
@@ -272,6 +282,20 @@ class ExtensionRunner(ExtensionRuntime):
         return self._generation
 
     @property
+    def source_runtime_id(self) -> str:
+        """Return the stable redacted domain for published source generations."""
+
+        return self._runtime_id
+
+    @property
+    def capability_declarations(self) -> ExtensionCapabilityDeclarationSnapshot:
+        """Return the current generation's redacted runtime declarations."""
+
+        return ExtensionCapabilityDeclarationSnapshot.from_extensions(
+            self._active_extensions
+        )
+
+    @property
     def registration_inventory(
         self,
     ) -> tuple[
@@ -370,10 +394,7 @@ class ExtensionRunner(ExtensionRuntime):
             isinstance(extension, LoadedExtension)
             and (
                 id(extension) in active_extension_ids
-                or (
-                    extension.api is not None
-                    and id(extension.api) in active_api_ids
-                )
+                or (extension.api is not None and id(extension.api) in active_api_ids)
             )
             for extension in extensions
         ):
@@ -415,8 +436,8 @@ class ExtensionRunner(ExtensionRuntime):
             reports: list[ExtensionGenerationDisposalResult] = []
             retained: list[tuple[ExtensionGenerationRegistrations, ...]] = []
             for generation in self._retired_generation_registrations:
-                generation_reports = (
-                    await dispose_extension_generation_registrations(generation)
+                generation_reports = await dispose_extension_generation_registrations(
+                    generation
                 )
                 reports.extend(generation_reports)
                 if any(report.has_failures for report in generation_reports):
@@ -481,10 +502,7 @@ class ExtensionRunner(ExtensionRuntime):
     def _supports_staged_activation(bindings: ExtensionRuntimeBindings) -> bool:
         return (
             (bindings.bind_tool is None or bindings.stage_tool is not None)
-            and (
-                bindings.bind_provider is None
-                or bindings.stage_provider is not None
-            )
+            and (bindings.bind_provider is None or bindings.stage_provider is not None)
             and (
                 bindings.bind_provider_removal is None
                 or bindings.stage_provider_removal is not None
@@ -507,9 +525,7 @@ class ExtensionRunner(ExtensionRuntime):
             bindings.bind_provider_removal is not None
             and bindings.stage_provider_removal is None
         ):
-            raise RuntimeError(
-                "Extension Provider removal does not support staging"
-            )
+            raise RuntimeError("Extension Provider removal does not support staging")
         return replace(
             bindings,
             bind_tool=cast(
@@ -868,9 +884,7 @@ class ExtensionRunner(ExtensionRuntime):
             self._install_composition_state(candidate._capture_composition_state())
             self._runtime_state = candidate._runtime_state
             self._generation_registrations = candidate._generation_registrations
-            self._registrations_by_extension = (
-                candidate._registrations_by_extension
-            )
+            self._registrations_by_extension = candidate._registrations_by_extension
             self._generation = candidate._generation
             self._activated_generation = True
             self._bootstrap_generation = False
@@ -986,8 +1000,7 @@ def _accepts_registration_collector(callback: Callable[..., object]) -> bool:
         }
     )
     return len(positional) >= 2 or any(
-        parameter.kind == inspect.Parameter.VAR_POSITIONAL
-        for parameter in parameters
+        parameter.kind == inspect.Parameter.VAR_POSITIONAL for parameter in parameters
     )
 
 

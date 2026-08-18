@@ -55,6 +55,12 @@ def test_product_runtime_binds_existing_agent_transcript_components(tmp_path) ->
             binding.product_binding.value("context.compaction").implementation
             == TURN_AWARE_SUMMARY_IMPLEMENTATION
         )
+        assert binding.runtime_profile_snapshot == profile.snapshot()
+        assert binding.get_compaction_capability is not None
+        assert (
+            binding.get_compaction_capability().implementation
+            == TURN_AWARE_SUMMARY_IMPLEMENTATION
+        )
 
         await binding.dispose()
 

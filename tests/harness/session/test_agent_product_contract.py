@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -20,6 +21,12 @@ from loushang.harness.capabilities import (
     bind_capability_composition_runtime,
     standard_capability_composition_plan,
 )
+from loushang.harness.capabilities.provider_binding import (
+    CapabilityBundleProviderBinding,
+)
+from loushang.harness.capabilities.workspace_provider import (
+    workspace_capability_provider_binding,
+)
 from loushang.harness.config.agent import (
     CompactionSettings,
     ControlConfig,
@@ -27,6 +34,7 @@ from loushang.harness.config.agent import (
     SettingsManager,
 )
 from loushang.harness.conversation import ConversationKey, MemoryConversationStore
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import (
     CancellationSignal,
     RegistrationIdentity,
@@ -51,7 +59,10 @@ from loushang.harness.transcript import (
     CompactionResult,
     ContextCompactionCheckpoint,
     ProductTranscriptSession,
+    create_agent_transcript_compaction_capability,
 )
+from loushang.harness.workspace.operations import LocalToolOperations
+from loushang.harness.workspace.process import ProcessLaunchRequest
 
 
 class _ContractTranscriptSession(ProductTranscriptSession[str, str]):
@@ -89,6 +100,7 @@ class _ContractProductSession(AgentProductSession):
         capability_runtime: CapabilityCompositionRuntime,
         reserve_tokens: int,
         compact_percent: float,
+        workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
     ) -> None:
         self.product_id = product_id
         self.executor_calls: list[tuple[str, str | None]] = []
@@ -158,6 +170,7 @@ class _ContractProductSession(AgentProductSession):
                     ),
                 )
             ),
+            workspace_capability_binding=workspace_capability_binding,
         )
 
     async def _before_product_compaction(
@@ -194,9 +207,7 @@ def test_session_registration_inventory_keeps_retirement_retry_facts() -> None:
     )
     session._extension_runner = SimpleNamespace(  # type: ignore[attr-defined]
         registration_inventory=(),
-        retired_registration_inventory=(
-            (owner, identity, "failed_retryable"),
-        ),
+        retired_registration_inventory=((owner, identity, "failed_retryable"),),
     )
 
     entries = session._effective_registration_entries()
@@ -266,9 +277,7 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
             )
         )
         await asyncio.wait_for(graph_bind_started.wait(), timeout=1)
-        lifecycle_prepare = asyncio.create_task(
-            research.prepare_model_call_runtime()
-        )
+        lifecycle_prepare = asyncio.create_task(research.prepare_model_call_runtime())
         try:
             await asyncio.sleep(0)
             assert lifecycle_prepare.done() is False
@@ -305,14 +314,65 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert research.get_active_tool_names() == []
         assert design.get_active_tool_names() == []
         assert effective_runtime.product_id == "research"
+        graph_snapshot = research._capability_graph_runtime.snapshot
+        assert graph_snapshot is not None
+        assert graph_snapshot.roots == ("harness.model_input",)
+        nodes = {node.capability_id: node for node in graph_snapshot.nodes}
+        assert tuple(
+            requirement.capability_id
+            for requirement in nodes["harness.model_input"].requirements
+        ) == ("harness.session",)
+        assert nodes["harness.resources"].requirements == ()
+        assert tuple(
+            requirement.capability_id
+            for requirement in nodes["harness.session"].requirements
+        ) == ("harness.resources",)
+        assert nodes["harness.resources"].required_by == ("harness.session",)
+        assert nodes["harness.session"].required_by == ("harness.model_input",)
+        assert "harness.workspace" not in nodes
+        with pytest.raises(RuntimeError, match="not available"):
+            await research.get_workspace_process_launcher().start(
+                ProcessLaunchRequest(
+                    command=("never-start",),
+                    cwd=str(tmp_path),
+                    effective_environment=(),
+                ),
+                correlation_id="generic-no-workspace",
+            )
+        assert tuple(node.capability_id for node in effective_runtime.capabilities) == (
+            "harness.resources",
+            "harness.session",
+            "harness.model_input",
+        )
+        assert effective_runtime.source_publication is not None
+        assert effective_runtime.source_publication.owner_capability_id == (
+            "harness.resources"
+        )
+        assert effective_runtime.source_publication.resource_revision == 0
         assert effective_runtime.clocks.model_surface is None
         assert effective_runtime.skew == ()
-        assert research.explain_runtime_capability(
-            "harness.model_input"
-        ).clocks.mount == effective_runtime.clocks.mount
-        assert research.effective_runtime_to_json(effective_runtime)[
-            "runtime_id"
-        ] == effective_runtime.runtime_id
+        assert (
+            research.explain_runtime_capability("harness.model_input").clocks.mount
+            == effective_runtime.clocks.mount
+        )
+        assert (
+            research.effective_runtime_to_json(effective_runtime)["runtime_id"]
+            == effective_runtime.runtime_id
+        )
+        research._composition.resource_refresh_runtime._commit_resource_bundle(
+            ResourceBundle(cwd=tmp_path)
+        )
+        refreshed_runtime = research.get_effective_runtime_view()
+        source_diff = research.diff_effective_runtime(
+            effective_runtime,
+            refreshed_runtime,
+        )
+        assert refreshed_runtime.clocks.mount == effective_runtime.clocks.mount
+        assert refreshed_runtime.source_publication is not None
+        assert refreshed_runtime.source_publication.resource_revision == 1
+        assert source_diff.source_publication_changed is True
+        assert source_diff.mount_generation_changed is False
+        assert source_diff.registration_revision_changed is False
         _assert_no_composed_runtime_mirrors(research)
         _assert_no_composed_runtime_mirrors(design)
 
@@ -352,9 +412,12 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
         assert disposed_transcripts == ["research-session"]
         with pytest.raises(RuntimeError, match="disposed"):
             research.get_effective_runtime_view()
-        assert research.effective_runtime_to_json(effective_runtime)[
-            "runtime_id"
-        ] == effective_runtime.runtime_id
+        with pytest.raises(RuntimeError, match="not mounted"):
+            research._resource_capability_ports.activation.activate(None)
+        assert (
+            research.effective_runtime_to_json(effective_runtime)["runtime_id"]
+            == effective_runtime.runtime_id
+        )
         detached_diff = research.diff_effective_runtime(
             effective_runtime,
             effective_runtime,
@@ -388,6 +451,61 @@ def test_agent_product_sessions_keep_compaction_strategy_and_state_isolated(
     asyncio.run(scenario())
 
 
+def test_graph_owned_compaction_views_follow_the_current_profile_selection(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="turn-profile")
+        session = _ContractProductSession(
+            product_id="turn-profile",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("turn-profile"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+        mounted_generation = session._capability_graph_runtime.generation
+        replacement = create_agent_transcript_compaction_capability(
+            implementation="agent_transcript.turn_aware_summary",
+            implementation_version=1,
+            config={
+                "enabled": False,
+                "compactPercent": 33.0,
+                "reserveTokens": 999,
+                "keepRecentTokens": 7,
+            },
+        )
+        object.__setattr__(
+            session._staged_transcript_candidate,
+            "_get_compaction_capability",
+            lambda: replacement,
+        )
+        settings_manager = session._settings_controller.get_settings_manager()
+        assert settings_manager is not None
+        settings_manager.update_settings(
+            scope="session",
+            compaction=CompactionSettings(),
+        )
+
+        assert session._composition.compaction_capability is replacement
+        assert session._composition.compaction_runtime._get_policy() == (
+            replacement.policy
+        )
+        assert session.auto_compaction_enabled is False
+        usage = session._composition.session_inspector.get_context_usage()
+        assert usage.reserve_tokens == 999
+        assert usage.compact_percent == 33.0
+        assert usage.keep_recent_tokens == 7
+        assert session._capability_graph_runtime.generation == mounted_generation
+
+        await session.dispose()
+        assert disposed_transcripts == ["turn-profile-session"]
+
+    asyncio.run(scenario())
+
+
 def test_failed_graph_preparation_is_disposed_without_leaving_agent_boundary(
     tmp_path: Path,
 ) -> None:
@@ -403,6 +521,17 @@ def test_failed_graph_preparation_is_disposed_without_leaving_agent_boundary(
             reserve_tokens=1_111,
             compact_percent=61.0,
         )
+        side_candidate = session._staged_side_question_candidate
+        assert side_candidate is not None
+        side_disposal_calls = 0
+        original_side_dispose = side_candidate.dispose
+
+        def count_side_dispose() -> None:
+            nonlocal side_disposal_calls
+            side_disposal_calls += 1
+            original_side_dispose()
+
+        side_candidate.dispose = count_side_dispose  # type: ignore[method-assign]
 
         async def fail_bind(*_args: object) -> None:
             raise RuntimeError("graph preparation failed")
@@ -432,7 +561,228 @@ def test_failed_graph_preparation_is_disposed_without_leaving_agent_boundary(
         assert session._capability_graph_runtime.snapshot is None
         assert session.agent.prepare_model_call is None
         assert session._capability_graph_runtime.is_closed is True
+        assert side_disposal_calls == 1
+        assert side_candidate.ownership_state == "disposed"
+        assert session._staged_side_question_candidate is None
         assert disposed_transcripts == ["bind-failure-session"]
+
+    asyncio.run(scenario())
+
+
+def test_failed_graph_preparation_retains_root_candidate_for_shutdown_retry(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="bind-cleanup-retry")
+        capability_runtime = _capability_runtime("bind-cleanup-retry")
+        session = _ContractProductSession(
+            product_id="bind-cleanup-retry",
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        original_dispose = capability_runtime.dispose
+        disposal_attempts = 0
+
+        def fail_first_disposal() -> None:
+            nonlocal disposal_attempts
+            disposal_attempts += 1
+            if disposal_attempts == 1:
+                raise RuntimeError("transient candidate cleanup failure")
+            original_dispose()
+
+        capability_runtime.dispose = fail_first_disposal  # type: ignore[method-assign]
+
+        async def fail_bind(*_args: object) -> None:
+            raise RuntimeError("graph preparation failed")
+
+        session._capability_graph_binder.bind = fail_bind  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="graph preparation failed") as caught:
+            await session.prepare_model_call_runtime()
+
+        assert "transient candidate cleanup failure" in "\n".join(
+            caught.value.__notes__
+        )
+        assert session._staged_resource_candidate is capability_runtime
+        assert capability_runtime.ownership_state == "root_owned"
+
+        await session.dispose()
+
+        assert disposal_attempts == 2
+        assert capability_runtime.ownership_state == "disposed"
+        assert disposed_transcripts == ["bind-cleanup-retry-session"]
+
+    asyncio.run(scenario())
+
+
+def test_unprepared_shutdown_retains_root_candidate_for_cleanup_retry(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="shutdown-retry")
+        capability_runtime = _capability_runtime("shutdown-retry")
+        session = _ContractProductSession(
+            product_id="shutdown-retry",
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        original_dispose = capability_runtime.dispose
+        disposal_attempts = 0
+
+        def fail_first_disposal() -> None:
+            nonlocal disposal_attempts
+            disposal_attempts += 1
+            if disposal_attempts == 1:
+                raise RuntimeError("transient root cleanup failure")
+            original_dispose()
+
+        capability_runtime.dispose = fail_first_disposal  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="transient root cleanup failure"):
+            await session.dispose()
+
+        assert disposal_attempts == 1
+        assert session._staged_resource_candidate is capability_runtime
+        assert capability_runtime.ownership_state == "root_owned"
+
+        await session.dispose()
+
+        assert disposal_attempts == 2
+        assert session._staged_resource_candidate is None
+        assert capability_runtime.ownership_state == "disposed"
+        assert disposed_transcripts == ["shutdown-retry-session"]
+
+    asyncio.run(scenario())
+
+
+def test_unprepared_shutdown_retries_the_side_question_candidate(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="side-shutdown-retry")
+        session = _ContractProductSession(
+            product_id="side-shutdown-retry",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("side-shutdown-retry"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        candidate = session._staged_side_question_candidate
+        assert candidate is not None
+        original_dispose = candidate.dispose
+        disposal_attempts = 0
+
+        def fail_first_disposal() -> None:
+            nonlocal disposal_attempts
+            disposal_attempts += 1
+            if disposal_attempts == 1:
+                raise RuntimeError("transient side-question cleanup failure")
+            original_dispose()
+
+        candidate.dispose = fail_first_disposal  # type: ignore[method-assign]
+
+        with pytest.raises(
+            RuntimeError,
+            match="transient side-question cleanup failure",
+        ):
+            await session.dispose()
+
+        assert disposal_attempts == 1
+        assert session._staged_side_question_candidate is candidate
+        assert candidate.ownership_state == "root_owned"
+
+        await session.dispose()
+
+        assert disposal_attempts == 2
+        assert session._staged_side_question_candidate is None
+        assert candidate.ownership_state == "disposed"
+        assert disposed_transcripts == ["side-shutdown-retry-session"]
+
+    asyncio.run(scenario())
+
+
+def test_graph_owned_transcript_release_retries_after_index_publication(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        events: list[str] = []
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(
+            disposed_transcripts,
+            release_events=events,
+            fail_release_once=True,
+        )
+        transcript = await _new_transcript(tmp_path, product_id="transcript-retry")
+        original_publish_index = transcript.publish_index_summary
+
+        async def publish_index() -> None:
+            events.append("index")
+            await original_publish_index()
+
+        transcript.publish_index_summary = publish_index  # type: ignore[method-assign]
+        session = _ContractProductSession(
+            product_id="transcript-retry",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("transcript-retry"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+
+        with pytest.raises(RuntimeError, match="cleanup remains pending"):
+            await session.dispose()
+
+        assert events == ["index", "release"]
+        assert transcript._lifecycle_session.ownership_state == "graph_owned"
+        assert session._capability_graph_runtime.has_pending_retirements is True
+        assert disposed_transcripts == []
+
+        await session.dispose()
+
+        assert events == ["index", "release", "index", "release"]
+        assert transcript._lifecycle_session.ownership_state == "disposed"
+        assert session._capability_graph_runtime.has_pending_retirements is False
+        assert disposed_transcripts == ["transcript-retry-session"]
+
+    asyncio.run(scenario())
+
+
+def test_source_publication_does_not_mix_partial_extension_provenance(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="source-domain")
+        session = _ContractProductSession(
+            product_id="source-domain",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("source-domain"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        session._extension_runner = SimpleNamespace(generation=7)
+
+        reference = session._source_publication_reference()
+
+        assert reference.source_runtime_id == (
+            session._capability_graph_runtime.runtime_id
+        )
+        assert reference.extension_generation is None
+        assert reference.declaration_revision is None
+
+        await session.dispose()
+        assert disposed_transcripts == ["source-domain-session"]
 
     asyncio.run(scenario())
 
@@ -554,12 +904,144 @@ def test_agent_product_finalizes_shutdown_when_capability_disposal_fails(
     asyncio.run(scenario())
 
 
-def _bind_transcript_factory(disposed: list[str]) -> None:
+def test_workspace_provider_cleanup_remains_owned_until_retry_succeeds(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        release_events: list[str] = []
+        _bind_transcript_factory(
+            disposed_transcripts,
+            release_events=release_events,
+        )
+        transcript = await _new_transcript(tmp_path, product_id="workspace-cleanup")
+        original_publish_index = transcript.publish_index_summary
+
+        async def publish_index() -> None:
+            release_events.append("index")
+            await original_publish_index()
+
+        transcript.publish_index_summary = publish_index  # type: ignore[method-assign]
+        cleanup_attempts = 0
+
+        async def cleanup() -> None:
+            nonlocal cleanup_attempts
+            cleanup_attempts += 1
+            release_events.append("workspace")
+            if cleanup_attempts == 1:
+                raise RuntimeError("transient workspace cleanup failure")
+
+        workspace_binding = workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id=f"workspace:{tmp_path}",
+            binding_input_fingerprint=hashlib.sha256(b"workspace-cleanup").hexdigest(),
+            cleanup=cleanup,
+            source_id="contract-test",
+        )
+        session = _ContractProductSession(
+            product_id="workspace-cleanup",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("workspace-cleanup"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            workspace_capability_binding=workspace_binding,
+        )
+        await session.prepare_model_call_runtime()
+        cached_launcher = session.get_workspace_process_launcher()
+
+        with pytest.raises(RuntimeError, match="cleanup remains pending"):
+            await session.dispose()
+
+        assert cleanup_attempts == 1
+        assert release_events == ["index", "release", "workspace"]
+        assert session._capability_graph_runtime.has_pending_retirements is True
+        with pytest.raises(RuntimeError, match="disposed"):
+            await cached_launcher.start(
+                ProcessLaunchRequest(
+                    command=("never-start",),
+                    cwd=str(tmp_path),
+                    effective_environment=(),
+                ),
+                correlation_id="disposed-workspace",
+            )
+
+        await session.dispose()
+
+        assert cleanup_attempts == 2
+        assert release_events == ["index", "release", "workspace", "workspace"]
+        assert session._capability_graph_runtime.has_pending_retirements is False
+        assert disposed_transcripts == ["workspace-cleanup-session"]
+
+    asyncio.run(scenario())
+
+
+def test_workspace_signature_flows_through_session_into_model_input(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+
+        async def mounted_signatures(marker: str) -> dict[str, str]:
+            transcript = await _new_transcript(
+                tmp_path,
+                product_id="workspace-signature",
+            )
+            workspace_binding = workspace_capability_provider_binding(
+                operations=LocalToolOperations(),
+                process_launcher=_UnusedWorkspaceLauncher(),
+                scope_instance_id=f"workspace:{tmp_path}",
+                binding_input_fingerprint=hashlib.sha256(marker.encode()).hexdigest(),
+            )
+            session = _ContractProductSession(
+                product_id="workspace-signature",
+                transcript=transcript,
+                capability_runtime=_capability_runtime("workspace-signature"),
+                reserve_tokens=1_111,
+                compact_percent=61.0,
+                workspace_capability_binding=workspace_binding,
+            )
+            await session.prepare_model_call_runtime()
+            snapshot = session._capability_graph_runtime.snapshot
+            assert snapshot is not None
+            signatures = {
+                node.capability_id: node.binding_signature for node in snapshot.nodes
+            }
+            await session.dispose()
+            return signatures
+
+        first = await mounted_signatures("workspace-one")
+        second = await mounted_signatures("workspace-two")
+
+        assert first["harness.resources"] == second["harness.resources"]
+        assert first["harness.workspace"] != second["harness.workspace"]
+        assert first["harness.session"] != second["harness.session"]
+        assert first["harness.model_input"] != second["harness.model_input"]
+
+    asyncio.run(scenario())
+
+
+def _bind_transcript_factory(
+    disposed: list[str],
+    *,
+    release_events: list[str] | None = None,
+    fail_release_once: bool = False,
+) -> None:
+    release_attempts = 0
+
     async def bind_runtime(context, binding: str):
+        nonlocal release_attempts
         assert context.persist is False
         conversation_id = context.header.conversation_id
 
         async def dispose() -> None:
+            nonlocal release_attempts
+            release_attempts += 1
+            if release_events is not None:
+                release_events.append("release")
+            if fail_release_once and release_attempts == 1:
+                raise RuntimeError("transient transcript release failure")
             disposed.append(conversation_id)
 
         return AgentTranscriptRuntimeBinding(
@@ -624,6 +1106,11 @@ def _capability_runtime(product_id: str) -> CapabilityCompositionRuntime:
         standard_capability_composition_plan(product_id=product_id)
     )
     return bind_capability_composition_runtime(profile)
+
+
+class _UnusedWorkspaceLauncher:
+    async def start(self, *_args: object, **_kwargs: object) -> object:
+        raise AssertionError("workspace cleanup does not start a process")
 
 
 def _model(product_id: str) -> Model:

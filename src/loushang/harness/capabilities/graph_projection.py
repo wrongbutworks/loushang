@@ -11,6 +11,7 @@ from loushang.harness.capabilities.effective_runtime import (
     EffectiveRuntimeView,
     ModelSurfaceReference,
     RuntimeProfileSlotReference,
+    ScopedSourcePublicationReference,
     compose_effective_runtime_view,
     diff_effective_runtime_views,
     effective_runtime_clocks,
@@ -38,6 +39,7 @@ class CapabilityGraphExplanation:
     last_attempt: CapabilityGraphBindingAttempt | None
     clocks: EffectiveRuntimeClocks
     registrations: tuple[RegistrationInventoryEntry, ...]
+    source_publication: ScopedSourcePublicationReference | None = None
 
 
 @dataclass(frozen=True)
@@ -98,12 +100,14 @@ class RuntimeCapabilityGraphProjector:
         *,
         model_surface: ModelSurfaceReference | None = None,
         registrations: RegistrationInventorySnapshot | None = None,
+        source_publication: ScopedSourcePublicationReference | None = None,
     ) -> EffectiveRuntimeView:
         return compose_effective_runtime_view(
             self.snapshot(),
             self._registrations(registrations),
             profile,
             model_surface=model_surface,
+            source_publication=source_publication,
         )
 
     def explain(
@@ -113,8 +117,18 @@ class RuntimeCapabilityGraphProjector:
         profile: RuntimeProfileSnapshot | None = None,
         model_surface: ModelSurfaceReference | None = None,
         registrations: RegistrationInventorySnapshot | None = None,
+        source_publication: ScopedSourcePublicationReference | None = None,
     ) -> CapabilityGraphExplanation:
         node = self._node(capability_id)
+        if source_publication is not None:
+            if not isinstance(
+                source_publication,
+                ScopedSourcePublicationReference,
+            ):
+                raise TypeError(
+                    "source_publication must be ScopedSourcePublicationReference"
+                )
+            self._node(source_publication.owner_capability_id)
         inventory = self._registrations(registrations)
         capability_registrations = self._registrations_for(
             capability_id,
@@ -138,6 +152,12 @@ class RuntimeCapabilityGraphProjector:
             last_attempt=self._runtime.last_attempt,
             clocks=clocks,
             registrations=capability_registrations,
+            source_publication=(
+                source_publication
+                if source_publication is not None
+                and source_publication.owner_capability_id == capability_id
+                else None
+            ),
         )
 
     def explain_profile_slot(

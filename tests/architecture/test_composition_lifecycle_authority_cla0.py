@@ -19,6 +19,13 @@ README_PATH = Path("docs/internals/architecture/harness/README.md")
 CATALOG_PATH = Path("docs/internals/architecture/harness/capability-catalog.md")
 CATALOG_GENERATOR_PATH = Path("scripts/generate_harness_capability_catalog.py")
 SOURCE_ROOT = Path("src/loushang")
+EXTENSION_DECLARATION_PATH = Path("src/loushang/harness/extensions/declarations.py")
+EXTENSION_PREFLIGHT_PATHS = (
+    EXTENSION_DECLARATION_PATH,
+    Path("src/loushang/harness/extensions/runner.py"),
+    Path("src/loushang/harness/extensions/session_runtime.py"),
+    Path("src/loushang/harness/session/resource_refresh.py"),
+)
 
 REQUIRED_ROWS = {
     "AUTH": 15,
@@ -96,6 +103,22 @@ TRACKED_CALL_SYMBOLS = frozenset(
         "bind_capability_composition_runtime",
         "_publish_generation",
         "resources_capability_provider_binding",
+        "session_capability_provider_binding",
+        "workspace_capability_provider_binding",
+        "_ResourceCompositionFacet",
+        "_WorkspaceProcessFacet",
+        "_WorkspaceToolFacet",
+        "SessionSideQuestionCapabilityConsumer",
+        "SessionResourceCompositionCapabilityConsumer",
+        "SessionTranscriptCapabilityConsumer",
+        "SessionWorkspaceProcessCapabilityConsumer",
+        "SessionWorkspaceToolCapabilityConsumer",
+        "ResourceActivationCapabilityConsumer",
+        "ResourceCommandPackCapabilityConsumer",
+        "ResourcePromptCapabilityConsumer",
+        "ResourceToolPackCapabilityConsumer",
+        "WorkspaceToolCapabilityConsumer",
+        "WorkspaceProcessCapabilityConsumer",
     }
 )
 GUARDED_CONSTRUCTION_SYMBOLS = frozenset(
@@ -103,6 +126,22 @@ GUARDED_CONSTRUCTION_SYMBOLS = frozenset(
         *EXPECTED_CONSTRUCTION_SITES,
         "bind_capability_composition_runtime",
         "resources_capability_provider_binding",
+        "session_capability_provider_binding",
+        "workspace_capability_provider_binding",
+        "_ResourceCompositionFacet",
+        "_WorkspaceProcessFacet",
+        "_WorkspaceToolFacet",
+        "SessionSideQuestionCapabilityConsumer",
+        "SessionResourceCompositionCapabilityConsumer",
+        "SessionTranscriptCapabilityConsumer",
+        "SessionWorkspaceProcessCapabilityConsumer",
+        "SessionWorkspaceToolCapabilityConsumer",
+        "ResourceActivationCapabilityConsumer",
+        "ResourceCommandPackCapabilityConsumer",
+        "ResourcePromptCapabilityConsumer",
+        "ResourceToolPackCapabilityConsumer",
+        "WorkspaceToolCapabilityConsumer",
+        "WorkspaceProcessCapabilityConsumer",
     }
 )
 
@@ -201,9 +240,7 @@ def _guarded_alias_violations(
         if isinstance(node, ast.AnnAssign):
             value_name = None if node.value is None else _call_name(node.value)
             if value_name in GUARDED_CONSTRUCTION_SYMBOLS:
-                violations.add(
-                    (path, "constructor_alias", ast.unparse(node.target))
-                )
+                violations.add((path, "constructor_alias", ast.unparse(node.target)))
             continue
 
         if isinstance(node, ast.ClassDef) and any(
@@ -289,9 +326,8 @@ def test_graph_and_profile_construction_sites_match_cla0_allowlist() -> None:
 
 
 def test_composition_binding_entrypoint_families_match_cla0_allowlist() -> None:
-    assert (
-        _construction_sites("bind_capability_composition_runtime")
-        == Counter(EXPECTED_COMPOSITION_BIND_CALLERS)
+    assert _construction_sites("bind_capability_composition_runtime") == Counter(
+        EXPECTED_COMPOSITION_BIND_CALLERS
     )
 
 
@@ -347,7 +383,9 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
         if isinstance(node, ast.Call)
     ]
     assert managed_calls.count("bind_capabilities") == 1
+    assert managed_calls.count("_root_owned_resource_handles") == 1
     assert managed_calls.count("bind_session_capabilities") == 1
+    assert managed_calls.count("resolve_session_capability_profile") == 1
     assert managed_calls.count("bind_session_side_question") == 1
 
     direct = _method_node(
@@ -412,6 +450,81 @@ def test_extension_generation_has_one_private_publication_entrypoint() -> None:
     )
 
 
+def test_cla6_extension_declaration_preflight_is_value_only_and_precedes_effects() -> (
+    None
+):
+    declaration_tree = _source_trees()[EXTENSION_DECLARATION_PATH]
+    dto_names = {
+        "ExtensionRuntimeCapabilityDeclaration",
+        "ExtensionCapabilityDeclarationSnapshot",
+    }
+    dto_nodes = {
+        node.name: node
+        for node in declaration_tree.body
+        if isinstance(node, ast.ClassDef) and node.name in dto_names
+    }
+    assert set(dto_nodes) == dto_names
+    forbidden_annotation_parts = ("Any", "Callable", "Mapping", "object")
+    for dto in dto_nodes.values():
+        annotations = (
+            ast.unparse(node.annotation)
+            for node in dto.body
+            if isinstance(node, ast.AnnAssign)
+        )
+        assert all(
+            part not in annotation
+            for annotation in annotations
+            for part in forbidden_annotation_parts
+        )
+
+    for path in EXTENSION_PREFLIGHT_PATHS:
+        tree = _source_trees()[path]
+        imported_modules = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+        } | {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        assert not any(
+            module.startswith("loushang.harness.capabilities")
+            for module in imported_modules
+        )
+        calls = {
+            _call_name(node.func)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+        }
+        assert (
+            not {
+                "RuntimeCapabilityGraphRuntime",
+                "RuntimeCapabilityGraphBinder",
+                "RuntimeCapabilityGraphProjector",
+            }
+            & calls
+        )
+
+    reload_generation = _method_node(
+        Path("src/loushang/harness/session/resource_refresh.py"),
+        "SessionResourceRefreshRuntime",
+        "reload_extension_generation",
+    )
+    call_lines: dict[str, list[int]] = {}
+    for node in ast.walk(reload_generation):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _call_name(node.func)
+        if name is not None:
+            call_lines.setdefault(name, []).append(node.lineno)
+    preflight_line = min(call_lines["declaration_preflight"])
+    assert preflight_line < min(call_lines["discover_resources_async"])
+    assert preflight_line < min(call_lines["activate"])
+    assert preflight_line < min(call_lines["publish"])
+
+
 def test_graph_binder_reuse_and_validation_precede_provider_construction() -> None:
     bind = _method_node(
         Path("src/loushang/harness/capabilities/graph_binding.py"),
@@ -463,10 +576,137 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
     )
     assert statuses == {
         "harness.model_input": "production-mounted",
-        "harness.resources": "source-complete",
-        "harness.workspace": "source-complete",
+        "harness.resources": "production-mounted",
+        "harness.session": "production-mounted",
+        "harness.workspace": "production-mounted",
     }
 
 
-def test_cla3_resources_provider_is_not_production_mounted() -> None:
-    assert _construction_sites("resources_capability_provider_binding") == Counter()
+def test_cla4_resources_provider_has_one_production_mount_owner() -> None:
+    assert _construction_sites("resources_capability_provider_binding") == Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession.__init__",
+            ): 1
+        }
+    )
+    for consumer in (
+        "ResourceActivationCapabilityConsumer",
+        "ResourceCommandPackCapabilityConsumer",
+        "ResourcePromptCapabilityConsumer",
+        "ResourceToolPackCapabilityConsumer",
+    ):
+        assert _construction_sites(consumer) == Counter()
+
+
+def test_cla5_workspace_has_one_product_binding_and_no_direct_session_consumer() -> (
+    None
+):
+    assert _construction_sites("workspace_capability_provider_binding") == Counter(
+        {
+            (
+                Path("src/loushang/coding/bootstrap.py"),
+                "_create_agent_session._create_session",
+            ): 1
+        }
+    )
+    assert _construction_sites("WorkspaceToolCapabilityConsumer") == Counter()
+    assert _construction_sites("WorkspaceProcessCapabilityConsumer") == Counter()
+
+
+def test_cla7_session_has_one_combined_provider_and_typed_consumer_owner() -> None:
+    assert _construction_sites("session_capability_provider_binding") == Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession.__init__",
+            ): 1
+        }
+    )
+    assert _construction_sites("_ResourceCompositionFacet") == Counter(
+        {
+            (
+                Path("src/loushang/harness/session/session_capability_provider.py"),
+                "session_capability_provider_binding.create",
+            ): 1
+        }
+    )
+    expected_private_facet_owner = Counter(
+        {
+            (
+                Path("src/loushang/harness/session/session_capability_provider.py"),
+                "session_capability_provider_binding.create",
+            ): 1
+        }
+    )
+    assert _construction_sites("_WorkspaceToolFacet") == expected_private_facet_owner
+    assert _construction_sites("_WorkspaceProcessFacet") == expected_private_facet_owner
+    assert _construction_sites("SessionSideQuestionCapabilityConsumer") == Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession._ensure_session_graph_prepared",
+            ): 1
+        }
+    )
+    assert _construction_sites("SessionTranscriptCapabilityConsumer") == Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession._ensure_session_graph_prepared",
+            ): 1
+        }
+    )
+    assert _construction_sites(
+        "SessionResourceCompositionCapabilityConsumer"
+    ) == Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession._ensure_session_graph_prepared",
+            ): 1
+        }
+    )
+    expected_session_consumer_owner = Counter(
+        {
+            (
+                Path("src/loushang/harness/session/agent_product.py"),
+                "AgentProductSession._ensure_session_graph_prepared",
+            ): 1
+        }
+    )
+    assert (
+        _construction_sites("SessionWorkspaceToolCapabilityConsumer")
+        == expected_session_consumer_owner
+    )
+    assert (
+        _construction_sites("SessionWorkspaceProcessCapabilityConsumer")
+        == expected_session_consumer_owner
+    )
+
+
+def test_cla4_session_has_no_peer_resource_profile_owner() -> None:
+    for path in (
+        Path("src/loushang/harness/session/agent_product.py"),
+        Path("src/loushang/harness/session/agent_adapter.py"),
+        Path("src/loushang/harness/session/composition.py"),
+        Path("src/loushang/harness/session/operations_runtime.py"),
+    ):
+        assert "_capability_runtime" not in path.read_text(encoding="utf-8")
+
+    coding_tree = _source_trees()[Path("src/loushang/coding/bootstrap.py")]
+    construction = next(
+        node.value
+        for node in coding_tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id == "_CODING_AGENT_PRODUCT_CONSTRUCTION"
+            for target in node.targets
+        )
+    )
+    assert isinstance(construction, ast.Call)
+    keywords = {keyword.arg for keyword in construction.keywords}
+    assert "resolve_session_capability_profile" in keywords
+    assert "bind_session_capabilities" not in keywords

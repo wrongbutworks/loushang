@@ -51,6 +51,20 @@ WORKSPACE_PROCESS_REQUIREMENT = CapabilityRequirement(
     compatible_contract=CapabilityContractRange.exact(1),
 )
 
+WORKSPACE_SESSION_COMPOSITION_REQUIREMENT = CapabilityRequirement(
+    capability="harness.workspace",
+    facets=(
+        WORKSPACE_READ_FACET,
+        WORKSPACE_LIST_FACET,
+        WORKSPACE_SEARCH_FACET,
+        WORKSPACE_WRITE_FACET,
+        WORKSPACE_EDIT_FACET,
+        WORKSPACE_PROCESS_LAUNCH_FACET,
+    ),
+    compatible_contract=CapabilityContractRange.exact(1),
+    optional=True,
+)
+
 __all__ = [
     "WORKSPACE_CAPABILITY_DEFINITION",
     "WORKSPACE_EDIT_FACET",
@@ -59,6 +73,7 @@ __all__ = [
     "WORKSPACE_PROCESS_REQUIREMENT",
     "WORKSPACE_READ_FACET",
     "WORKSPACE_SEARCH_FACET",
+    "WORKSPACE_SESSION_COMPOSITION_REQUIREMENT",
     "WORKSPACE_TOOL_REQUIREMENT",
     "WORKSPACE_WRITE_FACET",
 ]

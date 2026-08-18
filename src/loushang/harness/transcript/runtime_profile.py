@@ -253,6 +253,10 @@ class AgentTranscriptProfileRuntime:
             profile=self.selected_transcript_profile(binding),
             product_binding=binding,
             dispose=lambda: self._binder.dispose(binding),
+            runtime_profile_snapshot=profile.snapshot(),
+            get_compaction_capability=lambda: self.selected_compaction_capability(
+                binding
+            ),
         )
 
     def conversation_key(
@@ -291,6 +295,17 @@ class AgentTranscriptProfileRuntime:
         if not isinstance(value, AgentTranscriptProfile):
             raise TypeError(
                 f"selected {self.spec.product_name} transcript profile is invalid"
+            )
+        return value
+
+    def selected_compaction_capability(
+        self,
+        binding: RuntimeProfileBinding,
+    ) -> AgentTranscriptCompactionCapability:
+        value = binding.value(_COMPACTION_SLOT)
+        if not isinstance(value, AgentTranscriptCompactionCapability):
+            raise TypeError(
+                f"selected {self.spec.product_name} compaction capability is invalid"
             )
         return value
 

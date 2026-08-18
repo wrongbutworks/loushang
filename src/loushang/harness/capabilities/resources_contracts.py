@@ -50,6 +50,17 @@ RESOURCES_COMMAND_PACK_REQUIREMENT = CapabilityRequirement(
     facets=(COMMAND_PACKS_FACET,),
     compatible_contract=CapabilityContractRange.exact(1),
 )
+RESOURCES_SESSION_COMPOSITION_REQUIREMENT = CapabilityRequirement(
+    capability="harness.resources",
+    facets=(
+        RESOURCE_RUNTIME_FACET,
+        PROMPT_SECTIONS_FACET,
+        SKILL_ACTIVATION_FACET,
+        TOOL_PACKS_FACET,
+        COMMAND_PACKS_FACET,
+    ),
+    compatible_contract=CapabilityContractRange.exact(1),
+)
 
 __all__ = [
     "COMMAND_PACKS_FACET",
@@ -58,6 +69,7 @@ __all__ = [
     "RESOURCES_CAPABILITY_DEFINITION",
     "RESOURCES_COMMAND_PACK_REQUIREMENT",
     "RESOURCES_PROMPT_REQUIREMENT",
+    "RESOURCES_SESSION_COMPOSITION_REQUIREMENT",
     "RESOURCES_TOOL_PACK_REQUIREMENT",
     "RESOURCE_RUNTIME_FACET",
     "SKILL_ACTIVATION_FACET",

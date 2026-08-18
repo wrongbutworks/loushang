@@ -80,7 +80,9 @@ def test_session_composition_ports_are_grouped_by_assembly_phase() -> None:
         "agent",
         "session_manager",
         "settings",
-        "capability_runtime",
+        "product_id",
+        "resources",
+        "workspace",
         "foundation",
         "maintenance",
         "product",
@@ -91,6 +93,7 @@ def test_session_composition_ports_are_grouped_by_assembly_phase() -> None:
         "before_compaction",
         "after_compaction",
         "sleep_for_retry",
+        "get_compaction_capability",
     }
     assert {field.name for field in fields(SessionProductInputs)}.issuperset(
         {"model_registry", "extension_runner", "command_controller"}
@@ -109,23 +112,32 @@ def test_session_composition_ports_accept_the_former_flat_keyword_contract() -> 
         for field in fields(group)
     }
 
+    capability_runtime = SimpleNamespace(
+        profile=SimpleNamespace(product_id="legacy"),
+        resource_runtime=sentinel,
+        skill_activation=sentinel,
+        prompt_section_composer=sentinel,
+        tool_pack_composer=sentinel,
+        command_pack_composer=sentinel,
+    )
     ports = SessionCompositionPorts(
         agent=sentinel,  # type: ignore[arg-type]
         session_manager=sentinel,  # type: ignore[arg-type]
         settings=sentinel,  # type: ignore[arg-type]
-        capability_runtime=sentinel,  # type: ignore[arg-type]
+        capability_runtime=capability_runtime,  # type: ignore[arg-type]
         **dict.fromkeys(names, sentinel),
     )
 
     assert ports.foundation.resource_loader is sentinel
     assert ports.maintenance.execute_compaction is sentinel
     assert ports.product.model_registry is sentinel
+    assert ports.product_id == "legacy"
+    assert ports.resources.activation is sentinel
 
 
 def test_session_composition_is_a_frozen_assembly_result() -> None:
     assert SessionComposition.__dataclass_params__.frozen is True
     assert [field.name for field in fields(SessionComposition)] == [
-        "capability_runtime",
         "foundation",
         "maintenance",
         "product",

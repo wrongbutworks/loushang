@@ -96,9 +96,10 @@ def create_read_tool_definition(
     operations: ReadOperations | None = None,
     options: ReadToolOptions | None = None,
 ) -> ToolDefinition:
-    ops = normalize_read_operations(
-        operations or (options.operations if options is not None else None)
+    selected_operations = operations or (
+        options.operations if options is not None else None
     )
+    ops = normalize_read_operations(selected_operations)
     auto_resize_images = _resolve_auto_resize_images(options)
     image_resizer = _resolve_image_resizer(options)
 
@@ -120,10 +121,19 @@ def create_read_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         raise_if_operation_aborted(ctx.signal)
         resolved = resolve_tool_path(path, cwd=ctx.cwd)
-        payload = await _read_file_payload(resolved, operations=ops)
+        active_operations = (
+            normalize_read_operations(
+                ctx.operation_binding
+                if ctx.operation_binding is not None
+                else ops
+            )
+            if selected_operations is None
+            else ops
+        )
+        payload = await _read_file_payload(resolved, operations=active_operations)
         raise_if_operation_aborted(ctx.signal)
         mime_type = await _detect_supported_image_mime_type(
-            resolved, payload, operations=ops
+            resolved, payload, operations=active_operations
         )
         if mime_type is not None:
             model_supports_image_input = _model_supports_image_input(ctx.model)
@@ -294,6 +304,7 @@ def create_read_tool_definition(
         ),
         render_call=render_read_call,
         render_result=render_read_result,
+        operation_binding_key="read_operations",
     )
 
 

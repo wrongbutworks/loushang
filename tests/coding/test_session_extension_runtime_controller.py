@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 
 from loushang.harness.extensions.context import SessionStartEvent
+from loushang.harness.extensions.declarations import (
+    ExtensionGraphProviderRestartRequiredError,
+)
 from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
 
 
@@ -124,9 +127,7 @@ def test_extension_runtime_controller_uses_staged_reload_without_preinvalidating
     assert runner.start_reasons == ["reload"]
 
 
-def test_extension_runtime_controller_keeps_old_generation_on_staged_failure() -> (
-    None
-):
+def test_extension_runtime_controller_keeps_old_generation_on_staged_failure() -> None:
     runner = Runner()
     diagnostics: list[str] = []
 
@@ -152,6 +153,38 @@ def test_extension_runtime_controller_keeps_old_generation_on_staged_failure() -
     assert runner.invalidations == []
     assert runner.start_reasons == []
     assert diagnostics == ["extension_resource_refresh_failed"]
+
+
+def test_extension_runtime_controller_preserves_restart_required_diagnostic() -> None:
+    runner = Runner()
+    diagnostics = []
+
+    async def reload_generation(bindings: object) -> None:
+        del bindings
+        raise ExtensionGraphProviderRestartRequiredError(
+            capability_ids=("harness.resources",),
+            changed_slots=("prompt.sections",),
+            baseline_fingerprint="a" * 64,
+            candidate_fingerprint="b" * 64,
+        )
+
+    controller = ExtensionSessionRuntime(
+        extension_runtime=runner,
+        build_bindings=object,
+        session_start_event=SessionStartEvent(reason="startup"),
+        refresh_resources=lambda: None,
+        reload_generation=reload_generation,
+        record_runtime_diagnostic=diagnostics.append,
+        sync_extension_diagnostics=lambda *, phase: None,
+    )
+
+    asyncio.run(controller.bind(reason="reload"))
+
+    assert [item.code for item in diagnostics] == [
+        "extension_graph_provider_restart_required"
+    ]
+    assert diagnostics[0].details["restartRequired"] is True
+    assert runner.start_reasons == []
 
 
 def test_extension_runtime_controller_records_bind_failures() -> None:

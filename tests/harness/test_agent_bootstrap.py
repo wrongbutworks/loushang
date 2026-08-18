@@ -533,6 +533,105 @@ def test_agent_product_construction_late_binds_session_capabilities_and_disposes
     assert calls == ["bind:extensions", "dispose:bootstrap"]
 
 
+def test_agent_product_construction_resolves_final_profile_without_rebinding_resources(
+    monkeypatch,
+) -> None:
+    calls: list[object] = []
+    final_profile = object()
+
+    class StagedCapabilities:
+        skill_activation = "bootstrap-skills"
+        activate_resources = staticmethod(lambda bundle: bundle)
+        prompt_section_composer = "bootstrap-prompts"
+        tool_pack_composer = "bootstrap-tools"
+
+        def select_final_profile(self, profile: object) -> None:
+            calls.append(("select", profile))
+
+        def dispose(self) -> None:
+            calls.append("dispose")
+
+    staged = StagedCapabilities()
+
+    def construct(_self, request):
+        session = request.session_factory(
+            object(),
+            object(),
+            "extensions",
+            None,
+            None,
+            "prompt",
+            None,
+        )
+        return SimpleNamespace(session=session)
+
+    monkeypatch.setattr(
+        bootstrap_construction_module.AgentProductConstructionRuntime,
+        "construct",
+        construct,
+    )
+    services = BootstrapServices(
+        settings_manager=SimpleNamespace(
+            get_settings=lambda: SimpleNamespace(thinking_level="off")
+        ),
+        model_registry=object(),
+        resource_loader=object(),
+        diagnostics_service=object(),
+    )
+    sessions: list[object] = []
+    bind_calls = 0
+
+    def bind_once() -> object:
+        nonlocal bind_calls
+        bind_calls += 1
+        return staged
+
+    binding = AgentProductConstructionBinding[
+        object,
+        object,
+        object,
+    ](
+        default_system_prompt="research",
+        bind_capabilities=cast(Any, bind_once),
+        resolve_session_capability_profile=lambda extensions: (
+            calls.append(("resolve", extensions)) or cast(Any, final_profile)
+        ),
+        create_extension_runtime=lambda bundle: bundle,
+        source_identity_check=lambda _cwd: cast(Any, None),
+        list_tool_definitions=lambda _runtime: (),
+        get_tool_source_info=lambda _runtime, _name: None,
+    )
+
+    binding.construct(
+        services=services,
+        package_materializer=cast(Any, "materializer"),
+        session_id="session",
+        cwd="/research",
+        extension_flag_values=None,
+        explicit_system_prompt=None,
+        append_system_prompt=(),
+        model=None,
+        thinking_level=None,
+        tools=None,
+        tool_registry=None,
+        allowed_tool_names=None,
+        active_tool_names=None,
+        no_tools=None,
+        stream_fn=None,
+        convert_to_llm=lambda value: value,
+        agent_factory=lambda **_kwargs: object(),
+        session_factory=lambda capabilities, *_args: (
+            sessions.append(capabilities) or object()
+        ),
+        on_default_model_unavailable=lambda *_args: None,
+        set_scoped_models=lambda *_args: None,
+    )
+
+    assert bind_calls == 1
+    assert sessions == [staged]
+    assert calls == [("resolve", "extensions"), ("select", final_profile)]
+
+
 def test_agent_product_construction_disposes_late_bound_capabilities_on_failure(
     monkeypatch,
 ) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Generic, TypeVar, cast
+from typing import Generic, Protocol, TypeVar, cast
 
 from loushang.ai.model import Model
 from loushang.ai.model.selection import ModelSelection
@@ -18,9 +18,13 @@ from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
-from loushang.harness.resources.activation import ResourceActivation
+from loushang.harness.resources.activation import (
+    ResourceActivation,
+    SkillActivationRuntime,
+)
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.runtime import ResolvedRuntimeProfile
 from loushang.harness.session.bootstrap_configuration import (
     ExtensionFlagValues,
     SourceIdentityCheck,
@@ -42,6 +46,16 @@ from loushang.harness.session.model_resolution import (
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+
+class _RootOwnedResourceHandles(Protocol):
+    skill_activation: SkillActivationRuntime
+    prompt_section_composer: PromptSectionComposer
+    tool_pack_composer: CapabilityPackComposer
+
+    def activate_resources(self, bundle: ResourceBundle) -> ResourceActivation: ...
+
+    def dispose(self) -> None: ...
 
 AgentT = TypeVar("AgentT")
 SessionT = TypeVar("SessionT")
@@ -437,6 +451,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
     bind_session_side_question: (
         Callable[[StandardExtensionT], LegacySideQuestionBinding] | None
     ) = None
+    resolve_session_capability_profile: (
+        Callable[[StandardExtensionT], ResolvedRuntimeProfile] | None
+    ) = None
 
     def construct(
         self,
@@ -495,6 +512,9 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
 
         settings = services.settings_manager.get_settings()
         bootstrap_capability_runtime = self.bind_capabilities()
+        bootstrap_capability_handles = _root_owned_resource_handles(
+            bootstrap_capability_runtime
+        )
         session_capability_runtimes: list[CapabilityCompositionRuntime] = []
         session_side_question_bindings: list[LegacySideQuestionBinding] = []
 
@@ -507,11 +527,17 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             prompt: str,
             mode: NoToolsMode | None,
         ) -> SessionT:
-            capability_runtime = (
-                self.bind_session_capabilities(extension_runtime)
-                if self.bind_session_capabilities is not None
-                else bootstrap_capability_runtime
-            )
+            if self.resolve_session_capability_profile is not None:
+                bootstrap_capability_runtime.select_final_profile(
+                    self.resolve_session_capability_profile(extension_runtime)
+                )
+                capability_runtime = bootstrap_capability_runtime
+            else:
+                capability_runtime = (
+                    self.bind_session_capabilities(extension_runtime)
+                    if self.bind_session_capabilities is not None
+                    else bootstrap_capability_runtime
+                )
             session_capability_runtimes.append(capability_runtime)
             side_question_binding = (
                 self.bind_session_side_question(extension_runtime)
@@ -592,7 +618,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                         diagnostics_service=services.diagnostics_service,
                         package_materializer=package_materializer,
                         skill_activation_runtime=(
-                            bootstrap_capability_runtime.skill_activation
+                            bootstrap_capability_handles.skill_activation
                         ),
                         session_id=session_id,
                         cwd=cwd,
@@ -602,17 +628,17 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                     ),
                     ports=AgentProductConstructionPorts(
                         activate_resources=(
-                            bootstrap_capability_runtime.activate_resources
+                            bootstrap_capability_handles.activate_resources
                         ),
                         prompt_section_composer=(
-                            bootstrap_capability_runtime.prompt_section_composer
+                            bootstrap_capability_handles.prompt_section_composer
                         ),
                         tool_pack_composer=(
-                            bootstrap_capability_runtime.tool_pack_composer
+                            bootstrap_capability_handles.tool_pack_composer
                         ),
                         list_tool_definitions=self.list_tool_definitions,
                         get_tool_source_info=self.get_tool_source_info,
-                        dispose_capabilities=bootstrap_capability_runtime.dispose,
+                        dispose_capabilities=bootstrap_capability_handles.dispose,
                     ),
                     default_system_prompt=self.default_system_prompt,
                     explicit_system_prompt=explicit_system_prompt,
@@ -690,6 +716,16 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                         )
                 raise
         return result
+
+
+def _root_owned_resource_handles(
+    runtime: CapabilityCompositionRuntime,
+) -> _RootOwnedResourceHandles:
+    """Adapt legacy test/Product fakes while canonical code uses narrow handles."""
+
+    factory = getattr(runtime, "_root_owned_handles", None)
+    value = factory() if callable(factory) else runtime
+    return cast(_RootOwnedResourceHandles, value)
 
 
 __all__ = [

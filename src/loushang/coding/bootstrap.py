@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from functools import partial
@@ -28,7 +29,7 @@ from loushang.coding.lsp.ports import WorkspaceTextReader
 from loushang.coding.lsp.runtime import (
     CodingLspRuntime,
     DeferredCodingLspRuntime,
-    bind_coding_lsp_runtime,
+    _bind_coding_lsp_runtime_from_launcher,
 )
 from loushang.coding.lsp.tool_pack import register_coding_lsp_tools
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
@@ -41,15 +42,23 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.runtime_capability_admission import (
-    bind_coding_capability_composition_runtime,
     bind_coding_side_question,
+    resolve_coding_capability_profile,
 )
-from loushang.coding.sandbox import bind_coding_sandbox_runtime
+from loushang.coding.sandbox import (
+    bind_coding_sandbox_runtime,
+    coding_workspace_execution_profile,
+)
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
+from loushang.coding.workspace_operations import CodingWorkspaceOperations
 from loushang.harness.approval import (
     InteractiveApprovalResolver,
     approval_actor_id,
+)
+from loushang.harness.authorization import (
+    EffectiveExecutionProfile,
+    constrain_execution_profile,
 )
 from loushang.harness.bootstrap import (
     create_standard_resource_bootstrap_runtime,
@@ -57,6 +66,9 @@ from loushang.harness.bootstrap import (
 from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
+)
+from loushang.harness.capabilities.workspace_provider import (
+    workspace_capability_provider_binding,
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.types import StartupCheckResult
@@ -97,12 +109,44 @@ from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
+from loushang.harness.workspace.operations import LOCAL_TOOL_OPERATIONS
+from loushang.harness.workspace.process import (
+    AuthorizedProcessLauncher,
+    ProcessHandle,
+    ProcessLaunchRequest,
+)
 
 AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
 ExtensionFlagValues = Mapping[str, bool | str]
 CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
+
+
+class _DeferredWorkspaceProcessLauncher:
+    def __init__(self) -> None:
+        self._launcher: AuthorizedProcessLauncher | None = None
+
+    def bind(self, launcher: AuthorizedProcessLauncher) -> None:
+        if self._launcher is not None:
+            raise RuntimeError("workspace process launcher is already bound")
+        self._launcher = launcher
+
+    async def start(
+        self,
+        request: ProcessLaunchRequest,
+        *,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> ProcessHandle:
+        launcher = self._launcher
+        if launcher is None:
+            raise RuntimeError("workspace process launcher is not yet bound")
+        return await launcher.start(
+            request,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
 
 
 def create_services(
@@ -350,6 +394,41 @@ def _create_agent_session(
         session_no_tools_mode: NoToolsMode | None,
     ) -> AgentSession:
         base_exec_service = services.exec_service or ExecService()
+        workspace_root_path = Path(session_manager.get_cwd()).resolve()
+        workspace_execution_profile = (
+            coding_workspace_execution_profile(
+                workspace_root_path,
+                writable=sandbox_workspace_writable,
+            )
+            if workspace_root_path.is_dir()
+            else EffectiveExecutionProfile(
+                readable_roots=(workspace_root_path,),
+                writable_roots=(workspace_root_path,)
+                if sandbox_workspace_writable
+                else (),
+                network="allowed",
+            )
+        )
+        requested_profiles = (
+            getattr(base_exec_service, "execution_profile", None),
+            (
+                delegated_execution_profile.execution_profile_ceiling
+                if delegated_execution_profile is not None
+                else None
+            ),
+        )
+        for requested_profile in requested_profiles:
+            if requested_profile is None:
+                continue
+            if not isinstance(requested_profile, EffectiveExecutionProfile):
+                raise TypeError(
+                    "Coding workspace execution ceiling must be an "
+                    "EffectiveExecutionProfile"
+                )
+            workspace_execution_profile = constrain_execution_profile(
+                workspace_execution_profile,
+                requested_profile,
+            )
         sandbox_runtime = bind_coding_sandbox_runtime(
             workspace_root=session_manager.get_cwd(),
             writable_workspace=sandbox_workspace_writable,
@@ -357,35 +436,57 @@ def _create_agent_session(
             base_exec_service=base_exec_service,
             diagnostics_service=services.diagnostics_service,
             session_id=session_id,
-            execution_profile=(
-                delegated_execution_profile.execution_profile_ceiling
-                if delegated_execution_profile is not None
-                else None
+            execution_profile=workspace_execution_profile,
+        )
+        process_session: AgentSession | None = None
+
+        async def emit_process_audit_event(event: Mapping[str, object]) -> None:
+            if process_session is None:
+                raise RuntimeError("Coding workspace Session is not yet bound")
+            await process_session.emit_product_tool_audit_event(event)
+
+        authorized_process_launcher = sandbox_runtime.bind_process_launcher(
+            ProcessExecutionScope(
+                policy_evaluator=tool_policy_evaluator,
+                approval_resolver=approval_resolver,
+                audit_sink=emit_process_audit_event,
+                execution_profile_ceiling=workspace_execution_profile,
+            )
+        )
+        workspace_root = str(workspace_root_path)
+        workspace_binding_fingerprint = hashlib.sha256(
+            "\0".join(
+                (
+                    "coding.workspace.standard.v1",
+                    *(str(path) for path in workspace_execution_profile.readable_roots),
+                    "--writable--",
+                    *(str(path) for path in workspace_execution_profile.writable_roots),
+                    "--denied--",
+                    *(str(path) for path in workspace_execution_profile.denied_roots),
+                    f"network:{workspace_execution_profile.network}",
+                )
+            ).encode("utf-8")
+        ).hexdigest()
+        workspace_binding = workspace_capability_provider_binding(
+            operations=CodingWorkspaceOperations(
+                root=workspace_root_path,
+                operations=LOCAL_TOOL_OPERATIONS,
+                execution_profile=workspace_execution_profile,
             ),
+            process_launcher=authorized_process_launcher,
+            scope_instance_id=f"workspace:{workspace_root}",
+            binding_input_fingerprint=workspace_binding_fingerprint,
+            provider_id="coding.workspace.standard",
+            source_id="coding",
         )
         lsp_runtime: CodingLspRuntime | None = None
-        lsp_session: AgentSession | None = None
+        deferred_lsp_launcher: _DeferredWorkspaceProcessLauncher | None = None
         if lsp_slot is not None:
-
-            async def emit_lsp_audit_event(event: Mapping[str, object]) -> None:
-                if lsp_session is None:
-                    raise RuntimeError("Coding LSP session is not yet bound")
-                await lsp_session.emit_product_tool_audit_event(event)
-
-            lsp_runtime = bind_coding_lsp_runtime(
+            deferred_lsp_launcher = _DeferredWorkspaceProcessLauncher()
+            lsp_runtime = _bind_coding_lsp_runtime_from_launcher(
                 workspace_root=session_manager.get_cwd(),
                 definitions=resolved_lsp_definitions,
-                process_launcher_binder=sandbox_runtime,
-                execution_scope=ProcessExecutionScope(
-                    policy_evaluator=tool_policy_evaluator,
-                    approval_resolver=approval_resolver,
-                    audit_sink=emit_lsp_audit_event,
-                    execution_profile_ceiling=getattr(
-                        sandbox_runtime.exec_service,
-                        "execution_profile",
-                        None,
-                    ),
-                ),
+                process_launcher=deferred_lsp_launcher,
                 read_text=lsp_read_text or _read_lsp_workspace_text,
                 baseline_environment=resolved_lsp_environment,
             )
@@ -419,8 +520,11 @@ def _create_agent_session(
             sandbox_runtime=sandbox_runtime,
             lsp_runtime=lsp_runtime,
             delegated_execution_profile=delegated_execution_profile,
+            workspace_capability_binding=workspace_binding,
         )
-        lsp_session = child_session
+        process_session = child_session
+        if deferred_lsp_launcher is not None:
+            deferred_lsp_launcher.bind(child_session.get_workspace_process_launcher())
         return child_session
 
     result = _CODING_AGENT_PRODUCT_CONSTRUCTION.construct(
@@ -706,8 +810,10 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
     source_identity_check=_source_identity_startup_check,
     list_tool_definitions=lambda runner: runner.list_tool_definitions(),
     get_tool_source_info=lambda runner, name: runner.get_tool_source_info(name),
-    bind_session_capabilities=bind_coding_capability_composition_runtime,
     bind_session_side_question=bind_coding_side_question,
+    resolve_session_capability_profile=lambda runner: (
+        resolve_coding_capability_profile(runner.active_extensions).profile
+    ),
     product_tool_pack_id="coding.registry",
     extension_tool_pack_id="coding.extensions",
 )

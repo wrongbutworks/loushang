@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -529,6 +530,188 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
         "origin": "top-level",
         "baseDir": None,
     }
+
+
+@pytest.mark.parametrize(
+    ("slot", "expected_capability"),
+    (
+        ("prompt.sections", "harness.resources"),
+        ("interaction.side_question", "harness.session"),
+    ),
+)
+def test_agent_session_rejects_extension_graph_provider_change_before_reload(
+    tmp_path,
+    slot: str,
+    expected_capability: str,
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.resource_runtime import CodingResourceLoader
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.extensions.declarations import (
+        ExtensionCapabilityDeclarationSnapshot,
+        ExtensionRuntimeCapabilityDeclaration,
+    )
+    from loushang.harness.resources.types import ResourceBundle
+
+    events: list[str] = []
+    candidate_snapshot = ExtensionCapabilityDeclarationSnapshot(
+        declarations=(
+            ExtensionRuntimeCapabilityDeclaration(
+                extension_id="demo",
+                slot=slot,
+                name="replacement",
+                implementation_version=2,
+                priority=10,
+                granted_permissions=(slot,),
+            ),
+        )
+    )
+
+    class Candidate:
+        capability_declarations = candidate_snapshot
+
+        async def discover_resources_async(self, bundle, *, reason):
+            del bundle, reason
+            events.append("discover")
+            raise AssertionError("preflight must run before discovery")
+
+        async def activate(self, bindings) -> None:
+            del bindings
+            events.append("activate")
+
+        async def rollback(self) -> None:
+            events.append("rollback")
+
+    class Runner(ExtensionRunner):
+        def prepare_generation(self, extensions):
+            del extensions
+            return Candidate()
+
+    class Loader(CodingResourceLoader):
+        def reload_resources(self, cwd):
+            return ResourceBundle(cwd=Path(cwd))
+
+    diagnostics = DiagnosticsService()
+    runner = Runner([LoadedExtension(name="demo", source_path=tmp_path / "demo.py")])
+    session = AgentSession(
+        agent=Agent(initial_state={"system_prompt": "Base prompt.", "tools": []}),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+        ),
+        extension_runner=runner,
+        resource_loader=Loader(),
+        resource_bundle=ResourceBundle(cwd=tmp_path),
+        diagnostics_service=diagnostics,
+    )
+
+    asyncio.run(session.prepare_model_call_runtime())
+    before_view = session.get_effective_runtime_view()
+    before_mount = before_view.clocks.mount
+    before_registration = before_view.clocks.registration
+    before_resource_revision = (
+        session._composition.resource_refresh_runtime.resource_revision
+    )
+
+    asyncio.run(session.reload_extension_runtime())
+
+    after_mount = session.get_effective_runtime_view().clocks.mount
+    assert events == ["rollback"]
+    assert runner.generation == 1
+    assert before_resource_revision == 1
+    assert session._composition.resource_refresh_runtime.resource_revision == 1
+    assert after_mount == before_mount
+    assert session.get_effective_runtime_view().clocks.registration == (
+        before_registration
+    )
+    records = [
+        record
+        for record in diagnostics.get_diagnostics()
+        if record.code == "extension_graph_provider_restart_required"
+    ]
+    assert len(records) == 1
+    assert records[0].type == "error"
+    assert records[0].details["restartRequired"] is True
+    assert records[0].details["capabilityIds"] == [expected_capability]
+    asyncio.run(session.dispose())
+
+
+def test_agent_session_content_only_extension_reload_keeps_mount_generation(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.resource_runtime import CodingResourceLoader
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner
+    from loushang.harness.resources.types import ExtensionDescriptor, ResourceBundle
+
+    source = tmp_path / "demo.py"
+    source.write_text(
+        "def _on_start(event, context):\n"
+        "    del event, context\n"
+        "\n"
+        "def register(api):\n"
+        "    api.on('session_start', _on_start)\n",
+        encoding="utf-8",
+    )
+    descriptor = ExtensionDescriptor(
+        name="demo",
+        source_path=source,
+        entry_path=source,
+    )
+
+    class Loader(CodingResourceLoader):
+        def reload_resources(self, cwd):
+            return ResourceBundle(cwd=Path(cwd), extensions=[descriptor])
+
+    runner = ExtensionRunner([descriptor])
+    session = AgentSession(
+        agent=Agent(initial_state={"system_prompt": "Base prompt.", "tools": []}),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+        ),
+        extension_runner=runner,
+        resource_loader=Loader(),
+        resource_bundle=ResourceBundle(cwd=tmp_path, extensions=[descriptor]),
+    )
+    asyncio.run(session.prepare_model_call_runtime())
+    before_mount = session.get_effective_runtime_view().clocks.mount
+    before_resource_revision = (
+        session._composition.resource_refresh_runtime.resource_revision
+    )
+    graph_bind_calls = 0
+    original_graph_bind = session._capability_graph_binder.bind
+
+    async def count_graph_bind(*args, **kwargs):  # type: ignore[no-untyped-def]
+        nonlocal graph_bind_calls
+        graph_bind_calls += 1
+        return await original_graph_bind(*args, **kwargs)
+
+    monkeypatch.setattr(session._capability_graph_binder, "bind", count_graph_bind)
+
+    source.write_text(
+        "def _on_start(event, context):\n"
+        "    del event, context\n"
+        "    marker = 'content-v2'\n"
+        "    del marker\n"
+        "\n"
+        "def register(api):\n"
+        "    api.on('session_start', _on_start)\n",
+        encoding="utf-8",
+    )
+    asyncio.run(session.reload_extension_runtime())
+
+    assert runner.generation == 2
+    assert session._composition.resource_refresh_runtime.resource_revision == (
+        before_resource_revision + 1
+    )
+    assert session.get_effective_runtime_view().clocks.mount == before_mount
+    assert graph_bind_calls == 0
+    asyncio.run(session.dispose())
 
 
 def test_agent_session_extension_registers_explicit_tool_routes_live(

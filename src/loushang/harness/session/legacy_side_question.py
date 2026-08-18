@@ -8,7 +8,7 @@ live Product Session that binds the selected factory to its context.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import cast
 
 from loushang.harness.capabilities.composition_runtime import (
@@ -31,6 +31,7 @@ class LegacySideQuestionBinding:
 
     _binding: RuntimeProfileBinding
     _binder: RuntimeProfileBinder
+    _ownership_state: str = field(default="root_owned", init=False)
 
     @property
     def provider_factory(self) -> SideQuestionProviderFactory | None:
@@ -47,8 +48,54 @@ class LegacySideQuestionBinding:
     def is_closed(self) -> bool:
         return self._binding.is_closed
 
+    @property
+    def profile(self) -> ResolvedRuntimeProfile:
+        return self._binding.profile
+
+    @property
+    def ownership_state(self) -> str:
+        return self._ownership_state
+
+    def _begin_graph_construction(self) -> None:
+        if self._ownership_state != "root_owned":
+            raise RuntimeError(
+                "side-question binding is not owned by the Session construction root"
+            )
+        self._ownership_state = "graph_constructing"
+
+    def _commit_graph_ownership(self) -> None:
+        if self._ownership_state != "graph_constructing":
+            raise RuntimeError("side-question binding is not being graph-constructed")
+        self._ownership_state = "graph_owned"
+
+    def _restore_root_ownership(self) -> None:
+        if self._ownership_state != "graph_constructing":
+            raise RuntimeError("side-question binding is not being graph-constructed")
+        self._ownership_state = "root_owned"
+
+    def _rollback_unpublished_graph_ownership(self) -> None:
+        """Return an unpublished Provider candidate to its construction root."""
+
+        if self._ownership_state not in {"graph_constructing", "graph_owned"}:
+            raise RuntimeError("side-question binding is not an unpublished candidate")
+        self._ownership_state = "root_owned"
+
+    def _dispose_graph_owned(self) -> None:
+        self._dispose_owned(expected="graph_owned")
+
     def dispose(self) -> None:
+        self._dispose_owned(expected="root_owned")
+
+    def _dispose_owned(self, *, expected: str) -> None:
+        if self._ownership_state == "disposed":
+            return
+        if self._ownership_state != expected:
+            raise RuntimeError(
+                "side-question binding has a different lifecycle owner: "
+                f"{self._ownership_state}"
+            )
         self._binder.dispose_sync(self._binding)
+        self._ownership_state = "disposed"
 
 
 def bind_legacy_side_question(

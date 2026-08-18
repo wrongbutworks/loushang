@@ -179,6 +179,78 @@ def test_custom_authorized_tool_executes_only_through_the_gateway() -> None:
     assert result.details == "origin"
 
 
+def test_authorized_tool_receives_only_declared_operation_bindings() -> None:
+    read_operations = object()
+    write_operations = object()
+
+    @dataclass
+    class Gateway:
+        async def execute(
+            self,
+            prepared: PreparedToolAction,
+            handler,
+            context: AuthorizedToolContext,
+        ) -> AgentToolResult[str]:
+            action = AuthorizedToolAction(
+                tool_name=prepared.tool_name,
+                authorization_arguments=prepared.authorization_arguments,
+                execution_arguments=prepared.execution_arguments,
+                cwd=prepared.cwd,
+                fingerprint="fingerprint",
+                policy_code="allow_test",
+            )
+            return await handler(action, context)
+
+    async def run(
+        action: AuthorizedToolAction,
+        context: AuthorizedToolContext,
+    ) -> AgentToolResult[str]:
+        del action
+        assert context.operation_bindings == {
+            "read_operations": read_operations,
+        }
+        return _result("filtered")
+
+    def prepare(call: ToolCall, context: ToolCallContext) -> PreparedToolAction:
+        assert context.operation_bindings == {}
+        return PreparedToolAction(
+            tool_name=call.name,
+            authorization_arguments=call.arguments,
+            execution_arguments=call.arguments,
+            cwd=context.cwd,
+        )
+
+    definition = ToolDefinition(
+        name="read_only",
+        label="Read only",
+        description="Read through one declared workspace facet",
+        parameters={"type": "object"},
+        execution=AuthorizedExecution(
+            action_adapter=CallableToolActionAdapter(
+                prepare
+            ),
+            handler=run,
+        ),
+        operation_binding_key="read_operations",
+    )
+
+    result = asyncio.run(
+        ToolExecutionHost(Gateway()).dispatch(
+            definition,
+            _call("read_only"),
+            ToolCallContext(
+                tool_call_id="call-1",
+                operation_bindings={
+                    "read_operations": read_operations,
+                    "write_operations": write_operations,
+                },
+            ),
+        )
+    )
+
+    assert result.details == "filtered"
+
+
 def test_every_builtin_workspace_tool_uses_authorized_execution() -> None:
     definitions = create_all_tool_definitions()
 

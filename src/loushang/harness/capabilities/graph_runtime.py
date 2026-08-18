@@ -201,6 +201,10 @@ class RuntimeCapabilityGraphRuntime:
     def is_closed(self) -> bool:
         return self._closed
 
+    @property
+    def has_pending_retirements(self) -> bool:
+        return bool(self._retired_nodes or self._retired_scopes)
+
     def capture(self, requirement: CapabilityRequirement) -> CapabilityFacetSet:
         """Capture only the facets explicitly declared by one Consumer."""
 

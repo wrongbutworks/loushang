@@ -15,20 +15,38 @@ from loushang.ai.model import ModelSelection
 from loushang.foundation.json import JSONValue
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
+    MODEL_INPUT_CAPABILITY_DEFINITION,
     MODEL_INPUT_PREPARATION_REQUIREMENT,
+    RESOURCES_CAPABILITY_DEFINITION,
+    WORKSPACE_CAPABILITY_DEFINITION,
+    CapabilityBundleProviderBinding,
     CapabilityCompositionRuntime,
     CapabilityGraphExplanation,
+    CapabilityGraphPlanRequest,
     EffectiveRuntimeDiff,
     EffectiveRuntimeView,
     RegistrationExplanation,
     RegistrationInventoryEntry,
     RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphProjector,
     RuntimeCapabilityGraphRuntime,
     RuntimeProfileSlotExplanation,
+    ScopedSourcePublicationReference,
 )
 from loushang.harness.capabilities.effective_runtime import (
     runtime_profile_fingerprint,
+)
+from loushang.harness.capabilities.resources_provider import (
+    resources_capability_provider_binding,
+)
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_CAPABILITY_DEFINITION,
+    SESSION_RESOURCE_COMPOSITION_REQUIREMENT,
+    SESSION_SIDE_QUESTION_REQUIREMENT,
+    SESSION_TRANSCRIPT_REQUIREMENT,
+    SESSION_WORKSPACE_PROCESS_REQUIREMENT,
+    SESSION_WORKSPACE_TOOL_REQUIREMENT,
 )
 from loushang.harness.config.agent import (
     CompactionSettings,
@@ -60,7 +78,8 @@ from loushang.harness.runtime import (
     CancellationSignal,
     ResolvedRuntimeProfile,
     SideQuestionAnswer,
-    SideQuestionCoordinator,
+    SideQuestionProvider,
+    SideQuestionProviderFactory,
     SideQuestionUpdate,
 )
 from loushang.harness.runtime.registration import (
@@ -88,6 +107,8 @@ from loushang.harness.session.composition import (
     SessionMaintenanceInputs,
     SessionModelCatalogPort,
     SessionProductInputs,
+    SessionResourceCompositionPorts,
+    SessionWorkspaceCompositionPorts,
     compose_session_runtime,
     supports_prepare_model_call,
 )
@@ -103,10 +124,30 @@ from loushang.harness.session.model_call import (
     build_session_model_call_capability_binding,
 )
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
+from loushang.harness.session.resource_capability_ports import (
+    SessionResourceCapabilityPorts,
+)
+from loushang.harness.session.resource_refresh import ExtensionDeclarationPreflight
+from loushang.harness.session.session_capability_consumer import (
+    SessionResourceCompositionCapabilityConsumer,
+    SessionSideQuestionCapabilityConsumer,
+    SessionTranscriptCapabilityConsumer,
+    SessionWorkspaceProcessCapabilityConsumer,
+    SessionWorkspaceToolCapabilityConsumer,
+)
+from loushang.harness.session.session_capability_provider import (
+    session_capability_provider_binding,
+)
+from loushang.harness.session.session_transcript_capability_ports import (
+    SessionTranscriptCapabilityPorts,
+)
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.side_question import (
     SIDE_QUESTION_BOUNDARY_PROMPT,
     AgentSideQuestionProvider,
+)
+from loushang.harness.session.workspace_capability_ports import (
+    SessionWorkspaceCapabilityPorts,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
@@ -117,6 +158,7 @@ from loushang.harness.transcript import (
     ProductTranscriptSession,
 )
 from loushang.harness.workspace.exec import ExecService
+from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 BranchSummaryExecutor = Callable[..., Awaitable[BranchSummaryOutput]]
 ChangelogProvider = Callable[[str, str], object]
@@ -128,9 +170,7 @@ def _require_durable_summary_executor(
     callback: Callable[..., object], *, name: str
 ) -> None:
     if not supports_prepare_model_call(callback):
-        raise ValueError(
-            f"durable Product {name} must accept prepare_model_call"
-        )
+        raise ValueError(f"durable Product {name} must accept prepare_model_call")
 
 
 class FooterDataPort(Protocol):
@@ -181,6 +221,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
         tool_exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
         tool_policy_evaluator: PolicyEvaluator | None = None,
+        workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
+        extension_declaration_preflight: ExtensionDeclarationPreflight | None = None,
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model
@@ -200,6 +242,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._resource_loader = resource_loader
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
+        self._extension_declaration_preflight = extension_declaration_preflight
         self._extension_bridge = AgentSessionExtensionBridge()
         if (
             session_manager.persist
@@ -223,13 +266,25 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 execute_branch_summary,
                 name="branch-summary executor",
             )
-        self._capability_runtime: CapabilityCompositionRuntime | None = (
+        self._capability_profile_provider: (
+            Callable[[], ResolvedRuntimeProfile] | None
+        ) = lambda: capability_runtime.profile
+        self._staged_resource_candidate: CapabilityCompositionRuntime | None = (
             capability_runtime
         )
-        runtime_id = (
-            "session:" + str(self.session_manager.get_session_record().session_id)
+        self._resource_capability_ports = SessionResourceCapabilityPorts(
+            capability_runtime
+        )
+        runtime_id = "session:" + str(
+            self.session_manager.get_session_record().session_id
         )
         initial_profile = capability_runtime.profile.snapshot()
+        if (
+            workspace_capability_binding is not None
+            and workspace_capability_binding.provider.capability_id
+            != WORKSPACE_CAPABILITY_DEFINITION.capability_id
+        ):
+            raise ValueError("Session workspace binding must provide harness.workspace")
         self._capability_graph_runtime = RuntimeCapabilityGraphRuntime(
             product_id=initial_profile.product_id,
             runtime_id=runtime_id,
@@ -241,22 +296,87 @@ class AgentProductSession(AgentSessionAdapterMixin):
         )
         self._model_call_bind_lock = asyncio.Lock()
         self._model_call_consumer: SessionModelCallCapabilityConsumer | None = None
+        self._workspace_capability_ports = SessionWorkspaceCapabilityPorts(
+            self._ensure_session_graph_prepared
+        )
+        self._staged_transcript_candidate = (
+            session_manager.transcript_capability_candidate()
+        )
+        self._transcript_capability_ports = SessionTranscriptCapabilityPorts(
+            self._staged_transcript_candidate
+        )
+        self._resource_capability_binding = resources_capability_provider_binding(
+            profile=capability_runtime.profile,
+            scope_instance_id=runtime_id,
+            staged_candidate=capability_runtime,
+        )
+        self._workspace_capability_binding = workspace_capability_binding
+        self._staged_side_question_candidate: LegacySideQuestionBinding | None = (
+            side_question_binding
+            if side_question_binding is not None
+            else bind_legacy_side_question(capability_runtime.profile)
+        )
+        self._session_capability_binding = session_capability_provider_binding(
+            scope_instance_id=runtime_id,
+            staged_side_question=self._staged_side_question_candidate,
+            staged_transcript=self._staged_transcript_candidate,
+            bind_provider=self._bind_selected_side_question_provider,
+        )
         self._model_call_capability_binding = (
             build_session_model_call_capability_binding(
-                transcript=session_manager,
+                transcript=self._transcript_capability_ports,
                 projector=self._capability_graph_projector,
                 product_id=initial_profile.product_id,
                 runtime_id=runtime_id,
+                conversation_id=(self.session_manager.get_session_record().session_id),
                 is_current=self._is_current_model_call_session,
                 registration_entries_provider=self._effective_registration_entries,
                 profile_fingerprint_provider=self._current_profile_fingerprint,
+                session_provider=self._session_capability_binding.provider,
+                resources_provider=self._resource_capability_binding.provider,
+                workspace_provider=(
+                    workspace_capability_binding.provider
+                    if workspace_capability_binding is not None
+                    else None
+                ),
+            )
+        )
+        self._side_question_consumer: SessionSideQuestionCapabilityConsumer | None = (
+            None
+        )
+        self._transcript_consumer: SessionTranscriptCapabilityConsumer | None = None
+        workspace_binding = self._workspace_capability_binding
+        workspace_definitions = (
+            (WORKSPACE_CAPABILITY_DEFINITION,) if workspace_binding is not None else ()
+        )
+        self._session_capability_plan = RuntimeCapabilityGraphPlanner().plan(
+            CapabilityGraphPlanRequest(
+                product_id=initial_profile.product_id,
+                roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+                definitions=(
+                    MODEL_INPUT_CAPABILITY_DEFINITION,
+                    RESOURCES_CAPABILITY_DEFINITION,
+                    SESSION_CAPABILITY_DEFINITION,
+                    *workspace_definitions,
+                ),
+                providers=(
+                    self._model_call_capability_binding.provider_binding.provider,
+                    self._resource_capability_binding.provider,
+                    self._session_capability_binding.provider,
+                    *(
+                        (workspace_binding.provider,)
+                        if workspace_binding is not None
+                        else ()
+                    ),
+                ),
             )
         )
         self._model_call_runtime = SessionModelCallRuntime(
-            transcript=session_manager,
+            transcript=self._transcript_capability_ports,
             ensure_consumer=self._ensure_session_graph_prepared,
             projector=self._capability_graph_projector,
             registration_entries_provider=self._effective_registration_entries,
+            source_publication_provider=self._source_publication_reference,
         )
         self._previous_agent_prepare_model_call = self.agent.prepare_model_call
         self._installed_agent_prepare_model_call: object | None = None
@@ -270,22 +390,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
         self._tool_exec_service = tool_exec_service
-        self._side_question_binding: LegacySideQuestionBinding | None = (
-            side_question_binding
-            if side_question_binding is not None
-            else bind_legacy_side_question(capability_runtime.profile)
-        )
-        try:
-            side_question_factory = self._side_question_binding.provider_factory
-            self._side_question = (
-                SideQuestionCoordinator(side_question_factory.bind(self))
-                if side_question_factory is not None
-                else None
-            )
-        except BaseException:
-            self._side_question_binding.dispose()
-            self._side_question_binding = None
-            raise
         self.footer_data_provider = footer_data_provider
         self._base_prompt = (
             base_prompt if base_prompt is not None else self.agent.system_prompt
@@ -385,7 +489,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 active_tool_names=active_tool_names,
                 default_activate_new_tools=default_activate_new_tools,
                 show_empty_tool_prompt=show_empty_tool_prompt,
-                capability_runtime=capability_runtime,
             )
         )
         initialize_composed_session(
@@ -418,10 +521,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
     def capability_profile(self) -> ResolvedRuntimeProfile:
         """Return the final resolved Session capability profile."""
 
-        runtime = self._capability_runtime
-        if runtime is None:
+        provider = self._capability_profile_provider
+        if provider is None:
             raise RuntimeError("Session capability profile has been disposed.")
-        return runtime.profile
+        return provider()
 
     def get_effective_runtime_view(
         self,
@@ -530,9 +633,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 owner_id=owner.owner_id,
                 runtime_id=owner.runtime_id,
                 owner_generation=owner.generation,
-                attachment=cast(
-                    Literal["effective", "pending_retirement"], attachment
-                ),
+                attachment=cast(Literal["effective", "pending_retirement"], attachment),
                 state=state,
             )
             existing = entries.get(entry.registration_id)
@@ -552,7 +653,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
         active_tool_names: list[str] | None,
         default_activate_new_tools: bool | None,
         show_empty_tool_prompt: bool,
-        capability_runtime: CapabilityCompositionRuntime,
     ) -> SessionCompositionPorts:
         def build_command_controller(
             diagnostics_runtime: SessionDiagnosticsRuntime,
@@ -588,14 +688,31 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     get_default_active_tool_names=self._default_active_tool_names,
                     get_extensions=self.list_extensions,
                 ),
-                pack_composer=capability_runtime.command_pack_composer,
+                pack_composer=cast(
+                    Any,
+                    self._resource_capability_ports.commands,
+                ),
             )
 
         return SessionCompositionPorts(
             agent=self.agent,
             session_manager=self.session_manager,
             settings=self._settings_controller,
-            capability_runtime=capability_runtime,
+            product_id=self.capability_profile.product_id,
+            resources=SessionResourceCompositionPorts(
+                activation=self._resource_capability_ports.activation,
+                skill_activation=self._resource_capability_ports.skills,
+                prompt_sections=self._resource_capability_ports.prompt,
+                tool_packs=self._resource_capability_ports.tools,
+                command_packs=self._resource_capability_ports.commands,
+            ),
+            workspace=SessionWorkspaceCompositionPorts(
+                operation_bindings=(
+                    self._workspace_capability_ports.operation_bindings
+                    if self._workspace_capability_binding is not None
+                    else {}
+                ),
+            ),
             foundation=SessionFoundationInputs(
                 resource_loader=self._resource_loader,
                 get_resource_bundle=lambda: self.resource_bundle,
@@ -623,12 +740,16 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 record_extension_runtime_diagnostic=(
                     self._record_extension_runtime_diagnostic
                 ),
+                extension_declaration_preflight=(self._extension_declaration_preflight),
             ),
             maintenance=SessionMaintenanceInputs(
                 execute_compaction=self._execute_product_compaction,
                 before_compaction=self._before_product_compaction,
                 after_compaction=self._after_product_compaction,
                 sleep_for_retry=self._retry_sleep,
+                get_compaction_capability=(
+                    self._transcript_capability_ports.compaction_capability
+                ),
             ),
             product=SessionProductInputs(
                 model_registry=self.model_registry,
@@ -667,16 +788,22 @@ class AgentProductSession(AgentSessionAdapterMixin):
 
         return self._exec_service
 
+    def get_workspace_process_launcher(self) -> AuthorizedProcessLauncher:
+        """Return the Session's graph-backed authorized process port."""
+
+        return self._workspace_capability_ports.process_launcher
+
     async def ask_side_question(
         self,
         question: str,
         *,
         on_update: SideQuestionUpdate | None = None,
     ) -> SideQuestionAnswer:
-        coordinator = self._side_question
-        if coordinator is None:
-            raise RuntimeError("Side questions are not available for this session.")
-        return await coordinator.ask(question, on_update=on_update)
+        await self._ensure_session_graph_prepared()
+        consumer = self._side_question_consumer
+        if consumer is None:
+            raise RuntimeError("Session side-question Capability was not mounted")
+        return await consumer.ask(question, on_update=on_update)
 
     def create_side_question_provider(self) -> AgentSideQuestionProvider:
         return AgentSideQuestionProvider(
@@ -684,9 +811,15 @@ class AgentProductSession(AgentSessionAdapterMixin):
             boundary_prompt=SIDE_QUESTION_BOUNDARY_PROMPT,
         )
 
+    def _bind_selected_side_question_provider(
+        self,
+        factory: SideQuestionProviderFactory,
+    ) -> SideQuestionProvider:
+        return factory.bind(self)
+
     def cancel_side_question(self) -> bool:
-        coordinator = self._side_question
-        return coordinator.cancel() if coordinator is not None else False
+        consumer = self._side_question_consumer
+        return consumer.cancel() if consumer is not None else False
 
     async def dispose(
         self,
@@ -706,9 +839,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
         elif self._composition.navigation_runtime.owns_current_task():
             owner = "branch-summary"
         else:
-            coordinator = self._side_question
-            owns_current_task = getattr(coordinator, "owns_current_task", None)
-            if callable(owns_current_task) and owns_current_task():
+            consumer = self._side_question_consumer
+            if consumer is not None and consumer.owns_current_task():
                 owner = "side-question"
         if owner is not None:
             raise RuntimeError(
@@ -729,28 +861,60 @@ class AgentProductSession(AgentSessionAdapterMixin):
         base_dispose: Callable[[], Awaitable[None]],
     ) -> None:
         errors: list[BaseException] = []
-        coordinator = self._side_question
-        if coordinator is not None:
+        side_question_consumer = self._side_question_consumer
+        if side_question_consumer is not None:
             try:
-                await coordinator.cancel_and_wait()
-            except BaseException as exc:
-                errors.append(exc)
-        side_question_binding = self._side_question_binding
-        self._side_question_binding = None
-        if side_question_binding is not None:
-            try:
-                side_question_binding.dispose()
+                await side_question_consumer.cancel_and_wait()
             except BaseException as exc:
                 errors.append(exc)
         self._restore_agent_model_call_boundary()
-        try:
-            async with self._model_call_bind_lock:
-                self._model_call_consumer = None
-                await self._capability_graph_binder.dispose(
+        async with self._model_call_bind_lock:
+            self._model_call_consumer = None
+            self._side_question_consumer = None
+            self._transcript_consumer = None
+            self._resource_capability_ports.invalidate()
+            self._workspace_capability_ports.invalidate()
+            self._transcript_capability_ports.invalidate()
+            staged_candidate = self._staged_resource_candidate
+            staged_side_question = self._staged_side_question_candidate
+            try:
+                cleanup_codes = await self._capability_graph_binder.dispose(
                     self._capability_graph_runtime
                 )
-        except BaseException as exc:
-            errors.append(exc)
+                if (
+                    cleanup_codes
+                    and self._capability_graph_runtime.has_pending_retirements
+                ):
+                    errors.append(
+                        RuntimeError(
+                            "Session Capability graph cleanup remains pending: "
+                            + ", ".join(cleanup_codes)
+                        )
+                    )
+            except BaseException as exc:
+                errors.append(exc)
+            if staged_candidate is not None:
+                try:
+                    staged_candidate.dispose()
+                except BaseException as exc:
+                    errors.append(exc)
+                else:
+                    self._staged_resource_candidate = None
+            if (
+                staged_side_question is not None
+                and staged_side_question.ownership_state == "root_owned"
+            ):
+                try:
+                    staged_side_question.dispose()
+                except BaseException as exc:
+                    errors.append(exc)
+                else:
+                    self._staged_side_question_candidate = None
+            elif (
+                staged_side_question is not None
+                and staged_side_question.ownership_state == "disposed"
+            ):
+                self._staged_side_question_candidate = None
         try:
             await base_dispose()
         except BaseException as exc:
@@ -759,8 +923,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             primary = errors[0]
             for cleanup_error in errors[1:]:
                 primary.add_note(
-                    "Additional Session model-call cleanup failure: "
-                    f"{cleanup_error!r}"
+                    f"Additional Session model-call cleanup failure: {cleanup_error!r}"
                 )
             raise primary
 
@@ -809,21 +972,178 @@ class AgentProductSession(AgentSessionAdapterMixin):
             if consumer is not None:
                 return consumer
             binding = self._model_call_capability_binding
-            await self._capability_graph_binder.bind(
-                self._capability_graph_runtime,
-                binding.plan,
-                (binding.provider_binding,),
-            )
-            consumer = SessionModelCallCapabilityConsumer(
-                self._capability_graph_runtime.capture(
-                    MODEL_INPUT_PREPARATION_REQUIREMENT
+            try:
+                await self._capability_graph_binder.bind(
+                    self._capability_graph_runtime,
+                    self._session_capability_plan,
+                    tuple(
+                        item
+                        for item in (
+                            binding.provider_binding,
+                            self._resource_capability_binding,
+                            self._session_capability_binding,
+                            self._workspace_capability_binding,
+                        )
+                        if item is not None
+                    ),
                 )
+                consumer = SessionModelCallCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        MODEL_INPUT_PREPARATION_REQUIREMENT
+                    )
+                )
+                resource_consumer = SessionResourceCompositionCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        SESSION_RESOURCE_COMPOSITION_REQUIREMENT
+                    )
+                )
+                side_question = SessionSideQuestionCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        SESSION_SIDE_QUESTION_REQUIREMENT
+                    )
+                )
+                transcript_consumer = SessionTranscriptCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        SESSION_TRANSCRIPT_REQUIREMENT
+                    )
+                )
+                workspace_tools = SessionWorkspaceToolCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        SESSION_WORKSPACE_TOOL_REQUIREMENT
+                    )
+                )
+                workspace_process = SessionWorkspaceProcessCapabilityConsumer(
+                    self._capability_graph_runtime.capture(
+                        SESSION_WORKSPACE_PROCESS_REQUIREMENT
+                    )
+                )
+            except BaseException as error:
+                if (
+                    self._capability_graph_runtime.snapshot is not None
+                    and not self._capability_graph_runtime.is_closed
+                ):
+                    cleanup_task = asyncio.create_task(
+                        self._capability_graph_binder.dispose(
+                            self._capability_graph_runtime
+                        )
+                    )
+                    try:
+                        cleanup_codes = await _await_cancellation_atomic(cleanup_task)
+                        if (
+                            cleanup_codes
+                            and self._capability_graph_runtime.has_pending_retirements
+                        ):
+                            error.add_note(
+                                "Session Capability graph cleanup remains pending: "
+                                + ", ".join(cleanup_codes)
+                            )
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "Session Capability graph cleanup also failed: "
+                            f"{cleanup_error!r}"
+                        )
+                staged_candidate = self._staged_resource_candidate
+                if (
+                    staged_candidate is not None
+                    and staged_candidate.ownership_state == "root_owned"
+                ):
+                    try:
+                        staged_candidate.dispose()
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "staged resource candidate cleanup also failed: "
+                            f"{cleanup_error!r}"
+                        )
+                    else:
+                        self._staged_resource_candidate = None
+                staged_side_question = self._staged_side_question_candidate
+                if (
+                    staged_side_question is not None
+                    and staged_side_question.ownership_state == "root_owned"
+                ):
+                    try:
+                        staged_side_question.dispose()
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "staged side-question candidate cleanup also failed: "
+                            f"{cleanup_error!r}"
+                        )
+                    else:
+                        self._staged_side_question_candidate = None
+                staged_transcript = self._staged_transcript_candidate
+                if staged_transcript.ownership_state == "root_owned":
+                    try:
+                        await staged_transcript.dispose_root_owned()
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "staged transcript candidate cleanup also failed: "
+                            f"{cleanup_error!r}"
+                        )
+                raise
+            staged_candidate = self._staged_resource_candidate
+            if (
+                staged_candidate is not None
+                and staged_candidate.ownership_state == "root_owned"
+            ):
+                # Graph-wide or node reuse intentionally skipped Provider.create().
+                staged_candidate.dispose()
+            self._staged_resource_candidate = None
+            staged_side_question = self._staged_side_question_candidate
+            if (
+                staged_side_question is not None
+                and staged_side_question.ownership_state == "root_owned"
+            ):
+                # Graph-wide or node reuse intentionally skipped Provider.create().
+                staged_side_question.dispose()
+            self._staged_side_question_candidate = None
+            if self._staged_transcript_candidate.ownership_state == "root_owned":
+                # Graph reuse rejected the freshly supplied transcript candidate.
+                await self._staged_transcript_candidate.dispose_root_owned()
+            self._resource_capability_ports.install(
+                consumer=resource_consumer,
             )
+            self._workspace_capability_ports.install(
+                tools=workspace_tools,
+                process=workspace_process,
+            )
+            self._transcript_capability_ports.install(transcript_consumer)
+            self._transcript_consumer = transcript_consumer
+            self._side_question_consumer = side_question
             self._model_call_consumer = consumer
             return consumer
 
     def _current_profile_fingerprint(self) -> str:
         return runtime_profile_fingerprint(self.capability_profile.snapshot())
+
+    def _source_publication_reference(
+        self,
+    ) -> ScopedSourcePublicationReference:
+        extension_runtime = self._extension_runner
+        source_runtime_id = getattr(extension_runtime, "source_runtime_id", None)
+        extension_generation = getattr(extension_runtime, "generation", None)
+        if (
+            not isinstance(source_runtime_id, str)
+            or not source_runtime_id
+            or not isinstance(extension_generation, int)
+            or isinstance(extension_generation, bool)
+        ):
+            source_runtime_id = self._capability_graph_runtime.runtime_id
+            extension_generation = None
+        composition = getattr(self, "_composition", None)
+        resource_refresh = getattr(composition, "resource_refresh_runtime", None)
+        resource_revision = getattr(
+            resource_refresh,
+            "resource_revision",
+            1 if self.resource_bundle is not None else 0,
+        )
+        return ScopedSourcePublicationReference(
+            schema_version=1,
+            owner_capability_id=RESOURCES_CAPABILITY_DEFINITION.capability_id,
+            source_runtime_id=source_runtime_id,
+            extension_generation=extension_generation,
+            declaration_revision=extension_generation,
+            resource_revision=resource_revision,
+        )
 
     def _is_current_model_call_session(self) -> bool:
         runtime_host = self._extension_bridge.runtime_host
@@ -839,7 +1159,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 "Extension context is stale after session replacement or shutdown."
             )
         self.footer_data_provider.dispose()
-        self._capability_runtime = None
+        self._capability_profile_provider = None
 
     def _abort_from_extension(self) -> None:
         self.abort()

@@ -45,6 +45,9 @@ from loushang.harness.capabilities.effective_runtime import (
 from loushang.harness.capabilities.effective_runtime import (
     ModelSurfaceReference as ModelSurfaceReference,
 )
+from loushang.harness.capabilities.effective_runtime import (
+    ScopedSourcePublicationReference as ScopedSourcePublicationReference,
+)
 from loushang.harness.capabilities.graph_binding import (
     CapabilityGraphBindingError as CapabilityGraphBindingError,
 )
@@ -167,13 +170,37 @@ from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_PROMPT_REQUIREMENT as RESOURCES_PROMPT_REQUIREMENT,
 )
 from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_SESSION_COMPOSITION_REQUIREMENT as RESOURCES_SESSION_COMPOSITION_REQUIREMENT,
+)
+from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_TOOL_PACK_REQUIREMENT as RESOURCES_TOOL_PACK_REQUIREMENT,
+)
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_CAPABILITY_DEFINITION as SESSION_CAPABILITY_DEFINITION,
+)
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_RESOURCE_COMPOSITION_REQUIREMENT as SESSION_RESOURCE_COMPOSITION_REQUIREMENT,
+)
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_SIDE_QUESTION_REQUIREMENT as SESSION_SIDE_QUESTION_REQUIREMENT,
+)
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_TRANSCRIPT_REQUIREMENT as SESSION_TRANSCRIPT_REQUIREMENT,
+)
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_WORKSPACE_PROCESS_REQUIREMENT as SESSION_WORKSPACE_PROCESS_REQUIREMENT,
+)
+from loushang.harness.capabilities.session_contracts import (
+    SESSION_WORKSPACE_TOOL_REQUIREMENT as SESSION_WORKSPACE_TOOL_REQUIREMENT,
 )
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION as WORKSPACE_CAPABILITY_DEFINITION,
 )
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_PROCESS_REQUIREMENT as WORKSPACE_PROCESS_REQUIREMENT,
+)
+from loushang.harness.capabilities.workspace_contracts import (
+    WORKSPACE_SESSION_COMPOSITION_REQUIREMENT as WORKSPACE_SESSION_COMPOSITION_REQUIREMENT,
 )
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_TOOL_REQUIREMENT as WORKSPACE_TOOL_REQUIREMENT,
@@ -226,7 +253,15 @@ __all__ = [
     "RESOURCES_CAPABILITY_DEFINITION",
     "RESOURCES_COMMAND_PACK_REQUIREMENT",
     "RESOURCES_PROMPT_REQUIREMENT",
+    "RESOURCES_SESSION_COMPOSITION_REQUIREMENT",
     "RESOURCES_TOOL_PACK_REQUIREMENT",
+    "SESSION_CAPABILITY_DEFINITION",
+    "SESSION_RESOURCE_COMPOSITION_REQUIREMENT",
+    "SESSION_SIDE_QUESTION_REQUIREMENT",
+    "SESSION_TRANSCRIPT_REQUIREMENT",
+    "SESSION_WORKSPACE_PROCESS_REQUIREMENT",
+    "SESSION_WORKSPACE_TOOL_REQUIREMENT",
+    "ScopedSourcePublicationReference",
     "RuntimeCapabilityGraphBinder",
     "RuntimeCapabilityGraphPlan",
     "RuntimeCapabilityGraphPlanner",
@@ -235,6 +270,7 @@ __all__ = [
     "RuntimeProfileSlotExplanation",
     "WORKSPACE_CAPABILITY_DEFINITION",
     "WORKSPACE_PROCESS_REQUIREMENT",
+    "WORKSPACE_SESSION_COMPOSITION_REQUIREMENT",
     "WORKSPACE_TOOL_REQUIREMENT",
     "bind_capability_composition_runtime",
     "compose_capability_packs",
