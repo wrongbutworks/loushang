@@ -26,7 +26,7 @@ from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.capabilities import (
     CapabilityPack,
-    bind_capability_composition_runtime,
+    stage_resource_composition_candidate,
     standard_capability_composition_implementations,
     standard_capability_composition_plan,
 )
@@ -98,7 +98,7 @@ def _extension(
 
 def test_coding_capability_profile_binds_all_default_capabilities(tmp_path) -> None:
     profile = CODING_CAPABILITY_PROFILE
-    binding = bind_capability_composition_runtime(profile)
+    binding = stage_resource_composition_candidate(profile)
     bundle = ResourceBundle(
         cwd=tmp_path,
         skills=[

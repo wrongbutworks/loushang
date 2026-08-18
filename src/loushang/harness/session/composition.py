@@ -25,7 +25,7 @@ from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.harness.approval import ApprovalResolver
-from loushang.harness.capabilities import CapabilityCompositionRuntime
+from loushang.harness.capabilities import StagedResourceCompositionCandidate
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import (
@@ -313,7 +313,7 @@ class SessionCompositionPorts:
         session_manager: ProductTranscriptSession[Any, Any],
         settings: SessionSettingsBinding,
         *,
-        capability_runtime: CapabilityCompositionRuntime | None = None,
+        capability_runtime: StagedResourceCompositionCandidate | None = None,
         product_id: str | None = None,
         resources: SessionResourceCompositionPorts | None = None,
         workspace: SessionWorkspaceCompositionPorts | None = None,

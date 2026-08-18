@@ -4,10 +4,10 @@ from loushang.harness.capabilities.composition_runtime import (
     CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION as CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
 )
 from loushang.harness.capabilities.composition_runtime import (
-    CapabilityCompositionRuntime as CapabilityCompositionRuntime,
+    StagedResourceCompositionCandidate as StagedResourceCompositionCandidate,
 )
 from loushang.harness.capabilities.composition_runtime import (
-    bind_capability_composition_runtime as bind_capability_composition_runtime,
+    stage_resource_composition_candidate as stage_resource_composition_candidate,
 )
 from loushang.harness.capabilities.composition_runtime import (
     standard_capability_composition_implementations as standard_capability_composition_implementations,
@@ -211,7 +211,7 @@ __all__ = [
     "CapabilityBundleProvider",
     "CapabilityBundleProviderBinding",
     "CapabilityBundleValue",
-    "CapabilityCompositionRuntime",
+    "StagedResourceCompositionCandidate",
     "CapabilityContractRange",
     "CapabilityDefinition",
     "CapabilityDependencyBinding",
@@ -272,7 +272,7 @@ __all__ = [
     "WORKSPACE_PROCESS_REQUIREMENT",
     "WORKSPACE_SESSION_COMPOSITION_REQUIREMENT",
     "WORKSPACE_TOOL_REQUIREMENT",
-    "bind_capability_composition_runtime",
+    "stage_resource_composition_candidate",
     "compose_capability_packs",
     "standard_capability_composition_plan",
     "standard_capability_composition_implementations",

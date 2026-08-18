@@ -379,7 +379,7 @@ def test_accepted_graph_contracts_have_one_declared_package_owner() -> None:
         ), f"{symbol} must be owned by one of {owners}, found {locations}"
 
     legacy_runtime_locations = [
-        path for path, _node in definitions.get("CapabilityCompositionRuntime", [])
+        path for path, _node in definitions.get("StagedResourceCompositionCandidate", [])
     ]
     assert legacy_runtime_locations == [
         Path("src/loushang/harness/capabilities/composition_runtime.py")

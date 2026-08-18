@@ -17,8 +17,8 @@ from loushang.ai.options import CallOptions
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.harness.capabilities import (
-    CapabilityCompositionRuntime,
-    bind_capability_composition_runtime,
+    StagedResourceCompositionCandidate,
+    stage_resource_composition_candidate,
     standard_capability_composition_plan,
 )
 from loushang.harness.capabilities.provider_binding import (
@@ -97,7 +97,7 @@ class _ContractProductSession(AgentProductSession):
         *,
         product_id: str,
         transcript: _ContractTranscriptSession,
-        capability_runtime: CapabilityCompositionRuntime,
+        capability_runtime: StagedResourceCompositionCandidate,
         reserve_tokens: int,
         compact_percent: float,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
@@ -1101,11 +1101,11 @@ async def _new_transcript(
     return transcript
 
 
-def _capability_runtime(product_id: str) -> CapabilityCompositionRuntime:
+def _capability_runtime(product_id: str) -> StagedResourceCompositionCandidate:
     profile = RuntimeProfileResolver().resolve(
         standard_capability_composition_plan(product_id=product_id)
     )
-    return bind_capability_composition_runtime(profile)
+    return stage_resource_composition_candidate(profile)
 
 
 class _UnusedWorkspaceLauncher:

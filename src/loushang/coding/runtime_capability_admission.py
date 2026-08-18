@@ -7,8 +7,8 @@ from dataclasses import dataclass
 
 from loushang.coding.product_plan import CODING_CAPABILITY_PLAN
 from loushang.harness.capabilities import (
-    CapabilityCompositionRuntime,
-    bind_capability_composition_runtime,
+    StagedResourceCompositionCandidate,
+    stage_resource_composition_candidate,
 )
 from loushang.harness.capabilities.composition_runtime import (
     RESOURCE_CAPABILITY_SLOT_KEYS,
@@ -53,8 +53,8 @@ class CodingCapabilityProfileResolution:
     profile: ResolvedRuntimeProfile
     implementations: tuple[RuntimeCapabilityImplementation, ...]
 
-    def bind(self) -> CapabilityCompositionRuntime:
-        return bind_capability_composition_runtime(
+    def bind(self) -> StagedResourceCompositionCandidate:
+        return stage_resource_composition_candidate(
             self.profile,
             additional_implementations=self.implementations,
         )
@@ -285,9 +285,9 @@ def _has_extension_selection(profile: ResolvedRuntimeProfile) -> bool:
     )
 
 
-def bind_coding_capability_composition_runtime(
+def stage_coding_resource_composition_candidate(
     extension_runtime: ExtensionRunner,
-) -> CapabilityCompositionRuntime:
+) -> StagedResourceCompositionCandidate:
     """Bind Coding's final Session profile after Extension discovery."""
 
     return resolve_coding_capability_profile(extension_runtime.active_extensions).bind()
@@ -353,7 +353,7 @@ __all__ = [
     "CodingExtensionDeclarationPreflight",
     "CodingCapabilityProfileResolution",
     "SIDE_QUESTION_RUNTIME_PERMISSION",
-    "bind_coding_capability_composition_runtime",
+    "stage_coding_resource_composition_candidate",
     "bind_coding_side_question",
     "resolve_coding_capability_profile",
 ]

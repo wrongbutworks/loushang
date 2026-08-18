@@ -60,7 +60,7 @@ EXPECTED_CONSTRUCTION_SITES = {
         ),
         (
             Path("src/loushang/harness/capabilities/composition_runtime.py"),
-            "bind_capability_composition_runtime",
+            "stage_resource_composition_candidate",
         ),
         (
             Path("src/loushang/harness/capabilities/resources_provider.py"),
@@ -75,10 +75,10 @@ EXPECTED_CONSTRUCTION_SITES = {
             "AgentTranscriptProfileRuntime.__init__",
         ),
     },
-    "CapabilityCompositionRuntime": {
+    "StagedResourceCompositionCandidate": {
         (
             Path("src/loushang/harness/capabilities/composition_runtime.py"),
-            "bind_capability_composition_runtime",
+            "stage_resource_composition_candidate",
         ),
     },
 }
@@ -100,7 +100,7 @@ EXPECTED_COMPOSITION_BIND_CALLERS = {
 TRACKED_CALL_SYMBOLS = frozenset(
     {
         *EXPECTED_CONSTRUCTION_SITES,
-        "bind_capability_composition_runtime",
+        "stage_resource_composition_candidate",
         "_publish_generation",
         "resources_capability_provider_binding",
         "session_capability_provider_binding",
@@ -124,7 +124,7 @@ TRACKED_CALL_SYMBOLS = frozenset(
 GUARDED_CONSTRUCTION_SYMBOLS = frozenset(
     {
         *EXPECTED_CONSTRUCTION_SITES,
-        "bind_capability_composition_runtime",
+        "stage_resource_composition_candidate",
         "resources_capability_provider_binding",
         "session_capability_provider_binding",
         "workspace_capability_provider_binding",
@@ -326,7 +326,7 @@ def test_graph_and_profile_construction_sites_match_cla0_allowlist() -> None:
 
 
 def test_composition_binding_entrypoint_families_match_cla0_allowlist() -> None:
-    assert _construction_sites("bind_capability_composition_runtime") == Counter(
+    assert _construction_sites("stage_resource_composition_candidate") == Counter(
         EXPECTED_COMPOSITION_BIND_CALLERS
     )
 
@@ -362,7 +362,7 @@ def owner():
 def test_current_entrypoint_construction_counts_are_frozen() -> None:
     composition = _function_node(
         Path("src/loushang/harness/capabilities/composition_runtime.py"),
-        "bind_capability_composition_runtime",
+        "stage_resource_composition_candidate",
     )
     composition_calls = [
         _call_name(node.func)
@@ -370,7 +370,7 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
         if isinstance(node, ast.Call)
     ]
     assert composition_calls.count("RuntimeProfileBinder") == 1
-    assert composition_calls.count("CapabilityCompositionRuntime") == 1
+    assert composition_calls.count("StagedResourceCompositionCandidate") == 1
 
     managed = _method_node(
         Path("src/loushang/harness/session/bootstrap_construction.py"),
@@ -397,7 +397,7 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
         _call_name(node.func) for node in ast.walk(direct) if isinstance(node, ast.Call)
     ]
     assert direct_calls.count("resolve_coding_capability_profile") == 1
-    assert direct_calls.count("bind_capability_composition_runtime") == 1
+    assert direct_calls.count("stage_resource_composition_candidate") == 1
 
     model_call = _method_node(
         Path("src/loushang/harness/session/agent_product.py"),

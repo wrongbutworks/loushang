@@ -34,8 +34,8 @@ from loushang.coding.session_manager import SessionManager
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
     CapabilityBundleProviderBinding,
-    CapabilityCompositionRuntime,
-    bind_capability_composition_runtime,
+    StagedResourceCompositionCandidate,
+    stage_resource_composition_candidate,
 )
 from loushang.harness.commands import normalize_command_name
 from loushang.harness.config.agent import SettingsManager
@@ -144,7 +144,7 @@ class AgentSession(AgentProductSession):
         exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
         tool_policy_evaluator: PolicyEvaluator | None = None,
-        capability_runtime: CapabilityCompositionRuntime | None = None,
+        capability_runtime: StagedResourceCompositionCandidate | None = None,
         side_question_binding: LegacySideQuestionBinding | None = None,
         sandbox_runtime: SandboxExecutionRuntime | None = None,
         lsp_runtime: CodingLspRuntime | None = None,
@@ -156,7 +156,7 @@ class AgentSession(AgentProductSession):
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
         resolved_capability_runtime = capability_runtime
-        locally_created_capability_runtime: CapabilityCompositionRuntime | None = None
+        locally_created_capability_runtime: StagedResourceCompositionCandidate | None = None
         locally_created_side_question_binding: LegacySideQuestionBinding | None = None
         resolution = None
         if extension_runner is not None and (
@@ -169,7 +169,7 @@ class AgentSession(AgentProductSession):
             if resolution is not None:
                 resolved_capability_runtime = resolution.bind()
             else:
-                resolved_capability_runtime = bind_capability_composition_runtime(
+                resolved_capability_runtime = stage_resource_composition_candidate(
                     CODING_CAPABILITY_PROFILE
                 )
             locally_created_capability_runtime = resolved_capability_runtime
