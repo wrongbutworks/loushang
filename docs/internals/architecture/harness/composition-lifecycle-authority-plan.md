@@ -704,6 +704,35 @@ Acceptance:
 - the architecture gate prohibiting peer Profile Binder ownership for the
   migrated resource slot set becomes active in this PR, not CLA8.
 
+Status: implemented. The Resources production mount and Consumer cutover
+landed first; the residual compatibility-surface closure renamed the staged
+construction vehicle so the supported Product composition path no longer
+exposes a peer-owning runtime type.
+
+Implemented evidence:
+
+- the synchronous construction vehicle is `StagedResourceCompositionCandidate`
+  (`src/loushang/harness/capabilities/composition_runtime.py`), a staged
+  candidate with exactly-once transferable ownership
+  (`root_owned` / `graph_constructing` / `graph_owned` / `disposed`), not a
+  peer live runtime; after the graph claim it is a non-owning compatibility
+  view and the graph owns release;
+- all supported Product construction families pass that narrow candidate:
+  managed bootstrap (`coding/bootstrap.py`), the late Extension binder
+  (`coding/runtime_capability_admission.py::stage_coding_resource_composition_candidate`),
+  and the direct `AgentSession` fallback (`coding/session/agent_session.py`);
+- bootstrap-only mechanism use goes through the private
+  `_RootOwnedResourceCapabilityHandles` and the focused
+  `SessionResourceCapabilityPorts`, never a public compatibility facade;
+- the architecture gates remain active and renamed with the source:
+  `tests/architecture/test_composition_lifecycle_authority_cla0.py::test_cla4_session_has_no_peer_resource_profile_owner`,
+  `test_cla4_resources_provider_has_one_production_mount_owner`,
+  `test_current_entrypoint_construction_counts_are_frozen`, and
+  `test_graph_and_profile_construction_sites_match_cla0_allowlist`; and
+- the generated catalog records `harness.resources` as `production-mounted`
+  with one Provider construction owner and no direct production Resource
+  Consumer construction.
+
 CLA0 through CLA4 form the next-stage completion milestone.
 
 ### CLA5: Workspace Production Mount

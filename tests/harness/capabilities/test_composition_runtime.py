@@ -4,7 +4,7 @@ import pytest
 
 from loushang.harness.capabilities import (
     CapabilityPack,
-    bind_capability_composition_runtime,
+    stage_resource_composition_candidate,
     standard_capability_composition_implementations,
     standard_capability_composition_plan,
 )
@@ -64,7 +64,7 @@ def _profile(*, prompt_config: dict[str, object] | None = None):
 
 
 def test_standard_composition_runtime_binds_neutral_product_values(tmp_path) -> None:
-    runtime = bind_capability_composition_runtime(_profile())
+    runtime = stage_resource_composition_candidate(_profile())
     bundle = ResourceBundle(
         cwd=tmp_path,
         skills=[
@@ -105,7 +105,7 @@ def test_standard_composition_plan_is_reusable_by_another_product() -> None:
         strip_prompt_sections=False,
     )
     profile = RuntimeProfileResolver().resolve(plan)
-    runtime = bind_capability_composition_runtime(profile)
+    runtime = stage_resource_composition_candidate(profile)
 
     assert profile.product_id == "design"
     assert (
@@ -130,7 +130,7 @@ def test_standard_composition_plan_supports_per_slot_source_boundaries() -> None
         },
     )
     profile = RuntimeProfileResolver().resolve(plan)
-    runtime = bind_capability_composition_runtime(profile)
+    runtime = stage_resource_composition_candidate(profile)
     slots = {slot.key: slot for slot in plan.slots}
 
     assert slots["resource.runtime"].allowed_sources == frozenset({"product"})
@@ -155,7 +155,7 @@ def test_standard_composition_runtime_rejects_unknown_configuration() -> None:
     )
 
     with pytest.raises(RuntimeCapabilityBindingError) as exc_info:
-        bind_capability_composition_runtime(profile)
+        stage_resource_composition_candidate(profile)
 
     assert exc_info.value.slot == "prompt.sections"
     assert isinstance(exc_info.value.__cause__, ValueError)
