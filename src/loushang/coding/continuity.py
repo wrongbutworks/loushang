@@ -351,12 +351,19 @@ class CodingContinuityComposition:
             await self.shutdown()
 
     async def shutdown(self) -> None:
-        """Dispose the process-scoped binding at Product runtime shutdown."""
+        """Close the authority, then dispose the process-scoped binding.
+
+        Close-then-record: shutdown completion is recorded only after the hub
+        has staled references, aborted outstanding activation leases, joined
+        in-flight operations, and the binding has been disposed.  A failed or
+        cancelled close leaves the composition unrecorded and retryable.
+        """
 
         if self._shutdown:
             return
-        self._shutdown = True
+        await self.hub.close()
         await self.binder.dispose(self.binding)
+        self._shutdown = True
 
 
 def bind_coding_continuity(

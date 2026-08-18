@@ -318,3 +318,78 @@ def test_coding_provider_hides_empty_sessions_from_resume(tmp_path: Path) -> Non
         await shutdown_coding_continuity(runtime)
 
     asyncio.run(scenario())
+
+
+def test_coding_continuity_shutdown_closes_hub_before_disposing_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _Runtime(tmp_path)
+    write_agent_transcript_export(
+        tmp_path / "session-1.jsonl",
+        _header("session-1"),
+        [_record("record-1", "Explain the parser architecture")],
+    )
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(runtime)
+
+    calls: list[str] = []
+    original_close = composition.hub.close
+
+    async def close_spy() -> None:
+        calls.append("close")
+        await original_close()
+
+    original_dispose = composition.binder.dispose
+
+    async def dispose_spy(binding: object) -> None:
+        calls.append("dispose")
+        await original_dispose(binding)
+
+    monkeypatch.setattr(composition.hub, "close", close_spy)
+    monkeypatch.setattr(composition.binder, "dispose", dispose_spy)
+
+    asyncio.run(shutdown_coding_continuity(runtime))
+
+    assert calls == ["close", "dispose"]
+    assert composition._shutdown
+    asyncio.run(shutdown_coding_continuity(runtime))
+    assert calls == ["close", "dispose"]
+
+
+def test_coding_continuity_failed_close_leaves_composition_retryable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _Runtime(tmp_path)
+    write_agent_transcript_export(
+        tmp_path / "session-1.jsonl",
+        _header("session-1"),
+        [_record("record-1", "Explain the parser architecture")],
+    )
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(runtime)
+
+    disposed: list[object] = []
+    original_dispose = composition.binder.dispose
+    original_close = composition.hub.close
+
+    async def dispose_spy(binding: object) -> None:
+        disposed.append(binding)
+        await original_dispose(binding)
+
+    async def failing_close() -> None:
+        raise RuntimeError("close failed")
+
+    monkeypatch.setattr(composition.binder, "dispose", dispose_spy)
+    monkeypatch.setattr(composition.hub, "close", failing_close)
+
+    with pytest.raises(RuntimeError, match="close failed"):
+        asyncio.run(composition.shutdown())
+    assert not composition._shutdown
+    assert disposed == []
+
+    monkeypatch.setattr(composition.hub, "close", original_close)
+    asyncio.run(shutdown_coding_continuity(runtime))
+    assert composition._shutdown
+    assert len(disposed) == 1

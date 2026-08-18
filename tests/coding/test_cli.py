@@ -5983,6 +5983,18 @@ def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
                 consume=lambda: runtime.restore_session_operation("picked-session"),
             )
 
+        def reference(self):
+            hub = self
+
+            class _Reference:
+                async def prepare(self, selected_target):
+                    return await hub.prepare(selected_target)
+
+                def release(self) -> None:
+                    return None
+
+            return _Reference()
+
     class _Composition:
         hub = _Hub()
 

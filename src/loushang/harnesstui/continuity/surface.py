@@ -9,12 +9,12 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from loushang.harness.continuity import (
-    ContinuityHub,
     ContinuityPage,
     ContinuityPreview,
     ContinuityQuery,
     ContinuitySummary,
     ContinuityTarget,
+    StableContinuityReference,
 )
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.tui import (
@@ -75,7 +75,7 @@ class ContinuitySurface:
     def __init__(
         self,
         *,
-        hub: ContinuityHub,
+        reference: StableContinuityReference,
         request_render: Callable[[str], None],
         page_size: int = 25,
         keybindings: KeybindingManager | KeybindingConfig | None = None,
@@ -83,7 +83,7 @@ class ContinuitySurface:
         include_summary: Callable[[ContinuitySummary], bool] | None = None,
         selection_action: str = "resume",
     ) -> None:
-        self._hub = hub
+        self._reference = reference
         self._request_render = request_render
         self._theme = theme if theme is not None else CONTINUITY_PAGE_THEME
         self._include_summary = include_summary or (lambda _summary: True)
@@ -107,9 +107,10 @@ class ContinuitySurface:
         self._query_task: asyncio.Task[None] | None = None
         self._preview_task: asyncio.Task[None] | None = None
         self._index_requery_task: asyncio.Task[None] | None = None
+        observation = reference.observation
         self._domain_options = (
-            (None, *hub.composition.experience.domain_ids)
-            if len(hub.composition.continuity_providers) > 1
+            (None, *observation.experience.domain_ids)
+            if len(observation.providers) > 1
             else (None,)
         )
         self._domain_index = 0
@@ -294,7 +295,7 @@ class ContinuitySurface:
         if not background:
             self._request_render("product")
         try:
-            page = await self._hub.query(request)
+            page = await self._reference.query(request)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -413,7 +414,7 @@ class ContinuitySurface:
 
         async def load() -> None:
             try:
-                preview = await self._hub.preview(target)
+                preview = await self._reference.preview(target)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -609,14 +610,14 @@ class ContinuitySurface:
         return f"{label_copy}{' '.join(values)}"
 
     def _sort_options(self) -> tuple[ContinuitySort, ...]:
-        providers = self._hub.composition.continuity_providers
+        providers = self._reference.observation.providers
         if not providers:
             return ("updated",)
         return (
             ("updated", "created")
             if all(
-                "created" in item.provider.descriptor.supported_sorts
-                for item in providers
+                "created" in descriptor.supported_sorts
+                for descriptor in providers
             )
             else ("updated",)
         )
@@ -744,7 +745,7 @@ class ContinuitySurface:
 
 def build_continuity_surface_view(
     *,
-    hub: ContinuityHub,
+    reference: StableContinuityReference,
     request_render: Callable[[str], None],
     keybindings: KeybindingManager | KeybindingConfig | None = None,
     theme: ThemeResolver | None = None,
@@ -755,7 +756,7 @@ def build_continuity_surface_view(
 ) -> ScreenSurfaceView:
     resolved_theme = theme if theme is not None else CONTINUITY_PAGE_THEME
     content = ContinuitySurface(
-        hub=hub,
+        reference=reference,
         request_render=request_render,
         keybindings=keybindings,
         theme=resolved_theme,

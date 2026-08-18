@@ -7,7 +7,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TextIO, cast
 
-from loushang.harness.continuity import ContinuityHub, ContinuityTarget
+from loushang.harness.continuity import (
+    ContinuityTarget,
+    StableContinuityReference,
+)
 from loushang.harnesstui.continuity.surface import (
     ContinuitySurface,
     build_continuity_surface_view,
@@ -35,7 +38,7 @@ class ContinuityPickerSelection:
 
 async def run_continuity_picker(
     *,
-    hub: ContinuityHub,
+    reference: StableContinuityReference,
     activate: ContinuityActivationHandler,
     stdin: TextIO,
     stdout: TextIO,
@@ -53,7 +56,7 @@ async def run_continuity_picker(
             run_context.request_render(_render_kind(kind))
 
     view = build_continuity_surface_view(
-        hub=hub,
+        reference=reference,
         request_render=request_render,
         keybindings=keybindings,
     )
