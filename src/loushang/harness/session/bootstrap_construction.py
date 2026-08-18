@@ -12,7 +12,7 @@ from loushang.harness.bootstrap import (
     StandardExtensionRuntime,
     register_resource_extension_tools,
 )
-from loushang.harness.capabilities import CapabilityCompositionRuntime
+from loushang.harness.capabilities import StagedResourceCompositionCandidate
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
@@ -435,7 +435,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
     """Compile Product policy onto the existing construction runtime."""
 
     default_system_prompt: str
-    bind_capabilities: Callable[[], CapabilityCompositionRuntime]
+    bind_capabilities: Callable[[], StagedResourceCompositionCandidate]
     create_extension_runtime: Callable[[ResourceBundle], StandardExtensionT]
     source_identity_check: SourceIdentityCheck
     list_tool_definitions: Callable[
@@ -444,7 +444,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
     ]
     get_tool_source_info: Callable[[StandardExtensionT, str], object | None]
     bind_session_capabilities: (
-        Callable[[StandardExtensionT], CapabilityCompositionRuntime] | None
+        Callable[[StandardExtensionT], StagedResourceCompositionCandidate] | None
     ) = None
     product_tool_pack_id: str = "product.registry"
     extension_tool_pack_id: str = "product.extensions"
@@ -477,7 +477,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         agent_factory: Callable[..., AgentT],
         session_factory: Callable[
             [
-                CapabilityCompositionRuntime,
+                StagedResourceCompositionCandidate,
                 AgentT,
                 ResourceBundle,
                 StandardExtensionT,
@@ -490,7 +490,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         ]
         | Callable[
             [
-                CapabilityCompositionRuntime,
+                StagedResourceCompositionCandidate,
                 LegacySideQuestionBinding,
                 AgentT,
                 ResourceBundle,
@@ -515,7 +515,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         bootstrap_capability_handles = _root_owned_resource_handles(
             bootstrap_capability_runtime
         )
-        session_capability_runtimes: list[CapabilityCompositionRuntime] = []
+        session_capability_runtimes: list[StagedResourceCompositionCandidate] = []
         session_side_question_bindings: list[LegacySideQuestionBinding] = []
 
         def create_session(
@@ -550,7 +550,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 legacy_factory = cast(
                     Callable[
                         [
-                            CapabilityCompositionRuntime,
+                            StagedResourceCompositionCandidate,
                             AgentT,
                             ResourceBundle,
                             StandardExtensionT,
@@ -576,7 +576,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             factory_with_side_question = cast(
                 Callable[
                     [
-                        CapabilityCompositionRuntime,
+                        StagedResourceCompositionCandidate,
                         LegacySideQuestionBinding,
                         AgentT,
                         ResourceBundle,
@@ -719,7 +719,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
 
 
 def _root_owned_resource_handles(
-    runtime: CapabilityCompositionRuntime,
+    runtime: StagedResourceCompositionCandidate,
 ) -> _RootOwnedResourceHandles:
     """Adapt legacy test/Product fakes while canonical code uses narrow handles."""
 

@@ -13,7 +13,7 @@ from loushang.harness.capabilities import (
     RuntimeCapabilityGraphBinder,
     RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphRuntime,
-    bind_capability_composition_runtime,
+    stage_resource_composition_candidate,
     standard_capability_composition_plan,
 )
 from loushang.harness.capabilities.prompt import PromptSection
@@ -226,7 +226,7 @@ def test_resources_fingerprint_covers_construction_inputs_but_not_side_question(
 
 
 def test_staged_resources_candidate_must_match_declared_profile() -> None:
-    candidate = bind_capability_composition_runtime(_profile(separator="|"))
+    candidate = stage_resource_composition_candidate(_profile(separator="|"))
 
     try:
         with pytest.raises(
@@ -280,7 +280,7 @@ def test_resources_content_only_use_does_not_publish_a_new_mount(tmp_path) -> No
 def test_staged_resources_transfer_once_and_reuse_rejects_new_candidate() -> None:
     async def scenario() -> None:
         profile = _profile()
-        first_candidate = bind_capability_composition_runtime(profile)
+        first_candidate = stage_resource_composition_candidate(profile)
         first_binding = resources_capability_provider_binding(
             profile=profile,
             scope_instance_id="session:research",
@@ -299,7 +299,7 @@ def test_staged_resources_transfer_once_and_reuse_rejects_new_candidate() -> Non
             runtime.capture(RESOURCES_ACTIVATION_REQUIREMENT)
         ).activate(None).bundle is None
 
-        rejected_candidate = bind_capability_composition_runtime(profile)
+        rejected_candidate = stage_resource_composition_candidate(profile)
         rejected_binding = resources_capability_provider_binding(
             profile=profile,
             scope_instance_id="session:research",
@@ -334,7 +334,7 @@ def test_staged_resources_cancellation_has_one_cleanup_owner(
 ) -> None:
     async def scenario() -> None:
         profile = _profile()
-        candidate = bind_capability_composition_runtime(profile)
+        candidate = stage_resource_composition_candidate(profile)
         original_commit = candidate._commit_graph_ownership
 
         def cancel_during_commit() -> None:
@@ -393,7 +393,7 @@ def test_graph_retries_only_failed_staged_resource_disposal() -> None:
             create=lambda _selection, _context: ResourceActivationRuntime(),
             dispose=dispose,
         )
-        candidate = bind_capability_composition_runtime(
+        candidate = stage_resource_composition_candidate(
             profile,
             additional_implementations=(implementation,),
         )

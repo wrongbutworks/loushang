@@ -149,9 +149,9 @@ class _CapabilityCompositionCandidate:
 class _RootOwnedResourceCapabilityHandles:
     """Private bootstrap-only views into one root-owned candidate."""
 
-    _runtime: CapabilityCompositionRuntime
+    _runtime: StagedResourceCompositionCandidate
 
-    def _require_root(self) -> CapabilityCompositionRuntime:
+    def _require_root(self) -> StagedResourceCompositionCandidate:
         if self._runtime.ownership_state != "root_owned":
             raise RuntimeError("Resource bootstrap handles are no longer root-owned")
         return self._runtime
@@ -175,7 +175,7 @@ class _RootOwnedResourceCapabilityHandles:
         self._runtime.dispose()
 
 
-class CapabilityCompositionRuntime:
+class StagedResourceCompositionCandidate:
     """Staged resource mechanisms with exactly one transferable owner.
 
     Synchronous Product bootstrap owns the candidate initially.  The Session
@@ -357,12 +357,12 @@ class CapabilityCompositionRuntime:
         self.__candidate.ownership = "disposed"
 
 
-def bind_capability_composition_runtime(
+def stage_resource_composition_candidate(
     profile: ResolvedRuntimeProfile,
     *,
     context: object | None = None,
     additional_implementations: Iterable[RuntimeCapabilityImplementation] = (),
-) -> CapabilityCompositionRuntime:
+) -> StagedResourceCompositionCandidate:
     """Synchronously bind standard capability-composition implementations."""
 
     binder = RuntimeProfileBinder(
@@ -376,7 +376,7 @@ def bind_capability_composition_runtime(
         )
     )
     resource_profile = resource_capability_profile(profile)
-    return CapabilityCompositionRuntime(
+    return StagedResourceCompositionCandidate(
         binding=binder.bind_sync(resource_profile, context=context),
         _binder=binder,
         _profile=profile,
@@ -548,13 +548,13 @@ def _require_value(
 __all__ = [
     "AGENT_SIDE_QUESTION_IMPLEMENTATION",
     "CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION",
-    "CapabilityCompositionRuntime",
+    "StagedResourceCompositionCandidate",
     "DISABLED_SKILL_ACTIVATION_IMPLEMENTATION",
     "ORDERED_CAPABILITY_PACKS_IMPLEMENTATION",
     "PROMPT_SECTIONS_IMPLEMENTATION",
     "RESOURCE_CAPABILITY_SLOT_KEYS",
     "RESOURCE_ACTIVATION_IMPLEMENTATION",
-    "bind_capability_composition_runtime",
+    "stage_resource_composition_candidate",
     "resource_capability_profile",
     "standard_capability_composition_plan",
     "standard_capability_composition_implementations",

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from loushang.foundation.json import dump_json_value
 from loushang.harness.capabilities.composition_runtime import (
     RESOURCE_CAPABILITY_SLOT_KEYS,
-    CapabilityCompositionRuntime,
+    StagedResourceCompositionCandidate,
     resource_capability_profile,
     standard_capability_composition_implementations,
 )
@@ -69,7 +69,7 @@ class _BoundResources:
 
 @dataclass
 class _StagedResources:
-    candidate: CapabilityCompositionRuntime = field(repr=False)
+    candidate: StagedResourceCompositionCandidate = field(repr=False)
 
     def value(self, slot: str) -> object:
         value = self.candidate.binding.value(slot)
@@ -158,7 +158,7 @@ def resources_capability_provider_binding(
     additional_implementations: Iterable[RuntimeCapabilityImplementation] = (),
     provider_id: str = "harness.resources.standard",
     source_id: str = "builtin",
-    staged_candidate: CapabilityCompositionRuntime | None = None,
+    staged_candidate: StagedResourceCompositionCandidate | None = None,
 ) -> CapabilityBundleProviderBinding:
     """Map private Profile selections into one graph-owned Bundle Provider.
 

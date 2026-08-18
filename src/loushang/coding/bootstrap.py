@@ -64,8 +64,8 @@ from loushang.harness.bootstrap import (
     create_standard_resource_bootstrap_runtime,
 )
 from loushang.harness.capabilities import (
-    CapabilityCompositionRuntime,
-    bind_capability_composition_runtime,
+    StagedResourceCompositionCandidate,
+    stage_resource_composition_candidate,
 )
 from loushang.harness.capabilities.workspace_provider import (
     workspace_capability_provider_binding,
@@ -383,7 +383,7 @@ def _create_agent_session(
     session_id = session_manager.get_header().conversation_id
 
     def _create_session(
-        capability_runtime: CapabilityCompositionRuntime,
+        capability_runtime: StagedResourceCompositionCandidate,
         side_question_binding: LegacySideQuestionBinding | None,
         agent: Agent,
         bundle: ResourceBundle,
@@ -803,7 +803,7 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
     ExtensionRunner,
 ](
     default_system_prompt=DEFAULT_CODING_SYSTEM_PROMPT,
-    bind_capabilities=lambda: bind_capability_composition_runtime(
+    bind_capabilities=lambda: stage_resource_composition_candidate(
         CODING_CAPABILITY_PROFILE
     ),
     create_extension_runtime=lambda bundle: ExtensionRunner(bundle.extensions),

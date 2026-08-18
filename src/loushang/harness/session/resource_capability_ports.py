@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 from loushang.harness.capabilities.composition_runtime import (
-    CapabilityCompositionRuntime,
+    StagedResourceCompositionCandidate,
 )
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
@@ -32,10 +32,10 @@ class SessionResourceCapabilityPorts:
     generation-scoped Consumers in one no-await window.
     """
 
-    def __init__(self, candidate: CapabilityCompositionRuntime) -> None:
+    def __init__(self, candidate: StagedResourceCompositionCandidate) -> None:
         if candidate.ownership_state != "root_owned":
             raise ValueError("resource ports require a root-owned candidate")
-        self._candidate: CapabilityCompositionRuntime | None = candidate
+        self._candidate: StagedResourceCompositionCandidate | None = candidate
         self._consumer: SessionResourceCompositionCapabilityConsumer | None = None
         self.activation = _ActivationPort(self)
         self.skills = _SkillActivationPort(self)
@@ -57,7 +57,7 @@ class SessionResourceCapabilityPorts:
         self._candidate = None
         self._consumer = None
 
-    def _candidate_or_raise(self) -> CapabilityCompositionRuntime:
+    def _candidate_or_raise(self) -> StagedResourceCompositionCandidate:
         candidate = self._candidate
         if candidate is None or candidate.ownership_state != "root_owned":
             raise RuntimeError("Resources Capability is not mounted")
@@ -65,22 +65,22 @@ class SessionResourceCapabilityPorts:
 
     def _activation_or_candidate(
         self,
-    ) -> SessionResourceCompositionCapabilityConsumer | CapabilityCompositionRuntime:
+    ) -> SessionResourceCompositionCapabilityConsumer | StagedResourceCompositionCandidate:
         return self._consumer or self._candidate_or_raise()
 
     def _prompt_or_candidate(
         self,
-    ) -> SessionResourceCompositionCapabilityConsumer | CapabilityCompositionRuntime:
+    ) -> SessionResourceCompositionCapabilityConsumer | StagedResourceCompositionCandidate:
         return self._consumer or self._candidate_or_raise()
 
     def _tools_or_candidate(
         self,
-    ) -> SessionResourceCompositionCapabilityConsumer | CapabilityCompositionRuntime:
+    ) -> SessionResourceCompositionCapabilityConsumer | StagedResourceCompositionCandidate:
         return self._consumer or self._candidate_or_raise()
 
     def _commands_or_candidate(
         self,
-    ) -> SessionResourceCompositionCapabilityConsumer | CapabilityCompositionRuntime:
+    ) -> SessionResourceCompositionCapabilityConsumer | StagedResourceCompositionCandidate:
         return self._consumer or self._candidate_or_raise()
 
 

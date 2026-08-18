@@ -20,9 +20,9 @@ family. Repeated call sites within tests are not separate authorities.
 
 | ID | Object / phase | Current owner and exact site | Frozen behavior and evidence |
 | --- | --- | --- | --- |
-| AUTH-01 | Profile-backed composition construction | `src/loushang/harness/capabilities/composition_runtime.py::bind_capability_composition_runtime` | Creates the only `RuntimeProfileBinder` that binds the resource/composition target slots, then returns one owning `CapabilityCompositionRuntime`. |
+| AUTH-01 | Profile-backed composition construction | `src/loushang/harness/capabilities/composition_runtime.py::stage_resource_composition_candidate` | Creates the only `RuntimeProfileBinder` that binds the resource/composition target slots, then returns one owning `StagedResourceCompositionCandidate`. |
 | AUTH-02 | Managed bootstrap construction | `src/loushang/coding/bootstrap.py::_CODING_AGENT_PRODUCT_CONSTRUCTION` -> `src/loushang/harness/session/bootstrap_construction.py::AgentProductConstructionBinding.construct` | Calls `bind_capabilities` once before Extension discovery. |
-| AUTH-03 | Managed final construction | `src/loushang/harness/session/bootstrap_construction.py::AgentProductConstructionBinding.construct` -> `src/loushang/coding/runtime_capability_admission.py::bind_coding_capability_composition_runtime` | When a late binder is configured, calls it once after final Extension admission and gives the final runtime to the Session. `tests/harness/test_agent_bootstrap.py::test_agent_product_construction_late_binds_session_capabilities_and_disposes_bootstrap` |
+| AUTH-03 | Managed final construction | `src/loushang/harness/session/bootstrap_construction.py::AgentProductConstructionBinding.construct` -> `src/loushang/coding/runtime_capability_admission.py::stage_coding_resource_composition_candidate` | When a late binder is configured, calls it once after final Extension admission and gives the final runtime to the Session. `tests/harness/test_agent_bootstrap.py::test_agent_product_construction_late_binds_session_capabilities_and_disposes_bootstrap` |
 | AUTH-04 | Direct Session fallback construction | `src/loushang/coding/session/agent_session.py::AgentSession.__init__` | With no injected runtime, constructs exactly one composition runtime, using the admitted Extension profile when a runner exists and the Product profile otherwise. |
 | AUTH-05 | Composition capture | `src/loushang/harness/session/bootstrap_construction.py::AgentProductConstructionBinding.construct` and `src/loushang/coding/session/agent_session.py::AgentSession.__init__` | Broad compatibility ports and the Session retain the concrete composition runtime; no typed Bundle lease exists yet. |
 | AUTH-06 | Composition disposal | `src/loushang/harness/session/bootstrap_construction.py::AgentProductConstructionBinding.construct` and `src/loushang/harness/session/operations_runtime.py::AgentSessionOperationsRuntime._dispose_runtime_cancellation_atomic` | Bootstrap/final failure paths and Session shutdown dispose every owned runtime. Repeated construction is not classified as a cleanup leak. `tests/harness/test_agent_bootstrap.py::test_agent_product_construction_disposes_late_bound_capabilities_on_failure` |
@@ -43,7 +43,7 @@ They record current behavior, not the CLA4 target.
 
 | ID | Entrypoint family | Current composition count | Current Graph / Extension count | Failure behavior |
 | --- | --- | --- | --- | --- |
-| ENTRY-01 | Runtime-managed Product with final Extension binder | two `CapabilityCompositionRuntime` instances: one bootstrap and one final | one model-call Graph per constructed Session; one stable Extension runner | Final construction failure disposes final then bootstrap; successful handoff disposes bootstrap and Session owns final. |
+| ENTRY-01 | Runtime-managed Product with final Extension binder | two `StagedResourceCompositionCandidate` instances: one bootstrap and one final | one model-call Graph per constructed Session; one stable Extension runner | Final construction failure disposes final then bootstrap; successful handoff disposes bootstrap and Session owns final. |
 | ENTRY-02 | Runtime-managed Product without a late binder | one composition runtime, reused by the Session | one model-call Graph per constructed Session | The single runtime transfers to Session ownership; root cleanup skips the transferred instance. |
 | ENTRY-03 | Direct `AgentSession` with injected composition runtime | zero new composition runtimes | one model-call Graph when normal AgentProduct composition is installed | Caller/Session ownership follows the injected runtime contract. |
 | ENTRY-04 | Direct `AgentSession` without injected composition runtime | one fallback composition runtime | one model-call Graph when normal AgentProduct composition is installed | Constructor failure remains responsible for the one locally created runtime. |
@@ -104,9 +104,9 @@ CLA0 executable gates freeze these production construction sites:
 - `RuntimeCapabilityGraphRuntime`, `RuntimeCapabilityGraphBinder`, and
   `RuntimeCapabilityGraphProjector`: `AgentProductSession.__init__` only;
 - `RuntimeProfileBinder` for the Resource/composition target slots:
-  `bind_capability_composition_runtime` only; and
-- `CapabilityCompositionRuntime`: constructed only by
-  `bind_capability_composition_runtime`.
+  `stage_resource_composition_candidate` only; and
+- `StagedResourceCompositionCandidate`: constructed only by
+  `stage_resource_composition_candidate`.
 
 Focused transcript and continuity Profile binders remain legitimate unmigrated
 owners. CLA2 and CLA4 intentionally update the corresponding allowlist in the

@@ -20,7 +20,6 @@ from loushang.harness.capabilities import (
     RESOURCES_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
     CapabilityBundleProviderBinding,
-    CapabilityCompositionRuntime,
     CapabilityGraphExplanation,
     CapabilityGraphPlanRequest,
     EffectiveRuntimeDiff,
@@ -33,6 +32,7 @@ from loushang.harness.capabilities import (
     RuntimeCapabilityGraphRuntime,
     RuntimeProfileSlotExplanation,
     ScopedSourcePublicationReference,
+    StagedResourceCompositionCandidate,
 )
 from loushang.harness.capabilities.effective_runtime import (
     runtime_profile_fingerprint,
@@ -193,7 +193,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         *,
         agent: Agent,
         session_manager: ProductTranscriptSession[Any, Any],
-        capability_runtime: CapabilityCompositionRuntime,
+        capability_runtime: StagedResourceCompositionCandidate,
         execute_compaction: ProductCompactionExecutor,
         execute_branch_summary: BranchSummaryExecutor,
         get_changelog: ChangelogProvider,
@@ -269,7 +269,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._capability_profile_provider: (
             Callable[[], ResolvedRuntimeProfile] | None
         ) = lambda: capability_runtime.profile
-        self._staged_resource_candidate: CapabilityCompositionRuntime | None = (
+        self._staged_resource_candidate: StagedResourceCompositionCandidate | None = (
             capability_runtime
         )
         self._resource_capability_ports = SessionResourceCapabilityPorts(
