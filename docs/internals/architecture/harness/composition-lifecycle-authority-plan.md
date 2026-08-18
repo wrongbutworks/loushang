@@ -832,7 +832,8 @@ behavior, and stable-reference requirement are explicit.
 5. **CLA7d — continuity stable reference.** `continuity.provider_packs` remains
    Process-scoped. It requires a process-owned typed stable lease/reference and
    shutdown order before a Session Consumer can observe it. The Session Graph
-   never owns the concrete ContinuityHub.
+   never owns the concrete ContinuityHub. The proposed design boundary is
+   [Continuity Stable Reference Boundary](continuity-stable-reference-boundary.md).
 
 Implemented CLA7a evidence:
 
