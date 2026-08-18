@@ -11,14 +11,19 @@ document authorizes one bounded implementation PR; it does not change current
 source behavior and does not unlock the graph `stable_reference` requirement
 binding, which remains fail-closed.
 
+Revision 2 incorporates three-reviewer findings: the observation descriptor
+channel, the CLI migration entry, the close-then-record shutdown
+restructuring, and the outstanding-activation-lease close interaction.
+
 ## Problem
 
 `continuity.provider_packs` is a Process-scoped, sealed Runtime Profile slot.
 The composed `ContinuityHub` is constructed once per Product runtime by
 `coding/continuity.py::bind_coding_continuity` and disposed by
 `shutdown_coding_continuity`. Today the concrete hub is threaded directly
-into process-composed TUI surfaces
-(`coding/ui/screen_surfaces.py`, `harnesstui/conversation/agent_surfaces.py`,
+into process-composed TUI surfaces and the CLI resume flow
+(`coding/cli/__main__.py`, `coding/ui/screen_surfaces.py`,
+`harnesstui/conversation/agent_surfaces.py`,
 `harnesstui/continuity/runner.py`, `harnesstui/continuity/surface.py`).
 
 Two facts make raw hub threading unacceptable as the long-term contract:
@@ -40,10 +45,13 @@ Graph never owns the concrete `ContinuityHub`.
 | --- | --- | --- |
 | Slot declaration | `src/loushang/harness/runtime/_profile_standard.py::CONTINUITY_PROVIDER_PACKS_SLOT` | scope `process`, refresh boundary `sealed`, ordered `aggregate_contribution` |
 | Process binding and hub construction | `src/loushang/coding/continuity.py::bind_coding_continuity` | one `RuntimeProfileBinder`, one `ContinuityHub`, attached to the Product runtime via `_RUNTIME_BINDING_ATTRIBUTE`; rebinding with new layers/grants/implementations fails sealed |
-| Process shutdown | `src/loushang/coding/continuity.py::shutdown_coding_continuity` and `CodingContinuityComposition.shutdown` | disposes the Profile binding; idempotent |
+| Mark-then-execute shutdown (requires restructuring) | `src/loushang/coding/continuity.py::CodingContinuityComposition.shutdown` | sets `_shutdown = True` before awaiting `binder.dispose`; a failed or cancelled close would make retry unreachable, so this slice restructures it to close-then-record (see Shutdown Order Contract) |
+| Process shutdown entrypoint | `src/loushang/coding/continuity.py::shutdown_coding_continuity` | removes the runtime attribute, then awaits composition shutdown; safe to call repeatedly |
 | Session-before-continuity ordering | `src/loushang/coding/runtime/agent_session_runtime.py::dispose_session_runtime` | `try` disposes the Session runtime, `finally` shuts down continuity; ordering exists by construction, not by contract |
-| CLI continuation flow | `src/loushang/coding/cli/__main__.py` | binds continuity for the resume picker, disposes the caller view, shuts continuity down only when no activation occurred |
-| Existing lease-like concept | `src/loushang/harness/continuity/provider.py::PreparedActivationLease` | an activation handle returned by `ContinuityHub.prepare`; unrelated to observation references and unchanged by this boundary |
+| CLI continuation flow | `src/loushang/coding/cli/__main__.py` | binds continuity for the resume picker, calls `composition.hub.prepare` directly, passes the concrete hub to `continuity_runner`, disposes the caller view, and shuts continuity down only when no activation occurred |
+| Hub composition metadata consumers | `src/loushang/harnesstui/continuity/surface.py` | reads `hub.composition.experience.domain_ids` and `hub.composition.continuity_providers` to build domain filter and sort options; any observation port must carry this metadata |
+| Existing lease-like concept | `src/loushang/harness/continuity/provider.py::PreparedActivationLease` | an activation handle returned by `ContinuityHub.prepare`; consumption (`activation.py::consume_prepared_activation`) invokes the provider callback directly without re-entering the hub, so an issued-but-unconsumed lease currently outlives hub-level guards |
+| Existing activation abort semantics | `src/loushang/harness/continuity/activation.py::CallbackPreparedActivationLease` | idempotent close/abort and `ActivationLeaseStateError` already exist and are reused by the close contract below |
 | Graph contract reservation | `src/loushang/harness/capabilities/contracts.py::CapabilityRequirementBinding` | `stable_reference` is reserved; planning skips the scope-inversion check for it, and binding fails closed with `stable_reference_binding_not_implemented` (`graph_binding.py`) |
 
 ## Decision Summary
@@ -51,17 +59,18 @@ Graph never owns the concrete `ContinuityHub`.
 1. **One typed observation reference.** `StableContinuityReference` is the
    only supported way for anything outside the process authority to observe
    continuity. It is a narrow, typed, async port over the hub's existing
-   verbs (`query`, `preview`, `prepare`, `delete`) that revalidates authority
-   liveness on every call. It owns nothing and cannot dispose anything.
+   verbs (`query`, `preview`, `prepare`, `delete`) plus one frozen
+   issuance-time metadata snapshot, and it revalidates authority liveness on
+   every verb call. It owns nothing and cannot dispose anything.
 2. **The process authority keeps exclusive ownership.** The concrete
    `ContinuityHub`, the Profile binding, and the binder remain owned by the
    Product runtime composition (`CodingContinuityComposition` today). No
-   Session, graph node, or surface stores a `ContinuityHub`.
-3. **Explicit shutdown order.** Reference invalidation and in-flight join
-   happen inside the process authority before the Profile binding is
-   disposed. Session disposal completes before continuity shutdown begins;
-   continuity shutdown must still succeed when a Session died without
-   releasing its reference.
+   Session, graph node, CLI flow, or surface stores a `ContinuityHub`.
+3. **Explicit shutdown order.** Reference invalidation, outstanding
+   activation-lease abort, and in-flight join happen inside the process
+   authority before the Profile binding is disposed. Session disposal
+   completes before continuity shutdown begins; continuity shutdown must
+   still succeed when a Session died without releasing its reference.
 4. **Graph `stable_reference` stays fail-closed.** No graph node references
    continuity in this slice. Promoting continuity to a Session-graph
    dependency requires a concrete accepted Session Consumer and a separate
@@ -73,7 +82,8 @@ Graph never owns the concrete `ContinuityHub`.
 `StableContinuityReference` is harness-owned
 (`src/loushang/harness/continuity/`, alongside the hub) and Product-neutral.
 It is distinct from `PreparedActivationLease`, which remains an activation
-handle with its own existing lifecycle.
+handle with its own existing consumption semantics while the authority is
+live.
 
 Issuance and semantics:
 
@@ -83,6 +93,10 @@ Issuance and semantics:
 - every verb revalidates liveness before delegating; after the authority
   begins closing, calls fail with the typed `StaleContinuityReferenceError`
   and never reach a provider;
+- **admit protocol:** each verb performs its liveness check and in-flight
+  registration synchronously, with no `await` between check and
+  registration, so a verb admitted before close starts is always joined by
+  close and a verb arriving after close starts never reaches a provider;
 - `release()` is synchronous, idempotent bookkeeping so a Session or surface
   can declare it is done early; a released reference fails subsequent calls
   with the same typed error;
@@ -90,6 +104,24 @@ Issuance and semantics:
   providers; releasing is never a precondition for authority shutdown;
 - the reference carries no credentials, callbacks, or Product content; it is
   an identity-bearing observation port only.
+
+### Observation Descriptor
+
+Migrating the existing surfaces requires the hub's composition metadata
+(domain filter options and sort options). The reference exposes one
+synchronous property, `observation`, returning a frozen issuance-time
+snapshot:
+
+```text
+ContinuityObservationDescriptor (frozen dataclass)
+  experience: ExperienceDescriptor        # identity of the composed experience
+  providers: tuple[ContinuityProviderDescriptor, ...]  # id/label identity only
+```
+
+The descriptor is identity-only metadata captured at issuance; it has no
+liveness semantics, holds no provider object, and remains readable after
+close so surfaces can render a stable final frame. It never exposes
+credentials, callbacks, or provider instances.
 
 ## Shutdown Order Contract
 
@@ -100,47 +132,79 @@ The contract has three ordered steps and one failure rule:
    Session Graph disposal completes. Release is cooperative bookkeeping; the
    authority must not depend on it for correctness.
 2. **Authority close.** `CodingContinuityComposition.shutdown()` first awaits
-   `ContinuityHub.close()`. Close marks the authority closing, stales every
-   outstanding reference immediately, joins in-flight reference-guarded
-   operations exactly once (cancellation-atomically: a cancelled close still
-   converges and may be retried), and is idempotent.
+   `ContinuityHub.close()`. Close, in one cancellation-atomic and idempotent
+   operation:
+   - marks the authority closing, staling every outstanding reference
+     immediately (new verbs fail with `StaleContinuityReferenceError`);
+   - aborts every issued-but-unconsumed `PreparedActivationLease` using the
+     existing idempotent abort semantics, so no activation consumption runs
+     after the binding is disposed; and
+   - joins in-flight reference-guarded operations exactly once.
 3. **Binding disposal.** Only after close completes does shutdown dispose
    the Profile binding via the binder. The binding is never disposed while
-   a reference-guarded operation is in flight.
+   a reference-guarded operation is in flight or an activation lease remains
+   consumable.
+
+**Close-then-record restructuring.** The current
+`CodingContinuityComposition.shutdown()` sets `_shutdown = True` before
+awaiting disposal (mark-then-execute). This slice restructures it: the
+composition records shutdown completion only after `ContinuityHub.close()`
+and binding disposal both succeed. A failed or cancelled close leaves the
+composition unrecorded, so the retry called out below is actually reachable.
 
 Failure rule: continuity shutdown runs even when Session disposal failed
 (the existing `try/finally` ordering is part of this contract). Close
-therefore force-stales references whose holders died without releasing;
-unreleased references are stale, not leaks. A failed close retains the
-un-disposed binding and surfaces a retryable diagnostic rather than
-disposing underneath live operations.
+therefore force-stales references and aborts activation leases whose holders
+died without releasing; unreleased references are stale, not leaks. A failed
+close retains the un-disposed binding and surfaces a retryable diagnostic
+rather than disposing underneath live operations.
 
 ## Migration Path For Current Consumers
 
-Process-composed TUI surfaces currently receive the raw hub. They are
-process-level observers, not Session Consumers, but they are the real
-consumers that prove this mechanism. The implementation PR migrates them to
-`StableContinuityReference`, issued once at CLI/surface composition and
-threaded exactly where the hub is threaded today. After migration, only the
-process authority names `ContinuityHub` in a stored field.
+Five current consumers thread the raw hub; all five migrate to
+`StableContinuityReference`, issued once by the process authority and
+threaded exactly where the hub is threaded today:
 
-This migration is behavior-preserving: same verbs, same timeouts, same
-`PreparedActivationLease` flow inside `prepare`. It changes ownership
-visibility only.
+| Consumer | Current raw-hub use | Migrated shape |
+| --- | --- | --- |
+| `coding/cli/__main__.py` resume flow | `composition.hub.prepare(target)`; passes `hub=composition.hub` to `continuity_runner` | issues one reference; `reference.prepare(target)`; passes the reference to `continuity_runner` |
+| `coding/ui/screen_surfaces.py` | passes `continuity.hub` into surfaces | passes the issued reference |
+| `harnesstui/conversation/agent_surfaces.py` | stores `continuity_hub: ContinuityHub \| None`; `require_continuity()` | stores the reference; same `None` contract |
+| `harnesstui/continuity/runner.py` | `hub: ContinuityHub` parameter | parameter becomes `StableContinuityReference` |
+| `harnesstui/continuity/surface.py` | hub verbs plus `hub.composition` metadata reads | reference verbs plus the frozen `observation` descriptor |
+
+After migration, only the process authority names `ContinuityHub` in a
+stored field or parameter annotation. The migration is behavior-preserving
+while the authority is live: same verbs, same timeouts, same domain/sort
+options (via the descriptor), same `PreparedActivationLease` consumption
+flow. It changes ownership visibility only.
 
 ## Acceptance Criteria
 
 - a reference cannot outlive its authority: post-close and post-release
   calls fail with `StaleContinuityReferenceError` and reach no provider;
-- `ContinuityHub.close()` joins in-flight reference operations exactly once,
-  is idempotent, and converges under cancellation;
+- the admit protocol holds: a verb admitted before close starts is joined by
+  close, and a verb arriving after close starts never reaches a provider;
+- `ContinuityHub.close()` aborts outstanding activation leases, joins
+  in-flight reference operations exactly once, is idempotent, and converges
+  under cancellation;
+- activation consumption can never run after binding disposal: an
+  issued-but-unconsumed `PreparedActivationLease` fails with the existing
+  typed lease-state error once close begins;
 - the Profile binding is never disposed while a reference operation is in
-  flight; a failed close leaves the binding owned and retryable;
-- sealed rebinding, `PreparedActivationLease` behavior, query cursor
-  integrity, and provider timeout behavior are unchanged;
-- no `harness/session/`, `harnesstui/`, or graph file stores a
-  `ContinuityHub`; construction of `ContinuityHub` remains frozen to
-  `coding/continuity.py::bind_coding_continuity`;
+  flight or an activation lease remains consumable; a failed close leaves
+  the composition unrecorded and retryable;
+- the `observation` descriptor carries the same domain and provider identity
+  the surfaces use today (domain filter options and sort options regression
+  tests stay green without `hub.composition`);
+- a synthetic Session-scoped holder exercises both the cooperative
+  `release()` path and the force-stale path (Session dies without release),
+  proving shutdown-order step 1 and the failure rule;
+- sealed rebinding, query cursor integrity, provider timeout behavior, and
+  activation semantics while the authority is live are unchanged;
+- no `harness/session/`, `harnesstui/`, CLI, or graph file stores or
+  parameter-annotates `ContinuityHub`; construction of `ContinuityHub`
+  remains frozen to `coding/continuity.py::bind_coding_continuity`;
 - `stable_reference_binding_not_implemented` remains the binding diagnostic
   for graph `stable_reference` requirements; and
 - the generated catalog and current owner map record continuity as
@@ -152,8 +216,9 @@ The implementation PR adds or extends AST gates to freeze:
 
 - `ContinuityHub` construction sites: `coding/continuity.py` only;
 - `StableContinuityReference` issuance: `ContinuityHub.reference()` only;
-- no `ContinuityHub` stored-field type annotation outside
-  `coding/continuity.py`; and
+- no `ContinuityHub` name in stored-field or parameter annotations outside
+  `coding/continuity.py` (extending the existing construction-site AST
+  visitor to annotation positions); and
 - the existing fail-closed `stable_reference` binding test remains green.
 
 ## Explicit Non-Goals
@@ -162,7 +227,9 @@ The implementation PR adds or extends AST gates to freeze:
 - no unlock of the graph `stable_reference` requirement binding;
 - no hot replacement, refresh, or rebind of continuity packs (the slot
   remains sealed);
-- no change to `PreparedActivationLease` or activation semantics;
+- no redesign of `PreparedActivationLease`: while the authority is live,
+  activation semantics are unchanged; close only applies the existing
+  idempotent abort semantics to outstanding leases;
 - no second ContinuityHub, hub registry, or service-locator access; and
 - no new Product policy about which continuity providers exist.
 
@@ -171,6 +238,6 @@ The implementation PR adds or extends AST gates to freeze:
 This document is the explicit scope, refresh-boundary, restart-behavior, and
 stable-reference definition required before the CLA7d slice moves. When the
 implementation PR lands, the CLA plan's CLA7d entry gains its implemented
-evidence pointing at this boundary, the migrated surfaces, and the gates
+evidence pointing at this boundary, the migrated consumers, and the gates
 above. CLA8 later removes or freezes any remaining raw-hub compatibility
 surface.
