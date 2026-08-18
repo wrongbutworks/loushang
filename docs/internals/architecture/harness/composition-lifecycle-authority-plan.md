@@ -718,9 +718,14 @@ Implemented evidence:
   peer live runtime; after the graph claim it is a non-owning compatibility
   view and the graph owns release;
 - all supported Product construction families pass that narrow candidate:
-  managed bootstrap (`coding/bootstrap.py`), the late Extension binder
-  (`coding/runtime_capability_admission.py::stage_coding_resource_composition_candidate`),
-  and the direct `AgentSession` fallback (`coding/session/agent_session.py`);
+  managed bootstrap (`coding/bootstrap.py::_CODING_AGENT_PRODUCT_CONSTRUCTION`
+  via `bind_capabilities`), which late-selects the final Extension profile
+  onto that same staged candidate through `resolve_session_capability_profile`
+  and `StagedResourceCompositionCandidate.select_final_profile`, so the five
+  resource mechanisms are constructed exactly once; and the direct
+  `AgentSession` fallback (`coding/session/agent_session.py::AgentSession.__init__`),
+  which stages one candidate via `stage_resource_composition_candidate`
+  directly or via `CodingCapabilityProfileResolution.bind`;
 - bootstrap-only mechanism use goes through the private
   `_RootOwnedResourceCapabilityHandles` and the focused
   `SessionResourceCapabilityPorts`, never a public compatibility facade;
@@ -893,6 +898,13 @@ Implemented CLA7c-workspace evidence:
 ### CLA8: Legacy Authority Closure
 
 - remove or freeze old peer construction paths;
+- remove the unused `stage_coding_resource_composition_candidate` late-binder
+  factory (`coding/runtime_capability_admission.py`): it has zero production
+  or test callers because the managed path late-selects the final Extension
+  profile through `resolve_session_capability_profile` and
+  `StagedResourceCompositionCandidate.select_final_profile`; the CLA0 baseline
+  AUTH-03/ENTRY-01 rows still describe the older two-candidate late-binder
+  behavior and must be revised together with that removal;
 - extend the CLA4 `RuntimeProfileBinder` prohibition as later slots migrate;
 - delete compatibility properties only after supported Product callers move;
 - update the generated catalog and current owner map; and
