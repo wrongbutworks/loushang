@@ -583,6 +583,27 @@ Acceptance:
 - no generic transaction manager or new lifecycle lock hierarchy is added; and
 - successful publish/retire behavior is unchanged.
 
+Status: implemented. The disposal/join window is closed by the Extension
+runner generation gate; no production API or behavior contract beyond that
+window changed.
+
+Implemented evidence:
+
+- `src/loushang/harness/extensions/runner.py` retains the generation gate
+  until staged-candidate rollback has disposed its registrations, so Session
+  shutdown joins in-flight candidate cleanup instead of reporting completion
+  early;
+- `tests/harness/extensions/test_generation.py::test_cancelled_failed_publication_holds_gate_and_retries_candidate_cleanup`
+  covers publication failure racing cancellation with retryable candidate
+  cleanup;
+- cancellation-atomic shutdown, retired-generation cleanup join, and
+  shutdown/retry behavior remain covered by the existing generation tests
+  (`test_cancelled_retirement_joins_cleanup_and_keeps_new_generation`,
+  `test_candidate_cannot_publish_after_runtime_shutdown_begins`,
+  `test_cancelled_shutdown_finishes_retired_and_current_generation_cleanup`,
+  `test_shutdown_retains_retryable_retired_generation_cleanup`); and
+- no generic transaction manager or new lifecycle lock hierarchy was added.
+
 ### CLA2: Session-Owned Graph Runtime
 
 Move graph ownership from `SessionModelCallRuntime` to the Session composition
