@@ -105,6 +105,8 @@ TRACKED_CALL_SYMBOLS = frozenset(
         "resources_capability_provider_binding",
         "session_capability_provider_binding",
         "workspace_capability_provider_binding",
+        "ContinuityHub",
+        "StableContinuityReference",
         "_ResourceCompositionFacet",
         "_WorkspaceProcessFacet",
         "_WorkspaceToolFacet",
@@ -710,3 +712,30 @@ def test_cla4_session_has_no_peer_resource_profile_owner() -> None:
     keywords = {keyword.arg for keyword in construction.keywords}
     assert "resolve_session_capability_profile" in keywords
     assert "bind_session_capabilities" not in keywords
+
+
+def test_cla7d_continuity_has_one_process_authority_and_typed_reference() -> None:
+    assert _construction_sites("ContinuityHub") == Counter(
+        {
+            (
+                Path("src/loushang/coding/continuity.py"),
+                "bind_coding_continuity",
+            ): 1
+        }
+    )
+    assert _construction_sites("StableContinuityReference") == Counter(
+        {
+            (
+                Path("src/loushang/harness/continuity/hub.py"),
+                "ContinuityHub.reference",
+            ): 1
+        }
+    )
+    for root in (
+        Path("src/loushang/harness/session"),
+        Path("src/loushang/harnesstui"),
+        Path("src/loushang/coding/cli"),
+        Path("src/loushang/coding/ui"),
+    ):
+        for path in root.rglob("*.py"):
+            assert "ContinuityHub" not in path.read_text(encoding="utf-8"), path

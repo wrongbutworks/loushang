@@ -455,15 +455,16 @@ async def _run_coding_pre_session_bootstrap(
         )
 
     composition = bind_coding_continuity(context.runtime)
+    continuity_reference = composition.hub.reference()
     activated = False
     try:
 
         async def activate(target):
-            lease = await composition.hub.prepare(target)
+            lease = await continuity_reference.prepare(target)
             return await consume_prepared_activation(lease)
 
         selection = await continuity_runner(
-            hub=composition.hub,
+            reference=continuity_reference,
             activate=activate,
             stdin=context.bootstrap.stdin,
             stdout=context.bootstrap.stdout,
@@ -483,6 +484,7 @@ async def _run_coding_pre_session_bootstrap(
         activated = True
         return CliPhaseResult.continue_with(session)
     finally:
+        continuity_reference.release()
         await composition.dispose()
         if not activated:
             await shutdown_coding_continuity(context.runtime)

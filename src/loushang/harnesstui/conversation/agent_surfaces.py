@@ -6,8 +6,8 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Literal
 
 from loushang.harness.continuity import (
-    ContinuityHub,
     ContinuityTarget,
+    StableContinuityReference,
     consume_prepared_activation,
 )
 from loushang.harness.multiagent import HostCaller
@@ -44,7 +44,7 @@ def build_standard_agent_screen_surface_workflow_ports(
     session: object,
     *,
     runtime: object | None = None,
-    continuity_hub: ContinuityHub | None = None,
+    continuity_reference: StableContinuityReference | None = None,
     session_provider: Callable[[], object] | None = None,
     approval_interaction_provider: (
         Callable[[], SessionApprovalInteractionPort | None] | None
@@ -76,17 +76,17 @@ def build_standard_agent_screen_surface_workflow_ports(
         else (lambda: session)
     )
 
-    def require_continuity() -> ContinuityHub:
-        if continuity_hub is None:
+    def require_continuity() -> StableContinuityReference:
+        if continuity_reference is None:
             raise RuntimeError("Session continuity is not available")
-        return continuity_hub
+        return continuity_reference
 
     def build_resume_surface() -> ScreenSurfaceView:
         current = active_session()
         settings_manager = getattr(current, "settings_manager", None)
         keybindings = getattr(settings_manager, "get_keybindings", None)
         return build_continuity_surface_view(
-            hub=require_continuity(),
+            reference=require_continuity(),
             request_render=lambda _kind: request_render("product"),
             keybindings=keybindings() if callable(keybindings) else None,
         )
@@ -105,7 +105,7 @@ def build_standard_agent_screen_surface_workflow_ports(
     def build_delete_surface() -> ScreenSurfaceView:
         current_id = getattr(active_session(), "session_id", None)
         return build_continuity_surface_view(
-            hub=require_continuity(),
+            reference=require_continuity(),
             request_render=lambda _kind: request_render("product"),
             include_summary=lambda summary: summary.target.opaque_id != current_id,
             title="Delete a previous session",
@@ -200,7 +200,7 @@ def build_standard_agent_screen_surface_workflow_ports(
             request_render=lambda: request_render("product"),
         )
 
-    has_continuity = runtime is not None and continuity_hub is not None
+    has_continuity = runtime is not None and continuity_reference is not None
     return build_agent_screen_surface_workflow_ports(
         session,
         session_provider=active_session,

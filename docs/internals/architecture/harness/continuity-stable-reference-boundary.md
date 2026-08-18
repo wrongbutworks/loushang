@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed CLA7d design boundary. Not yet implemented. This document defines
+Implemented CLA7d boundary. The stable reference, shutdown order, consumer
+migration, acceptance gates, and evidence defined here are landed on the
+harness lane. This document defines
 the process-owned typed stable reference and the shutdown order required by
 the [Capability Composition Lifecycle Authority
 Plan](composition-lifecycle-authority-plan.md) slice CLA7d before any

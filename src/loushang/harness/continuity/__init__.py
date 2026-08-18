@@ -16,6 +16,11 @@ from loushang.harness.continuity.provider import (
     ContinuityProvider,
     PreparedActivationLease,
 )
+from loushang.harness.continuity.reference import (
+    ContinuityObservationDescriptor,
+    StableContinuityReference,
+    StaleContinuityReferenceError,
+)
 from loushang.harness.continuity.types import (
     CONTINUITY_PROVIDER_PROFILE_VERSION,
     ActivationDisposition,
@@ -49,6 +54,7 @@ __all__ = [
     "ContinuityDeletionProvider",
     "ContinuityIndexState",
     "ContinuityHub",
+    "ContinuityObservationDescriptor",
     "ContinuityPage",
     "ContinuityPreview",
     "ContinuityPreviewSection",
@@ -67,6 +73,8 @@ __all__ = [
     "ProviderPageItem",
     "ProviderPageState",
     "ProviderQuery",
+    "StableContinuityReference",
+    "StaleContinuityReferenceError",
     "compose_experience_continuity",
     "consume_prepared_activation",
 ]
