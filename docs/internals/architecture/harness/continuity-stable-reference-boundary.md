@@ -115,7 +115,7 @@ snapshot:
 ```text
 ContinuityObservationDescriptor (frozen dataclass)
   experience: ExperienceDescriptor        # identity of the composed experience
-  providers: tuple[ContinuityProviderDescriptor, ...]  # id/label identity only
+  providers: tuple[ContinuityProviderDescriptor, ...]  # identity and admission metadata, no instances
 ```
 
 The descriptor is identity-only metadata captured at issuance; it has no
@@ -188,9 +188,10 @@ flow. It changes ownership visibility only.
 - `ContinuityHub.close()` aborts outstanding activation leases, joins
   in-flight reference operations exactly once, is idempotent, and converges
   under cancellation;
-- activation consumption can never run after binding disposal: an
-  issued-but-unconsumed `PreparedActivationLease` fails with the existing
-  typed lease-state error once close begins;
+- no activation consumption starts once close begins: an issued-but-unconsumed
+  `PreparedActivationLease` fails with the existing typed lease-state error; a
+  consumption already in flight when close begins runs to completion unguarded
+  and must not touch binding-owned state;
 - the Profile binding is never disposed while a reference operation is in
   flight or an activation lease remains consumable; a failed close leaves
   the composition unrecorded and retryable;
@@ -218,7 +219,9 @@ The implementation PR adds or extends AST gates to freeze:
 - `StableContinuityReference` issuance: `ContinuityHub.reference()` only;
 - no `ContinuityHub` name in stored-field or parameter annotations outside
   `coding/continuity.py` (extending the existing construction-site AST
-  visitor to annotation positions); and
+  visitor to annotation positions), backed by a text-prohibition assertion
+  over `harness/session/`, `harnesstui/`, and CLI sources so unannotated
+  assignments cannot bypass the gate; and
 - the existing fail-closed `stable_reference` binding test remains green.
 
 ## Explicit Non-Goals
