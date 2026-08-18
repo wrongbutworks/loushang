@@ -33,6 +33,7 @@ Current live references:
 - [AppService Hosted Boundary With An Embedded TUI](appservice-embedded-tui-hosted-boundary-plan.md)
 - [Loushang Runtime Architecture](loushang-runtime-architecture.md)
 - [Loushang Work / Method / Channel / Harness Architecture](loushang-work-method-channel-harness-architecture.md)
+- [Method / Ontology Action Driven Multi-Agent Collaboration Requirements](method-ontology-action-multi-agent-collaboration-requirements.md)
 - [P3 Fixed MethodPlan Flow Research](p3-fixed-methodplan-flow-research.md)
 - [Method Deviation And Evolution](method-deviation-and-evolution.md)
 - [Methodology System Reference Survey](loushang-methodology-system-reference-survey.md)
