@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import hashlib
+import json as stdlib_json
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, TypeAlias, cast
 
 from loushang.ai import AIError, AIErrorCode
-from loushang.foundation.json import JSONValue, dump_json_value
+from loushang.foundation.json import (
+    JSONValue,
+    JsonValueError,
+    validate_json_value,
+)
 
 MODEL_INPUT_SCHEMA_VERSION = 1
 MODEL_INPUT_PROJECTION_VERSION = "harness.model-input.v1"
@@ -42,13 +48,83 @@ class ModelInputIntegrityError(RuntimeError):
 
 
 def canonical_model_input_json(value: object, *, name: str) -> str:
-    return dump_json_value(
-        thaw_model_input_json(freeze_model_input_json(value, name=name)),
-        name=name,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    # Single-pass canonical encoder.  It is byte-identical to the reference
+    # pipeline ``dump_json_value(thaw(freeze(value)), sort_keys=True)`` (see
+    # tests/harness/transcript/test_model_input_canonical.py) but skips the
+    # intermediate frozen/thawed tree copies and the per-primitive throwaway
+    # JSON documents, which dominated transcript load time.
+    return _canonical_dumps(value, path=name, seen=set())
+
+
+_STRING_ENCODER = stdlib_json.JSONEncoder(ensure_ascii=False)
+
+
+def _canonical_dumps(value: object, *, path: str, seen: set[int]) -> str:
+    if value is None:
+        return "null"
+    value_type = type(value)
+    if value_type is bool:
+        return "true" if value else "false"
+    if value_type is int:
+        try:
+            return str(value)
+        except ValueError:
+            # Exceeds the encoder digit limit; raise the canonical error.
+            canonical_model_input_json_primitive(value, name=path)
+            raise AssertionError("unreachable")  # pragma: no cover
+    if value_type is float:
+        if not math.isfinite(value):
+            canonical_model_input_json_primitive(value, name=path)
+            raise AssertionError("unreachable")  # pragma: no cover
+        return repr(value)
+    if value_type is str:
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            canonical_model_input_json_primitive(value, name=path)
+            raise AssertionError("unreachable")  # pragma: no cover
+        return _STRING_ENCODER.encode(value)
+    if isinstance(value, Mapping):
+        identity = id(value)
+        if identity in seen:
+            raise TypeError(f"{path} must not contain a cycle")
+        seen.add(identity)
+        try:
+            items: list[tuple[str, object]] = []
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    raise TypeError(f"{path} keys must be strings")
+                if type(key) is not str:
+                    # Matches the strict encoder rejecting key subclasses (for
+                    # example StrEnum) after freeze/thaw accepted them.
+                    raise JsonValueError(
+                        f"{path} must be JSON-safe: keys must be strings",
+                        path=path,
+                        value_type=type(key).__name__,
+                    )
+                items.append((key, item))
+            items.sort(key=lambda pair: pair[0])
+            return "{" + ",".join(
+                _STRING_ENCODER.encode(key)
+                + ":"
+                + _canonical_dumps(item, path=f"{path}.{key}", seen=seen)
+                for key, item in items
+            ) + "}"
+        finally:
+            seen.remove(identity)
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        identity = id(value)
+        if identity in seen:
+            raise TypeError(f"{path} must not contain a cycle")
+        seen.add(identity)
+        try:
+            return "[" + ",".join(
+                _canonical_dumps(item, path=f"{path}[{index}]", seen=seen)
+                for index, item in enumerate(value)
+            ) + "]"
+        finally:
+            seen.remove(identity)
+    raise TypeError(f"{path} is outside strict JSON: {type(value).__name__}")
 
 
 def hash_model_input_json(value: object, *, name: str) -> str:
@@ -272,7 +348,10 @@ def _freeze_json(
 
 
 def canonical_model_input_json_primitive(value: object, *, name: str) -> None:
-    dump_json_value(value, name=name, ensure_ascii=False, separators=(",", ":"))
+    # The canonical strict encoder only *rejects* here (non-finite floats,
+    # invalid UTF-8); its dump output was discarded.  Validate directly and
+    # skip building a throwaway JSON document per primitive.
+    validate_json_value(value, name=name)
 
 
 def _require_references(

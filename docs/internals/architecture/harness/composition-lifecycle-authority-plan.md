@@ -829,10 +829,11 @@ behavior, and stable-reference requirement are explicit.
 4. **CLA7c-workspace — Workspace dependency cutover (implemented).** Two
    least-authority Session Consumers use the optional admitted Workspace
    dependency; Coding no longer keeps Workspace as a co-root.
-5. **CLA7d — continuity stable reference.** `continuity.provider_packs` remains
+5. **CLA7d — continuity stable reference (implemented).** `continuity.provider_packs` remains
    Process-scoped. It requires a process-owned typed stable lease/reference and
    shutdown order before a Session Consumer can observe it. The Session Graph
-   never owns the concrete ContinuityHub.
+   never owns the concrete ContinuityHub. The accepted design boundary is
+   [Continuity Stable Reference Boundary](continuity-stable-reference-boundary.md).
 
 Implemented CLA7a evidence:
 
@@ -894,6 +895,44 @@ Implemented CLA7c-workspace evidence:
   Workspace node is reused; and
 - authority ceilings, raw policy/approval/Sandbox internals, the single process
   launcher binding, and Workspace cleanup ownership remain unchanged.
+
+Implemented CLA7d evidence:
+
+- the accepted design boundary is [Continuity Stable Reference
+  Boundary](continuity-stable-reference-boundary.md), revised through a
+  three-reviewer pass before implementation;
+- `StableContinuityReference` and the frozen `ContinuityObservationDescriptor`
+  live in `src/loushang/harness/continuity/reference.py` and are issued only
+  through `ContinuityHub.reference()`; every verb revalidates liveness through
+  a synchronous admit-and-register step with no intervening `await`;
+- `ContinuityHub.close()` is one idempotent, cancellation-atomic operation
+  that stales outstanding references, aborts every issued-but-unconsumed
+  `PreparedActivationLease` with its existing idempotent abort semantics, and
+  joins in-flight reference-guarded operations exactly once; a cancelled close
+  leaves the hub closing and unclosed so a retry converges;
+- `CodingContinuityComposition.shutdown()` is restructured close-then-record:
+  the hub closes before the Profile binding is disposed, and shutdown is
+  recorded only after both succeed, so a failed close remains retryable;
+- all five former raw-hub consumers (the CLI resume flow,
+  `coding/ui/screen_surfaces.py`, `harnesstui/conversation/agent_surfaces.py`,
+  `harnesstui/continuity/runner.py`, and `harnesstui/continuity/surface.py`)
+  now thread the typed reference; surface domain/sort options flow through the
+  frozen issuance-time observation descriptor;
+- the architecture gate
+  `tests/architecture/test_composition_lifecycle_authority_cla0.py::test_cla7d_continuity_has_one_process_authority_and_typed_reference`
+  freezes `ContinuityHub` construction to `coding/continuity.py`, reference
+  issuance to `ContinuityHub.reference()`, and prohibits the `ContinuityHub`
+  name across `harness/session/`, `harnesstui/`, `coding/cli/`, and
+  `coding/ui/` sources;
+- the graph `stable_reference` requirement binding remains fail-closed
+  (`tests/harness/capabilities/test_graph_binding.py`);
+- reference lifecycle, admit protocol, close join/cancellation, activation
+  lease abort, and synthetic Session-holder release/force-stale paths are
+  covered by `tests/harness/continuity/test_stable_reference.py`, and
+  close-then-record ordering and retryability by
+  `tests/coding/test_continuity.py`; and
+- continuity remains Process-owned with no graph node, so the generated
+  catalog and current owner map are unchanged.
 
 ### CLA8: Legacy Authority Closure
 

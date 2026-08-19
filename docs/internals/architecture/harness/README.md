@@ -53,6 +53,10 @@ planning, work event persistence, or AI provider behavior.
 - [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
   fixes PR9's four-clock composed view, explicit skew, explain, JSON, and diff
   semantics while retaining the existing graph projector as the only projector.
+- [Continuity Stable Reference Boundary](continuity-stable-reference-boundary.md)
+  is the proposed CLA7d design boundary for the process-owned typed stable
+  continuity reference and the explicit Session-before-continuity shutdown
+  order; the graph `stable_reference` binding remains fail-closed.
 - [Refactoring Principles](refactoring-principles.md) defines the evidence and
   neutrality gates for moving code into Harness.
 

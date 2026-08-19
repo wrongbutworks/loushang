@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, TypeAlias, cast
 
-from loushang.foundation.json import JSONValue, require_json_value
+from loushang.foundation.json import JSONValue, validate_json_value
 from loushang.harness.transcript.model_input_types import (
     canonical_model_input_json,
     freeze_model_input_json,
@@ -88,8 +88,9 @@ class ModelInputJsonValueNode:
             if len(encoded) != self.decoded_bytes:
                 raise ValueError("Model Input inline JSON byte count changed")
             try:
-                decoded = require_json_value(
-                    json.loads(self.inline_json),
+                decoded = json.loads(self.inline_json)
+                validate_json_value(
+                    decoded,
                     name="Model Input inline JSON",
                 )
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
@@ -736,9 +737,7 @@ def _require_non_negative_int(value: object, *, name: str) -> int:
 def _require_sha256(value: object, *, name: str) -> str:
     text = _require_text(value, name=name)
     digest = text.removeprefix("sha256:")
-    if len(digest) != 64 or any(
-        character not in "0123456789abcdef" for character in digest
-    ):
+    if len(digest) != 64 or digest.strip("0123456789abcdef"):
         raise ValueError(f"{name} must be a lowercase SHA-256 fingerprint")
     return text
 

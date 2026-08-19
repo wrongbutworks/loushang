@@ -4,7 +4,11 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar, cast
 
-from loushang.foundation.json import JSONValue, JsonValueError, require_json_mapping
+from loushang.foundation.json import (
+    JSONValue,
+    JsonValueError,
+    validate_json_value,
+)
 from loushang.foundation.json import require_json_value as snapshot_json_value
 from loushang.harness.conversation.types import (
     ConversationHeader,
@@ -133,16 +137,10 @@ class ConversationPayloadCodecRegistry:
         value: object,
     ) -> object:
         key = _payload_key(kind, payload_version)
-        try:
-            snapshot = snapshot_json_value(
-                value,
-                name=f"conversation payload {kind!r} version {payload_version}",
-            )
-        except JsonValueError as exc:
-            raise JournalCodecError(
-                "Conversation payload is outside strict JSON",
-                code="invalid_record_payload",
-            ) from exc
+        # The envelope boundary (journal load + _require_envelope) has already
+        # validated this tree against the strict JSON algebra exactly once, so
+        # decode dispatches structurally instead of re-walking the payload.
+        snapshot = cast(JSONValue, value)
         codec = self._codecs.get(key)
         if codec is None:
             if kind in self._required_kinds:
@@ -311,12 +309,13 @@ def _require_envelope(
             code="invalid_envelope_shape",
         )
     try:
-        return require_json_mapping(dict(value), name=name)
+        validate_json_value(value, name=name)
     except JsonValueError as exc:
         raise JournalCodecError(
             f"{name.capitalize()} contains a value outside strict JSON",
             code="invalid_envelope_value",
         ) from exc
+    return cast(dict[str, JSONValue], dict(value))
 
 
 def _require_field(value: Mapping[str, JSONValue], name: str) -> JSONValue:
@@ -375,13 +374,12 @@ def _require_metadata_field(
     value: Mapping[str, JSONValue],
 ) -> dict[str, JSONValue]:
     field = value.get("metadata", {})
-    try:
-        return require_json_mapping(field, name="conversation envelope metadata")
-    except JsonValueError as exc:
+    if not isinstance(field, Mapping):
         raise JournalCodecError(
             "Conversation envelope metadata must be a JSON object",
             code="invalid_envelope_field",
-        ) from exc
+        )
+    return cast(dict[str, JSONValue], dict(field))
 
 
 def _require_discriminator(

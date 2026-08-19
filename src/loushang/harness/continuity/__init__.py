@@ -10,11 +10,20 @@ from loushang.harness.continuity.composition import (
     ExperienceComposition,
     compose_experience_continuity,
 )
-from loushang.harness.continuity.hub import ContinuityHub, InvalidContinuityCursor
+from loushang.harness.continuity.hub import (
+    ContinuityHub,
+    ContinuityProviderTimeoutError,
+    InvalidContinuityCursor,
+)
 from loushang.harness.continuity.provider import (
     ContinuityDeletionProvider,
     ContinuityProvider,
     PreparedActivationLease,
+)
+from loushang.harness.continuity.reference import (
+    ContinuityObservationDescriptor,
+    StableContinuityReference,
+    StaleContinuityReferenceError,
 )
 from loushang.harness.continuity.types import (
     CONTINUITY_PROVIDER_PROFILE_VERSION,
@@ -49,12 +58,14 @@ __all__ = [
     "ContinuityDeletionProvider",
     "ContinuityIndexState",
     "ContinuityHub",
+    "ContinuityObservationDescriptor",
     "ContinuityPage",
     "ContinuityPreview",
     "ContinuityPreviewSection",
     "ContinuityProvider",
     "ContinuityProviderDescriptor",
     "ContinuityProviderPack",
+    "ContinuityProviderTimeoutError",
     "ContinuityQuery",
     "ContinuitySort",
     "ContinuitySummary",
@@ -67,6 +78,8 @@ __all__ = [
     "ProviderPageItem",
     "ProviderPageState",
     "ProviderQuery",
+    "StableContinuityReference",
+    "StaleContinuityReferenceError",
     "compose_experience_continuity",
     "consume_prepared_activation",
 ]

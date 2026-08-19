@@ -11,6 +11,7 @@ from loushang.foundation.json import (
     dump_json_value,
     require_json_mapping,
     require_json_value,
+    validate_json_value,
 )
 
 
@@ -127,3 +128,64 @@ def test_require_json_value_rejects_unencodable_strings_and_integers() -> None:
     if digit_limit:
         with pytest.raises(JsonValueError, match="encoder limit"):
             require_json_value(10**digit_limit, name="payload")
+
+
+def test_validate_json_value_accepts_strict_json_without_copying() -> None:
+    source = {"items": [{"name": "alpha"}], "count": 1, "flag": True, "note": None}
+
+    assert validate_json_value(source, name="payload") is None
+
+
+@pytest.mark.parametrize(
+    ("value", "path", "value_type"),
+    [
+        ({"path": Path("notes.txt")}, "payload.path", "PosixPath"),
+        ({"items": (1, 2)}, "payload.items", "tuple"),
+        ({"items": {1, 2}}, "payload.items", "set"),
+        ({"number": float("nan")}, "payload.number", "float"),
+        ({"number": float("inf")}, "payload.number", "float"),
+        ({"value": IntEnum("Number", "ONE").ONE}, "payload.value", "Number"),
+        ({1: "value"}, "payload", "int"),
+    ],
+)
+def test_validate_json_value_rejects_the_same_values_as_require(
+    value: object,
+    path: str,
+    value_type: str,
+) -> None:
+    with pytest.raises(JsonValueError) as exc_info:
+        validate_json_value(value, name="payload")
+    assert exc_info.value.path == path
+    assert exc_info.value.value_type == value_type
+
+
+def test_validate_json_value_rejects_cycles_strings_integers_and_subclasses() -> None:
+    class CustomList(list[object]):
+        pass
+
+    with pytest.raises(JsonValueError, match="circular"):
+        cyclic: list[object] = []
+        cyclic.append(cyclic)
+        validate_json_value(cyclic, name="payload")
+
+    with pytest.raises(JsonValueError, match="valid UTF-8"):
+        validate_json_value({"value": "\ud800"}, name="payload")
+
+    with pytest.raises(JsonValueError, match="valid UTF-8"):
+        validate_json_value({"\ud800": "value"}, name="payload")
+
+    with pytest.raises(JsonValueError) as subclass_error:
+        validate_json_value(CustomList(), name="payload")
+    assert subclass_error.value.value_type == "CustomList"
+
+    digit_limit = sys.get_int_max_str_digits()
+    if digit_limit:
+        with pytest.raises(JsonValueError, match="encoder limit"):
+            validate_json_value(10**digit_limit, name="payload")
+
+
+def test_dump_json_value_still_rejects_non_strict_values() -> None:
+    with pytest.raises(JsonValueError):
+        dump_json_value({"number": float("nan")}, name="payload")
+    with pytest.raises(JsonValueError):
+        dump_json_value({"items": (1, 2)}, name="payload")

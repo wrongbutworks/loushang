@@ -12,6 +12,7 @@ from loushang.harness.continuity import (
     ContinuityPreview,
     ContinuityPreviewSection,
     ContinuityProviderDescriptor,
+    ContinuityProviderTimeoutError,
     ContinuityQuery,
     ContinuitySummary,
     ContinuityTarget,
@@ -57,6 +58,7 @@ class _Provider:
     generation: str = "generation-1"
     snapshot: str = "snapshot-1"
     fail: bool = False
+    prepare_delay: float = 0.0
     requests: list[ProviderQuery] = field(default_factory=list)
 
     @property
@@ -103,6 +105,8 @@ class _Provider:
         self,
         target: ContinuityTarget,
     ) -> CallbackPreparedActivationLease:
+        if self.prepare_delay:
+            await asyncio.sleep(self.prepare_delay)
         return CallbackPreparedActivationLease(
             target=target,
             disposition="in_place",
@@ -110,9 +114,22 @@ class _Provider:
         )
 
 
+class _DeletionProvider(_Provider):
+    def __init__(self, *args: object, delete_delay: float = 0.0, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self._delete_delay = delete_delay
+
+    async def delete(self, target: ContinuityTarget) -> bool:
+        if self._delete_delay:
+            await asyncio.sleep(self._delete_delay)
+        return True
+
+
 def _hub(
     *providers: _Provider,
     cursor_ttl: float = 900.0,
+    provider_timeout: float = 5.0,
+    activation_timeout: float | None = 120.0,
 ) -> ContinuityHub:
     profile = RuntimeProfileResolver().resolve(
         ProductRuntimePlan(product_id="studio", slots=())
@@ -150,6 +167,8 @@ def _hub(
         ),
         cursor_secret=b"test-secret",
         cursor_ttl=cursor_ttl,
+        provider_timeout=provider_timeout,
+        activation_timeout=activation_timeout,
     )
 
 
@@ -327,3 +346,88 @@ async def _preview_and_prepare_route_only_by_provider_qualified_target() -> None
     assert await lease.consume() == "coding-1"
     with pytest.raises(ValueError, match="unknown continuity provider"):
         await hub.preview(ContinuityTarget(provider_id="other.sessions", opaque_id="1"))
+
+
+def test_prepare_is_bounded_by_activation_timeout_not_provider_timeout() -> None:
+    asyncio.run(_prepare_is_bounded_by_activation_timeout_not_provider_timeout())
+
+
+async def _prepare_is_bounded_by_activation_timeout_not_provider_timeout() -> None:
+    provider = _Provider(
+        "coding.sessions",
+        (_summary("coding.sessions", "coding-1", 0),),
+        prepare_delay=0.2,
+    )
+    hub = _hub(provider, provider_timeout=0.05, activation_timeout=5.0)
+    target = provider.summaries[0].target
+
+    lease = await hub.prepare(target)
+
+    assert await lease.consume() == "coding-1"
+
+
+def test_prepare_timeout_raises_descriptive_provider_error() -> None:
+    asyncio.run(_prepare_timeout_raises_descriptive_provider_error())
+
+
+async def _prepare_timeout_raises_descriptive_provider_error() -> None:
+    provider = _Provider(
+        "coding.sessions",
+        (_summary("coding.sessions", "coding-1", 0),),
+        prepare_delay=0.2,
+    )
+    hub = _hub(provider, provider_timeout=0.05, activation_timeout=0.05)
+    target = provider.summaries[0].target
+
+    with pytest.raises(ContinuityProviderTimeoutError) as captured:
+        await hub.prepare(target)
+
+    message = str(captured.value)
+    assert "coding.sessions" in message
+    assert "prepare" in message
+
+
+def test_preview_remains_bounded_by_provider_timeout() -> None:
+    asyncio.run(_preview_remains_bounded_by_provider_timeout())
+
+
+async def _preview_remains_bounded_by_provider_timeout() -> None:
+    provider = _Provider(
+        "coding.sessions",
+        (_summary("coding.sessions", "coding-1", 0),),
+    )
+    hub = _hub(provider, provider_timeout=5.0, activation_timeout=0.05)
+    target = provider.summaries[0].target
+
+    preview = await hub.preview(target)
+
+    assert preview.heading == "coding-1"
+
+
+def test_delete_is_bounded_by_activation_timeout() -> None:
+    asyncio.run(_delete_is_bounded_by_activation_timeout())
+
+
+async def _delete_is_bounded_by_activation_timeout() -> None:
+    provider = _DeletionProvider(
+        "coding.sessions",
+        (_summary("coding.sessions", "coding-1", 0),),
+        delete_delay=0.2,
+    )
+    target = provider.summaries[0].target
+
+    patient = _hub(provider, provider_timeout=0.05, activation_timeout=5.0)
+    assert await patient.delete(target) is True
+
+    impatient = _hub(provider, provider_timeout=0.05, activation_timeout=0.05)
+    with pytest.raises(ContinuityProviderTimeoutError, match="delete"):
+        await impatient.delete(target)
+
+
+def test_activation_timeout_must_be_positive_or_unbounded() -> None:
+    provider = _Provider(
+        "coding.sessions",
+        (_summary("coding.sessions", "coding-1", 0),),
+    )
+    with pytest.raises(ValueError, match="activation_timeout"):
+        _hub(provider, activation_timeout=0)

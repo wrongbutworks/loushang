@@ -28,6 +28,29 @@ def require_json_value(value: object, *, name: str = "value") -> JSONValue:
     return _require_json_value(value, path=name, seen=set())
 
 
+def validate_json_value(value: object, *, name: str = "value") -> None:
+    """Validate a value from the strict JSON algebra without copying it.
+
+    Applies exactly the same acceptance rules as :func:`require_json_value`
+    but skips the projecting copy and eager error-path construction, which
+    makes it suitable for bulk read paths (for example transcript journal
+    loads).  On rejection it re-runs the detailed validator so callers
+    observe the identical :class:`JsonValueError` (including ``path`` and
+    ``value_type``) that :func:`require_json_value` would raise.
+    """
+
+    try:
+        _validate_json_value_fast(value, seen=set())
+    except _JsonRejection:
+        # The input is invalid; the detailed validator raises JsonValueError.
+        _require_json_value(value, path=name, seen=set())
+        raise JsonValueError(
+            f"{name} must be JSON-safe",
+            path=name,
+            value_type=type(value).__name__,
+        )  # pragma: no cover - the detailed validator always raises here
+
+
 def require_json_mapping(
     value: object,
     *,
@@ -51,14 +74,66 @@ def dump_json_value(
     sort_keys: bool = False,
     separators: tuple[str, str] | None = (",", ":"),
 ) -> str:
-    projected = require_json_value(value, name=name)
+    validate_json_value(value, name=name)
     return stdlib_json.dumps(
-        projected,
+        cast(JSONValue, value),
         ensure_ascii=ensure_ascii,
         sort_keys=sort_keys,
         separators=separators,
         allow_nan=False,
     )
+
+
+class _JsonRejection(Exception):
+    """Internal marker: fast validation rejected; details come from slow pass."""
+
+
+def _validate_json_value_fast(value: object, *, seen: set[int]) -> None:
+    """Single-pass strict JSON check mirroring ``_require_json_value`` rules."""
+
+    if value is None:
+        return
+    value_type = type(value)
+    if value_type is str:
+        try:
+            cast(str, value).encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise _JsonRejection from exc
+        return
+    if value_type is bool:
+        return
+    if value_type is int:
+        try:
+            str(value)
+        except ValueError as exc:
+            raise _JsonRejection from exc
+        return
+    if value_type is float:
+        if not math.isfinite(cast(float, value)):
+            raise _JsonRejection
+        return
+    if value_type is list or value_type is dict:
+        object_id = id(value)
+        if object_id in seen:
+            raise _JsonRejection
+        seen.add(object_id)
+        try:
+            if value_type is list:
+                for item in cast(list[object], value):
+                    _validate_json_value_fast(item, seen=seen)
+            else:
+                for key, item in cast(dict[object, object], value).items():
+                    if type(key) is not str:
+                        raise _JsonRejection
+                    try:
+                        key.encode("utf-8")
+                    except UnicodeEncodeError as exc:
+                        raise _JsonRejection from exc
+                    _validate_json_value_fast(item, seen=seen)
+        finally:
+            seen.discard(object_id)
+        return
+    raise _JsonRejection
 
 
 def _require_json_value(
@@ -206,4 +281,5 @@ __all__ = [
     "dump_json_value",
     "require_json_mapping",
     "require_json_value",
+    "validate_json_value",
 ]

@@ -14,6 +14,7 @@ from loushang.harness.continuity import (
     ContinuitySummary,
     ContinuityTarget,
     ProviderPageState,
+    StableContinuityReference,
 )
 from loushang.harnesstui.continuity import (
     ContinuitySurface,
@@ -36,6 +37,10 @@ class _Provider:
     descriptor: ContinuityProviderDescriptor
 
 
+def _reference(hub: "_Hub") -> StableContinuityReference:
+    return StableContinuityReference(hub)  # type: ignore[arg-type]
+
+
 class _Hub:
     def __init__(self) -> None:
         descriptor = ContinuityProviderDescriptor(
@@ -51,6 +56,7 @@ class _Hub:
         )
         self.queries: list[ContinuityQuery] = []
         self.previewed: list[ContinuityTarget] = []
+        self.closing = False
         self.summary = ContinuitySummary(
             target=ContinuityTarget(
                 provider_id="coding.sessions",
@@ -64,6 +70,12 @@ class _Hub:
             created_at="2026-07-23T00:00:00Z",
             excerpt="Parser discussion",
         )
+
+    def _admit_reference_operation(self) -> None:
+        pass
+
+    def _complete_reference_operation(self) -> None:
+        pass
 
     async def query(self, request: ContinuityQuery) -> ContinuityPage:
         self.queries.append(request)
@@ -107,7 +119,7 @@ def test_common_resume_view_is_a_real_page_and_renders_loading_first() -> None:
     hub = _Hub()
     renders: list[str] = []
     view = build_continuity_surface_view(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=renders.append,
     )
 
@@ -127,7 +139,7 @@ def test_common_resume_view_is_a_real_page_and_renders_loading_first() -> None:
 def test_continuity_surface_can_exclude_non_selectable_summaries() -> None:
     hub = _Hub()
     surface = ContinuitySurface(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=lambda _kind: None,
         include_summary=lambda _summary: False,
         selection_action="delete",
@@ -144,7 +156,7 @@ def test_continuity_surface_can_exclude_non_selectable_summaries() -> None:
 
 def test_delete_continuity_view_uses_the_delete_surface_purpose() -> None:
     view = build_continuity_surface_view(
-        hub=_Hub(),  # type: ignore[arg-type]
+        reference=_reference(_Hub()),
         request_render=lambda _kind: None,
         title="Delete a previous session",
         selection_action="delete",
@@ -177,7 +189,7 @@ def test_common_resume_requeries_after_background_index_rebuild() -> None:
 
     hub = _RebuildingHub()
     surface = ContinuitySurface(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=lambda _kind: None,
     )
 
@@ -221,7 +233,7 @@ def test_common_resume_keeps_background_index_refresh_visually_stable() -> None:
 
     hub = _SlowRebuildingHub()
     surface = ContinuitySurface(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=lambda _kind: None,
     )
 
@@ -269,7 +281,7 @@ def test_common_resume_distinguishes_empty_and_partial_responsive_views() -> Non
         )
     )
     empty_view = build_continuity_surface_view(
-        hub=empty_hub,  # type: ignore[arg-type]
+        reference=_reference(empty_hub),
         request_render=lambda _kind: None,
     )
     asyncio.run(empty_view.content.start())
@@ -300,7 +312,7 @@ def test_common_resume_distinguishes_empty_and_partial_responsive_views() -> Non
         )
     )
     partial_view = build_continuity_surface_view(
-        hub=partial_hub,  # type: ignore[arg-type]
+        reference=_reference(partial_hub),
         request_render=lambda _kind: None,
     )
     asyncio.run(partial_view.content.start())
@@ -312,7 +324,7 @@ def test_common_resume_distinguishes_empty_and_partial_responsive_views() -> Non
 def test_common_resume_uses_compact_colored_picker_chrome() -> None:
     hub = _Hub()
     view = build_continuity_surface_view(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=lambda _kind: None,
     )
 
@@ -358,7 +370,7 @@ def test_common_resume_adds_neutral_domain_filter_for_multi_provider_experience(
         ),
     )
     view = build_continuity_surface_view(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=lambda _kind: None,
     )
 
@@ -420,7 +432,7 @@ def test_common_resume_loads_next_page_without_wrapping_to_first_item() -> None:
     async def scenario() -> None:
         hub = _PagedHub()
         surface = ContinuitySurface(
-            hub=hub,  # type: ignore[arg-type]
+            reference=_reference(hub),
             request_render=lambda _kind: None,
         )
         await surface.start()
@@ -506,7 +518,7 @@ def test_common_resume_page_down_crosses_page_boundary_without_wrapping() -> Non
     async def scenario() -> None:
         hub = _PagedHub()
         surface = ContinuitySurface(
-            hub=hub,  # type: ignore[arg-type]
+            reference=_reference(hub),
             request_render=lambda _kind: None,
         )
         await surface.start()
@@ -573,7 +585,7 @@ def test_common_resume_aligns_metadata_and_expands_titles_on_wide_screens(
     monkeypatch.setattr(surface_module, "_relative_time", lambda value: value)
     hub = _ColumnHub()
     surface = ContinuitySurface(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=lambda _kind: None,
     )
     asyncio.run(surface.start())
@@ -604,7 +616,7 @@ def test_common_resume_aligns_metadata_and_expands_titles_on_wide_screens(
 def test_common_resume_surface_searches_provider_and_routes_typed_target() -> None:
     hub = _Hub()
     surface = ContinuitySurface(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=lambda _kind: None,
     )
 
@@ -617,7 +629,7 @@ def test_common_resume_surface_searches_provider_and_routes_typed_target() -> No
         assert hub.queries[-1].text == "parser"
         assert surface.selected_target == hub.summary.target
         view = build_continuity_surface_view(
-            hub=hub,  # type: ignore[arg-type]
+            reference=_reference(hub),
             request_render=lambda _kind: None,
         )
         view.content = surface
@@ -636,7 +648,7 @@ def test_common_resume_surface_shows_activation_progress_and_inline_failure() ->
     hub = _Hub()
     renders: list[str] = []
     view = build_continuity_surface_view(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=renders.append,
     )
     surface = view.content
@@ -669,7 +681,7 @@ def test_common_resume_surface_shows_activation_progress_and_inline_failure() ->
 def test_common_resume_surface_uses_resolved_keybinding_actions() -> None:
     hub = _Hub()
     view = build_continuity_surface_view(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=lambda _kind: None,
         keybindings={"tui.continuity.preview": "ctrl+p"},
     )
@@ -688,7 +700,7 @@ def test_common_resume_surface_uses_resolved_keybinding_actions() -> None:
 def test_common_resume_preview_uses_only_structured_portable_sections() -> None:
     hub = _Hub()
     surface = ContinuitySurface(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=lambda _kind: None,
     )
 
@@ -752,7 +764,7 @@ def test_common_resume_cancels_preview_when_selection_moves_quickly() -> None:
 
     hub = _PreviewHub()
     surface = ContinuitySurface(
-        hub=hub,  # type: ignore[arg-type]
+        reference=_reference(hub),
         request_render=lambda _kind: None,
     )
 
@@ -812,7 +824,7 @@ def test_standalone_picker_keeps_page_open_after_activation_failure(
     monkeypatch.setattr(runner_module, "TuiRunner", _Runner)
     selection = asyncio.run(
         run_continuity_picker(
-            hub=hub,  # type: ignore[arg-type]
+            reference=_reference(hub),
             activate=fail_activation,
             stdin=SimpleNamespace(),  # type: ignore[arg-type]
             stdout=SimpleNamespace(),  # type: ignore[arg-type]

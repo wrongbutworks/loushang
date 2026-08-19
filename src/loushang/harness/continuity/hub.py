@@ -11,15 +11,21 @@ import secrets
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Awaitable
 
+from loushang.harness.continuity.activation import ActivationLeaseStateError
 from loushang.harness.continuity.composition import ExperienceComposition
 from loushang.harness.continuity.provider import (
     ContinuityDeletionProvider,
     ContinuityProvider,
     PreparedActivationLease,
 )
+from loushang.harness.continuity.reference import (
+    StableContinuityReference,
+    StaleContinuityReferenceError,
+)
 from loushang.harness.continuity.types import (
+    ActivationDisposition,
     ContinuityDiagnostic,
     ContinuityIndexState,
     ContinuityPage,
@@ -47,6 +53,32 @@ class InvalidContinuityCursor(ValueError):
     """Raised when a composite cursor is malformed or belongs to another query."""
 
 
+class ContinuityProviderTimeoutError(TimeoutError):
+    """Raised when a continuity Provider operation exceeds its time budget.
+
+    Query-style operations (query, preview) share the interactive
+    ``provider_timeout``; activation-style operations (prepare, delete) use the
+    separate ``activation_timeout`` so that legitimately slow activations, such
+    as loading a large session transcript, are not killed by the list/search
+    budget.
+    """
+
+    def __init__(
+        self,
+        *,
+        provider_id: str,
+        operation: str,
+        timeout: float,
+    ) -> None:
+        self.provider_id = provider_id
+        self.operation = operation
+        self.timeout = timeout
+        super().__init__(
+            f"continuity provider {provider_id!r} timed out during "
+            f"{operation} after {timeout:.1f}s"
+        )
+
+
 @dataclass(frozen=True)
 class _ProviderCursor:
     cursor: str | None
@@ -61,6 +93,56 @@ class _QueryResult:
     diagnostic: ContinuityDiagnostic | None
 
 
+class _TrackedActivationLease:
+    """Hub-tracked activation lease aborted when the authority closes.
+
+    The hub registers every lease it issues so :meth:`ContinuityHub.close`
+    can abort issued-but-unconsumed leases with their existing idempotent
+    abort semantics.  A consumption already in flight when close begins runs
+    to completion unguarded; a consumption attempted after close begins fails
+    with ActivationLeaseStateError and the lease is settled.
+    """
+
+    def __init__(
+        self,
+        inner: PreparedActivationLease,
+        hub: ContinuityHub,
+    ) -> None:
+        self._inner = inner
+        self._hub = hub
+        hub._track_activation_lease(self)
+
+    @property
+    def target(self) -> ContinuityTarget:
+        return self._inner.target
+
+    @property
+    def disposition(self) -> ActivationDisposition:
+        return self._inner.disposition
+
+    @property
+    def consumed(self) -> bool:
+        return self._inner.consumed
+
+    async def consume(self) -> object:
+        if self._hub._closing:
+            await self._inner.abort()
+            raise ActivationLeaseStateError("activation lease is closed")
+        try:
+            return await self._inner.consume()
+        finally:
+            self._hub._untrack_activation_lease(self)
+
+    async def abort(self) -> None:
+        try:
+            await self._inner.abort()
+        finally:
+            self._hub._untrack_activation_lease(self)
+
+    async def close(self) -> None:
+        await self.abort()
+
+
 class ContinuityHub:
     """Query, merge, preview, and route admitted Providers without Domain imports."""
 
@@ -70,11 +152,14 @@ class ContinuityHub:
         *,
         cursor_secret: bytes | None = None,
         provider_timeout: float = 5.0,
+        activation_timeout: float | None = 120.0,
         concurrency_limit: int = 8,
         cursor_ttl: float = 900.0,
     ) -> None:
         if provider_timeout <= 0:
             raise ValueError("provider_timeout must be positive")
+        if activation_timeout is not None and activation_timeout <= 0:
+            raise ValueError("activation_timeout must be positive or None")
         if concurrency_limit < 1:
             raise ValueError("concurrency_limit must be at least 1")
         if cursor_ttl <= 0:
@@ -86,13 +171,74 @@ class ContinuityHub:
         }
         self._cursor_secret = cursor_secret or secrets.token_bytes(32)
         self._provider_timeout = provider_timeout
+        self._activation_timeout = activation_timeout
         self._concurrency_limit = concurrency_limit
         self._cursor_ttl = cursor_ttl
         self._composition_fingerprint = self._fingerprint_composition(composition)
+        self._closing = False
+        self._closed = False
+        self._in_flight_reference_operations = 0
+        self._reference_operations_drained = asyncio.Event()
+        self._reference_operations_drained.set()
+        self._outstanding_activation_leases: set[_TrackedActivationLease] = set()
 
     @property
     def composition(self) -> ExperienceComposition:
         return self._composition
+
+    @property
+    def closing(self) -> bool:
+        """Whether the process authority has begun closing this hub."""
+
+        return self._closing
+
+    def reference(self) -> StableContinuityReference:
+        """Issue one typed stable observation reference to this hub.
+
+        The reference owns nothing; it revalidates liveness on every verb and
+        becomes stale once :meth:`close` begins.
+        """
+
+        if self._closing:
+            raise StaleContinuityReferenceError(
+                "continuity authority is closing"
+            )
+        return StableContinuityReference(self)
+
+    def _admit_reference_operation(self) -> None:
+        self._in_flight_reference_operations += 1
+        self._reference_operations_drained.clear()
+
+    def _complete_reference_operation(self) -> None:
+        self._in_flight_reference_operations -= 1
+        if self._in_flight_reference_operations == 0:
+            self._reference_operations_drained.set()
+
+    def _track_activation_lease(self, lease: _TrackedActivationLease) -> None:
+        self._outstanding_activation_leases.add(lease)
+
+    def _untrack_activation_lease(self, lease: _TrackedActivationLease) -> None:
+        self._outstanding_activation_leases.discard(lease)
+
+    async def close(self) -> None:
+        """Close the authority: stale references, abort leases, join in-flight.
+
+        One cancellation-atomic, idempotent operation: mark closing so every
+        outstanding reference becomes stale, abort every issued-but-unconsumed
+        activation lease with its existing idempotent abort semantics, then
+        join in-flight reference-guarded operations exactly once.  A cancelled
+        close leaves the hub closing and unclosed, so a later call resumes the
+        join.
+        """
+
+        if self._closed:
+            return
+        self._closing = True
+        for lease in tuple(self._outstanding_activation_leases):
+            await lease.abort()
+        while self._in_flight_reference_operations:
+            await self._reference_operations_drained.wait()
+        self._closed = True
 
     async def query(self, request: ContinuityQuery) -> ContinuityPage:
         providers = self._select_providers(request)
@@ -121,7 +267,9 @@ class ContinuityHub:
             )
             try:
                 async with semaphore:
-                    page = await asyncio.wait_for(
+                    page = await self._call_provider(
+                        provider,
+                        "query",
                         provider.query(provider_request),
                         timeout=self._provider_timeout,
                     )
@@ -251,7 +399,9 @@ class ContinuityHub:
 
     async def preview(self, target: ContinuityTarget) -> ContinuityPreview:
         provider = self._provider_for_target(target)
-        return await asyncio.wait_for(
+        return await self._call_provider(
+            provider,
+            "preview",
             provider.preview(target),
             timeout=self._provider_timeout,
         )
@@ -261,10 +411,13 @@ class ContinuityHub:
         target: ContinuityTarget,
     ) -> PreparedActivationLease:
         provider = self._provider_for_target(target)
-        return await asyncio.wait_for(
+        lease = await self._call_provider(
+            provider,
+            "prepare",
             provider.prepare(target),
-            timeout=self._provider_timeout,
+            timeout=self._activation_timeout,
         )
+        return _TrackedActivationLease(lease, self)
 
     async def delete(self, target: ContinuityTarget) -> bool:
         """Delete a target only when its owning Provider explicitly supports it."""
@@ -272,10 +425,32 @@ class ContinuityHub:
         provider = self._provider_for_target(target)
         if not isinstance(provider, ContinuityDeletionProvider):
             raise RuntimeError("The selected continuity item cannot be deleted")
-        return await asyncio.wait_for(
+        return await self._call_provider(
+            provider,
+            "delete",
             provider.delete(target),
-            timeout=self._provider_timeout,
+            timeout=self._activation_timeout,
         )
+
+    async def _call_provider(
+        self,
+        provider: ContinuityProvider,
+        operation: str,
+        awaitable: Awaitable[Any],
+        *,
+        timeout: float | None,
+    ) -> Any:
+        if timeout is None:
+            return await awaitable
+        try:
+            async with asyncio.timeout(timeout):
+                return await awaitable
+        except TimeoutError as exc:
+            raise ContinuityProviderTimeoutError(
+                provider_id=provider.descriptor.provider_id,
+                operation=operation,
+                timeout=timeout,
+            ) from exc
 
     def _select_providers(
         self,

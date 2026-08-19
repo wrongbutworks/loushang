@@ -57,7 +57,9 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         ports = build_standard_agent_screen_surface_workflow_ports(
             session,
             runtime=runtime,
-            continuity_hub=continuity.hub if continuity is not None else None,
+            continuity_reference=(
+                continuity.hub.reference() if continuity is not None else None
+            ),
             session_provider=self._current_session,
             approval_interaction_provider=approval_interaction_provider,
             select_model=lambda value: select_available_model(
