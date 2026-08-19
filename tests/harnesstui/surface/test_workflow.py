@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import asyncio
 from dataclasses import dataclass, field, replace
 from types import SimpleNamespace
@@ -680,3 +682,86 @@ def test_surface_workflow_opens_and_applies_session_permissions() -> None:
 
     assert state.permission_actions == ["revoke:grant-1"]
     assert state.statuses[-1] == "Session permission revoked."
+
+
+def test_surface_workflow_cancels_in_flight_continuity_activation() -> None:
+    class _ActivationContent:
+        selected_target = "typed-target"
+
+        def __init__(self) -> None:
+            self.activating = False
+            self.cancelled = False
+            self.closed = False
+
+        def begin_activation(self) -> bool:
+            if self.activating:
+                return False
+            self.activating = True
+            return True
+
+        def cancel_activation(self) -> bool:
+            if not self.activating:
+                return False
+            self.activating = False
+            self.cancelled = True
+            return True
+
+        def fail_activation(self, error: Exception) -> None:
+            self.activating = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    async def scenario() -> None:
+        workflow, state = _workflow()
+        gate = asyncio.Event()
+
+        async def activate(target: object) -> str:
+            await gate.wait()
+            return "resumed:typed-target"
+
+        workflow.ports = replace(workflow.ports, activate_continuity=activate)
+        content = _ActivationContent()
+        picker = ScreenSurfaceView(
+            title="Resume",
+            purpose="session",
+            content=content,
+            presentation="page",
+        )
+        workflow.open(picker)
+
+        await workflow.handle_surface_intent(
+            InputIntent(kind="select", text="opaque-render-value")
+        )
+        assert content.activating is True
+        task = workflow._session_activation_task
+        assert task is not None and not task.done()
+
+        await workflow.handle_surface_intent(
+            InputIntent(
+                kind="consumed",
+                note="continuity_cancel_activation",
+            )
+        )
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # The picker stays open, the surface was reset for a retry, and the
+        # status line reports the cancellation instead of an error.
+        assert workflow.current is picker
+        assert content.cancelled is True
+        assert content.closed is False
+        assert state.statuses == ["Resume cancelled"]
+
+        # A retry still works after the cancellation.
+        gate.set()
+        await workflow.handle_surface_intent(
+            InputIntent(kind="select", text="opaque-render-value")
+        )
+        retry = workflow._session_activation_task
+        assert retry is not None
+        await retry
+        assert workflow.current is None
+        assert state.statuses[-1] == "resumed:typed-target"
+
+    asyncio.run(scenario())

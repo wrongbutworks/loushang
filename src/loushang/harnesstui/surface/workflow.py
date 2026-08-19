@@ -113,6 +113,7 @@ class ScreenSurfaceWorkflowCopy:
     hotkeys_title: str
     settings_title: str
     approval_aborted: str = "Turn stopped"
+    session_activation_cancelled: str = "Resume cancelled"
     model_selection_recovery_hint: Callable[[Exception], str] = (
         lambda _error: "Choose another model, or press Esc to keep the current model."
     )
@@ -220,6 +221,7 @@ class ScreenSurfaceWorkflow:
                 "command": self._handle_command_submit,
                 "settings": self._handle_settings_submit,
                 "session": self._handle_session_submit,
+                "session_cancel": self._handle_session_cancel,
                 "delete": self._handle_delete_submit,
                 "fork": self._handle_fork_submit,
                 "rename": self._handle_rename_submit,
@@ -522,6 +524,22 @@ class ScreenSurfaceWorkflow:
             self.app.set_statusline_visible(result.statusline_visible)
         if result.refresh_model_label:
             await self.ports.refresh_model_label()
+        self.app.request_render(self.request_render_reason)
+
+    async def _handle_session_cancel(self, _payload: object) -> None:
+        task = self._session_activation_task
+        if task is None or task.done():
+            return
+        task.cancel()
+        # Reset the surface here (not in the activation coroutine): a task
+        # cancelled before its first step never runs, so the coroutine
+        # itself cannot be relied on to clean up the activating state.
+        surface = self.current
+        if isinstance(surface, ScreenSurfaceView):
+            cancel_activation = getattr(surface.content, "cancel_activation", None)
+            if callable(cancel_activation):
+                cancel_activation()
+        self.app.set_status(self.copy.session_activation_cancelled)
         self.app.request_render(self.request_render_reason)
 
     async def _handle_session_submit(self, payload: object) -> None:

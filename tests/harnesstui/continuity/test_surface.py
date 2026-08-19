@@ -673,7 +673,7 @@ def test_common_resume_surface_shows_activation_progress_and_inline_failure() ->
         assert 'Resuming "Review the parser"' in activating_text
         # The activation state must stand out from the dim idle state.
         assert "\x1b[" in activating_lines[0].text
-        assert surface.footer_help == ""
+        assert surface.footer_help == "Esc cancel"
 
         surface.fail_activation(RuntimeError("restore failed"))
         failed = view.render(RenderConstraints(width=80, max_height=12))
@@ -733,6 +733,9 @@ def test_standalone_picker_shows_activation_state_while_resuming(
             await asyncio.sleep(0)
             await asyncio.sleep(0)
             await on_input(InputEvent(kind="key", key="enter"), context)
+            # The activation runs as a background task; let it finish and its
+            # done callback request the runner stop before run() returns.
+            await asyncio.sleep(0.05)
             return 0
 
     async def slow_activation(_target: ContinuityTarget) -> object:
@@ -887,6 +890,10 @@ def test_standalone_picker_keeps_page_open_after_activation_failure(
 
             failed = await on_input(InputEvent(kind="key", key="enter"), context)
             assert failed.exit_code is None
+            # The activation runs as a background task; let its failure
+            # callback land before asserting on the rendered state.
+            for _ in range(5):
+                await asyncio.sleep(0)
             view = self.tui.surface_host.entries[0].surface.renderable
             rendered_after_failure.extend(
                 line.text
@@ -914,3 +921,188 @@ def test_standalone_picker_keeps_page_open_after_activation_failure(
 
     assert selection is None
     assert any("candidate validation failed" in line for line in rendered_after_failure)
+
+
+def test_common_resume_escape_while_activating_requests_cancellation() -> None:
+    hub = _Hub()
+    view = build_continuity_surface_view(
+        reference=_reference(hub),
+        request_render=lambda _kind: None,
+    )
+    surface = view.content
+
+    async def scenario() -> None:
+        await surface.start()
+        assert surface.begin_activation() is True
+
+        intent = surface.handle_input(InputEvent(kind="key", key="escape"))
+        assert intent == InputIntent(
+            kind="consumed",
+            note="continuity_cancel_activation",
+        )
+        # Other input is still swallowed while the activation runs.
+        assert surface.handle_input(InputEvent(kind="text", text="x")) == InputIntent(
+            kind="consumed",
+            note="continuity_activating",
+        )
+        # The footer advertises the cancel affordance.
+        assert "cancel" in surface.footer_help.lower()
+        surface.close()
+
+    asyncio.run(scenario())
+
+
+def test_common_resume_cancel_activation_shows_notice_and_recovers() -> None:
+    hub = _Hub()
+    renders: list[str] = []
+    view = build_continuity_surface_view(
+        reference=_reference(hub),
+        request_render=renders.append,
+    )
+    surface = view.content
+
+    async def scenario() -> None:
+        await surface.start()
+        assert surface.begin_activation() is True
+
+        assert surface.cancel_activation() is True
+        cancelled = view.render(RenderConstraints(width=80, max_height=12))
+        cancelled_lines = [strip_control_sequences(line.text) for line in cancelled.lines]
+        assert any("Resume cancelled" in line for line in cancelled_lines)
+        assert "Resuming" not in "\n".join(cancelled_lines)
+
+        # Input works again immediately, and a retry starts cleanly without
+        # the stale cancellation notice.
+        intent = surface.handle_input(InputEvent(kind="key", key="down"))
+        assert intent != InputIntent(kind="consumed", note="continuity_activating")
+        assert surface.begin_activation() is True
+        retried = view.render(RenderConstraints(width=80, max_height=12))
+        assert any(
+            "Resuming" in strip_control_sequences(line.text)
+            for line in retried.lines
+        )
+        assert not any(
+            "Resume cancelled" in strip_control_sequences(line.text)
+            for line in retried.lines
+        )
+        surface.close()
+
+    asyncio.run(scenario())
+    assert renders
+
+
+def test_standalone_picker_escape_cancels_activation_and_stays_open(
+    monkeypatch,
+) -> None:
+    from loushang.harnesstui.continuity import runner as runner_module
+
+    hub = _Hub()
+    activation_started = asyncio.Event()
+    activation_cancelled = asyncio.Event()
+    stop_requests: list[int] = []
+    after_cancel: list[str] = []
+
+    class _Runner:
+        def __init__(self, tui, **_kwargs) -> None:
+            self.tui = tui
+
+        async def run(self, on_input, *, on_start) -> int:
+            context = SimpleNamespace(
+                tui=self.tui,
+                request_render=lambda _kind: None,
+                request_stop=lambda exit_code=0: stop_requests.append(exit_code),
+                stop=lambda exit_code=0: TuiInputResult(exit_code=exit_code),
+            )
+            on_start(context)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+            started = await on_input(InputEvent(kind="key", key="enter"), context)
+            assert started.exit_code is None
+            await asyncio.wait_for(activation_started.wait(), timeout=1.0)
+
+            cancelled = await on_input(InputEvent(kind="key", key="escape"), context)
+            assert cancelled.exit_code is None
+            await asyncio.wait_for(activation_cancelled.wait(), timeout=1.0)
+
+            view = self.tui.surface_host.entries[0].surface.renderable
+            after_cancel.extend(
+                strip_control_sequences(line.text)
+                for line in view.render(
+                    RenderConstraints(width=80, max_height=14)
+                ).lines
+            )
+
+            closed = await on_input(InputEvent(kind="key", key="escape"), context)
+            assert closed.exit_code == 0
+            return 0
+
+    async def blocking_activation(_target: ContinuityTarget) -> object:
+        activation_started.set()
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            activation_cancelled.set()
+            raise
+        return object()
+
+    monkeypatch.setattr(runner_module, "TuiRunner", _Runner)
+    selection = asyncio.run(
+        run_continuity_picker(
+            reference=_reference(hub),
+            activate=blocking_activation,
+            stdin=SimpleNamespace(),  # type: ignore[arg-type]
+            stdout=SimpleNamespace(),  # type: ignore[arg-type]
+        )
+    )
+
+    assert selection is None
+    assert stop_requests == []
+    assert any("Resume cancelled" in line for line in after_cancel)
+
+
+def test_standalone_picker_successful_activation_requests_runner_stop(
+    monkeypatch,
+) -> None:
+    from loushang.harnesstui.continuity import runner as runner_module
+
+    hub = _Hub()
+    stop_requests: list[int] = []
+
+    class _Runner:
+        def __init__(self, tui, **_kwargs) -> None:
+            self.tui = tui
+
+        async def run(self, on_input, *, on_start) -> int:
+            context = SimpleNamespace(
+                tui=self.tui,
+                request_render=lambda _kind: None,
+                request_stop=lambda exit_code=0: stop_requests.append(exit_code),
+                stop=lambda exit_code=0: TuiInputResult(exit_code=exit_code),
+            )
+            on_start(context)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            result = await on_input(InputEvent(kind="key", key="enter"), context)
+            assert result.exit_code is None
+            # The activation task completes in the background and must stop
+            # the runner without requiring further input.
+            await asyncio.sleep(0.05)
+            assert stop_requests == [0]
+            return 0
+
+    async def fast_activation(_target: ContinuityTarget) -> object:
+        await asyncio.sleep(0.01)
+        return object()
+
+    monkeypatch.setattr(runner_module, "TuiRunner", _Runner)
+    selection = asyncio.run(
+        run_continuity_picker(
+            reference=_reference(hub),
+            activate=fast_activation,
+            stdin=SimpleNamespace(),  # type: ignore[arg-type]
+            stdout=SimpleNamespace(),  # type: ignore[arg-type]
+        )
+    )
+
+    assert selection is not None

@@ -299,6 +299,12 @@ def normalize_surface_intent(
             outcome="abort",
             note=intent.note,
         )
+    if (
+        surface.purpose == "session"
+        and intent.kind == "consumed"
+        and intent.note == "continuity_cancel_activation"
+    ):
+        return SurfaceEvent(kind="surface_submit", source="session_cancel")
     if intent.kind in {"surface_close", "dialog_cancel"}:
         return SurfaceEvent(kind="surface_close")
     if surface.purpose == "model" and intent.kind in {"command", "select"}:
