@@ -20,7 +20,7 @@ from uuid import uuid4
 
 from loushang.harness.journal import journal_file_lock
 
-from .exec import ExecRequest, ExecResult, ExecService
+from .exec import ExecLaunchError, ExecRequest, ExecResult, ExecService
 from .git import GitPaths, find_git_paths, list_git_worktree_paths
 
 GitWorkspaceStatus = Literal[
@@ -650,7 +650,7 @@ class GitWorkspaceManager:
                 last_error=_exception_text(error),
             )
             raise
-        except (GitWorkspaceError, OSError) as error:
+        except (ExecLaunchError, GitWorkspaceError, OSError) as error:
             record = self._update_record(
                 record,
                 status="needs_inspection",

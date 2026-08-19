@@ -17,7 +17,16 @@ def test_builtin_tool_definitions_expose_renderers_for_streaming_views() -> None
 
     definitions = create_all_tool_definitions()
 
-    assert set(definitions) == {"read", "bash", "edit", "write", "grep", "find", "ls"}
+    assert set(definitions) == {
+        "read",
+        "bash",
+        "shell",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls",
+    }
     for definition in definitions.values():
         assert definition.render_call is not None
         assert definition.render_result is not None

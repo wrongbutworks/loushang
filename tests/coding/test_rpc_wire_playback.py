@@ -106,6 +106,7 @@ def test_rpc_wire_playback_preserves_cross_group_success_golden() -> None:
                 "firstKeptEntryId": "entry-1",
                 "tokensBefore": 42,
                 "details": {"preserved": 3},
+                "modelInputSnapshotIds": [],
             },
         },
         {
