@@ -62,9 +62,21 @@ class TuiRunContext:
     terminal_context: object
     reader: InputReader
     _render_wakeup: asyncio.Event = field(repr=False)
+    _stop_exit_code: int | None = field(default=None, repr=False)
 
     def request_render(self, kind: RenderRequestKind = "input") -> None:
         self.runtime.request_render(kind)
+        self._render_wakeup.set()
+
+    def request_stop(self, exit_code: int = 0) -> None:
+        """Ask the runner loop to exit from outside input handling.
+
+        Background completions (for example a session activation task
+        finishing while the standalone picker waits) use this to stop the
+        loop without synthesizing an input event.
+        """
+
+        self._stop_exit_code = exit_code
         self._render_wakeup.set()
 
     def stop(self, exit_code: int = 0) -> TuiInputResult:
@@ -139,6 +151,12 @@ class TuiRunner:
                         await start_result
                 runtime.render_now()
                 while True:
+                    if context._stop_exit_code is not None:
+                        return finish_tui_exit(
+                            runtime=runtime,
+                            stdout=stdout,
+                            exit_code=context._stop_exit_code,
+                        )
                     data = await read_input_chunk_or_render_tick(
                         stdin,
                         runtime=runtime,

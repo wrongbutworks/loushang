@@ -50,6 +50,7 @@ async def run_continuity_picker(
     run_context: TuiRunContext | None = None
     selected: ContinuityPickerSelection | None = None
     load_task: asyncio.Task[None] | None = None
+    activation_task: asyncio.Task[object] | None = None
 
     def request_render(kind: str) -> None:
         if run_context is not None:
@@ -76,6 +77,26 @@ async def run_continuity_picker(
         )
     )
 
+    def _on_activation_done(
+        task: asyncio.Task[object],
+        target: ContinuityTarget,
+    ) -> None:
+        nonlocal selected
+        if task.cancelled():
+            content.cancel_activation()
+            return
+        error = task.exception()
+        if error is not None:
+            content.fail_activation(error)
+            return
+        selected = ContinuityPickerSelection(
+            target=target,
+            activation_result=task.result(),
+        )
+        if run_context is not None:
+            # Stop the loop even if the user never presses another key.
+            run_context.request_stop(0)
+
     def start(context: TuiRunContext) -> None:
         nonlocal run_context, load_task
         run_context = context
@@ -85,25 +106,29 @@ async def run_continuity_picker(
         event: InputEvent,
         context: TuiRunContext,
     ) -> TuiInputResult:
-        nonlocal selected
+        nonlocal activation_task
         intents = context.tui.handle_input(event)
         for intent in intents:
             kind = getattr(intent, "kind", None)
+            note = getattr(intent, "note", "")
+            if note == "continuity_cancel_activation":
+                if activation_task is not None and not activation_task.done():
+                    activation_task.cancel()
+                return TuiInputResult(render_requested=True)
             if kind == "select":
                 target = content.selected_target
-                if target is not None:
-                    if not content.begin_activation():
-                        return TuiInputResult(render_requested=True)
-                    try:
-                        activation_result = await activate(target)
-                    except Exception as error:
-                        content.fail_activation(error)
-                        return TuiInputResult(render_requested=True)
-                    selected = ContinuityPickerSelection(
-                        target=target,
-                        activation_result=activation_result,
-                    )
-                    return context.stop()
+                if target is None:
+                    continue
+                if activation_task is not None and not activation_task.done():
+                    continue
+                if not content.begin_activation():
+                    return TuiInputResult(render_requested=True)
+                activation = asyncio.create_task(activate(target))
+                activation_task = activation
+                activation.add_done_callback(
+                    lambda task, target=target: _on_activation_done(task, target)
+                )
+                return TuiInputResult(render_requested=True)
             if kind in {"surface_close", "dialog_cancel"}:
                 return context.stop()
         return TuiInputResult()
@@ -116,9 +141,15 @@ async def run_continuity_picker(
         return selected
     finally:
         content.close()
-        if load_task is not None and not load_task.done():
-            load_task.cancel()
-            await asyncio.gather(load_task, return_exceptions=True)
+        pending = [
+            task
+            for task in (load_task, activation_task)
+            if task is not None and not task.done()
+        ]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
 
 
 def _render_kind(kind: str) -> RenderRequestKind:

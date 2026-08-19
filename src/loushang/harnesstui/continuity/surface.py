@@ -105,6 +105,7 @@ class ContinuitySurface:
         self._preview_target: ContinuityTarget | None = None
         self._preview_visible = False
         self._error: str | None = None
+        self._notice: str | None = None
         self._activating = False
         self._activating_title: str | None = None
         self._activation_started: float | None = None
@@ -157,6 +158,7 @@ class ContinuitySurface:
             return False
         self._activating = True
         self._error = None
+        self._notice = None
         summary = self.selected_summary
         self._activating_title = summary.title if summary is not None else None
         self._activation_started = time.monotonic()
@@ -177,11 +179,31 @@ class ContinuitySurface:
         if task is not None and not task.done():
             task.cancel()
 
+    def cancel_activation(self) -> bool:
+        """Reset an in-flight activation after the host cancelled it."""
+
+        if not self._activating:
+            return False
+        self._activating = False
+        self._activating_title = None
+        self._activation_started = None
+        self._cancel_activation_tick()
+        self._error = None
+        action = (
+            "Resume"
+            if self._selection_action == "resume"
+            else self._selection_action.capitalize()
+        )
+        self._notice = f"{action} cancelled."
+        self._request_render("product")
+        return True
+
     def fail_activation(self, error: BaseException) -> None:
         self._activating = False
         self._activating_title = None
         self._activation_started = None
         self._cancel_activation_tick()
+        self._notice = None
         self.report_error(error)
 
     def report_error(self, error: BaseException) -> None:
@@ -201,6 +223,14 @@ class ContinuitySurface:
 
     def handle_input(self, event: InputEvent) -> InputIntent | bool | None:
         if self._activating:
+            event = self._resolve_keybinding(event)
+            if event.kind == "key" and event.key == "escape":
+                # "consumed" (not "dialog_cancel"): hosts must cancel the
+                # in-flight activation WITHOUT closing this surface.
+                return InputIntent(
+                    kind="consumed",
+                    note="continuity_cancel_activation",
+                )
             return InputIntent(kind="consumed", note="continuity_activating")
         event = self._resolve_keybinding(event)
         if event.kind == "key" and event.key == "space":
@@ -241,7 +271,7 @@ class ContinuitySurface:
     @property
     def footer_help(self) -> str:
         if self._activating:
-            return ""
+            return f"{self._key_label('tui.select.cancel')} cancel"
         hints = [
             f"{self._key_label('tui.select.confirm')} {self._selection_action}",
             f"{self._key_label('tui.select.cancel')} exit",
@@ -716,6 +746,16 @@ class ContinuitySurface:
                             max_width=width,
                         ),
                         "continuity.error",
+                    )
+                ),
+            ]
+        if self._notice:
+            return [
+                RenderLine(""),
+                RenderLine(
+                    self._styled(
+                        truncate_to_width(self._notice, max_width=width),
+                        "continuity.warning",
                     )
                 ),
             ]

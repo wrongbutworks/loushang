@@ -394,3 +394,25 @@ class _AsyncAfterFirstInput:
             return self._first
         await asyncio.sleep(self._block_seconds)
         return ""
+
+
+def test_runner_exits_when_context_requests_stop_without_input() -> None:
+    tui = Tui()
+    tui.add_child(_MutableRenderable(("ready",)))
+
+    async def run() -> int:
+        async def handle(event: InputEvent, context: object) -> TuiInputResult:
+            # Simulate an external completion (e.g. a background activation
+            # task) asking the loop to stop after this event is handled.
+            context.request_stop(5)
+            return TuiInputResult()
+
+        return await TuiRunner(
+            tui,
+            stdin=StringIO("x"),
+            stdout=StringIO(),
+            terminal_session_factory=_recording_terminal_session_factory(),
+            terminal_size_provider=lambda: TerminalSize(columns=20, rows=5),
+        ).run(on_input=handle)
+
+    assert asyncio.run(run()) == 5
