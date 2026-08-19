@@ -92,10 +92,12 @@ async def run_continuity_picker(
             if kind == "select":
                 target = content.selected_target
                 if target is not None:
+                    if not content.begin_activation():
+                        return TuiInputResult(render_requested=True)
                     try:
                         activation_result = await activate(target)
                     except Exception as error:
-                        content.report_error(error)
+                        content.fail_activation(error)
                         return TuiInputResult(render_requested=True)
                     selected = ContinuityPickerSelection(
                         target=target,
