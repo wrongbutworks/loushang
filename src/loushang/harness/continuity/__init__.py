@@ -10,7 +10,11 @@ from loushang.harness.continuity.composition import (
     ExperienceComposition,
     compose_experience_continuity,
 )
-from loushang.harness.continuity.hub import ContinuityHub, InvalidContinuityCursor
+from loushang.harness.continuity.hub import (
+    ContinuityHub,
+    ContinuityProviderTimeoutError,
+    InvalidContinuityCursor,
+)
 from loushang.harness.continuity.provider import (
     ContinuityDeletionProvider,
     ContinuityProvider,
@@ -61,6 +65,7 @@ __all__ = [
     "ContinuityProvider",
     "ContinuityProviderDescriptor",
     "ContinuityProviderPack",
+    "ContinuityProviderTimeoutError",
     "ContinuityQuery",
     "ContinuitySort",
     "ContinuitySummary",

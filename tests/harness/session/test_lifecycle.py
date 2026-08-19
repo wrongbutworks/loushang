@@ -457,3 +457,60 @@ def test_lifecycle_module_exports_prepared_operation_contracts() -> None:
         "PreparedSessionOperationStateError",
         "SessionLifecyclePreparationCancelledError",
     } <= set(lifecycle_exports)
+
+
+def test_lifecycle_prepared_restore_task_cancellation_releases_transition(
+    tmp_path: Path,
+) -> None:
+    """A cancelled prepare (e.g. hub activation timeout) must not wedge the host."""
+
+    restore_started = asyncio.Event()
+    restore_release = asyncio.Event()
+    disposed: list[str] = []
+
+    class _BlockingStore(_Store):
+        async def restore(
+            self,
+            current: _Session | None,
+            transition: SessionLifecycleTransition,
+            session_ref: str | Path,
+            *,
+            cwd_override: str | None = None,
+        ) -> _Session:
+            restore_started.set()
+            await restore_release.wait()
+            return await super().restore(
+                current,
+                transition,
+                session_ref,
+                cwd_override=cwd_override,
+            )
+
+    store = _BlockingStore(restored_cwd=str(tmp_path))
+    current = _Session("current", str(tmp_path))
+    lifecycle = SessionLifecycleRuntime[_Session, object](
+        store=store,
+        current_session=current,
+        hooks=SessionLifecycleHooks(
+            dispose_session=lambda session: disposed.append(session.ref)
+        ),
+    )
+
+    async def scenario() -> None:
+        prepare_task = asyncio.create_task(lifecycle.prepare_restore("saved.jsonl"))
+        await asyncio.wait_for(restore_started.wait(), timeout=1.0)
+        prepare_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await prepare_task
+
+        # The transition lock must be free and the previous session untouched:
+        # a follow-up operation completes promptly instead of deadlocking.
+        result = await asyncio.wait_for(
+            lifecycle.new(cwd=str(tmp_path)),
+            timeout=1.0,
+        )
+        assert result.current.ref == "new"
+        assert result.previous is current
+
+    asyncio.run(scenario())
+    assert disposed == ["current"]
