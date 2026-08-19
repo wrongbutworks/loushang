@@ -663,9 +663,16 @@ def test_common_resume_surface_shows_activation_progress_and_inline_failure() ->
             note="continuity_activating",
         )
         activating = view.render(RenderConstraints(width=80, max_height=12))
-        assert (
-            sum("Resuming selected item" in line.text for line in activating.lines) == 1
-        )
+        activating_lines = [
+            line
+            for line in activating.lines
+            if "Resuming" in strip_control_sequences(line.text)
+        ]
+        assert len(activating_lines) == 1
+        activating_text = strip_control_sequences(activating_lines[0].text)
+        assert 'Resuming "Review the parser"' in activating_text
+        # The activation state must stand out from the dim idle state.
+        assert "\x1b[" in activating_lines[0].text
         assert surface.footer_help == ""
 
         surface.fail_activation(RuntimeError("restore failed"))
@@ -676,6 +683,80 @@ def test_common_resume_surface_shows_activation_progress_and_inline_failure() ->
 
     asyncio.run(scenario())
     assert renders
+
+
+def test_common_resume_activation_ticker_rerenders_while_waiting(monkeypatch) -> None:
+    from loushang.harnesstui.continuity import surface as surface_module
+
+    monkeypatch.setattr(surface_module, "_ACTIVATION_TICK_SECONDS", 0.02)
+    hub = _Hub()
+    renders: list[str] = []
+    view = build_continuity_surface_view(
+        reference=_reference(hub),
+        request_render=renders.append,
+    )
+    surface = view.content
+
+    async def scenario() -> None:
+        await surface.start()
+        renders.clear()
+        assert surface.begin_activation() is True
+        await asyncio.sleep(0.09)
+        surface.close()
+
+    asyncio.run(scenario())
+    # The initial activation render plus several elapsed-time ticks.
+    assert len(renders) >= 3
+
+
+def test_standalone_picker_shows_activation_state_while_resuming(
+    monkeypatch,
+) -> None:
+    from loushang.harnesstui.continuity import runner as runner_module
+
+    hub = _Hub()
+    during_activation: list[str] = []
+    tui_instances: list[object] = []
+
+    class _Runner:
+        def __init__(self, tui, **_kwargs) -> None:
+            self.tui = tui
+            tui_instances.append(tui)
+
+        async def run(self, on_input, *, on_start) -> int:
+            context = SimpleNamespace(
+                tui=self.tui,
+                request_render=lambda _kind: None,
+                stop=lambda exit_code=0: TuiInputResult(exit_code=exit_code),
+            )
+            on_start(context)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            await on_input(InputEvent(kind="key", key="enter"), context)
+            return 0
+
+    async def slow_activation(_target: ContinuityTarget) -> object:
+        # begin_activation has already run by this point: the picker must be
+        # showing the activation state instead of looking idle.
+        view = tui_instances[0].surface_host.entries[0].surface.renderable
+        during_activation.extend(
+            strip_control_sequences(line.text)
+            for line in view.render(RenderConstraints(width=80, max_height=14)).lines
+        )
+        return object()
+
+    monkeypatch.setattr(runner_module, "TuiRunner", _Runner)
+    selection = asyncio.run(
+        run_continuity_picker(
+            reference=_reference(hub),
+            activate=slow_activation,
+            stdin=SimpleNamespace(),  # type: ignore[arg-type]
+            stdout=SimpleNamespace(),  # type: ignore[arg-type]
+        )
+    )
+
+    assert selection is not None
+    assert any("Resuming" in line for line in during_activation)
 
 
 def test_common_resume_surface_uses_resolved_keybinding_actions() -> None:

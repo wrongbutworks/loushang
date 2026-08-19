@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -38,6 +39,7 @@ from loushang.tui.cell_width import (
 from loushang.tui.theme import ThemeResolver, apply_theme_style
 
 _SEARCH_DEBOUNCE_SECONDS = 0.15
+_ACTIVATION_TICK_SECONDS = 0.5
 _INDEX_REQUERY_SECONDS = 0.5
 _TARGET_SEPARATOR = "\x1f"
 _MIN_TIME_COLUMN_WIDTH = 8
@@ -65,6 +67,7 @@ CONTINUITY_PAGE_THEME = ThemeResolver(
         },
         "continuity.error": {"color": "red"},
         "continuity.warning": {"color": "yellow"},
+        "continuity.activating": {"color": "yellow", "bold": True},
     }
 )
 
@@ -103,6 +106,9 @@ class ContinuitySurface:
         self._preview_visible = False
         self._error: str | None = None
         self._activating = False
+        self._activating_title: str | None = None
+        self._activation_started: float | None = None
+        self._activation_tick_task: asyncio.Task[None] | None = None
         self._generation = 0
         self._query_task: asyncio.Task[None] | None = None
         self._preview_task: asyncio.Task[None] | None = None
@@ -151,11 +157,31 @@ class ContinuitySurface:
             return False
         self._activating = True
         self._error = None
+        summary = self.selected_summary
+        self._activating_title = summary.title if summary is not None else None
+        self._activation_started = time.monotonic()
+        self._cancel_activation_tick()
+        self._activation_tick_task = asyncio.create_task(self._activation_ticker())
         self._request_render("product")
         return True
 
+    async def _activation_ticker(self) -> None:
+        while self._activating:
+            await asyncio.sleep(_ACTIVATION_TICK_SECONDS)
+            if self._activating:
+                self._request_render("product")
+
+    def _cancel_activation_tick(self) -> None:
+        task = self._activation_tick_task
+        self._activation_tick_task = None
+        if task is not None and not task.done():
+            task.cancel()
+
     def fail_activation(self, error: BaseException) -> None:
         self._activating = False
+        self._activating_title = None
+        self._activation_started = None
+        self._cancel_activation_tick()
         self.report_error(error)
 
     def report_error(self, error: BaseException) -> None:
@@ -164,6 +190,7 @@ class ContinuitySurface:
         self._request_render("product")
 
     def close(self) -> None:
+        self._cancel_activation_tick()
         for task in (
             self._query_task,
             self._preview_task,
@@ -656,9 +683,28 @@ class ContinuitySurface:
                     else f"{self._selection_action.capitalize()}ing"
                 )
             )
+            label = (
+                f'"{self._activating_title}"'
+                if self._activating_title
+                else "selected item"
+            )
+            elapsed = ""
+            if self._activation_started is not None:
+                seconds = max(
+                    0, int(time.monotonic() - self._activation_started)
+                )
+                elapsed = f" ({seconds}s)"
             return [
                 RenderLine(""),
-                RenderLine(f"{action} selected item…"),
+                RenderLine(
+                    self._styled(
+                        truncate_to_width(
+                            f"{action} {label}…{elapsed}",
+                            max_width=width,
+                        ),
+                        "continuity.activating",
+                    )
+                ),
             ]
         if self._error:
             return [
