@@ -9,5 +9,7 @@ def test_foundation_json_is_the_canonical_public_surface() -> None:
         "dump_json_value",
         "require_json_mapping",
         "require_json_value",
+        "validate_json_value",
     }
     assert foundation_json.require_json_value({"ok": [True]}) == {"ok": [True]}
+    assert foundation_json.validate_json_value({"ok": [True]}) is None
