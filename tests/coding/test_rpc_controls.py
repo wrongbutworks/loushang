@@ -315,6 +315,7 @@ def test_rpc_mode_supports_thinking_stats_retry_compact_and_export_commands() ->
         "firstKeptEntryId": "entry-1",
         "tokensBefore": 42,
         "details": {"preserved": 3},
+        "modelInputSnapshotIds": [],
     }
 
     assert lines[5] == {

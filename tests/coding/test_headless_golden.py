@@ -97,6 +97,7 @@ def test_headless_public_api_golden_allows_policy_approved_write_and_records_ses
         create_services,
     )
     from loushang.coding.cli.__main__ import build_builtin_tool_registry
+    from loushang.agent import synthetic_model_transport
 
     project = tmp_path / "project"
     project.mkdir()
@@ -114,6 +115,7 @@ def test_headless_public_api_golden_allows_policy_approved_write_and_records_ses
         settings_manager=settings_manager,
     )
 
+    @synthetic_model_transport
     async def stream_fn(model, context, options=None):
         del model, options
         if any(
