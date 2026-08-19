@@ -11,7 +11,7 @@ import secrets
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Awaitable
 
 from loushang.harness.continuity.activation import ActivationLeaseStateError
 from loushang.harness.continuity.composition import ExperienceComposition
@@ -51,6 +51,32 @@ _INDEX_STATE_RANK: dict[ContinuityIndexState, int] = {
 
 class InvalidContinuityCursor(ValueError):
     """Raised when a composite cursor is malformed or belongs to another query."""
+
+
+class ContinuityProviderTimeoutError(TimeoutError):
+    """Raised when a continuity Provider operation exceeds its time budget.
+
+    Query-style operations (query, preview) share the interactive
+    ``provider_timeout``; activation-style operations (prepare, delete) use the
+    separate ``activation_timeout`` so that legitimately slow activations, such
+    as loading a large session transcript, are not killed by the list/search
+    budget.
+    """
+
+    def __init__(
+        self,
+        *,
+        provider_id: str,
+        operation: str,
+        timeout: float,
+    ) -> None:
+        self.provider_id = provider_id
+        self.operation = operation
+        self.timeout = timeout
+        super().__init__(
+            f"continuity provider {provider_id!r} timed out during "
+            f"{operation} after {timeout:.1f}s"
+        )
 
 
 @dataclass(frozen=True)
@@ -126,11 +152,14 @@ class ContinuityHub:
         *,
         cursor_secret: bytes | None = None,
         provider_timeout: float = 5.0,
+        activation_timeout: float | None = 120.0,
         concurrency_limit: int = 8,
         cursor_ttl: float = 900.0,
     ) -> None:
         if provider_timeout <= 0:
             raise ValueError("provider_timeout must be positive")
+        if activation_timeout is not None and activation_timeout <= 0:
+            raise ValueError("activation_timeout must be positive or None")
         if concurrency_limit < 1:
             raise ValueError("concurrency_limit must be at least 1")
         if cursor_ttl <= 0:
@@ -142,6 +171,7 @@ class ContinuityHub:
         }
         self._cursor_secret = cursor_secret or secrets.token_bytes(32)
         self._provider_timeout = provider_timeout
+        self._activation_timeout = activation_timeout
         self._concurrency_limit = concurrency_limit
         self._cursor_ttl = cursor_ttl
         self._composition_fingerprint = self._fingerprint_composition(composition)
@@ -237,7 +267,9 @@ class ContinuityHub:
             )
             try:
                 async with semaphore:
-                    page = await asyncio.wait_for(
+                    page = await self._call_provider(
+                        provider,
+                        "query",
                         provider.query(provider_request),
                         timeout=self._provider_timeout,
                     )
@@ -367,7 +399,9 @@ class ContinuityHub:
 
     async def preview(self, target: ContinuityTarget) -> ContinuityPreview:
         provider = self._provider_for_target(target)
-        return await asyncio.wait_for(
+        return await self._call_provider(
+            provider,
+            "preview",
             provider.preview(target),
             timeout=self._provider_timeout,
         )
@@ -377,9 +411,11 @@ class ContinuityHub:
         target: ContinuityTarget,
     ) -> PreparedActivationLease:
         provider = self._provider_for_target(target)
-        lease = await asyncio.wait_for(
+        lease = await self._call_provider(
+            provider,
+            "prepare",
             provider.prepare(target),
-            timeout=self._provider_timeout,
+            timeout=self._activation_timeout,
         )
         return _TrackedActivationLease(lease, self)
 
@@ -389,10 +425,32 @@ class ContinuityHub:
         provider = self._provider_for_target(target)
         if not isinstance(provider, ContinuityDeletionProvider):
             raise RuntimeError("The selected continuity item cannot be deleted")
-        return await asyncio.wait_for(
+        return await self._call_provider(
+            provider,
+            "delete",
             provider.delete(target),
-            timeout=self._provider_timeout,
+            timeout=self._activation_timeout,
         )
+
+    async def _call_provider(
+        self,
+        provider: ContinuityProvider,
+        operation: str,
+        awaitable: Awaitable[Any],
+        *,
+        timeout: float | None,
+    ) -> Any:
+        if timeout is None:
+            return await awaitable
+        try:
+            async with asyncio.timeout(timeout):
+                return await awaitable
+        except TimeoutError as exc:
+            raise ContinuityProviderTimeoutError(
+                provider_id=provider.descriptor.provider_id,
+                operation=operation,
+                timeout=timeout,
+            ) from exc
 
     def _select_providers(
         self,

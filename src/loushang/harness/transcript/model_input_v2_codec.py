@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal, cast
 
-from loushang.foundation.json import JSONValue, require_json_mapping
+from loushang.foundation.json import JSONValue
 from loushang.harness.transcript.model_input_v2_types import (
     ModelInputJsonChunkNode,
     ModelInputJsonValueNode,
@@ -143,7 +143,9 @@ def decode_model_input_snapshot_v2(value: JSONValue) -> ModelInputSnapshotV2:
 
 
 def _decode_node(value: object) -> ModelInputNode:
-    raw = require_json_mapping(value, name="Model Input v2 node")
+    if not isinstance(value, Mapping):
+        raise TypeError("Model Input v2 node must be a JSON object")
+    raw = cast(dict[str, JSONValue], value)
     node_kind = raw.get("nodeKind")
     if node_kind == "json_chunk":
         payload = _object(
@@ -271,7 +273,12 @@ def _object(
     name: str,
     fields: set[str],
 ) -> dict[str, JSONValue]:
-    payload = require_json_mapping(value, name=name)
+    # Structural check only: payload trees reach this codec through
+    # ConversationPayloadCodecRegistry.decode, which already validated the
+    # whole tree against the strict JSON algebra exactly once.
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{name} must be a JSON object")
+    payload = cast(dict[str, JSONValue], value)
     unexpected = set(payload).difference(fields)
     if unexpected:
         raise ValueError(

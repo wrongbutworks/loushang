@@ -9,7 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar, cast
 
-from loushang.foundation.json import JsonValueError, require_json_mapping
+from loushang.foundation.json import (
+    JsonValueError,
+    require_json_mapping,
+    validate_json_value,
+)
 from loushang.harness.journal.codec import (
     JournalCodecError,
     JournalHeaderCodec,
@@ -486,10 +490,7 @@ def _load_mapping(
             line_number=line_number,
         )
     try:
-        return cast(
-            Mapping[str, object],
-            require_json_mapping(dict(value), name=f"journal_{kind}"),
-        )
+        validate_json_value(value, name=f"journal_{kind}")
     except JsonValueError as exc:
         raise JournalFileError(
             f"Journal {kind} contains a value outside strict JSON",
@@ -497,6 +498,7 @@ def _load_mapping(
             code=f"invalid_{kind}_value",
             line_number=line_number,
         ) from exc
+    return value
 
 
 def _reject_json_constant(value: str) -> object:
