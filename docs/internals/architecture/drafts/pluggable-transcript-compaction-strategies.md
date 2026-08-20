@@ -42,12 +42,18 @@ is addressed by session segmentation instead).
 
 - Make the compaction mechanism selectable per profile/configuration, not
   hard-wired to one implementation (plugin-style replaceability).
-- Make compaction observably reduce resume cost for large sessions (target:
-  resume parses only post-checkpoint content once a checkpoint exists).
+- Reduce **model-context cost** after compaction: the model context after
+  resume starts at the newest checkpoint on the active branch, not at the file
+  head. (This is already implemented by `ConversationReplayFolder.replay`;
+  the goal is to confirm it is the resume default and close gaps — see §5.3.)
+- Reduce **load cost** for large sessions — only via `rollover_segment`
+  (session-boundary segmentation) or a future physical prune; the two goals
+  are deliberately separate (§5.3 does not change load behavior).
 - Keep the durable transcript append-only and integrity-preserving; never
   rewrite or truncate the live JSONL while a session is active.
 - Keep strict JSON configuration and validation for every strategy (mirror
-  `TranscriptCompactionConfiguration.from_json`/`to_json`).
+  `TranscriptCompactionConfiguration.from_json`/`to_json`), with a schema
+  versioning path so existing profile snapshots keep loading (see §5.1 risk).
 
 ### Non-Goals
 
@@ -165,46 +171,71 @@ idea (process/session boundary instead of hash chaining); `fresh_window` is the
 zero-summary escape hatch. Only `rollover_segment` reduces the **load** cost;
 the others reduce **model-context** cost.
 
-### 5.3 Checkpoint-aware context rebuild (deliverable #1, revised after review)
+### 5.3 Checkpoint-aware context rebuild (status + gap analysis; second review)
 
-Review finding: skipping the checkpoint prefix at the **store/journal load
-depth is not feasible** in loushang's integrity model. The load path is the
-only integrity-verification point (journal `_load_mapping` deep-validates every
-line, `journal/jsonl.py:469-506`), the store must count all records for
-revision-based conflict detection (`conversation/stores/file.py:249, 285`), and
-with transcript branching (`session.py:162`) the newest checkpoint's
-`first_kept_record_id` is not a unique boundary across forks. Codex is the
-isomorphic reference here: it keeps the rollout append-only and fully intact,
-and rebuilds the **model context** from the newest checkpoint — load cost is
-unchanged, model-context cost drops.
+**Already implemented.** `ConversationReplayFolder.replay`
+(`src/loushang/harness/conversation/replay.py:42-108`) already performs
+checkpoint-aware rebuild: it finds the latest checkpoint via
+`_latest_checkpoint(all_records)`, resolves `first_kept_record_id` to a
+`boundary_index`, emits `checkpoint.summary_item` then the post-checkpoint
+suffix, with a `missing_checkpoint` policy (`error` / `summary_only`,
+`replay.py:49-51, 78-88`). It is invoked through the active branch:
+`unit_of_work.py:314` → `self._profile.replay(self.active_path())`,
+`transcript/profile.py:216`.
 
-Revised design (codex `rollout_reconstruction` pattern,
-`codex/core/src/session/rollout_reconstruction.rs:114-190`):
+Earlier review finding (kept): skipping the checkpoint prefix at the
+**store/journal load depth is not feasible** in loushang's integrity model —
+the load path is the only integrity-verification point (journal `_load_mapping`
+deep-validates every line, `journal/jsonl.py:469-506`), the store must count
+all records for revision-based conflict detection
+(`conversation/stores/file.py:249, 285`), and with branching
+(`session.py:162`) `first_kept_record_id` is not a unique boundary across
+forks. Codex is the isomorphic reference: rollout stays append-only and fully
+intact; the **model context** is rebuilt from the newest checkpoint
+(`codex/core/src/session/rollout_reconstruction.rs:114-190`).
 
-- Load stays full and integrity-preserving (revision counting, per-node hash
-  verification, branch semantics all intact).
-- After load, the **model-facing context** is rebuilt from the newest
-  `context.compaction_checkpoint`: prefix records are replaced by the
-  checkpoint summary (synthetic context message), and the suffix after
-  `first_kept_record_id` is appended verbatim.
-- Keep a full-integrity audit mode (`loushang verify`) for whole-file
-  verification on demand (already how the load path behaves today).
-- File-level guard: mirror cc's `MAX_TRANSCRIPT_READ_BYTES`-style bail-out for
-  raw reads above a size threshold to prevent OOM on pathological files
-  (`cc/src/utils/sessionStorage.ts:229-232`).
+Actual gaps to close (this is the remaining work, not a new mechanism):
 
-This reduces **model-context** cost (tokens), which is what the existing
-in-file compaction is for; it does **not** reduce load time. Load-time
-reduction is delivered by `rollover_segment` (§6), or by a future physical
-prune that would deliberately trade away append-only/revision semantics.
+1. Confirm the replay path is the **default resume context builder** (several
+   entry points exist: `replay_context` `unit_of_work.py:313`,
+   `build_session_context` `product_session.py:354`,
+   `build_agent_transcript_session_context` `session_catalog.py:292-302`).
+   Unify or document which one serves resume.
+2. Define the **degraded-checkpoint matrix**: when `first_kept_record_id` is
+   not on the active path or `boundary_index >= checkpoint_index`, today
+   `missing_checkpoint="error"` raises (`replay.py:78-88`); decide the
+   fallback (full history vs summary-only) per scenario (forked transcript,
+   stale checkpoint).
+3. Summary-as-synthetic-message token accounting: the summary user message is
+   counted by `estimate_context_tokens`; `COMPACTION_SUMMARY_PREFIX/SUFFIX`
+   (`transcript/profile.py:58-63`) can double-count across multiple
+   compactions. Define a budget/dedup policy.
+4. Keep a full-integrity audit mode (`loushang verify`) for whole-file
+   verification on demand (already how the load path behaves today).
+5. File-level guard: mirror cc's `MAX_TRANSCRIPT_READ_BYTES`-style bail-out
+   for raw reads above a size threshold
+   (`cc/src/utils/sessionStorage.ts:229-232`).
 
-### 5.4 Pluggable summarizer
+This reduces **model-context** cost only; it does **not** reduce load time.
+Load-time reduction is delivered by `rollover_segment` (§6), or by a future
+physical prune that would deliberately trade away append-only/revision
+semantics.
 
-Mirror codex: add optional `compact_prompt` / `compact_prompt_file` to the
-strategy configuration, passed to the summarizer binding (analogous to
-`prepare_model_call` today). Mirrors cc: expose PreCompact/PostCompact hook
-seams where pre-compact output becomes summarization instructions and
-post-compact receives the summary (harness hook system already exists).
+### 5.4 Pluggable summarizer (config-extension + hook wiring)
+
+The replaceable surface already exists: `SummaryCompleter` is injectable, and
+`prepare_model_call` / `custom_instructions` / `SummaryProfile` /
+`SummaryDecorator` are parameters of `execute_transcript_compaction`
+(`transcript/summarization.py:66, 280-360`). Pre/post hooks already exist as
+`before_compaction` / `after_compaction` (`transcript/maintenance.py:169-186,
+349-367`). The remaining delta is narrow:
+
+- Mirror codex: add optional `compact_prompt` / `compact_prompt_file` to the
+  strategy configuration, wired at the `SummaryProfile`/`_prepare_summary_options`
+  assembly point (`transcript/summarization.py:927-950`).
+- Expose the existing `before_compaction`/`after_compaction` as
+  PreCompact/PostCompact hook seams where pre-compact output becomes
+  summarization instructions and post-compact receives the summary.
 
 ### 5.5 Trigger policy (orthogonal)
 
@@ -216,22 +247,41 @@ Keep threshold triggers (`compact_percent`, `reserve_tokens`,
 
 - Trigger: file size threshold and/or manual `/rollover`.
 - On rollover: freeze current file; create a new session via
-  `ProductTranscriptSession.new(..., parent_session=<old id>)` (mechanism
+  `ProductTranscriptSession.new(..., parent_session=<old ref>)` (mechanism
   exists, `product_session.py:197-204`); write the compaction summary as the
   new session's first context message (or reference it).
 - No format change; each file stays append-only and self-integrity-verifiable.
-- Resume list renders session chains via `parentSession` (already indexed in
-  `session_catalog`); search can walk chains.
+- Resume list renders session chains via `parentSession`; search can walk
+  chains.
+- **parentSession reference semantics (second-review finding):** existing
+  `fork`/`fork_from` write `parent_session = str(Path(source_file))` — a
+  **file path**, not a conversation id (`session_factory.py:195, 215`), and
+  `session_catalog._same_session_reference` (`session_catalog.py:813-814`)
+  compares on that basis. Rollover must choose and document which reference
+  form it writes, and stay compatible with fork's existing form.
+- **Distinguish rollover from `branch_with_summary`:** the latter is an
+  in-file `context.branch_summary` record (`session.py:162-195`,
+  `kinds.py:8`); rollover is cross-file. Decide which record kind the new
+  file's first summary uses and how cross-file model context is assembled
+  (the summary must actually enter the resumed context — the new file alone
+  has no other history).
+- **Concurrency (second-review finding):** rollover must serialize against
+  in-flight appends on the parent session (`expected_revision` conflict
+  detection, `conversation/stores/file.py:285`); reuse the existing commit/
+  exclusive locks (`unit_of_work.py` `_commit_lock`, `stores/file.py`
+  `_exclusive_lock`) for the freeze step.
 - Open questions: double-storage of the tail (copy vs move — move requires
-  rewriting the old file, breaking append-only; prefer copy), chain UX, and
-  multi-segment back-navigation.
+  rewriting the old file, breaking append-only; prefer copy — but note
+  model_input_v2 snapshots get duplicated and chain-wide verify/search still
+  parses the old file), chain UX, and multi-segment back-navigation.
 
 ## 7. Open Questions (for review)
 
 1. Should the checkpoint-aware context rebuild (§5.3) be the default resume
    path once a checkpoint exists, with full-history context opt-in, or the
    reverse? (After review: this affects model context, not load cost; the
-   integrity question is moot because load stays full.)
+   integrity question is moot because load stays full.) How does a user
+   revert to full-history context if it is the default?
 2. Where should the summary live for `rollover_segment`: duplicated in the new
    session's first message vs referenced via `parentSession`?
 3. Is `session_memory` (sidecar) worth a separate strategy, or should the tail
@@ -242,24 +292,50 @@ Keep threshold triggers (`compact_percent`, `reserve_tokens`,
 6. Does the reviewer's concern about branch semantics (§5.3) require the
    checkpoint rebuild to pick the newest checkpoint **on the active branch**
    (records_to(leaf_id)) rather than the newest checkpoint in the file?
-   (Likely yes — the rebuild must respect `records_to`/branch deltas.)
+   (Likely yes — the rebuild must respect `records_to`/branch deltas.
+   Confirmed: the existing `ConversationReplayFolder.replay` already receives
+   `active_path()`, so this is satisfied; the residual risk is the degraded
+   `missing_checkpoint="error"` path on forks.)
+7. (Second review) Does rollover's tail copy break `model_input_v2` lineage
+   across files? `verify_model_input` (`model_input.py:480-505`) indexes by
+   revision within one file; a new file's revision numbering differs.
+8. (Second review) Does `session_catalog` need a transitive-closure query for
+   `parentSession` chains (today only equality comparison,
+   `session_catalog.py:813-814`) for chain search / delete / back-navigation?
+9. (Second review) Schema evolution: adding strategy fields to
+   `TranscriptCompactionConfiguration` (strict `from_json`, `compaction.py:
+   90-96`) collides with persisted profile snapshots
+   (`runtime_profile.py:104-160`) — what is the version/migration policy so
+   existing sessions keep resuming?
+10. (Second review) Test strategy: checkpoint-rebuild boundary matrix,
+   rollover concurrency, old-schema resume, chain rendering.
 
-## 8. Suggested Rollout Order (revised after review)
+## 8. Suggested Rollout Order (revised after two reviews)
 
-1. **Checkpoint-aware context rebuild** (§5.3, revised) — reduces model-context
-   cost; no format change; load stays full/integrity-preserving.
-2. **Strategy registry** (§5.1) — refactor the whitelist into a lookup; keep
-   `turn_aware_summary` as the only registered strategy initially.
-3. **Pluggable summarizer + hooks** (§5.4).
+1. **Confirm checkpoint-aware rebuild is the resume default** (§5.3 gaps 1-2):
+   unify the context-builder entry points and define the degraded-checkpoint
+   fallback matrix. Small, no new mechanism.
+2. **Strategy registry** (§5.1) — refactor the whitelist into a single lookup
+   (delegate the existing capability whitelist to the runtime registry; avoid
+   a second parallel registry). Keep `turn_aware_summary` as the only
+   registered strategy initially. Include schema-versioning for persisted
+   profiles.
+3. **Pluggable summarizer config + hook wiring** (§5.4).
 4. **`rollover_segment`** (§6) as the second registered strategy — the only
-   one that reduces **load** time; needs review sign-off on the
-   `parentSession` chain UX and tail-copy semantics.
+   one that reduces **load** time; needs review sign-off on the `parentSession`
+   reference semantics, tail-copy vs lineage, and freeze concurrency.
 
 ## 9. Evidence Index
 
 - Loushang: `src/loushang/harness/transcript/compaction.py`,
   `maintenance.py`, `session.py`, `unit_of_work.py`, `kinds.py`,
+  `src/loushang/harness/conversation/replay.py`,
   `src/loushang/harness/conversation/stores/file.py`,
-  `src/loushang/harness/transcript/product_session.py`.
+  `src/loushang/harness/transcript/product_session.py`,
+  `src/loushang/harness/transcript/profile.py`,
+  `src/loushang/harness/transcript/summarization.py`,
+  `src/loushang/harness/transcript/session_factory.py`,
+  `src/loushang/harness/session/runtime_profile.py`.
 - Reference: `.research/cc_compact_strategy.md`,
-  `.research/codex_compact_strategy.md`.
+  `.research/codex_compact_strategy.md`,
+  `.research/deepseek_review_compaction_draft.md`.
