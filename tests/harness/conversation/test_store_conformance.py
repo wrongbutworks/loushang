@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -635,27 +636,45 @@ def test_file_head_compatibility_change_forces_authoritative_replay(
     )
 
 
-def test_file_head_operation_filter_scales_without_saturating_at_fifty_thousand_ids() -> (
-    None
-):
+def test_file_head_operation_filter_has_a_global_false_positive_budget() -> None:
     from loushang.harness.conversation.stores import file as file_store_module
 
     builder = file_store_module._OperationFilterBuilder(
         file_store_module._OperationFilter.empty()
     )
-    for index in range(50_000):
+    for index in range(100_000):
         builder.add(f"record-{index}")
     operation_filter = builder.freeze()
 
-    assert len(operation_filter.segments) == 5
+    assert len(operation_filter.segments) == 4
+    assert [segment.insertions for segment in operation_filter.segments[:3]] == [
+        10_000,
+        20_000,
+        40_000,
+    ]
+    assert 29_995 <= operation_filter.segments[3].insertions <= 30_000
+    assert sum(len(segment.payload) for segment in operation_filter.segments) < 600_000
     assert all(
         operation_filter.might_contain(f"record-{index}")
-        for index in range(0, 50_000, 100)
+        for index in range(0, 100_000, 100)
     )
     false_positives = sum(
-        operation_filter.might_contain(f"unseen-{index}") for index in range(10_000)
+        operation_filter.might_contain(f"unseen-{index}") for index in range(100_000)
     )
-    assert false_positives < 100
+    assert false_positives <= 5
+
+    survival_probability = 1.0
+    for index in range(file_store_module._OPERATION_FILTER_MAX_SEGMENTS):
+        capacity, bits, hashes = file_store_module._operation_filter_segment_shape(
+            index
+        )
+        segment_false_positive_rate = (
+            1 - math.exp(-hashes * capacity / bits)
+        ) ** hashes
+        survival_probability *= 1 - segment_false_positive_rate
+    assert 1 - survival_probability <= (
+        file_store_module._OPERATION_FILTER_FALSE_POSITIVE_BUDGET
+    )
 
 
 def test_file_append_still_rejects_an_old_reused_operation_from_before_recent_head(

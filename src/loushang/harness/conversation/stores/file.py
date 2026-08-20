@@ -61,10 +61,9 @@ TombstonePath = Callable[[ConversationKey], Path]
 _STORE_HEAD_VERSION = 2
 # The head is an advisory acceleration structure. Journal bytes remain authoritative;
 # any identity, checksum, compatibility, or schema mismatch falls back to replay.
-_OPERATION_FILTER_SEGMENT_CAPACITY = 10_000
-_OPERATION_FILTER_BASE_BITS = 1 << 17
-_OPERATION_FILTER_SEGMENTS_PER_SIZE = 4
-_OPERATION_FILTER_MAX_HASHES = 16
+_OPERATION_FILTER_INITIAL_CAPACITY = 10_000
+_OPERATION_FILTER_FALSE_POSITIVE_BUDGET = 1e-5
+_OPERATION_FILTER_MAX_SEGMENTS = 32
 _RECENT_RECORD_LIMIT = 64
 
 
@@ -142,9 +141,10 @@ class _OperationFilterBuilder:
             return False
         if (
             not self._payloads
-            or self._insertions[-1] >= _OPERATION_FILTER_SEGMENT_CAPACITY
+            or self._insertions[-1]
+            >= _operation_filter_segment_shape(len(self._payloads) - 1)[0]
         ):
-            bits, hashes = _operation_filter_segment_shape(len(self._payloads))
+            _, bits, hashes = _operation_filter_segment_shape(len(self._payloads))
             self._payloads.append(bytearray(bits // 8))
             self._insertions.append(0)
             self._hashes.append(hashes)
@@ -1087,11 +1087,25 @@ def _write_unlocked(
     )
 
 
-def _operation_filter_segment_shape(index: int) -> tuple[int, int]:
-    growth = index // _OPERATION_FILTER_SEGMENTS_PER_SIZE
-    bits = _OPERATION_FILTER_BASE_BITS << growth
-    optimal_hashes = round((bits / _OPERATION_FILTER_SEGMENT_CAPACITY) * math.log(2))
-    return bits, min(_OPERATION_FILTER_MAX_HASHES, max(1, optimal_hashes))
+def _operation_filter_segment_shape(index: int) -> tuple[int, int, int]:
+    """Return capacity, bit count, and hashes for one scalable Bloom segment.
+
+    Capacity doubles while each segment receives half the remaining global false-
+    positive budget. The union of all segments is therefore bounded by
+    ``_OPERATION_FILTER_FALSE_POSITIVE_BUDGET`` without exponentially growing a
+    fixed-capacity payload.
+    """
+
+    if index < 0 or index >= _OPERATION_FILTER_MAX_SEGMENTS:
+        raise ValueError("store head operation filter has too many segments")
+    capacity = _OPERATION_FILTER_INITIAL_CAPACITY << index
+    false_positive_rate = _OPERATION_FILTER_FALSE_POSITIVE_BUDGET / (2 ** (index + 1))
+    hashes = max(1, round(-math.log(false_positive_rate) / math.log(2)))
+    raw_bits = math.ceil(
+        -hashes * capacity / math.log1p(-(false_positive_rate ** (1 / hashes)))
+    )
+    bits = ((raw_bits + 63) // 64) * 64
+    return capacity, bits, hashes
 
 
 def _operation_filter_positions(
@@ -1319,12 +1333,13 @@ def _encode_store_head(head: _StoreHead) -> dict[str, object]:
         "operation_filter": {
             "segments": [
                 {
+                    "capacity": _operation_filter_segment_shape(index)[0],
                     "bits": len(segment.payload) * 8,
                     "hashes": segment.hashes,
                     "insertions": segment.insertions,
                     "payload": base64.b64encode(segment.payload).decode("ascii"),
                 }
-                for segment in head.operation_filter.segments
+                for index, segment in enumerate(head.operation_filter.segments)
             ],
         },
         "recent_records": [
@@ -1368,26 +1383,30 @@ def _decode_store_head(
     if not isinstance(recent, list) or len(recent) > _RECENT_RECORD_LIMIT:
         raise ValueError("store head recent records are invalid")
     raw_segments = operation_filter.get("segments")
-    if not isinstance(raw_segments, list) or len(raw_segments) > 1_024:
+    if (
+        not isinstance(raw_segments, list)
+        or len(raw_segments) > _OPERATION_FILTER_MAX_SEGMENTS
+    ):
         raise ValueError("store head operation filter segments are invalid")
     decoded_segments: list[_OperationFilterSegment] = []
     for index, raw_segment in enumerate(raw_segments):
         if not isinstance(raw_segment, dict):
             raise ValueError("store head operation filter segment is invalid")
-        expected_bits, expected_hashes = _operation_filter_segment_shape(index)
+        expected_capacity, expected_bits, expected_hashes = (
+            _operation_filter_segment_shape(index)
+        )
+        capacity = _metadata_int(raw_segment, "capacity")
         bits = _metadata_int(raw_segment, "bits")
         hashes = _metadata_int(raw_segment, "hashes")
         insertions = _metadata_int(raw_segment, "insertions")
         raw_payload = raw_segment.get("payload")
         if (
-            bits != expected_bits
+            capacity != expected_capacity
+            or bits != expected_bits
             or hashes != expected_hashes
             or insertions <= 0
-            or insertions > _OPERATION_FILTER_SEGMENT_CAPACITY
-            or (
-                index < len(raw_segments) - 1
-                and insertions != _OPERATION_FILTER_SEGMENT_CAPACITY
-            )
+            or insertions > expected_capacity
+            or (index < len(raw_segments) - 1 and insertions != expected_capacity)
             or not isinstance(raw_payload, str)
         ):
             raise ValueError("store head operation filter segment is invalid")
