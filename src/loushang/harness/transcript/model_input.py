@@ -313,10 +313,7 @@ class ModelInputTranscriptCommitter(
                         model_visible_headers_root=(
                             materialization.model_visible_headers_root
                         ),
-                        logical_input_hash=hash_model_input_json(
-                            logical_input,
-                            name="Model Input logical projection",
-                        ),
+                        logical_input_hash=materialization.logical_input_hash,
                         prepared_payload_hash=_prepared_text(request, "payload_hash"),
                     )
                     # A canonical mismatch is checked before any writes. Keeping this
@@ -343,16 +340,28 @@ class ModelInputTranscriptCommitter(
                     raise ModelInputIntegrityError(
                         "Model Input snapshot commit revision changed"
                     )
-                self._advance(commit.record.record_id, receipt.revision)
-                with timer.phase("rebuild_verify"):
-                    rebuilt = rebuild_model_input(
-                        self._transcript,
-                        snapshot.snapshot_id,
-                    )
-                    if rebuilt.canonical_prepared_payload != canonical:
-                        raise ModelInputIntegrityError(
-                            "committed Model Input v2 prepared payload changed"
+                try:
+                    with timer.phase("incremental_verify"):
+                        writer.verify_snapshot_commit(
+                            commit.record,
+                            snapshot,
+                            materialization,
+                            prepared_payload_hash=_prepared_text(
+                                request,
+                                "payload_hash",
+                            ),
                         )
+                except ModelInputIntegrityError:
+                    with timer.phase("rebuild_verify_fallback"):
+                        rebuilt = rebuild_model_input(
+                            self._transcript,
+                            snapshot.snapshot_id,
+                        )
+                        if rebuilt.canonical_prepared_payload != canonical:
+                            raise ModelInputIntegrityError(
+                                "committed Model Input v2 prepared payload changed"
+                            )
+                self._advance(commit.record.record_id, receipt.revision)
                 self._commits.append(
                     ModelInputCommitResult(
                         snapshot_id=snapshot.snapshot_id,

@@ -452,7 +452,7 @@ def test_model_input_commit_emits_one_aggregate_performance_event(
             "materialize",
             "snapshot_build",
             "append_snapshot",
-            "rebuild_verify",
+            "incremental_verify",
         }
         assert all(
             isinstance(value, dict)
@@ -475,6 +475,77 @@ def test_model_input_commit_emits_one_aggregate_performance_event(
         _, _, failed_data = events[0]
         assert failed_data["outcome"] == "failed"
         assert set(failed_data["phases"]) == {"preconditions"}
+
+    asyncio.run(scenario())
+
+
+def test_model_input_commit_does_not_rebuild_the_committed_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_full_rebuild(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise AssertionError("normal Model Input commit performed a full rebuild")
+
+    monkeypatch.setattr(
+        model_input_module,
+        "rebuild_model_input",
+        fail_full_rebuild,
+    )
+
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+
+        await committer.commit_prepared_request(_prepared())
+
+        assert len(committer.commits) == 1
+
+    asyncio.run(scenario())
+
+
+def test_model_input_commit_falls_back_to_full_rebuild_when_incremental_proof_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rebuilt_snapshot_ids: list[str] = []
+    full_rebuild = model_input_module.rebuild_model_input
+
+    def fail_incremental_proof(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise ModelInputIntegrityError("incremental proof unavailable")
+
+    def track_full_rebuild(
+        transcript: AgentTranscriptUnitOfWork,
+        snapshot_id: str,
+    ) -> object:
+        rebuilt_snapshot_ids.append(snapshot_id)
+        return full_rebuild(transcript, snapshot_id)
+
+    monkeypatch.setattr(
+        model_input_v2_module.ModelInputV2Writer,
+        "verify_snapshot_commit",
+        fail_incremental_proof,
+    )
+    monkeypatch.setattr(
+        model_input_module,
+        "rebuild_model_input",
+        track_full_rebuild,
+    )
+
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+
+        await committer.commit_prepared_request(_prepared())
+
+        assert rebuilt_snapshot_ids == [committer.commits[0].snapshot_id]
 
     asyncio.run(scenario())
 

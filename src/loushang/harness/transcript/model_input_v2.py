@@ -10,7 +10,10 @@ from typing import Literal, cast
 from weakref import WeakKeyDictionary
 
 from loushang.foundation.json import JSONValue, require_json_value
-from loushang.harness.transcript.kinds import MODEL_INPUT_COMPONENT_KIND
+from loushang.harness.transcript.kinds import (
+    MODEL_INPUT_COMPONENT_KIND,
+    MODEL_INPUT_PREPARED_KIND,
+)
 from loushang.harness.transcript.model_input_timing import PhaseTimer
 from loushang.harness.transcript.model_input_types import (
     ModelInputIntegrityError,
@@ -79,6 +82,9 @@ class ModelInputV2Materialization:
     logical_root: ModelInputNodeReference
     prepared_payload_root: ModelInputNodeReference
     model_visible_headers_root: ModelInputNodeReference
+    logical_input_hash: str
+    prepared_payload_mapping_hash: str
+    model_visible_headers_hash: str
     expected_revision: int
     expected_leaf_id: str
 
@@ -533,9 +539,92 @@ class ModelInputV2Writer:
             logical_root=root_refs[0],
             prepared_payload_root=root_refs[1],
             model_visible_headers_root=self._value_references[headers_plan.value_hash],
+            logical_input_hash=roots[0].mapping_hash,
+            prepared_payload_mapping_hash=roots[1].mapping_hash,
+            model_visible_headers_hash=headers_plan.value_hash,
             expected_revision=self._expected_revision,
             expected_leaf_id=self._expected_leaf_id,
         )
+
+    def verify_snapshot_commit(
+        self,
+        record: AgentTranscriptRecord,
+        snapshot: ModelInputSnapshotV2,
+        materialization: ModelInputV2Materialization,
+        *,
+        prepared_payload_hash: str,
+    ) -> None:
+        """Prove the just-written snapshot from writer-verified graph roots."""
+
+        if (
+            record.kind != MODEL_INPUT_PREPARED_KIND
+            or record.payload_version != MODEL_INPUT_V2_PAYLOAD_VERSION
+            or record.payload != snapshot
+        ):
+            raise ModelInputIntegrityError(
+                "Model Input v2 snapshot commit changed its payload"
+            )
+        if record.parent_id != materialization.expected_leaf_id:
+            raise ModelInputIntegrityError(
+                "Model Input v2 snapshot commit changed its graph parent"
+            )
+        if snapshot.commit_revision != materialization.expected_revision + 1:
+            raise ModelInputIntegrityError(
+                "Model Input v2 snapshot commit changed its revision"
+            )
+        if (
+            snapshot.logical_root != materialization.logical_root
+            or snapshot.prepared_payload_root
+            != materialization.prepared_payload_root
+            or snapshot.model_visible_headers_root
+            != materialization.model_visible_headers_root
+        ):
+            raise ModelInputIntegrityError(
+                "Model Input v2 snapshot changed its materialized roots"
+            )
+        if snapshot.logical_input_hash != materialization.logical_input_hash:
+            raise ModelInputIntegrityError(
+                "Model Input v2 logical root hash changed"
+            )
+        if snapshot.prepared_payload_hash != prepared_payload_hash:
+            raise ModelInputIntegrityError(
+                "Model Input v2 prepared request hash changed"
+            )
+
+        logical = self._existing_resolver.validate_reference(
+            snapshot.logical_root,
+            owner_position=self._existing_owner_position,
+        ).node
+        prepared = self._existing_resolver.validate_reference(
+            snapshot.prepared_payload_root,
+            owner_position=self._existing_owner_position,
+        ).node
+        headers = self._existing_resolver.validate_reference(
+            snapshot.model_visible_headers_root,
+            owner_position=self._existing_owner_position,
+        ).node
+        if (
+            not isinstance(logical, ModelInputMappingRootNode)
+            or logical.mapping_hash != materialization.logical_input_hash
+        ):
+            raise ModelInputIntegrityError(
+                "Model Input v2 logical root failed incremental verification"
+            )
+        if (
+            not isinstance(prepared, ModelInputMappingRootNode)
+            or prepared.mapping_hash
+            != materialization.prepared_payload_mapping_hash
+        ):
+            raise ModelInputIntegrityError(
+                "Model Input v2 prepared root failed incremental verification"
+            )
+        if (
+            not isinstance(headers, ModelInputJsonValueNode)
+            or headers.value_hash != materialization.model_visible_headers_hash
+        ):
+            raise ModelInputIntegrityError(
+                "Model Input v2 headers root failed incremental verification"
+            )
 
     def _collect_value(self, value: object) -> _ValuePlan:
         plan = self._value_plan(value)
