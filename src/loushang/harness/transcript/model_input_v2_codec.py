@@ -7,6 +7,8 @@ from typing import Literal, cast
 
 from loushang.foundation.json import JSONValue
 from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_SEQUENCE_ALGORITHM_VERSION,
+    DeferredModelInputSequenceLink,
     ModelInputJsonChunkNode,
     ModelInputJsonValueNode,
     ModelInputMappingEntry,
@@ -42,6 +44,34 @@ def decode_model_input_node_bundle(value: JSONValue) -> ModelInputNodeBundle:
     return ModelInputNodeBundle(
         schema_version=_positive_int(payload, "schemaVersion"),
         nodes=tuple(_decode_node(item) for item in raw_nodes),
+    )
+
+
+def decode_model_input_sequence_tail_projection(
+    value: object,
+) -> DeferredModelInputSequenceLink:
+    """Decode one sequence node for an authority-bound position projection."""
+
+    if not isinstance(value, Mapping):
+        raise TypeError("Model Input node must be a sequence tail")
+    payload = _object(
+        cast(dict[str, JSONValue], value),
+        name="Model Input sequence tail projection",
+        fields=_SEQUENCE_TAIL_NODE_FIELDS,
+    )
+    if payload.get("nodeKind") != "sequence_tail":
+        raise TypeError("Model Input node must be a sequence tail")
+    if (
+        _positive_int(payload, "algorithmVersion")
+        != MODEL_INPUT_V2_SEQUENCE_ALGORITHM_VERSION
+    ):
+        raise ValueError("Model Input sequence algorithm version changed")
+    previous = _field(payload, "previousTail")
+    return DeferredModelInputSequenceLink(
+        previous_tail=(None if previous is None else _decode_reference(previous)),
+        appended_items=_decode_references(payload, "appendedItems"),
+        total_item_count=_non_negative_int(payload, "totalItemCount"),
+        sequence_hash=_text(payload, "sequenceHash"),
     )
 
 
@@ -202,7 +232,6 @@ def _decode_node(value: object) -> ModelInputNode:
     raise ValueError(f"unsupported Model Input v2 node kind: {node_kind!r}")
 
 
-
 _BUNDLE_FIELDS = frozenset({"schemaVersion", "nodes"})
 _JSON_CHUNK_NODE_FIELDS = frozenset({"nodeKind", "contentHash", "text"})
 _JSON_VALUE_NODE_FIELDS = frozenset(
@@ -224,6 +253,7 @@ _MAPPING_ROOT_NODE_FIELDS = frozenset(
 )
 _REFERENCE_FIELDS = frozenset({"recordId", "ordinal", "nodeKind", "contentHash"})
 _MAPPING_ENTRY_FIELDS = frozenset({"name", "value"})
+
 
 def _encode_reference(reference: ModelInputNodeReference) -> dict[str, JSONValue]:
     return {
@@ -291,9 +321,7 @@ def _object(
                 f"{name} contains unknown fields: {', '.join(sorted(unexpected))}"
             )
         missing = fields.difference(payload)
-        raise ValueError(
-            f"{name} is missing fields: {', '.join(sorted(missing))}"
-        )
+        raise ValueError(f"{name} is missing fields: {', '.join(sorted(missing))}")
     return payload
 
 
@@ -341,6 +369,7 @@ def _non_negative_int(value: Mapping[str, JSONValue], key: str) -> int:
 
 __all__ = [
     "decode_model_input_node_bundle",
+    "decode_model_input_sequence_tail_projection",
     "decode_model_input_snapshot_v2",
     "encode_model_input_node_bundle",
     "encode_model_input_snapshot_v2",

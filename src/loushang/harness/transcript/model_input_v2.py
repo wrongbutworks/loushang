@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
+from functools import partial
 from typing import Literal, cast
 from weakref import WeakKeyDictionary
 
@@ -31,6 +32,8 @@ from loushang.harness.transcript.model_input_v2_types import (
     MODEL_INPUT_V2_PAYLOAD_VERSION,
     MODEL_INPUT_V2_PROJECTION_VERSION,
     MODEL_INPUT_V2_SCHEMA_VERSION,
+    DeferredModelInputNodeBundle,
+    DeferredModelInputSequenceLink,
     ModelInputJsonChunkNode,
     ModelInputJsonValueNode,
     ModelInputMappingEntry,
@@ -67,11 +70,48 @@ MODEL_INPUT_V2_INDEX_COMPATIBILITY_TOKEN = (
 ModelInputV2IndexCacheStatus = Literal["hit", "extended", "rebuilt"]
 
 
-@dataclass(frozen=True)
 class IndexedModelInputNode:
-    reference: ModelInputNodeReference
-    node: ModelInputNode
-    record_position: int
+    """One indexed node whose validated body may remain off-heap until needed."""
+
+    __slots__ = ("reference", "record_position", "_node", "_node_loader")
+
+    def __init__(
+        self,
+        reference: ModelInputNodeReference,
+        node: ModelInputNode | None,
+        record_position: int,
+        *,
+        node_loader: Callable[[], ModelInputNode] | None = None,
+    ) -> None:
+        if node is None and node_loader is None:
+            raise ValueError("indexed Model Input node requires a body or loader")
+        self.reference = reference
+        self.record_position = record_position
+        self._node = node
+        self._node_loader = node_loader
+
+    @property
+    def node(self) -> ModelInputNode:
+        node = self._node
+        if node is None:
+            loader = self._node_loader
+            if loader is None:  # pragma: no cover - guarded by construction
+                raise RuntimeError("indexed Model Input node loader is unavailable")
+            node = loader()
+            if (
+                node.node_kind != self.reference.node_kind
+                or node.content_hash != self.reference.content_hash
+                or hash_model_input_node(node) != node.content_hash
+            ):
+                raise ModelInputIntegrityError(
+                    "deferred Model Input node identity changed"
+                )
+            self._node = node
+        return node
+
+    @property
+    def body_is_loaded(self) -> bool:
+        return self._node is not None
 
 
 @dataclass(frozen=True)
@@ -128,7 +168,17 @@ class ModelInputV2NodeIndex:
         self._by_location: dict[tuple[str, int], IndexedModelInputNode] = {}
         self._sequence_states: dict[tuple[int, str], IndexedModelInputNode] = {}
         self._values: dict[str, IndexedModelInputNode] = {}
+        self._value_hashes_by_location: dict[tuple[str, int], str] = {}
+        self._sequence_nodes_by_location: dict[
+            tuple[str, int],
+            ModelInputSequenceTailNode | DeferredModelInputSequenceLink,
+        ] = {}
+        self._sequence_link_loaders_by_location: dict[
+            tuple[str, int],
+            Callable[[], DeferredModelInputSequenceLink],
+        ] = {}
         self._verified_value_canonicals: dict[str, str] = {}
+        self._authority_verified_value_hashes: set[str] = set()
         self._verified_sequence_states: set[tuple[int, str]] = set()
         self._verified_sequence_references: dict[
             tuple[str, int],
@@ -145,6 +195,40 @@ class ModelInputV2NodeIndex:
                 raise ModelInputIntegrityError(
                     "Model Input v2 bundle uses the wrong payload version"
                 )
+            if isinstance(record.payload, DeferredModelInputNodeBundle):
+                for item in record.payload.indexed_nodes:
+                    reference = ModelInputNodeReference(
+                        record_id=record.record_id,
+                        ordinal=item.ordinal,
+                        node_kind=item.node_kind,
+                        content_hash=item.content_hash,
+                    )
+                    indexed = IndexedModelInputNode(
+                        reference,
+                        None,
+                        position,
+                        node_loader=partial(record.payload.node_at, item.ordinal),
+                    )
+                    self._add_indexed_node(
+                        indexed,
+                        value_hash=item.value_hash,
+                        inline_json=item.inline_json,
+                        sequence_state=(
+                            (item.total_item_count, item.sequence_hash)
+                            if item.total_item_count is not None
+                            and item.sequence_hash is not None
+                            else None
+                        ),
+                        sequence_node=None,
+                        sequence_link_loader=(
+                            partial(record.payload.sequence_link_at, item.ordinal)
+                            if item.node_kind == "sequence_tail"
+                            else None
+                        ),
+                    )
+                    if item.value_hash is not None and item.value_hash_verified:
+                        self._authority_verified_value_hashes.add(item.value_hash)
+                continue
             for ordinal, node in enumerate(record.payload.nodes):
                 if hash_model_input_node(node) != node.content_hash:
                     raise ModelInputIntegrityError("Model Input v2 node hash changed")
@@ -155,45 +239,96 @@ class ModelInputV2NodeIndex:
                     content_hash=node.content_hash,
                 )
                 indexed = IndexedModelInputNode(reference, node, position)
-                identity = (node.node_kind, node.content_hash)
-                existing = self._by_identity.get(identity)
-                if existing is not None and model_input_node_hash_basis(
-                    existing.node
-                ) != model_input_node_hash_basis(node):
-                    raise ModelInputIntegrityError(
-                        "Model Input v2 typed node hash collision"
-                    )
-                self._by_identity.setdefault(identity, indexed)
-                if isinstance(node, ModelInputJsonValueNode):
-                    prior_value = self._values.get(node.value_hash)
-                    if (
-                        prior_value is not None
-                        and prior_value.node.content_hash != node.content_hash
-                    ):
-                        raise ModelInputIntegrityError(
-                            "Model Input v2 JSON value hash is ambiguous"
-                        )
-                    self._values.setdefault(node.value_hash, indexed)
-                    if node.inline_json is not None:
-                        self.mark_value_verified(node.value_hash, node.inline_json)
-                if isinstance(node, ModelInputSequenceTailNode):
-                    state = (node.total_item_count, node.sequence_hash)
-                    prior = self._sequence_states.get(state)
-                    if (
-                        prior is not None
-                        and prior.node.content_hash != node.content_hash
-                    ):
-                        raise ModelInputIntegrityError(
-                            "Model Input v2 sequence state is ambiguous"
-                        )
-                    self._sequence_states.setdefault(state, indexed)
-                self._by_location[(record.record_id, ordinal)] = indexed
+                self._add_indexed_node(
+                    indexed,
+                    value_hash=(
+                        node.value_hash
+                        if isinstance(node, ModelInputJsonValueNode)
+                        else None
+                    ),
+                    inline_json=(
+                        node.inline_json
+                        if isinstance(node, ModelInputJsonValueNode)
+                        else None
+                    ),
+                    sequence_state=(
+                        (node.total_item_count, node.sequence_hash)
+                        if isinstance(node, ModelInputSequenceTailNode)
+                        else None
+                    ),
+                    sequence_node=(
+                        node if isinstance(node, ModelInputSequenceTailNode) else None
+                    ),
+                    sequence_link_loader=None,
+                )
+
+    def _add_indexed_node(
+        self,
+        indexed: IndexedModelInputNode,
+        *,
+        value_hash: str | None,
+        inline_json: str | None,
+        sequence_state: tuple[int, str] | None,
+        sequence_node: ModelInputSequenceTailNode
+        | DeferredModelInputSequenceLink
+        | None,
+        sequence_link_loader: Callable[[], DeferredModelInputSequenceLink] | None,
+    ) -> None:
+        reference = indexed.reference
+        identity = (reference.node_kind, reference.content_hash)
+        existing = self._by_identity.get(identity)
+        if (
+            existing is not None
+            and existing.body_is_loaded
+            and indexed.body_is_loaded
+            and model_input_node_hash_basis(existing.node)
+            != model_input_node_hash_basis(indexed.node)
+        ):
+            raise ModelInputIntegrityError("Model Input v2 typed node hash collision")
+        self._by_identity.setdefault(identity, indexed)
+        if value_hash is not None:
+            self._value_hashes_by_location[(reference.record_id, reference.ordinal)] = (
+                value_hash
+            )
+            prior_value = self._values.get(value_hash)
+            if (
+                prior_value is not None
+                and prior_value.reference.content_hash != reference.content_hash
+            ):
+                raise ModelInputIntegrityError(
+                    "Model Input v2 JSON value hash is ambiguous"
+                )
+            self._values.setdefault(value_hash, indexed)
+            if inline_json is not None:
+                self.mark_value_verified(value_hash, inline_json)
+        if sequence_state is not None:
+            prior = self._sequence_states.get(sequence_state)
+            if (
+                prior is not None
+                and prior.reference.content_hash != reference.content_hash
+            ):
+                raise ModelInputIntegrityError(
+                    "Model Input v2 sequence state is ambiguous"
+                )
+            self._sequence_states.setdefault(sequence_state, indexed)
+        if sequence_node is not None:
+            self._sequence_nodes_by_location[
+                (reference.record_id, reference.ordinal)
+            ] = sequence_node
+        if sequence_link_loader is not None:
+            self._sequence_link_loaders_by_location[
+                (reference.record_id, reference.ordinal)
+            ] = sequence_link_loader
+        self._by_location[(reference.record_id, reference.ordinal)] = indexed
 
     def find_node(self, node: ModelInputNode) -> IndexedModelInputNode | None:
         indexed = self._by_identity.get((node.node_kind, node.content_hash))
-        if indexed is not None and model_input_node_hash_basis(
-            indexed.node
-        ) != model_input_node_hash_basis(node):
+        if (
+            indexed is not None
+            and indexed.body_is_loaded
+            and model_input_node_hash_basis(indexed.node)
+            != model_input_node_hash_basis(node)
+        ):
             raise ModelInputIntegrityError("Model Input v2 typed node hash collision")
         return indexed
 
@@ -209,6 +344,9 @@ class ModelInputV2NodeIndex:
 
     def verified_value_canonical(self, value_hash: str) -> str | None:
         return self._verified_value_canonicals.get(value_hash)
+
+    def value_hash_is_authority_verified(self, value_hash: str) -> bool:
+        return value_hash in self._authority_verified_value_hashes
 
     def mark_value_verified(self, value_hash: str, canonical: str) -> None:
         if value_hash not in self._values:
@@ -269,36 +407,28 @@ class ModelInputV2NodeIndex:
                 content_hash=node.content_hash,
             )
             indexed = IndexedModelInputNode(reference, node, record_position)
-            identity = (node.node_kind, node.content_hash)
-            existing = self._by_identity.get(identity)
-            if existing is not None and model_input_node_hash_basis(
-                existing.node
-            ) != model_input_node_hash_basis(node):
-                raise ModelInputIntegrityError(
-                    "Model Input v2 typed node hash collision"
-                )
-            self._by_identity.setdefault(identity, indexed)
-            if isinstance(node, ModelInputJsonValueNode):
-                prior_value = self._values.get(node.value_hash)
-                if (
-                    prior_value is not None
-                    and prior_value.node.content_hash != node.content_hash
-                ):
-                    raise ModelInputIntegrityError(
-                        "Model Input v2 JSON value hash is ambiguous"
-                    )
-                self._values.setdefault(node.value_hash, indexed)
-                if node.inline_json is not None:
-                    self.mark_value_verified(node.value_hash, node.inline_json)
-            if isinstance(node, ModelInputSequenceTailNode):
-                state = (node.total_item_count, node.sequence_hash)
-                prior = self._sequence_states.get(state)
-                if prior is not None and prior.node.content_hash != node.content_hash:
-                    raise ModelInputIntegrityError(
-                        "Model Input v2 sequence state is ambiguous"
-                    )
-                self._sequence_states.setdefault(state, indexed)
-            self._by_location[(record.record_id, ordinal)] = indexed
+            self._add_indexed_node(
+                indexed,
+                value_hash=(
+                    node.value_hash
+                    if isinstance(node, ModelInputJsonValueNode)
+                    else None
+                ),
+                inline_json=(
+                    node.inline_json
+                    if isinstance(node, ModelInputJsonValueNode)
+                    else None
+                ),
+                sequence_state=(
+                    (node.total_item_count, node.sequence_hash)
+                    if isinstance(node, ModelInputSequenceTailNode)
+                    else None
+                ),
+                sequence_node=(
+                    node if isinstance(node, ModelInputSequenceTailNode) else None
+                ),
+                sequence_link_loader=None,
+            )
             references.append(reference)
         return tuple(references)
 
@@ -313,7 +443,9 @@ class ModelInputV2NodeIndex:
         if cached is not None:
             return cached
 
-        chain: list[tuple[ModelInputSequenceTailNode, int]] = []
+        chain: list[
+            tuple[ModelInputSequenceTailNode | DeferredModelInputSequenceLink, int]
+        ] = []
         current_reference = reference
         current_owner_position = owner_position
         while True:
@@ -325,22 +457,19 @@ class ModelInputV2NodeIndex:
                 current_reference,
                 owner_position=current_owner_position,
             )
-            if not isinstance(indexed.node, ModelInputSequenceTailNode):
-                raise ModelInputIntegrityError(
-                    "Model Input v2 sequence reference targets the wrong node"
-                )
+            sequence_node = self._sequence_node(indexed)
             key = (current_reference.record_id, current_reference.ordinal)
             cached = self._verified_sequence_references.get(key)
             if cached is not None:
                 value_hashes = list(cached[0])
                 sequence_hash = cached[1]
                 break
-            chain.append((indexed.node, indexed.record_position))
-            if indexed.node.previous_tail is None:
+            chain.append((sequence_node, indexed.record_position))
+            if sequence_node.previous_tail is None:
                 value_hashes = []
                 sequence_hash = model_input_empty_sequence_hash()
                 break
-            current_reference = indexed.node.previous_tail
+            current_reference = sequence_node.previous_tail
             current_owner_position = indexed.record_position
 
         for node, position in reversed(chain):
@@ -349,18 +478,15 @@ class ModelInputV2NodeIndex:
                     item_reference,
                     owner_position=position,
                 )
-                if not isinstance(item.node, ModelInputJsonValueNode):
-                    raise ModelInputIntegrityError(
-                        "Model Input v2 sequence item targets the wrong node"
-                    )
-                value_hashes.append(item.node.value_hash)
+                item_value_hash = self._verified_value_hash(item)
+                value_hashes.append(item_value_hash)
                 if len(value_hashes) > MODEL_INPUT_V2_MAX_SEQUENCE_ITEMS:
                     raise ModelInputIntegrityError(
                         "Model Input v2 sequence item budget exceeded"
                     )
                 sequence_hash = extend_model_input_sequence_hash(
                     sequence_hash,
-                    item.node.value_hash,
+                    item_value_hash,
                 )
             if len(value_hashes) != node.total_item_count:
                 raise ModelInputIntegrityError("Model Input v2 sequence count changed")
@@ -371,6 +497,41 @@ class ModelInputV2NodeIndex:
         self._verified_sequence_references[requested_key] = verified
         self.mark_sequence_state_verified(len(value_hashes), sequence_hash)
         return verified
+
+    def _sequence_node(
+        self,
+        indexed: IndexedModelInputNode,
+    ) -> ModelInputSequenceTailNode | DeferredModelInputSequenceLink:
+        key = (indexed.reference.record_id, indexed.reference.ordinal)
+        projected = self._sequence_nodes_by_location.get(key)
+        if projected is not None:
+            return projected
+        loader = self._sequence_link_loaders_by_location.get(key)
+        if loader is not None:
+            projected = loader()
+            self._sequence_nodes_by_location[key] = projected
+            return projected
+        node = indexed.node
+        if not isinstance(node, ModelInputSequenceTailNode):
+            raise ModelInputIntegrityError(
+                "Model Input v2 sequence reference targets the wrong node"
+            )
+        return node
+
+    def _verified_value_hash(self, indexed: IndexedModelInputNode) -> str:
+        key = (indexed.reference.record_id, indexed.reference.ordinal)
+        projected = self._value_hashes_by_location.get(key)
+        if projected is not None and (
+            projected in self._authority_verified_value_hashes
+            or projected in self._verified_value_canonicals
+        ):
+            return projected
+        node = indexed.node
+        if not isinstance(node, ModelInputJsonValueNode):
+            raise ModelInputIntegrityError(
+                "Model Input v2 sequence item targets the wrong node"
+            )
+        return node.value_hash
 
     def _resolve_indexed_reference(
         self,
@@ -384,8 +545,8 @@ class ModelInputV2NodeIndex:
                 "Model Input v2 node is outside reference ancestry"
             )
         if (
-            indexed.node.node_kind != reference.node_kind
-            or indexed.node.content_hash != reference.content_hash
+            indexed.reference.node_kind != reference.node_kind
+            or indexed.reference.content_hash != reference.content_hash
         ):
             raise ModelInputIntegrityError("Model Input v2 node reference changed")
         return indexed
@@ -910,6 +1071,13 @@ class ModelInputV2Writer:
                         "Model Input v2 JSON value hash is ambiguous"
                     )
                 self._value_references[plan.value_hash] = existing.reference
+                continue
+            if self._index.value_hash_is_authority_verified(plan.value_hash):
+                # The projection re-hashed canonical inline JSON from the
+                # authority line during this load.  Matching content addresses
+                # prove the current plan reuses that value without copying it.
+                self._value_references[plan.value_hash] = existing.reference
+                self._index.mark_value_verified(plan.value_hash, plan.canonical)
                 continue
             rebuilt = self._existing_resolver.resolve_value_reference(
                 existing.reference,
