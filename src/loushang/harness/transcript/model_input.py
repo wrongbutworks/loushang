@@ -18,6 +18,7 @@ from loushang.ai.prepared_request import (
     PreparedRequestMetrics,
 )
 from loushang.foundation.json import JSONValue
+from loushang.foundation.observability import get_log
 from loushang.harness.capabilities import (
     MountGraphSnapshot,
     RegistrationInventorySnapshot,
@@ -27,6 +28,10 @@ from loushang.harness.transcript.kinds import (
     MODEL_INPUT_PREPARED_KIND,
 )
 from loushang.harness.transcript.model_call_types import ModelCallOutcome
+from loushang.harness.transcript.model_input_timing import (
+    PhaseTimer,
+    PhaseTimingSnapshot,
+)
 from loushang.harness.transcript.model_input_types import (
     MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
     ModelInputComponent,
@@ -49,6 +54,7 @@ from loushang.harness.transcript.model_input_v2_types import (
 from loushang.harness.transcript.unit_of_work import AgentTranscriptUnitOfWork
 
 ModelInputLogicalProjection = dict[str, object]
+_MODEL_INPUT_PERFORMANCE_LOG = get_log(__name__).bind(component="ModelInputCommit")
 
 
 @dataclass(frozen=True)
@@ -239,101 +245,128 @@ class ModelInputTranscriptCommitter(
         self,
         request: PreparedModelRequest,
     ) -> None:
-        async with self._lock:
-            if self._outcome_recorded:
-                raise ModelInputIntegrityError(
-                    "Model Input attempt cannot follow its terminal outcome"
+        timer = PhaseTimer()
+        outcome = "failed"
+        try:
+            async with self._lock:
+                with timer.phase("preconditions"):
+                    if self._outcome_recorded:
+                        raise ModelInputIntegrityError(
+                            "Model Input attempt cannot follow its terminal outcome"
+                        )
+                    self._require_current_transcript()
+                    invocation_id = _prepared_text(request, "invocation_id")
+                    if self._invocation_id is None:
+                        self._invocation_id = invocation_id
+                    elif self._invocation_id != invocation_id:
+                        raise ModelInputIntegrityError(
+                            "Model Input attempts changed logical invocation identity"
+                        )
+                with timer.phase("validate_prepared_request"):
+                    prepared_payload, model_visible_headers, canonical = (
+                        _validate_prepared_request(request)
+                    )
+                self._latest_metrics = request.metrics
+                with timer.phase("logical_input_thaw"):
+                    logical_input = cast(
+                        dict[str, JSONValue],
+                        thaw_model_input_json(self._context.logical_input),
+                    )
+                writer = ModelInputV2Writer(
+                    transcript=self._transcript,
+                    expected_revision=self._expected_revision,
+                    expected_leaf_id=self._expected_leaf_id,
+                    max_encoded_record_bytes=self._max_encoded_record_bytes,
+                    phase_timer=timer,
                 )
-            self._require_current_transcript()
-            invocation_id = _prepared_text(request, "invocation_id")
-            if self._invocation_id is None:
-                self._invocation_id = invocation_id
-            elif self._invocation_id != invocation_id:
-                raise ModelInputIntegrityError(
-                    "Model Input attempts changed logical invocation identity"
+                with timer.phase("materialize"):
+                    materialization = await writer.materialize(
+                        logical_input=logical_input,
+                        prepared_payload=prepared_payload,
+                        model_visible_headers=model_visible_headers,
+                    )
+                self._expected_revision = materialization.expected_revision
+                self._expected_leaf_id = materialization.expected_leaf_id
+                with timer.phase("snapshot_build"):
+                    snapshot = ModelInputSnapshotV2(
+                        snapshot_id=str(uuid4()),
+                        invocation_id=invocation_id,
+                        attempt=_prepared_positive_int(request, "attempt"),
+                        purpose=self._context.purpose,
+                        product_id=self._runtime.product_id,
+                        runtime_id=self._runtime.runtime_id,
+                        mount_generation=self._runtime.mount_generation,
+                        profile_fingerprint=self._runtime.profile_fingerprint,
+                        registration_revision=self._runtime.registration_revision,
+                        conversation_id=self._transcript.header.conversation_id,
+                        source_leaf_id=self._context.source_leaf_id,
+                        source_revision=self._context.source_revision,
+                        commit_revision=self._expected_revision + 1,
+                        provider_id=_prepared_text(request, "provider_id"),
+                        model_id=_prepared_text(request, "model_id"),
+                        api_id=_prepared_text(request, "api"),
+                        endpoint_id=_prepared_text(request, "endpoint_id"),
+                        logical_root=materialization.logical_root,
+                        prepared_payload_root=materialization.prepared_payload_root,
+                        model_visible_headers_root=(
+                            materialization.model_visible_headers_root
+                        ),
+                        logical_input_hash=hash_model_input_json(
+                            logical_input,
+                            name="Model Input logical projection",
+                        ),
+                        prepared_payload_hash=_prepared_text(request, "payload_hash"),
+                    )
+                    # A canonical mismatch is checked before any writes. Keeping this
+                    # assertion here documents that the committed references still
+                    # represent exactly the AI-owned frozen envelope.
+                    if canonical != _prepared_text(request, "canonical_payload"):
+                        raise ModelInputIntegrityError(
+                            "prepared request canonical materialization changed "
+                            "during commit"
+                        )
+                with timer.phase("append_snapshot"):
+                    commit = await self._transcript.append_model_input_snapshot(
+                        snapshot,
+                        max_encoded_record_bytes=self._max_encoded_record_bytes,
+                        expected_revision=self._expected_revision,
+                        expected_leaf_id=self._expected_leaf_id,
+                    )
+                receipt = commit.receipt
+                if receipt is None:
+                    raise ModelInputIntegrityError(
+                        "Model Input snapshot did not reach the authoritative Store"
+                    )
+                if receipt.revision != snapshot.commit_revision:
+                    raise ModelInputIntegrityError(
+                        "Model Input snapshot commit revision changed"
+                    )
+                self._advance(commit.record.record_id, receipt.revision)
+                with timer.phase("rebuild_verify"):
+                    rebuilt = rebuild_model_input(
+                        self._transcript,
+                        snapshot.snapshot_id,
+                    )
+                    if rebuilt.canonical_prepared_payload != canonical:
+                        raise ModelInputIntegrityError(
+                            "committed Model Input v2 prepared payload changed"
+                        )
+                self._commits.append(
+                    ModelInputCommitResult(
+                        snapshot_id=snapshot.snapshot_id,
+                        record_id=commit.record.record_id,
+                        source_revision=self._context.source_revision,
+                        commit_revision=receipt.revision,
+                    )
                 )
-            prepared_payload, model_visible_headers, canonical = (
-                _validate_prepared_request(request)
-            )
-            self._latest_metrics = request.metrics
-            logical_input = cast(
-                dict[str, JSONValue],
-                thaw_model_input_json(self._context.logical_input),
-            )
-            materialization = await ModelInputV2Writer(
-                transcript=self._transcript,
-                expected_revision=self._expected_revision,
-                expected_leaf_id=self._expected_leaf_id,
-                max_encoded_record_bytes=self._max_encoded_record_bytes,
-            ).materialize(
-                logical_input=logical_input,
-                prepared_payload=prepared_payload,
-                model_visible_headers=model_visible_headers,
-            )
-            self._expected_revision = materialization.expected_revision
-            self._expected_leaf_id = materialization.expected_leaf_id
-            snapshot = ModelInputSnapshotV2(
-                snapshot_id=str(uuid4()),
-                invocation_id=invocation_id,
-                attempt=_prepared_positive_int(request, "attempt"),
-                purpose=self._context.purpose,
-                product_id=self._runtime.product_id,
-                runtime_id=self._runtime.runtime_id,
-                mount_generation=self._runtime.mount_generation,
-                profile_fingerprint=self._runtime.profile_fingerprint,
-                registration_revision=self._runtime.registration_revision,
-                conversation_id=self._transcript.header.conversation_id,
-                source_leaf_id=self._context.source_leaf_id,
+            outcome = "completed"
+        finally:
+            _emit_model_input_commit_timing(
+                timer,
+                request=request,
+                outcome=outcome,
                 source_revision=self._context.source_revision,
-                commit_revision=self._expected_revision + 1,
-                provider_id=_prepared_text(request, "provider_id"),
-                model_id=_prepared_text(request, "model_id"),
-                api_id=_prepared_text(request, "api"),
-                endpoint_id=_prepared_text(request, "endpoint_id"),
-                logical_root=materialization.logical_root,
-                prepared_payload_root=materialization.prepared_payload_root,
-                model_visible_headers_root=(materialization.model_visible_headers_root),
-                logical_input_hash=hash_model_input_json(
-                    logical_input,
-                    name="Model Input logical projection",
-                ),
-                prepared_payload_hash=_prepared_text(request, "payload_hash"),
-            )
-            # A canonical mismatch is checked before any writes. Keeping this
-            # assertion here documents that the committed references still
-            # represent exactly the AI-owned frozen envelope.
-            if canonical != _prepared_text(request, "canonical_payload"):
-                raise ModelInputIntegrityError(
-                    "prepared request canonical materialization changed during commit"
-                )
-            commit = await self._transcript.append_model_input_snapshot(
-                snapshot,
-                max_encoded_record_bytes=self._max_encoded_record_bytes,
-                expected_revision=self._expected_revision,
-                expected_leaf_id=self._expected_leaf_id,
-            )
-            receipt = commit.receipt
-            if receipt is None:
-                raise ModelInputIntegrityError(
-                    "Model Input snapshot did not reach the authoritative Store"
-                )
-            if receipt.revision != snapshot.commit_revision:
-                raise ModelInputIntegrityError(
-                    "Model Input snapshot commit revision changed"
-                )
-            self._advance(commit.record.record_id, receipt.revision)
-            rebuilt = rebuild_model_input(self._transcript, snapshot.snapshot_id)
-            if rebuilt.canonical_prepared_payload != canonical:
-                raise ModelInputIntegrityError(
-                    "committed Model Input v2 prepared payload changed"
-                )
-            self._commits.append(
-                ModelInputCommitResult(
-                    snapshot_id=snapshot.snapshot_id,
-                    record_id=commit.record.record_id,
-                    source_revision=self._context.source_revision,
-                    commit_revision=receipt.revision,
-                )
+                committed_revision=self._expected_revision,
             )
 
     async def record_model_call_outcome(
@@ -383,6 +416,56 @@ class ModelInputTranscriptCommitter(
     def _advance(self, record_id: str, revision: int) -> None:
         self._expected_leaf_id = record_id
         self._expected_revision = revision
+
+
+def _emit_model_input_commit_timing(
+    timer: PhaseTimer,
+    *,
+    request: PreparedModelRequest,
+    outcome: str,
+    source_revision: int,
+    committed_revision: int,
+) -> None:
+    """Publish one best-effort aggregate without exposing request content."""
+
+    try:
+        snapshot = timer.snapshot()
+        measured_ns = sum(item.total_ns for item in snapshot.phases.values())
+        _MODEL_INPUT_PERFORMANCE_LOG.debug_event(
+            "model_input.performance",
+            "commit",
+            outcome=outcome,
+            total_ms=_timing_milliseconds(snapshot.total_ns),
+            unattributed_ms=_timing_milliseconds(
+                max(0, snapshot.total_ns - measured_ns)
+            ),
+            phases=_timing_phase_data(snapshot),
+            provider_id=request.provider_id,
+            model_id=request.model_id,
+            attempt=request.attempt,
+            source_revision=source_revision,
+            committed_revision=committed_revision,
+            canonical_bytes=request.metrics.canonical_bytes,
+            message_count=request.metrics.message_count,
+            estimated_input_tokens=request.metrics.estimated_input_tokens,
+        )
+    except Exception:
+        # Diagnostics must never change a durable Model Input outcome.
+        return
+
+
+def _timing_phase_data(snapshot: PhaseTimingSnapshot) -> dict[str, JSONValue]:
+    return {
+        name: {
+            "total_ms": _timing_milliseconds(measurement.total_ns),
+            "count": measurement.count,
+        }
+        for name, measurement in snapshot.phases.items()
+    }
+
+
+def _timing_milliseconds(duration_ns: int) -> float:
+    return round(duration_ns / 1_000_000, 3)
 
 
 def _outcome_with_request_metrics(

@@ -56,6 +56,7 @@ from loushang.harness.transcript import (
     rebuild_model_input,
     verify_model_input,
 )
+from loushang.harness.transcript import model_input as model_input_module
 from loushang.harness.transcript.model_input_types import (
     hash_model_input_json,
     thaw_model_input_json,
@@ -399,6 +400,109 @@ def test_model_input_records_are_hidden_deduplicated_and_hash_verified() -> None
     asyncio.run(scenario())
 
 
+def test_model_input_commit_emits_one_aggregate_performance_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, str, dict[str, object]]] = []
+
+    class _TimingLog:
+        def debug_event(self, scope: str, name: str, **data: object) -> None:
+            events.append((scope, name, data))
+
+    monkeypatch.setattr(
+        model_input_module,
+        "_MODEL_INPUT_PERFORMANCE_LOG",
+        _TimingLog(),
+    )
+
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        prepared = _prepared()
+
+        await committer.commit_prepared_request(prepared)
+
+        assert len(events) == 1
+        scope, name, data = events[0]
+        assert (scope, name) == ("model_input.performance", "commit")
+        assert data["outcome"] == "completed"
+        assert data["provider_id"] == prepared.provider_id
+        assert data["model_id"] == prepared.model_id
+        assert data["message_count"] == prepared.metrics.message_count
+        assert data["canonical_bytes"] == prepared.metrics.canonical_bytes
+        assert "payload" not in data
+        assert "canonical_payload" not in data
+        phases = data["phases"]
+        assert isinstance(phases, dict)
+        assert set(phases) == {
+            "preconditions",
+            "validate_prepared_request",
+            "logical_input_thaw",
+            "active_path",
+            "node_index_build",
+            "resolver_build",
+            "materialize",
+            "snapshot_build",
+            "append_snapshot",
+            "rebuild_verify",
+        }
+        assert all(
+            isinstance(value, dict)
+            and value["count"] == 1
+            and isinstance(value["total_ms"], float)
+            and value["total_ms"] >= 0
+            for value in phases.values()
+        )
+
+        events.clear()
+        with pytest.raises(
+            ModelInputIntegrityError,
+            match="changed logical invocation identity",
+        ):
+            await committer.commit_prepared_request(
+                _prepared(invocation_id="different-invocation", attempt=2)
+            )
+
+        assert len(events) == 1
+        _, _, failed_data = events[0]
+        assert failed_data["outcome"] == "failed"
+        assert set(failed_data["phases"]) == {"preconditions"}
+
+    asyncio.run(scenario())
+
+
+def test_model_input_performance_reporting_is_best_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _BrokenTimingLog:
+        def debug_event(self, scope: str, name: str, **data: object) -> None:
+            raise OSError("diagnostic sink failed")
+
+    monkeypatch.setattr(
+        model_input_module,
+        "_MODEL_INPUT_PERFORMANCE_LOG",
+        _BrokenTimingLog(),
+    )
+
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+
+        await committer.commit_prepared_request(_prepared())
+
+        assert len(committer.commits) == 1
+
+    asyncio.run(scenario())
+
+
 def test_model_call_outcome_closes_all_ordered_attempt_snapshots_once() -> None:
     async def scenario() -> None:
         transcript = await _memory_transcript()
@@ -588,9 +692,7 @@ def test_prepared_attempts_without_an_outcome_project_as_unknown() -> None:
             ModelCallOutcome(
                 invocation_id="invocation-1",
                 model_input_snapshot_ids=tuple(
-                    reversed(
-                        [commit.snapshot_id for commit in committer.commits]
-                    )
+                    reversed([commit.snapshot_id for commit in committer.commits])
                 ),
                 disposition="completed",
                 stop_reason="stop",
@@ -850,9 +952,7 @@ def test_loading_a_v1_file_is_byte_stable_before_appending_v2(tmp_path: Path) ->
             context=_context(loaded),
             runtime_references=_runtime_references(),
         )
-        await committer.commit_prepared_request(
-            _prepared(invocation_id="file-v2")
-        )
+        await committer.commit_prepared_request(_prepared(invocation_id="file-v2"))
         assert path.read_bytes().startswith(before_load)
         assert rebuild_model_input(loaded, v1_snapshot.snapshot_id).snapshot == (
             v1_snapshot

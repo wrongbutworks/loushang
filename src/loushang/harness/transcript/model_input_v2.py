@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from typing import cast
 
 from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.transcript.kinds import MODEL_INPUT_COMPONENT_KIND
+from loushang.harness.transcript.model_input_timing import PhaseTimer
 from loushang.harness.transcript.model_input_types import (
     ModelInputIntegrityError,
     ModelInputRecordSizeError,
@@ -226,6 +228,13 @@ class ModelInputV2NodeIndex:
         return tuple(references)
 
 
+def _optional_phase(
+    timer: PhaseTimer | None,
+    name: str,
+) -> AbstractContextManager[None]:
+    return timer.phase(name) if timer is not None else nullcontext()
+
+
 class ModelInputV2Writer:
     """Materialize one v2 request using only verified active-path ancestors."""
 
@@ -236,14 +245,18 @@ class ModelInputV2Writer:
         expected_revision: int,
         expected_leaf_id: str,
         max_encoded_record_bytes: int,
+        phase_timer: PhaseTimer | None = None,
     ) -> None:
         self._transcript = transcript
         self._expected_revision = expected_revision
         self._expected_leaf_id = expected_leaf_id
         self._max_encoded_record_bytes = max_encoded_record_bytes
-        active_records = transcript.active_path()
-        self._index = ModelInputV2NodeIndex(active_records)
-        self._existing_resolver = ModelInputV2Resolver(active_records)
+        with _optional_phase(phase_timer, "active_path"):
+            active_records = transcript.active_path()
+        with _optional_phase(phase_timer, "node_index_build"):
+            self._index = ModelInputV2NodeIndex(active_records)
+        with _optional_phase(phase_timer, "resolver_build"):
+            self._existing_resolver = ModelInputV2Resolver(active_records)
         self._existing_owner_position = len(active_records)
         self._value_plans: dict[str, _ValuePlan] = {}
         self._value_references: dict[str, ModelInputNodeReference] = {}
