@@ -303,18 +303,17 @@ def _require_envelope(
     *,
     name: str,
 ) -> dict[str, JSONValue]:
+    # Structural check only.  Every caller reaches this codec through a
+    # boundary that already validated the tree against the strict JSON
+    # algebra exactly once: the journal (_load_mapping), the Session v3
+    # migration parser (_parse_jsonl), or the transcript header reader
+    # (jsonl_file).  Re-walking the tree here doubled the validation cost
+    # of every record on the load path.
     if not isinstance(value, Mapping):
         raise JournalCodecError(
             f"{name.capitalize()} must be a JSON object",
             code="invalid_envelope_shape",
         )
-    try:
-        validate_json_value(value, name=name)
-    except JsonValueError as exc:
-        raise JournalCodecError(
-            f"{name.capitalize()} contains a value outside strict JSON",
-            code="invalid_envelope_value",
-        ) from exc
     return cast(dict[str, JSONValue], dict(value))
 
 

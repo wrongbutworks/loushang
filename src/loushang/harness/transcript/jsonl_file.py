@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
+from loushang.foundation.json import validate_json_value
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationJsonlHeaderCodec,
@@ -198,6 +199,9 @@ def load_agent_transcript_header(path: Path) -> ConversationHeader:
     try:
         if not isinstance(value, dict):
             raise TypeError("conversation header must be a JSON object")
+        # This path bypasses the journal boundary, so validate here to keep
+        # the decode-side single-pass contract intact.
+        validate_json_value(value, name="conversation header")
         return _HEADER_CODEC.decode_header(value)
     except Exception as exc:
         code = getattr(exc, "code", "invalid_session_header")
