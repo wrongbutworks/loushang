@@ -44,6 +44,7 @@ from loushang.harness.transcript.model_input_types import (
     thaw_model_input_json,
 )
 from loushang.harness.transcript.model_input_v2 import (
+    ModelInputV2MaterializationStats,
     ModelInputV2Resolver,
     ModelInputV2Writer,
 )
@@ -248,6 +249,8 @@ class ModelInputTranscriptCommitter(
         timer = PhaseTimer()
         outcome = "failed"
         node_index_cache_status: str | None = None
+        materialization_timing: PhaseTimingSnapshot | None = None
+        materialization_stats: ModelInputV2MaterializationStats | None = None
         try:
             async with self._lock:
                 with timer.phase("preconditions"):
@@ -287,6 +290,8 @@ class ModelInputTranscriptCommitter(
                         prepared_payload=prepared_payload,
                         model_visible_headers=model_visible_headers,
                     )
+                materialization_timing = writer.materialization_timing
+                materialization_stats = writer.materialization_stats
                 self._expected_revision = materialization.expected_revision
                 self._expected_leaf_id = materialization.expected_leaf_id
                 with timer.phase("snapshot_build"):
@@ -379,6 +384,8 @@ class ModelInputTranscriptCommitter(
                 source_revision=self._context.source_revision,
                 committed_revision=self._expected_revision,
                 node_index_cache_status=node_index_cache_status,
+                materialization_timing=materialization_timing,
+                materialization_stats=materialization_stats,
             )
 
     async def record_model_call_outcome(
@@ -438,6 +445,8 @@ def _emit_model_input_commit_timing(
     source_revision: int,
     committed_revision: int,
     node_index_cache_status: str | None,
+    materialization_timing: PhaseTimingSnapshot | None,
+    materialization_stats: ModelInputV2MaterializationStats | None,
 ) -> None:
     """Publish one best-effort aggregate without exposing request content."""
 
@@ -453,6 +462,23 @@ def _emit_model_input_commit_timing(
                 max(0, snapshot.total_ns - measured_ns)
             ),
             phases=_timing_phase_data(snapshot),
+            materialize_phases=(
+                _timing_phase_data(materialization_timing)
+                if materialization_timing is not None
+                else {}
+            ),
+            materialize_counts=(
+                {
+                    "sequence_count": materialization_stats.sequence_count,
+                    "sequence_item_count": (materialization_stats.sequence_item_count),
+                    "reused_prefix_item_count": (
+                        materialization_stats.reused_prefix_item_count
+                    ),
+                    "planned_item_count": materialization_stats.planned_item_count,
+                }
+                if materialization_stats is not None
+                else {}
+            ),
             provider_id=request.provider_id,
             model_id=request.model_id,
             attempt=request.attempt,

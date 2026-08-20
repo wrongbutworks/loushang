@@ -398,6 +398,20 @@ def create_model_input_mapping_root(
     if not isinstance(frozen, Mapping):
         raise TypeError("Model Input v2 mapping root must be an object")
     mapping_hash = hash_model_input_json(frozen, name="Model Input v2 mapping root")
+    return create_model_input_mapping_root_from_hash(
+        mapping_hash=mapping_hash,
+        entries=entries,
+    )
+
+
+def create_model_input_mapping_root_from_hash(
+    *,
+    mapping_hash: str,
+    entries: Sequence[ModelInputMappingEntry],
+) -> ModelInputMappingRootNode:
+    """Create a root from a hash already proven by a streaming planner."""
+
+    _require_sha256(mapping_hash, name="Model Input v2 mapping root hash")
     resolved_entries = tuple(entries)
     return ModelInputMappingRootNode(
         content_hash=_hash_node_basis(
@@ -672,15 +686,13 @@ def _reference_to_json(
 
 
 def _sequence_link_hash(previous: str, item: str | None) -> str:
-    canonical = canonical_model_input_json(
+    return _hash_node_basis(
         {
             "domain": "harness.model-input.sequence-link.v2",
             "previous": previous,
             "item": item,
-        },
-        name="Model Input sequence link",
+        }
     )
-    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _require_matching_node_hash(node: ModelInputNode) -> None:
@@ -776,6 +788,7 @@ __all__ = [
     "create_model_input_json_chunk",
     "create_model_input_json_value",
     "create_model_input_mapping_root",
+    "create_model_input_mapping_root_from_hash",
     "create_model_input_sequence_tail",
     "estimate_model_input_node_wire_bytes",
     "extend_model_input_sequence_hash",

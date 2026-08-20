@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
@@ -14,7 +15,10 @@ from loushang.harness.transcript.kinds import (
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
 )
-from loushang.harness.transcript.model_input_timing import PhaseTimer
+from loushang.harness.transcript.model_input_timing import (
+    PhaseTimer,
+    PhaseTimingSnapshot,
+)
 from loushang.harness.transcript.model_input_types import (
     ModelInputIntegrityError,
     ModelInputRecordSizeError,
@@ -38,7 +42,7 @@ from loushang.harness.transcript.model_input_v2_types import (
     ModelInputSnapshotV2,
     create_model_input_json_chunk,
     create_model_input_json_value,
-    create_model_input_mapping_root,
+    create_model_input_mapping_root_from_hash,
     create_model_input_sequence_tail,
     estimate_model_input_node_wire_bytes,
     extend_model_input_sequence_hash,
@@ -94,6 +98,7 @@ class _ValuePlan:
     value: JSONValue
     canonical: str
     value_hash: str
+    encoded_bytes: int
 
 
 @dataclass(frozen=True)
@@ -107,15 +112,28 @@ class _SequencePlan:
         return self.prefix_hashes[-1]
 
 
+@dataclass(frozen=True)
+class ModelInputV2MaterializationStats:
+    sequence_count: int
+    sequence_item_count: int
+    reused_prefix_item_count: int
+    planned_item_count: int
+
+
 class ModelInputV2NodeIndex:
     """Verified-location index over one selected transcript path."""
 
     def __init__(self, records: Sequence[AgentTranscriptRecord]) -> None:
         self._by_identity: dict[tuple[str, str], IndexedModelInputNode] = {}
+        self._by_location: dict[tuple[str, int], IndexedModelInputNode] = {}
         self._sequence_states: dict[tuple[int, str], IndexedModelInputNode] = {}
         self._values: dict[str, IndexedModelInputNode] = {}
         self._verified_value_canonicals: dict[str, str] = {}
         self._verified_sequence_states: set[tuple[int, str]] = set()
+        self._verified_sequence_references: dict[
+            tuple[str, int],
+            tuple[tuple[str, ...], str],
+        ] = {}
         self._records = tuple(records)
         for position, record in enumerate(self._records):
             if record.kind != MODEL_INPUT_COMPONENT_KIND or not isinstance(
@@ -156,6 +174,8 @@ class ModelInputV2NodeIndex:
                             "Model Input v2 JSON value hash is ambiguous"
                         )
                     self._values.setdefault(node.value_hash, indexed)
+                    if node.inline_json is not None:
+                        self.mark_value_verified(node.value_hash, node.inline_json)
                 if isinstance(node, ModelInputSequenceTailNode):
                     state = (node.total_item_count, node.sequence_hash)
                     prior = self._sequence_states.get(state)
@@ -167,6 +187,7 @@ class ModelInputV2NodeIndex:
                             "Model Input v2 sequence state is ambiguous"
                         )
                     self._sequence_states.setdefault(state, indexed)
+                self._by_location[(record.record_id, ordinal)] = indexed
 
     def find_node(self, node: ModelInputNode) -> IndexedModelInputNode | None:
         indexed = self._by_identity.get((node.node_kind, node.content_hash))
@@ -267,6 +288,8 @@ class ModelInputV2NodeIndex:
                         "Model Input v2 JSON value hash is ambiguous"
                     )
                 self._values.setdefault(node.value_hash, indexed)
+                if node.inline_json is not None:
+                    self.mark_value_verified(node.value_hash, node.inline_json)
             if isinstance(node, ModelInputSequenceTailNode):
                 state = (node.total_item_count, node.sequence_hash)
                 prior = self._sequence_states.get(state)
@@ -275,8 +298,97 @@ class ModelInputV2NodeIndex:
                         "Model Input v2 sequence state is ambiguous"
                     )
                 self._sequence_states.setdefault(state, indexed)
+            self._by_location[(record.record_id, ordinal)] = indexed
             references.append(reference)
         return tuple(references)
+
+    def verify_sequence_reference(
+        self,
+        reference: ModelInputNodeReference,
+        *,
+        owner_position: int,
+    ) -> tuple[tuple[str, ...], str]:
+        requested_key = (reference.record_id, reference.ordinal)
+        cached = self._verified_sequence_references.get(requested_key)
+        if cached is not None:
+            return cached
+
+        chain: list[tuple[ModelInputSequenceTailNode, int]] = []
+        current_reference = reference
+        current_owner_position = owner_position
+        while True:
+            if len(chain) > MODEL_INPUT_V2_MAX_REFERENCE_DEPTH:
+                raise ModelInputIntegrityError(
+                    "Model Input v2 reference depth budget exceeded"
+                )
+            indexed = self._resolve_indexed_reference(
+                current_reference,
+                owner_position=current_owner_position,
+            )
+            if not isinstance(indexed.node, ModelInputSequenceTailNode):
+                raise ModelInputIntegrityError(
+                    "Model Input v2 sequence reference targets the wrong node"
+                )
+            key = (current_reference.record_id, current_reference.ordinal)
+            cached = self._verified_sequence_references.get(key)
+            if cached is not None:
+                value_hashes = list(cached[0])
+                sequence_hash = cached[1]
+                break
+            chain.append((indexed.node, indexed.record_position))
+            if indexed.node.previous_tail is None:
+                value_hashes = []
+                sequence_hash = model_input_empty_sequence_hash()
+                break
+            current_reference = indexed.node.previous_tail
+            current_owner_position = indexed.record_position
+
+        for node, position in reversed(chain):
+            for item_reference in node.appended_items:
+                item = self._resolve_indexed_reference(
+                    item_reference,
+                    owner_position=position,
+                )
+                if not isinstance(item.node, ModelInputJsonValueNode):
+                    raise ModelInputIntegrityError(
+                        "Model Input v2 sequence item targets the wrong node"
+                    )
+                value_hashes.append(item.node.value_hash)
+                if len(value_hashes) > MODEL_INPUT_V2_MAX_SEQUENCE_ITEMS:
+                    raise ModelInputIntegrityError(
+                        "Model Input v2 sequence item budget exceeded"
+                    )
+                sequence_hash = extend_model_input_sequence_hash(
+                    sequence_hash,
+                    item.node.value_hash,
+                )
+            if len(value_hashes) != node.total_item_count:
+                raise ModelInputIntegrityError("Model Input v2 sequence count changed")
+            if sequence_hash != node.sequence_hash:
+                raise ModelInputIntegrityError("Model Input v2 sequence hash changed")
+
+        verified = (tuple(value_hashes), sequence_hash)
+        self._verified_sequence_references[requested_key] = verified
+        self.mark_sequence_state_verified(len(value_hashes), sequence_hash)
+        return verified
+
+    def _resolve_indexed_reference(
+        self,
+        reference: ModelInputNodeReference,
+        *,
+        owner_position: int,
+    ) -> IndexedModelInputNode:
+        indexed = self._by_location.get((reference.record_id, reference.ordinal))
+        if indexed is None or indexed.record_position >= owner_position:
+            raise ModelInputIntegrityError(
+                "Model Input v2 node is outside reference ancestry"
+            )
+        if (
+            indexed.node.node_kind != reference.node_kind
+            or indexed.node.content_hash != reference.content_hash
+        ):
+            raise ModelInputIntegrityError("Model Input v2 node reference changed")
+        return indexed
 
 
 @dataclass
@@ -286,6 +398,7 @@ class _ModelInputV2IndexCache:
     compatibility_token: str
     records: tuple[AgentTranscriptRecord, ...]
     index: ModelInputV2NodeIndex
+    sequence_plans: dict[tuple[int, str], _SequencePlan]
 
     def resolve(
         self,
@@ -299,6 +412,7 @@ class _ModelInputV2IndexCache:
             self.compatibility_token = compatibility_token
             self.records = records
             self.index = ModelInputV2NodeIndex(records)
+            self.sequence_plans.clear()
             return self.index, "rebuilt"
 
         previous_count = len(self.records)
@@ -350,6 +464,7 @@ def _cached_node_index(
             compatibility_token=MODEL_INPUT_V2_INDEX_COMPATIBILITY_TOKEN,
             records=records,
             index=index,
+            sequence_plans={},
         )
         _MODEL_INPUT_V2_INDEX_CACHES[transcript] = cached
         return index, cached, "rebuilt"
@@ -369,6 +484,28 @@ def _path_extends(
     if not previous:
         return True
     return previous[-1].record_id == current[len(previous) - 1].record_id
+
+
+def _same_model_input_json(left: object, right: object) -> bool:
+    """Compare normalized JSON without Python's bool/int coercion."""
+
+    if type(left) is not type(right):
+        return False
+    if type(left) is dict:
+        left_mapping = cast(dict[str, object], left)
+        right_mapping = cast(dict[str, object], right)
+        return left_mapping.keys() == right_mapping.keys() and all(
+            _same_model_input_json(value, right_mapping[name])
+            for name, value in left_mapping.items()
+        )
+    if type(left) is list:
+        left_items = cast(list[object], left)
+        right_items = cast(list[object], right)
+        return len(left_items) == len(right_items) and all(
+            _same_model_input_json(left_item, right_item)
+            for left_item, right_item in zip(left_items, right_items, strict=True)
+        )
+    return left == right
 
 
 def _optional_phase(
@@ -407,10 +544,29 @@ class ModelInputV2Writer:
         self._existing_owner_position = len(active_records)
         self._value_plans: dict[str, _ValuePlan] = {}
         self._value_references: dict[str, ModelInputNodeReference] = {}
+        self._materialization_timing: PhaseTimingSnapshot | None = None
+        self._sequence_plan_updates: dict[tuple[int, str], _SequencePlan] = {}
+        self._sequence_count = 0
+        self._sequence_item_count = 0
+        self._reused_prefix_item_count = 0
+        self._planned_item_count = 0
 
     @property
     def index_cache_status(self) -> ModelInputV2IndexCacheStatus:
         return self._index_cache_status
+
+    @property
+    def materialization_timing(self) -> PhaseTimingSnapshot | None:
+        return self._materialization_timing
+
+    @property
+    def materialization_stats(self) -> ModelInputV2MaterializationStats:
+        return ModelInputV2MaterializationStats(
+            sequence_count=self._sequence_count,
+            sequence_item_count=self._sequence_item_count,
+            reused_prefix_item_count=self._reused_prefix_item_count,
+            planned_item_count=self._planned_item_count,
+        )
 
     async def materialize(
         self,
@@ -419,122 +575,166 @@ class ModelInputV2Writer:
         prepared_payload: Mapping[str, JSONValue],
         model_visible_headers: Mapping[str, str],
     ) -> ModelInputV2Materialization:
-        logical = dict(logical_input)
-        prepared = dict(prepared_payload)
-        headers = dict(model_visible_headers)
-        mapping_values = (logical, prepared)
-        sequence_plans: dict[tuple[int, str], _SequencePlan] = {}
-        mapping_sequences: dict[tuple[int, str], tuple[int, str]] = {}
+        timing = PhaseTimer()
+        with timing.phase("plan"):
+            logical = dict(logical_input)
+            prepared = dict(prepared_payload)
+            headers = dict(model_visible_headers)
+            mapping_values = (logical, prepared)
+            sequence_plans: dict[tuple[int, str], _SequencePlan] = {}
+            mapping_sequences: dict[tuple[int, str], tuple[int, str]] = {}
+            mapping_value_hashes: dict[tuple[int, str], str] = {}
 
-        for mapping_index, mapping in enumerate(mapping_values):
-            for name, value in mapping.items():
-                if isinstance(value, list):
-                    plan = self._sequence_plan(value)
-                    state = (len(plan.values), plan.final_hash)
-                    prior_plan = sequence_plans.get(state)
-                    if prior_plan is not None and prior_plan.values != plan.values:
-                        raise ModelInputIntegrityError(
-                            "Model Input v2 sequence hash collision"
+            for mapping_index, mapping in enumerate(mapping_values):
+                for name, value in mapping.items():
+                    if isinstance(value, list):
+                        cache_key = (mapping_index, name)
+                        plan = self._sequence_plan(value, cache_key=cache_key)
+                        state = (len(plan.values), plan.final_hash)
+                        prior_plan = sequence_plans.get(state)
+                        if prior_plan is not None and (
+                            len(prior_plan.values) != len(plan.values)
+                            or any(
+                                not _same_model_input_json(left, right)
+                                for left, right in zip(
+                                    prior_plan.values,
+                                    plan.values,
+                                    strict=True,
+                                )
+                            )
+                        ):
+                            raise ModelInputIntegrityError(
+                                "Model Input v2 sequence hash collision"
+                            )
+                        sequence_plans.setdefault(state, plan)
+                        mapping_sequences[(mapping_index, name)] = state
+                    else:
+                        mapping_value_hashes[(mapping_index, name)] = (
+                            self._collect_value(value).value_hash
                         )
-                    sequence_plans.setdefault(state, plan)
-                    mapping_sequences[(mapping_index, name)] = state
-                else:
-                    self._collect_value(value)
-        headers_plan = self._collect_value(headers)
-        await self._materialize_values()
+            headers_plan = self._collect_value(headers)
 
-        sequence_nodes: dict[tuple[int, str], ModelInputSequenceTailNode] = {}
-        sequence_refs: dict[tuple[int, str], ModelInputNodeReference] = {}
-        for state, plan in sequence_plans.items():
-            indexed_sequence = self._index.find_sequence_state(*state)
-            if indexed_sequence is not None:
-                if not self._index.sequence_state_is_verified(*state):
-                    values, sequence_hash = (
-                        self._existing_resolver.resolve_sequence_reference(
-                            indexed_sequence.reference,
-                            owner_position=self._existing_owner_position,
+        with timing.phase("values"):
+            await self._materialize_values()
+
+        with timing.phase("sequences"):
+            sequence_nodes: dict[tuple[int, str], ModelInputSequenceTailNode] = {}
+            sequence_refs: dict[tuple[int, str], ModelInputNodeReference] = {}
+            for state, plan in sequence_plans.items():
+                indexed_sequence = self._index.find_sequence_state(*state)
+                if indexed_sequence is not None:
+                    if not self._index.sequence_state_is_verified(*state):
+                        value_hashes, sequence_hash = (
+                            self._index.verify_sequence_reference(
+                                indexed_sequence.reference,
+                                owner_position=self._existing_owner_position,
+                            )
                         )
-                    )
-                    if values != list(plan.values) or sequence_hash != plan.final_hash:
+                        if (
+                            value_hashes
+                            != tuple(item.value_hash for item in plan.item_plans)
+                            or sequence_hash != plan.final_hash
+                        ):
+                            raise ModelInputIntegrityError(
+                                "Model Input v2 sequence state failed verification"
+                            )
+                    sequence_refs[state] = indexed_sequence.reference
+                    continue
+                prefix_count, previous_ref = self._longest_sequence_prefix(plan)
+                if (
+                    len(plan.values) - prefix_count
+                    > MODEL_INPUT_V2_MAX_TAIL_APPEND_ITEMS
+                ):
+                    while prefix_count < len(plan.values):
+                        next_count = min(
+                            prefix_count + MODEL_INPUT_V2_MAX_TAIL_APPEND_ITEMS,
+                            len(plan.values),
+                        )
+                        node = create_model_input_sequence_tail(
+                            previous_tail=previous_ref,
+                            appended_items=tuple(
+                                self._value_references[item.value_hash]
+                                for item in plan.item_plans[prefix_count:next_count]
+                            ),
+                            total_item_count=next_count,
+                            sequence_hash=plan.prefix_hashes[next_count],
+                        )
+                        await self._materialize_nodes((node,))
+                        indexed = self._index.find_node(node)
+                        if indexed is None:
+                            raise ModelInputIntegrityError(
+                                "Model Input v2 sequence segment was not materialized"
+                            )
+                        previous_ref = indexed.reference
+                        prefix_count = next_count
+                    if previous_ref is None:
                         raise ModelInputIntegrityError(
-                            "Model Input v2 sequence state failed verification"
+                            "Model Input v2 sequence segments have no final tail"
                         )
                     self._index.mark_sequence_state_verified(*state)
-                sequence_refs[state] = indexed_sequence.reference
-                continue
-            prefix_count, previous_ref = self._longest_sequence_prefix(plan)
-            if len(plan.values) - prefix_count > MODEL_INPUT_V2_MAX_TAIL_APPEND_ITEMS:
-                while prefix_count < len(plan.values):
-                    next_count = min(
-                        prefix_count + MODEL_INPUT_V2_MAX_TAIL_APPEND_ITEMS,
-                        len(plan.values),
-                    )
-                    node = create_model_input_sequence_tail(
-                        previous_tail=previous_ref,
-                        appended_items=tuple(
-                            self._value_references[item.value_hash]
-                            for item in plan.item_plans[prefix_count:next_count]
-                        ),
-                        total_item_count=next_count,
-                        sequence_hash=plan.prefix_hashes[next_count],
-                    )
-                    await self._materialize_nodes((node,))
-                    indexed = self._index.find_node(node)
-                    if indexed is None:
-                        raise ModelInputIntegrityError(
-                            "Model Input v2 sequence segment was not materialized"
-                        )
-                    previous_ref = indexed.reference
-                    prefix_count = next_count
-                if previous_ref is None:
+                    sequence_refs[state] = previous_ref
+                    continue
+                item_refs = tuple(
+                    self._value_references[item.value_hash]
+                    for item in plan.item_plans[prefix_count:]
+                )
+                node = create_model_input_sequence_tail(
+                    previous_tail=previous_ref,
+                    appended_items=item_refs,
+                    total_item_count=len(plan.values),
+                    sequence_hash=plan.final_hash,
+                )
+                sequence_nodes[state] = node
+            await self._materialize_nodes(tuple(sequence_nodes.values()))
+            for state, node in sequence_nodes.items():
+                indexed = self._index.find_node(node)
+                if indexed is None:
                     raise ModelInputIntegrityError(
-                        "Model Input v2 sequence segments have no final tail"
+                        "Model Input v2 sequence tail was not materialized"
                     )
-                sequence_refs[state] = previous_ref
+                sequence_refs[state] = indexed.reference
                 self._index.mark_sequence_state_verified(*state)
-                continue
-            item_refs = tuple(
-                self._value_references[item.value_hash]
-                for item in plan.item_plans[prefix_count:]
-            )
-            node = create_model_input_sequence_tail(
-                previous_tail=previous_ref,
-                appended_items=item_refs,
-                total_item_count=len(plan.values),
-                sequence_hash=plan.final_hash,
-            )
-            sequence_nodes[state] = node
-        await self._materialize_nodes(tuple(sequence_nodes.values()))
-        for state, node in sequence_nodes.items():
-            indexed = self._index.find_node(node)
-            if indexed is None:
-                raise ModelInputIntegrityError(
-                    "Model Input v2 sequence tail was not materialized"
-                )
-            sequence_refs[state] = indexed.reference
-            self._index.mark_sequence_state_verified(*state)
 
-        roots: list[ModelInputMappingRootNode] = []
-        for mapping_index, mapping in enumerate(mapping_values):
-            entries = []
-            for name, value in mapping.items():
-                field_state = mapping_sequences.get((mapping_index, name))
-                reference = (
-                    sequence_refs[field_state]
-                    if field_state is not None
-                    else self._value_references[self._value_plan(value).value_hash]
+        with timing.phase("roots"):
+            roots: list[ModelInputMappingRootNode] = []
+            for mapping_index, mapping in enumerate(mapping_values):
+                entries = []
+                canonical_fields: dict[str, str] = {}
+                for name in mapping:
+                    field_state = mapping_sequences.get((mapping_index, name))
+                    if field_state is not None:
+                        reference = sequence_refs[field_state]
+                        canonical_fields[name] = (
+                            "["
+                            + ",".join(
+                                item.canonical
+                                for item in sequence_plans[field_state].item_plans
+                            )
+                            + "]"
+                        )
+                    else:
+                        value_hash = mapping_value_hashes[(mapping_index, name)]
+                        reference = self._value_references[value_hash]
+                        canonical_fields[name] = self._value_plans[value_hash].canonical
+                    entries.append(ModelInputMappingEntry(name, reference))
+                roots.append(
+                    create_model_input_mapping_root_from_hash(
+                        mapping_hash=_hash_canonical_mapping_fields(canonical_fields),
+                        entries=entries,
+                    )
                 )
-                entries.append(ModelInputMappingEntry(name, reference))
-            roots.append(create_model_input_mapping_root(mapping, entries))
-        await self._materialize_nodes(tuple(roots))
-        root_refs = []
-        for root in roots:
-            indexed = self._index.find_node(root)
-            if indexed is None:
-                raise ModelInputIntegrityError(
-                    "Model Input v2 mapping root was not materialized"
-                )
-            root_refs.append(indexed.reference)
+            await self._materialize_nodes(tuple(roots))
+            root_refs = []
+            for root in roots:
+                indexed = self._index.find_node(root)
+                if indexed is None:
+                    raise ModelInputIntegrityError(
+                        "Model Input v2 mapping root was not materialized"
+                    )
+                root_refs.append(indexed.reference)
+
+        self._materialization_timing = timing.snapshot()
+        self._index_cache.sequence_plans.update(self._sequence_plan_updates)
         return ModelInputV2Materialization(
             logical_root=root_refs[0],
             prepared_payload_root=root_refs[1],
@@ -574,8 +774,7 @@ class ModelInputV2Writer:
             )
         if (
             snapshot.logical_root != materialization.logical_root
-            or snapshot.prepared_payload_root
-            != materialization.prepared_payload_root
+            or snapshot.prepared_payload_root != materialization.prepared_payload_root
             or snapshot.model_visible_headers_root
             != materialization.model_visible_headers_root
         ):
@@ -583,9 +782,7 @@ class ModelInputV2Writer:
                 "Model Input v2 snapshot changed its materialized roots"
             )
         if snapshot.logical_input_hash != materialization.logical_input_hash:
-            raise ModelInputIntegrityError(
-                "Model Input v2 logical root hash changed"
-            )
+            raise ModelInputIntegrityError("Model Input v2 logical root hash changed")
         if snapshot.prepared_payload_hash != prepared_payload_hash:
             raise ModelInputIntegrityError(
                 "Model Input v2 prepared request hash changed"
@@ -612,8 +809,7 @@ class ModelInputV2Writer:
             )
         if (
             not isinstance(prepared, ModelInputMappingRootNode)
-            or prepared.mapping_hash
-            != materialization.prepared_payload_mapping_hash
+            or prepared.mapping_hash != materialization.prepared_payload_mapping_hash
         ):
             raise ModelInputIntegrityError(
                 "Model Input v2 prepared root failed incremental verification"
@@ -631,25 +827,71 @@ class ModelInputV2Writer:
         existing = self._value_plans.get(plan.value_hash)
         if existing is not None and existing.canonical != plan.canonical:
             raise ModelInputIntegrityError("Model Input v2 JSON value hash collision")
-        self._value_plans.setdefault(plan.value_hash, plan)
+        if existing is not None:
+            return existing
+        self._value_plans[plan.value_hash] = plan
         return plan
 
-    def _sequence_plan(self, values: Sequence[JSONValue]) -> _SequencePlan:
+    def _sequence_plan(
+        self,
+        values: Sequence[JSONValue],
+        *,
+        cache_key: tuple[int, str],
+    ) -> _SequencePlan:
         if len(values) > MODEL_INPUT_V2_MAX_SEQUENCE_ITEMS:
             raise ModelInputRecordSizeError(
                 "Model Input v2 sequence exceeds the item budget"
             )
-        item_plans = tuple(self._collect_value(value) for value in values)
-        prefix_hashes = [model_input_empty_sequence_hash()]
-        for plan in item_plans:
+        cached = self._index_cache.sequence_plans.get(cache_key)
+        reused_count = 0
+        if cached is not None:
+            reusable_count = min(len(values), len(cached.item_plans))
+            while reused_count < reusable_count and _same_model_input_json(
+                values[reused_count],
+                cached.item_plans[reused_count].value,
+            ):
+                reused_count += 1
+
+        item_plans = [
+            self._reuse_value_plan(plan)
+            for plan in (() if cached is None else cached.item_plans[:reused_count])
+        ]
+        prefix_hashes = (
+            [model_input_empty_sequence_hash()]
+            if cached is None
+            else list(cached.prefix_hashes[: reused_count + 1])
+        )
+        for value in values[reused_count:]:
+            plan = self._collect_value(value)
+            item_plans.append(plan)
             prefix_hashes.append(
                 extend_model_input_sequence_hash(prefix_hashes[-1], plan.value_hash)
             )
-        return _SequencePlan(tuple(values), item_plans, tuple(prefix_hashes))
+        resolved_item_plans = tuple(item_plans)
+        sequence_plan = _SequencePlan(
+            tuple(item.value for item in resolved_item_plans),
+            resolved_item_plans,
+            tuple(prefix_hashes),
+        )
+        self._sequence_plan_updates[cache_key] = sequence_plan
+        self._sequence_count += 1
+        self._sequence_item_count += len(values)
+        self._reused_prefix_item_count += reused_count
+        self._planned_item_count += len(values) - reused_count
+        return sequence_plan
+
+    def _reuse_value_plan(self, plan: _ValuePlan) -> _ValuePlan:
+        existing = self._value_plans.get(plan.value_hash)
+        if existing is not None and existing.canonical != plan.canonical:
+            raise ModelInputIntegrityError("Model Input v2 JSON value hash collision")
+        if existing is not None:
+            return existing
+        self._value_plans[plan.value_hash] = plan
+        return plan
 
     async def _materialize_values(self) -> None:
         total_unique_bytes = sum(
-            len(plan.canonical.encode("utf-8")) for plan in self._value_plans.values()
+            plan.encoded_bytes for plan in self._value_plans.values()
         )
         if total_unique_bytes > MODEL_INPUT_V2_MAX_DECODED_BYTES:
             raise ModelInputRecordSizeError(
@@ -745,19 +987,16 @@ class ModelInputV2Writer:
                 continue
             state = (item_count, plan.prefix_hashes[item_count])
             if not self._index.sequence_state_is_verified(*state):
-                values, sequence_hash = (
-                    self._existing_resolver.resolve_sequence_reference(
-                        indexed.reference,
-                        owner_position=self._existing_owner_position,
-                    )
+                value_hashes, sequence_hash = self._index.verify_sequence_reference(
+                    indexed.reference,
+                    owner_position=self._existing_owner_position,
                 )
-                if values != list(plan.values[:item_count]) or (
-                    sequence_hash != plan.prefix_hashes[item_count]
-                ):
+                if value_hashes != tuple(
+                    item.value_hash for item in plan.item_plans[:item_count]
+                ) or (sequence_hash != plan.prefix_hashes[item_count]):
                     raise ModelInputIntegrityError(
                         "Model Input v2 sequence prefix failed verification"
                     )
-                self._index.mark_sequence_state_verified(*state)
             return item_count, indexed.reference
         return 0, None
 
@@ -800,20 +1039,33 @@ class ModelInputV2Writer:
     @staticmethod
     def _value_plan(value: object) -> _ValuePlan:
         canonical = canonical_model_input_json(value, name="Model Input v2 value")
-        encoded_bytes = len(canonical.encode("utf-8"))
+        encoded = canonical.encode("utf-8")
+        encoded_bytes = len(encoded)
         if encoded_bytes > MODEL_INPUT_V2_MAX_DECODED_BYTES:
             raise ModelInputRecordSizeError(
                 "Model Input v2 value exceeds the decoded-byte budget"
             )
-        decoded = require_json_value(
-            json.loads(canonical),
-            name="Model Input v2 value",
-        )
+        decoded = cast(JSONValue, json.loads(canonical))
         return _ValuePlan(
             value=decoded,
             canonical=canonical,
-            value_hash=hash_model_input_json(decoded, name="Model Input v2 value"),
+            value_hash="sha256:" + hashlib.sha256(encoded).hexdigest(),
+            encoded_bytes=encoded_bytes,
         )
+
+
+def _hash_canonical_mapping_fields(fields: Mapping[str, str]) -> str:
+    canonical = (
+        "{"
+        + ",".join(
+            canonical_model_input_json(name, name="Model Input v2 mapping field")
+            + ":"
+            + fields[name]
+            for name in sorted(fields)
+        )
+        + "}"
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _bundle_model_input_nodes(
@@ -1155,6 +1407,7 @@ __all__ = [
     "MODEL_INPUT_V2_MAX_TAIL_APPEND_ITEMS",
     "IndexedModelInputNode",
     "ModelInputV2Materialization",
+    "ModelInputV2MaterializationStats",
     "ModelInputV2NodeIndex",
     "ModelInputV2Resolver",
     "ModelInputV2Writer",

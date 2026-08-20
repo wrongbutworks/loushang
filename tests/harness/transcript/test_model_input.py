@@ -59,6 +59,7 @@ from loushang.harness.transcript import (
 from loushang.harness.transcript import model_input as model_input_module
 from loushang.harness.transcript import model_input_v2 as model_input_v2_module
 from loushang.harness.transcript.model_input_types import (
+    canonical_model_input_json,
     hash_model_input_json,
     thaw_model_input_json,
 )
@@ -461,6 +462,29 @@ def test_model_input_commit_emits_one_aggregate_performance_event(
             and value["total_ms"] >= 0
             for value in phases.values()
         )
+        materialize_phases = data["materialize_phases"]
+        assert isinstance(materialize_phases, dict)
+        assert set(materialize_phases) == {
+            "plan",
+            "values",
+            "sequences",
+            "roots",
+        }
+        assert all(
+            isinstance(value, dict)
+            and value["count"] == 1
+            and isinstance(value["total_ms"], float)
+            and value["total_ms"] >= 0
+            for value in materialize_phases.values()
+        )
+        assert "payload" not in materialize_phases
+        assert "canonical_payload" not in materialize_phases
+        assert data["materialize_counts"] == {
+            "sequence_count": 4,
+            "sequence_item_count": 4,
+            "reused_prefix_item_count": 0,
+            "planned_item_count": 4,
+        }
 
         events.clear()
         with pytest.raises(
@@ -475,6 +499,8 @@ def test_model_input_commit_emits_one_aggregate_performance_event(
         _, _, failed_data = events[0]
         assert failed_data["outcome"] == "failed"
         assert set(failed_data["phases"]) == {"preconditions"}
+        assert failed_data["materialize_phases"] == {}
+        assert failed_data["materialize_counts"] == {}
 
     asyncio.run(scenario())
 
@@ -616,11 +642,44 @@ def test_model_input_v2_fast_node_hash_matches_general_canonical_hash() -> None:
     asyncio.run(scenario())
 
 
+def test_model_input_v2_fast_sequence_and_mapping_hashes_remain_canonical() -> None:
+    previous = "sha256:" + ("a" * 64)
+    item = "sha256:" + ("b" * 64)
+    assert model_input_v2_module.extend_model_input_sequence_hash(
+        previous,
+        item,
+    ) == hash_model_input_json(
+        {
+            "domain": "harness.model-input.sequence-link.v2",
+            "previous": previous,
+            "item": item,
+        },
+        name="Model Input sequence link",
+    )
+
+    mapping = {
+        "messages": [{"role": "user", "content": "你好"}],
+        "model": "model-input-model",
+    }
+    canonical_fields = {
+        name: canonical_model_input_json(value, name=f"field {name}")
+        for name, value in mapping.items()
+    }
+    assert model_input_v2_module._hash_canonical_mapping_fields(
+        canonical_fields
+    ) == hash_model_input_json(mapping, name="Model Input mapping")
+
+
 def test_model_input_v2_node_index_cache_rebuilds_after_branch_change(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     builds = 0
+    events: list[dict[str, object]] = []
     original_init = model_input_v2_module.ModelInputV2NodeIndex.__init__
+
+    class _TimingLog:
+        def debug_event(self, scope: str, name: str, **data: object) -> None:
+            events.append(data)
 
     def counting_init(self, records) -> None:
         nonlocal builds
@@ -631,6 +690,11 @@ def test_model_input_v2_node_index_cache_rebuilds_after_branch_change(
         model_input_v2_module.ModelInputV2NodeIndex,
         "__init__",
         counting_init,
+    )
+    monkeypatch.setattr(
+        model_input_module,
+        "_MODEL_INPUT_PERFORMANCE_LOG",
+        _TimingLog(),
     )
 
     async def scenario() -> None:
@@ -656,6 +720,13 @@ def test_model_input_v2_node_index_cache_rebuilds_after_branch_change(
         await second.commit_prepared_request(_prepared(invocation_id="right"))
 
         assert builds == 2
+        assert len(events) == 2
+        assert events[-1]["materialize_counts"] == {
+            "sequence_count": 4,
+            "sequence_item_count": 4,
+            "reused_prefix_item_count": 0,
+            "planned_item_count": 4,
+        }
 
     asyncio.run(scenario())
 
@@ -1280,7 +1351,21 @@ def test_model_input_v2_chunks_and_rebuilds_a_single_message_over_one_mib() -> N
     asyncio.run(scenario())
 
 
-def test_model_input_v2_reuses_the_previous_message_prefix_and_appends_suffix() -> None:
+def test_model_input_v2_reuses_the_previous_message_prefix_and_appends_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[dict[str, object]] = []
+
+    class _TimingLog:
+        def debug_event(self, scope: str, name: str, **data: object) -> None:
+            events.append(data)
+
+    monkeypatch.setattr(
+        model_input_module,
+        "_MODEL_INPUT_PERFORMANCE_LOG",
+        _TimingLog(),
+    )
+
     async def scenario() -> None:
         transcript = await _memory_transcript()
         first_message = {"role": "user", "content": "first"}
@@ -1332,6 +1417,13 @@ def test_model_input_v2_reuses_the_previous_message_prefix_and_appends_suffix() 
         assert messages_tail.total_item_count == 2
         assert messages_tail.previous_tail is not None
         assert len(messages_tail.appended_items) == 1
+        assert len(events) == 2
+        assert events[-1]["materialize_counts"] == {
+            "sequence_count": 4,
+            "sequence_item_count": 4,
+            "reused_prefix_item_count": 3,
+            "planned_item_count": 1,
+        }
         assert (
             rebuild_model_input(
                 transcript,
@@ -1341,6 +1433,21 @@ def test_model_input_v2_reuses_the_previous_message_prefix_and_appends_suffix() 
         )
 
     asyncio.run(scenario())
+
+
+def test_model_input_v2_sequence_prefix_comparison_preserves_json_types() -> None:
+    assert not model_input_v2_module._same_model_input_json(
+        {"content": 1},
+        {"content": True},
+    )
+    assert not model_input_v2_module._same_model_input_json(
+        {"content": 1},
+        {"content": 1.0},
+    )
+    assert model_input_v2_module._same_model_input_json(
+        {"content": ["same", {"nested": None}]},
+        {"content": ["same", {"nested": None}]},
+    )
 
 
 def test_model_input_v2_segments_a_large_first_sequence_tail() -> None:
