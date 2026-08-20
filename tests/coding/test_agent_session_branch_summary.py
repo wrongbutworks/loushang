@@ -6,6 +6,7 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+from loushang.harness.session import operations_runtime as operations_runtime_module
 
 
 def _usage() -> Usage:
@@ -133,6 +134,53 @@ def test_navigate_tree_to_message_switches_leaf_and_rebuilds_context(tmp_path) -
         getattr(message, "role", None) for message in session.agent.state.messages
     ] == ["user", "assistant"]
     assert session.agent.state.messages[1].content[0].text == "reply 1"
+
+
+def test_navigate_tree_emits_one_aggregate_performance_event(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+
+    events: list[tuple[str, str, dict[str, object]]] = []
+
+    class _TimingLog:
+        def debug_event(self, scope: str, name: str, **data: object) -> None:
+            events.append((scope, name, data))
+
+    monkeypatch.setattr(
+        operations_runtime_module,
+        "_SESSION_NAVIGATION_PERFORMANCE_LOG",
+        _TimingLog(),
+    )
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    target_id = asyncio.run(
+        manager.append_message(UserMessage(role="user", content="root", timestamp=0.0))
+    )
+    asyncio.run(manager.append_message(_assistant_text_message("reply")))
+    session = AgentSession(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
+        session_manager=manager,
+    )
+
+    asyncio.run(session.navigate_tree(target_id))
+
+    assert len(events) == 1
+    scope, name, data = events[0]
+    assert (scope, name) == ("session.navigation.performance", "navigate")
+    assert data["outcome"] == "completed"
+    assert data["target_id"] == target_id
+    assert set(data["phases"]) == {"prepare", "navigate"}
 
 
 def test_navigate_tree_restores_target_branch_model_and_thinking(tmp_path) -> None:

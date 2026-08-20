@@ -1116,6 +1116,52 @@ async def test_runtime_restore_and_fork_operations_run_with_session(tmp_path) ->
 
 
 @_async_test
+async def test_runtime_restore_emits_one_aggregate_performance_event(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.session import lifecycle_adapter as lifecycle_adapter_module
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    target = await SessionManager.new(
+        session_dir=tmp_path,
+        cwd=str(project_root),
+        persist=True,
+    )
+    await target.append_message(_user_message("target"))
+    target_file = target.session_file
+    assert target_file is not None
+    events: list[tuple[str, str, dict[str, object]]] = []
+
+    class _TimingLog:
+        def debug_event(self, scope: str, name: str, **data: object) -> None:
+            events.append((scope, name, data))
+
+    monkeypatch.setattr(
+        lifecycle_adapter_module,
+        "_SESSION_RESUME_PERFORMANCE_LOG",
+        _TimingLog(),
+    )
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        persist=True,
+    )
+    await runtime.restore_session_operation(target_file)
+
+    assert len(events) == 1
+    scope, name, data = events[0]
+    assert (scope, name) == ("session.resume.performance", "restore")
+    assert data["outcome"] == "completed"
+    assert data["session_ref"] == str(target_file)
+    assert data["file_bytes"] == target_file.stat().st_size
+    assert set(data["phases"]) == {"resolve_session", "lifecycle_restore"}
+
+
+@_async_test
 async def test_runtime_switches_from_provisional_session_without_persisting_it(
     tmp_path,
 ) -> None:

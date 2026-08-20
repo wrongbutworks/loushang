@@ -57,6 +57,7 @@ from loushang.harness.transcript import (
     verify_model_input,
 )
 from loushang.harness.transcript import model_input as model_input_module
+from loushang.harness.transcript import model_input_v2 as model_input_v2_module
 from loushang.harness.transcript.model_input_types import (
     hash_model_input_json,
     thaw_model_input_json,
@@ -68,6 +69,8 @@ from loushang.harness.transcript.model_input_v2_types import (
     ModelInputNodeReference,
     ModelInputSequenceTailNode,
     ModelInputSnapshotV2,
+    hash_model_input_node,
+    model_input_node_hash_basis,
 )
 
 
@@ -434,6 +437,7 @@ def test_model_input_commit_emits_one_aggregate_performance_event(
         assert data["model_id"] == prepared.model_id
         assert data["message_count"] == prepared.metrics.message_count
         assert data["canonical_bytes"] == prepared.metrics.canonical_bytes
+        assert data["node_index_cache_status"] == "rebuilt"
         assert "payload" not in data
         assert "canonical_payload" not in data
         phases = data["phases"]
@@ -471,6 +475,159 @@ def test_model_input_commit_emits_one_aggregate_performance_event(
         _, _, failed_data = events[0]
         assert failed_data["outcome"] == "failed"
         assert set(failed_data["phases"]) == {"preconditions"}
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_node_index_cache_extends_selected_ancestry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builds = 0
+    original_init = model_input_v2_module.ModelInputV2NodeIndex.__init__
+
+    def counting_init(self, records) -> None:
+        nonlocal builds
+        builds += 1
+        original_init(self, records)
+
+    monkeypatch.setattr(
+        model_input_v2_module.ModelInputV2NodeIndex,
+        "__init__",
+        counting_init,
+    )
+
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        first = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await first.commit_prepared_request(_prepared(invocation_id="first"))
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="next", timestamp=2.0)
+        )
+        second = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await second.commit_prepared_request(_prepared(invocation_id="second"))
+
+        assert builds == 1
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_fast_node_hash_matches_general_canonical_hash() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+
+        nodes = tuple(
+            node
+            for record in transcript.records
+            if isinstance(record.payload, ModelInputNodeBundle)
+            for node in record.payload.nodes
+        )
+        assert nodes
+        for node in nodes:
+            assert hash_model_input_node(node) == hash_model_input_json(
+                model_input_node_hash_basis(node),
+                name="Model Input v2 typed node",
+            )
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_node_index_cache_rebuilds_after_branch_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builds = 0
+    original_init = model_input_v2_module.ModelInputV2NodeIndex.__init__
+
+    def counting_init(self, records) -> None:
+        nonlocal builds
+        builds += 1
+        original_init(self, records)
+
+    monkeypatch.setattr(
+        model_input_v2_module.ModelInputV2NodeIndex,
+        "__init__",
+        counting_init,
+    )
+
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        branch_root = transcript.leaf_id
+        assert branch_root is not None
+        first = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await first.commit_prepared_request(_prepared(invocation_id="left"))
+
+        transcript.branch(branch_root)
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="right", timestamp=2.0)
+        )
+        second = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await second.commit_prepared_request(_prepared(invocation_id="right"))
+
+        assert builds == 2
+
+    asyncio.run(scenario())
+
+
+def test_model_input_v2_node_index_cache_rebuilds_after_compatibility_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builds = 0
+    original_init = model_input_v2_module.ModelInputV2NodeIndex.__init__
+
+    def counting_init(self, records) -> None:
+        nonlocal builds
+        builds += 1
+        original_init(self, records)
+
+    monkeypatch.setattr(
+        model_input_v2_module.ModelInputV2NodeIndex,
+        "__init__",
+        counting_init,
+    )
+
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        first = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await first.commit_prepared_request(_prepared(invocation_id="before-change"))
+
+        monkeypatch.setattr(
+            model_input_v2_module,
+            "MODEL_INPUT_V2_INDEX_COMPATIBILITY_TOKEN",
+            "test-incompatible-node-index",
+        )
+        second = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await second.commit_prepared_request(_prepared(invocation_id="after-change"))
+
+        assert builds == 2
 
     asyncio.run(scenario())
 

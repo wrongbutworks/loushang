@@ -6,7 +6,8 @@ import json
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-from typing import cast
+from typing import Literal, cast
+from weakref import WeakKeyDictionary
 
 from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.transcript.kinds import MODEL_INPUT_COMPONENT_KIND
@@ -21,6 +22,8 @@ from loushang.harness.transcript.model_input_v2_types import (
     MODEL_INPUT_V2_BUNDLE_TARGET_BYTES,
     MODEL_INPUT_V2_CHUNK_CHARACTERS,
     MODEL_INPUT_V2_PAYLOAD_VERSION,
+    MODEL_INPUT_V2_PROJECTION_VERSION,
+    MODEL_INPUT_V2_SCHEMA_VERSION,
     ModelInputJsonChunkNode,
     ModelInputJsonValueNode,
     ModelInputMappingEntry,
@@ -49,6 +52,12 @@ MODEL_INPUT_V2_MAX_REFERENCE_DEPTH = 4_096
 MODEL_INPUT_V2_MAX_DECODED_BYTES = 128 * 1024 * 1024
 MODEL_INPUT_V2_MAX_SEQUENCE_ITEMS = 100_000
 MODEL_INPUT_V2_MAX_TAIL_APPEND_ITEMS = 1_024
+MODEL_INPUT_V2_INDEX_COMPATIBILITY_TOKEN = (
+    f"{MODEL_INPUT_V2_PROJECTION_VERSION}:schema-{MODEL_INPUT_V2_SCHEMA_VERSION}:"
+    "node-index-v1"
+)
+
+ModelInputV2IndexCacheStatus = Literal["hit", "extended", "rebuilt"]
 
 
 @dataclass(frozen=True)
@@ -99,6 +108,8 @@ class ModelInputV2NodeIndex:
         self._by_identity: dict[tuple[str, str], IndexedModelInputNode] = {}
         self._sequence_states: dict[tuple[int, str], IndexedModelInputNode] = {}
         self._values: dict[str, IndexedModelInputNode] = {}
+        self._verified_value_canonicals: dict[str, str] = {}
+        self._verified_sequence_states: set[tuple[int, str]] = set()
         self._records = tuple(records)
         for position, record in enumerate(self._records):
             if record.kind != MODEL_INPUT_COMPONENT_KIND or not isinstance(
@@ -169,6 +180,40 @@ class ModelInputV2NodeIndex:
     def find_value(self, value_hash: str) -> IndexedModelInputNode | None:
         return self._values.get(value_hash)
 
+    def verified_value_canonical(self, value_hash: str) -> str | None:
+        return self._verified_value_canonicals.get(value_hash)
+
+    def mark_value_verified(self, value_hash: str, canonical: str) -> None:
+        if value_hash not in self._values:
+            raise ModelInputIntegrityError(
+                "Model Input v2 verified value is outside the node index"
+            )
+        prior = self._verified_value_canonicals.get(value_hash)
+        if prior is not None and prior != canonical:
+            raise ModelInputIntegrityError(
+                "Model Input v2 verified value hash is ambiguous"
+            )
+        self._verified_value_canonicals[value_hash] = canonical
+
+    def sequence_state_is_verified(
+        self,
+        item_count: int,
+        sequence_hash: str,
+    ) -> bool:
+        return (item_count, sequence_hash) in self._verified_sequence_states
+
+    def mark_sequence_state_verified(
+        self,
+        item_count: int,
+        sequence_hash: str,
+    ) -> None:
+        state = (item_count, sequence_hash)
+        if state not in self._sequence_states:
+            raise ModelInputIntegrityError(
+                "Model Input v2 verified sequence is outside the node index"
+            )
+        self._verified_sequence_states.add(state)
+
     def add_bundle_record(
         self,
         record: AgentTranscriptRecord,
@@ -228,6 +273,98 @@ class ModelInputV2NodeIndex:
         return tuple(references)
 
 
+@dataclass
+class _ModelInputV2IndexCache:
+    """One ancestry-bound index that can advance along the selected path."""
+
+    compatibility_token: str
+    records: tuple[AgentTranscriptRecord, ...]
+    index: ModelInputV2NodeIndex
+
+    def resolve(
+        self,
+        records: tuple[AgentTranscriptRecord, ...],
+        *,
+        compatibility_token: str,
+    ) -> tuple[ModelInputV2NodeIndex, ModelInputV2IndexCacheStatus]:
+        if self.compatibility_token != compatibility_token or not _path_extends(
+            self.records, records
+        ):
+            self.compatibility_token = compatibility_token
+            self.records = records
+            self.index = ModelInputV2NodeIndex(records)
+            return self.index, "rebuilt"
+
+        previous_count = len(self.records)
+        if previous_count == len(records):
+            return self.index, "hit"
+        for position, record in enumerate(
+            records[previous_count:],
+            start=previous_count,
+        ):
+            if record.kind == MODEL_INPUT_COMPONENT_KIND and isinstance(
+                record.payload,
+                ModelInputNodeBundle,
+            ):
+                self.index.add_bundle_record(record, record_position=position)
+        self.records = records
+        return self.index, "extended"
+
+    def mark_writer_extension(
+        self,
+        records: tuple[AgentTranscriptRecord, ...],
+    ) -> None:
+        """Advance the path after the writer already indexed its own commits."""
+
+        if not _path_extends(self.records, records):
+            raise ModelInputIntegrityError(
+                "Model Input v2 index cache left its selected ancestry"
+            )
+        self.records = records
+
+
+_MODEL_INPUT_V2_INDEX_CACHES: WeakKeyDictionary[
+    AgentTranscriptUnitOfWork,
+    _ModelInputV2IndexCache,
+] = WeakKeyDictionary()
+
+
+def _cached_node_index(
+    transcript: AgentTranscriptUnitOfWork,
+    records: tuple[AgentTranscriptRecord, ...],
+) -> tuple[
+    ModelInputV2NodeIndex,
+    _ModelInputV2IndexCache,
+    ModelInputV2IndexCacheStatus,
+]:
+    cached = _MODEL_INPUT_V2_INDEX_CACHES.get(transcript)
+    if cached is None:
+        index = ModelInputV2NodeIndex(records)
+        cached = _ModelInputV2IndexCache(
+            compatibility_token=MODEL_INPUT_V2_INDEX_COMPATIBILITY_TOKEN,
+            records=records,
+            index=index,
+        )
+        _MODEL_INPUT_V2_INDEX_CACHES[transcript] = cached
+        return index, cached, "rebuilt"
+    index, status = cached.resolve(
+        records,
+        compatibility_token=MODEL_INPUT_V2_INDEX_COMPATIBILITY_TOKEN,
+    )
+    return index, cached, status
+
+
+def _path_extends(
+    previous: tuple[AgentTranscriptRecord, ...],
+    current: tuple[AgentTranscriptRecord, ...],
+) -> bool:
+    if len(previous) > len(current):
+        return False
+    if not previous:
+        return True
+    return previous[-1].record_id == current[len(previous) - 1].record_id
+
+
 def _optional_phase(
     timer: PhaseTimer | None,
     name: str,
@@ -254,12 +391,20 @@ class ModelInputV2Writer:
         with _optional_phase(phase_timer, "active_path"):
             active_records = transcript.active_path()
         with _optional_phase(phase_timer, "node_index_build"):
-            self._index = ModelInputV2NodeIndex(active_records)
+            (
+                self._index,
+                self._index_cache,
+                self._index_cache_status,
+            ) = _cached_node_index(transcript, active_records)
         with _optional_phase(phase_timer, "resolver_build"):
             self._existing_resolver = ModelInputV2Resolver(active_records)
         self._existing_owner_position = len(active_records)
         self._value_plans: dict[str, _ValuePlan] = {}
         self._value_references: dict[str, ModelInputNodeReference] = {}
+
+    @property
+    def index_cache_status(self) -> ModelInputV2IndexCacheStatus:
+        return self._index_cache_status
 
     async def materialize(
         self,
@@ -297,16 +442,18 @@ class ModelInputV2Writer:
         for state, plan in sequence_plans.items():
             indexed_sequence = self._index.find_sequence_state(*state)
             if indexed_sequence is not None:
-                values, sequence_hash = (
-                    self._existing_resolver.resolve_sequence_reference(
-                        indexed_sequence.reference,
-                        owner_position=self._existing_owner_position,
+                if not self._index.sequence_state_is_verified(*state):
+                    values, sequence_hash = (
+                        self._existing_resolver.resolve_sequence_reference(
+                            indexed_sequence.reference,
+                            owner_position=self._existing_owner_position,
+                        )
                     )
-                )
-                if values != list(plan.values) or sequence_hash != plan.final_hash:
-                    raise ModelInputIntegrityError(
-                        "Model Input v2 sequence state failed verification"
-                    )
+                    if values != list(plan.values) or sequence_hash != plan.final_hash:
+                        raise ModelInputIntegrityError(
+                            "Model Input v2 sequence state failed verification"
+                        )
+                    self._index.mark_sequence_state_verified(*state)
                 sequence_refs[state] = indexed_sequence.reference
                 continue
             prefix_count, previous_ref = self._longest_sequence_prefix(plan)
@@ -338,6 +485,7 @@ class ModelInputV2Writer:
                         "Model Input v2 sequence segments have no final tail"
                     )
                 sequence_refs[state] = previous_ref
+                self._index.mark_sequence_state_verified(*state)
                 continue
             item_refs = tuple(
                 self._value_references[item.value_hash]
@@ -358,6 +506,7 @@ class ModelInputV2Writer:
                     "Model Input v2 sequence tail was not materialized"
                 )
             sequence_refs[state] = indexed.reference
+            self._index.mark_sequence_state_verified(*state)
 
         roots: list[ModelInputMappingRootNode] = []
         for mapping_index, mapping in enumerate(mapping_values):
@@ -423,6 +572,14 @@ class ModelInputV2Writer:
             if existing is None:
                 missing_plans.append(plan)
                 continue
+            verified = self._index.verified_value_canonical(plan.value_hash)
+            if verified is not None:
+                if verified != plan.canonical:
+                    raise ModelInputIntegrityError(
+                        "Model Input v2 JSON value hash is ambiguous"
+                    )
+                self._value_references[plan.value_hash] = existing.reference
+                continue
             rebuilt = self._existing_resolver.resolve_value_reference(
                 existing.reference,
                 owner_position=self._existing_owner_position,
@@ -438,6 +595,7 @@ class ModelInputV2Writer:
                     "Model Input v2 JSON value failed verification"
                 )
             self._value_references[plan.value_hash] = existing.reference
+            self._index.mark_value_verified(plan.value_hash, plan.canonical)
 
         chunks_by_plan: dict[str, tuple[ModelInputJsonChunkNode, ...]] = {}
         chunk_nodes: dict[tuple[str, str], ModelInputJsonChunkNode] = {}
@@ -480,6 +638,10 @@ class ModelInputV2Writer:
                     "Model Input v2 JSON value was not materialized"
                 )
             self._value_references[value_hash] = indexed.reference
+            self._index.mark_value_verified(
+                value_hash,
+                self._value_plans[value_hash].canonical,
+            )
 
     def _longest_sequence_prefix(
         self,
@@ -492,16 +654,21 @@ class ModelInputV2Writer:
             )
             if indexed is None:
                 continue
-            values, sequence_hash = self._existing_resolver.resolve_sequence_reference(
-                indexed.reference,
-                owner_position=self._existing_owner_position,
-            )
-            if values != list(plan.values[:item_count]) or (
-                sequence_hash != plan.prefix_hashes[item_count]
-            ):
-                raise ModelInputIntegrityError(
-                    "Model Input v2 sequence prefix failed verification"
+            state = (item_count, plan.prefix_hashes[item_count])
+            if not self._index.sequence_state_is_verified(*state):
+                values, sequence_hash = (
+                    self._existing_resolver.resolve_sequence_reference(
+                        indexed.reference,
+                        owner_position=self._existing_owner_position,
+                    )
                 )
+                if values != list(plan.values[:item_count]) or (
+                    sequence_hash != plan.prefix_hashes[item_count]
+                ):
+                    raise ModelInputIntegrityError(
+                        "Model Input v2 sequence prefix failed verification"
+                    )
+                self._index.mark_sequence_state_verified(*state)
             return item_count, indexed.reference
         return 0, None
 
@@ -537,6 +704,7 @@ class ModelInputV2Writer:
             self._expected_revision = receipt.revision
             self._expected_leaf_id = commit.record.record_id
         active_records = self._transcript.active_path()
+        self._index_cache.mark_writer_extension(active_records)
         self._existing_resolver = ModelInputV2Resolver(active_records)
         self._existing_owner_position = len(active_records)
 

@@ -15,6 +15,8 @@ from typing import Any, TypeAlias
 
 from loushang.agent import Agent
 from loushang.ai.types import AssistantMessage
+from loushang.foundation.json import JSONValue
+from loushang.foundation.observability import get_log
 from loushang.harness.extensions.context import (
     SessionBeforeTreeResult,
     SessionShutdownEvent,
@@ -36,11 +38,18 @@ from loushang.harness.transcript import (
     TranscriptNavigationResult,
     normalize_branch_summary_output,
 )
+from loushang.harness.transcript.model_input_timing import (
+    PhaseTimer,
+    PhaseTimingSnapshot,
+)
 
 BeforeTreeHookResult: TypeAlias = (
     tuple[str | None, bool, str | None, BranchSummaryOutput | None, bool]
     | SessionBeforeTreeResult
     | None
+)
+_SESSION_NAVIGATION_PERFORMANCE_LOG = get_log(__name__).bind(
+    component="SessionNavigation"
 )
 
 
@@ -133,53 +142,70 @@ class SessionOperations:
         replace_instructions: bool = False,
         label: str | None = None,
     ) -> TranscriptNavigationResult:
-        navigation = self.composition.navigation_runtime
-        plan = navigation.prepare(target_id)
-        if plan is None:
-            return TranscriptNavigationResult(cancelled=False)
-        summary_override: BranchSummaryOutput | None = None
-        if self.ports.extension_runner is not None:
-            (
-                custom_instructions,
-                replace_instructions,
-                label,
-                summary_override,
-                cancelled,
-            ) = await self._apply_before_tree_hook(
-                plan,
-                summarize=summarize,
-                custom_instructions=custom_instructions,
-                replace_instructions=replace_instructions,
-                label=label,
-            )
-            if cancelled:
-                return TranscriptNavigationResult(cancelled=True)
-        result = await navigation.navigate(
-            plan,
-            summarize=summarize,
-            label=label,
-            summary_override=summary_override,
-            summary_runner=(
-                self._branch_summary_runner(
-                    custom_instructions=custom_instructions,
-                    replace_instructions=replace_instructions,
+        timer = PhaseTimer()
+        outcome = "failed"
+        try:
+            navigation = self.composition.navigation_runtime
+            with timer.phase("prepare"):
+                plan = navigation.prepare(target_id)
+            if plan is None:
+                outcome = "noop"
+                return TranscriptNavigationResult(cancelled=False)
+            summary_override: BranchSummaryOutput | None = None
+            if self.ports.extension_runner is not None:
+                with timer.phase("before_tree_hook"):
+                    (
+                        custom_instructions,
+                        replace_instructions,
+                        label,
+                        summary_override,
+                        cancelled,
+                    ) = await self._apply_before_tree_hook(
+                        plan,
+                        summarize=summarize,
+                        custom_instructions=custom_instructions,
+                        replace_instructions=replace_instructions,
+                        label=label,
+                    )
+                if cancelled:
+                    outcome = "cancelled"
+                    return TranscriptNavigationResult(cancelled=True)
+            with timer.phase("navigate"):
+                result = await navigation.navigate(
+                    plan,
+                    summarize=summarize,
+                    label=label,
+                    summary_override=summary_override,
+                    summary_runner=(
+                        self._branch_summary_runner(
+                            custom_instructions=custom_instructions,
+                            replace_instructions=replace_instructions,
+                        )
+                        if summarize
+                        else None
+                    ),
                 )
-                if summarize
-                else None
-            ),
-        )
-        if not summarize and self.ports.extension_runner is not None:
-            await self.ports.extension_runner.emit_agent_event(
-                {
-                    "type": "session_tree",
-                    "new_leaf_id": self.ports.session_manager.get_leaf_id(),
-                    "old_leaf_id": plan.old_leaf_id,
-                    "summary_entry": None,
-                    "from_extension": False,
-                },
-                cwd=self.ports.session_manager.get_cwd(),
+            if not summarize and self.ports.extension_runner is not None:
+                with timer.phase("extension_event"):
+                    await self.ports.extension_runner.emit_agent_event(
+                        {
+                            "type": "session_tree",
+                            "new_leaf_id": self.ports.session_manager.get_leaf_id(),
+                            "old_leaf_id": plan.old_leaf_id,
+                            "summary_entry": None,
+                            "from_extension": False,
+                        },
+                        cwd=self.ports.session_manager.get_cwd(),
+                    )
+            outcome = "cancelled" if result.cancelled else "completed"
+            return result
+        finally:
+            _emit_navigation_timing(
+                timer,
+                target_id=target_id,
+                summarize=summarize,
+                outcome=outcome,
             )
-        return result
 
     def abort_branch_summary(self) -> None:
         self.composition.navigation_runtime.abort()
@@ -295,4 +321,46 @@ class SessionOperations:
             return await self.ports.execute_branch_summary(entries, **kwargs)
 
         return run
+
+
+def _emit_navigation_timing(
+    timer: PhaseTimer,
+    *,
+    target_id: str,
+    summarize: bool,
+    outcome: str,
+) -> None:
+    try:
+        snapshot = timer.snapshot()
+        measured_ns = sum(item.total_ns for item in snapshot.phases.values())
+        _SESSION_NAVIGATION_PERFORMANCE_LOG.debug_event(
+            "session.navigation.performance",
+            "navigate",
+            target_id=target_id,
+            summarize=summarize,
+            outcome=outcome,
+            total_ms=_timing_milliseconds(snapshot.total_ns),
+            unattributed_ms=_timing_milliseconds(
+                max(0, snapshot.total_ns - measured_ns)
+            ),
+            phases=_timing_phase_data(snapshot),
+        )
+    except Exception:
+        return
+
+
+def _timing_phase_data(snapshot: PhaseTimingSnapshot) -> dict[str, JSONValue]:
+    return {
+        name: {
+            "total_ms": _timing_milliseconds(measurement.total_ns),
+            "count": measurement.count,
+        }
+        for name, measurement in snapshot.phases.items()
+    }
+
+
+def _timing_milliseconds(duration_ns: int) -> float:
+    return round(duration_ns / 1_000_000, 3)
+
+
 __all__ = ["SessionOperations", "SessionOperationsPorts"]

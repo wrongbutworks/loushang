@@ -101,9 +101,7 @@ class ModelInputJsonValueNode:
             )
             if canonical != self.inline_json:
                 raise ValueError("Model Input inline JSON is not canonical")
-            if hash_model_input_json(decoded, name="Model Input inline JSON") != (
-                self.value_hash
-            ):
+            if _hash_canonical_json(canonical) != self.value_hash:
                 raise ValueError("Model Input inline JSON value hash changed")
         object.__setattr__(self, "chunk_refs", chunks)
         _require_matching_node_hash(self)
@@ -573,7 +571,22 @@ def model_input_node_to_json(node: ModelInputNode) -> dict[str, JSONValue]:
 
 
 def _hash_node_basis(basis: Mapping[str, JSONValue]) -> str:
-    return hash_model_input_json(basis, name="Model Input v2 typed node")
+    # Node hash bases are assembled here from already validated exact JSON
+    # primitives.  The C encoder is byte-identical to the general canonical
+    # encoder for that closed algebra and avoids recursively rebuilding large
+    # reference trees in Python during load and index verification.
+    canonical = json.dumps(
+        basis,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return _hash_canonical_json(canonical)
+
+
+def _hash_canonical_json(canonical: str) -> str:
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _json_chunk_hash_basis(text: str) -> dict[str, JSONValue]:

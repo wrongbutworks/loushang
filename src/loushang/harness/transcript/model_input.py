@@ -247,6 +247,7 @@ class ModelInputTranscriptCommitter(
     ) -> None:
         timer = PhaseTimer()
         outcome = "failed"
+        node_index_cache_status: str | None = None
         try:
             async with self._lock:
                 with timer.phase("preconditions"):
@@ -279,6 +280,7 @@ class ModelInputTranscriptCommitter(
                     max_encoded_record_bytes=self._max_encoded_record_bytes,
                     phase_timer=timer,
                 )
+                node_index_cache_status = writer.index_cache_status
                 with timer.phase("materialize"):
                     materialization = await writer.materialize(
                         logical_input=logical_input,
@@ -367,6 +369,7 @@ class ModelInputTranscriptCommitter(
                 outcome=outcome,
                 source_revision=self._context.source_revision,
                 committed_revision=self._expected_revision,
+                node_index_cache_status=node_index_cache_status,
             )
 
     async def record_model_call_outcome(
@@ -425,6 +428,7 @@ def _emit_model_input_commit_timing(
     outcome: str,
     source_revision: int,
     committed_revision: int,
+    node_index_cache_status: str | None,
 ) -> None:
     """Publish one best-effort aggregate without exposing request content."""
 
@@ -445,6 +449,7 @@ def _emit_model_input_commit_timing(
             attempt=request.attempt,
             source_revision=source_revision,
             committed_revision=committed_revision,
+            node_index_cache_status=node_index_cache_status,
             canonical_bytes=request.metrics.canonical_bytes,
             message_count=request.metrics.message_count,
             estimated_input_tokens=request.metrics.estimated_input_tokens,

@@ -13,6 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Generic, TypeVar, cast
 
+from loushang.foundation.json import JSONValue
+from loushang.foundation.observability import get_log
 from loushang.harness.runtime import (
     SessionOperationResult,
     run_replacement_callbacks,
@@ -26,9 +28,14 @@ from loushang.harness.session.transcript_lifecycle import (
     AgentTranscriptSessionRuntime,
     require_session_operation_session,
 )
+from loushang.harness.transcript.model_input_timing import (
+    PhaseTimer,
+    PhaseTimingSnapshot,
+)
 
 SessionT = TypeVar("SessionT")
 PayloadT = TypeVar("PayloadT")
+_SESSION_RESUME_PERFORMANCE_LOG = get_log(__name__).bind(component="SessionResume")
 
 
 class SessionLifecycleOperationAdapter(
@@ -176,26 +183,42 @@ class SessionLifecycleOperationAdapter(
         options: dict[str, object] | None = None,
         metadata: dict[str, object] | None = None,
     ) -> SessionOperationResult[SessionT, PayloadT | None]:
-        session_file = self.resolve_session_file(session_id)
+        timer = PhaseTimer()
+        outcome = "failed"
+        session_file: Path | None = None
         try:
-            return await super().restore_session_operation(
-                session_file,
-                fallback_cwd=(str(fallback_cwd) if fallback_cwd is not None else None),
-                missing_cwd=missing_cwd,
-                metadata=self._lifecycle_metadata(
-                    operation="restore_session",
-                    options=options,
-                    metadata=metadata,
-                    session_ref=str(session_id),
-                    target_session_file=str(session_file),
+            with timer.phase("resolve_session"):
+                session_file = self.resolve_session_file(session_id)
+            with timer.phase("lifecycle_restore"):
+                result = await super().restore_session_operation(
+                    session_file,
                     fallback_cwd=(
                         str(fallback_cwd) if fallback_cwd is not None else None
                     ),
                     missing_cwd=missing_cwd,
-                ),
-            )
+                    metadata=self._lifecycle_metadata(
+                        operation="restore_session",
+                        options=options,
+                        metadata=metadata,
+                        session_ref=str(session_id),
+                        target_session_file=str(session_file),
+                        fallback_cwd=(
+                            str(fallback_cwd) if fallback_cwd is not None else None
+                        ),
+                        missing_cwd=missing_cwd,
+                    ),
+                )
+            outcome = "cancelled" if result.cancelled else "completed"
+            return result
         except MissingSessionCwdError as exc:
             raise self._translate_missing_cwd_error(exc) from exc
+        finally:
+            _emit_resume_timing(
+                timer,
+                session_ref=str(session_id),
+                session_file=session_file,
+                outcome=outcome,
+            )
 
     async def fork_session(
         self,
@@ -523,6 +546,50 @@ def _replacement_context(session: object) -> object:
         cwd=get_cwd() if callable(get_cwd) else None,
         session_manager=manager,
     )
+
+
+def _emit_resume_timing(
+    timer: PhaseTimer,
+    *,
+    session_ref: str,
+    session_file: Path | None,
+    outcome: str,
+) -> None:
+    try:
+        snapshot = timer.snapshot()
+        measured_ns = sum(item.total_ns for item in snapshot.phases.values())
+        _SESSION_RESUME_PERFORMANCE_LOG.debug_event(
+            "session.resume.performance",
+            "restore",
+            session_ref=session_ref,
+            outcome=outcome,
+            file_bytes=(
+                session_file.stat().st_size
+                if session_file is not None and session_file.is_file()
+                else None
+            ),
+            total_ms=_timing_milliseconds(snapshot.total_ns),
+            unattributed_ms=_timing_milliseconds(
+                max(0, snapshot.total_ns - measured_ns)
+            ),
+            phases=_timing_phase_data(snapshot),
+        )
+    except Exception:
+        return
+
+
+def _timing_phase_data(snapshot: PhaseTimingSnapshot) -> dict[str, JSONValue]:
+    return {
+        name: {
+            "total_ms": _timing_milliseconds(measurement.total_ns),
+            "count": measurement.count,
+        }
+        for name, measurement in snapshot.phases.items()
+    }
+
+
+def _timing_milliseconds(duration_ns: int) -> float:
+    return round(duration_ns / 1_000_000, 3)
 
 
 __all__ = ["SessionLifecycleOperationAdapter"]
