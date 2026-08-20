@@ -6,6 +6,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import math
 from collections.abc import Callable, Iterable, Sequence
 from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass, replace
@@ -57,11 +58,13 @@ Clock = Callable[[], datetime]
 RecordId = Callable[[RecordT], str | None]
 TombstonePath = Callable[[ConversationKey], Path]
 
-_STORE_HEAD_VERSION = 1
-# The head is an advisory, fixed-size acceleration structure. Journal bytes remain
-# authoritative; any identity, checksum, or schema mismatch falls back to replay.
-_OPERATION_FILTER_BITS = 1 << 17
-_OPERATION_FILTER_HASHES = 7
+_STORE_HEAD_VERSION = 2
+# The head is an advisory acceleration structure. Journal bytes remain authoritative;
+# any identity, checksum, compatibility, or schema mismatch falls back to replay.
+_OPERATION_FILTER_SEGMENT_CAPACITY = 10_000
+_OPERATION_FILTER_BASE_BITS = 1 << 17
+_OPERATION_FILTER_SEGMENTS_PER_SIZE = 4
+_OPERATION_FILTER_MAX_HASHES = 16
 _RECENT_RECORD_LIMIT = 64
 
 
@@ -75,24 +78,102 @@ class _JournalIdentity:
 
 
 @dataclass(frozen=True)
-class _OperationFilter:
+class _OperationFilterSegment:
     payload: bytes
+    insertions: int
+    hashes: int
+
+    def might_contain(self, operation_id: str) -> bool:
+        bit_count = len(self.payload) * 8
+        return all(
+            self.payload[position // 8] & (1 << (position % 8))
+            for position in _operation_filter_positions(
+                operation_id,
+                bit_count=bit_count,
+                hashes=self.hashes,
+            )
+        )
+
+
+@dataclass(frozen=True)
+class _OperationFilter:
+    segments: tuple[_OperationFilterSegment, ...]
 
     @classmethod
     def empty(cls) -> _OperationFilter:
-        return cls(bytes(_OPERATION_FILTER_BITS // 8))
+        return cls(())
 
     def might_contain(self, operation_id: str) -> bool:
-        return all(
-            self.payload[position // 8] & (1 << (position % 8))
-            for position in _operation_filter_positions(operation_id)
-        )
+        return any(segment.might_contain(operation_id) for segment in self.segments)
 
     def add(self, operation_id: str) -> _OperationFilter:
-        payload = bytearray(self.payload)
-        for position in _operation_filter_positions(operation_id):
+        builder = _OperationFilterBuilder(self)
+        builder.add(operation_id)
+        return builder.freeze()
+
+
+class _OperationFilterBuilder:
+    def __init__(self, operation_filter: _OperationFilter) -> None:
+        self._payloads = [
+            bytearray(segment.payload) for segment in operation_filter.segments
+        ]
+        self._insertions = [segment.insertions for segment in operation_filter.segments]
+        self._hashes = [segment.hashes for segment in operation_filter.segments]
+
+    def might_contain(self, operation_id: str) -> bool:
+        return any(
+            all(
+                payload[position // 8] & (1 << (position % 8))
+                for position in _operation_filter_positions(
+                    operation_id,
+                    bit_count=len(payload) * 8,
+                    hashes=hashes,
+                )
+            )
+            for payload, hashes in zip(
+                self._payloads,
+                self._hashes,
+                strict=True,
+            )
+        )
+
+    def add(self, operation_id: str) -> bool:
+        if self.might_contain(operation_id):
+            return False
+        if (
+            not self._payloads
+            or self._insertions[-1] >= _OPERATION_FILTER_SEGMENT_CAPACITY
+        ):
+            bits, hashes = _operation_filter_segment_shape(len(self._payloads))
+            self._payloads.append(bytearray(bits // 8))
+            self._insertions.append(0)
+            self._hashes.append(hashes)
+        payload = self._payloads[-1]
+        for position in _operation_filter_positions(
+            operation_id,
+            bit_count=len(payload) * 8,
+            hashes=self._hashes[-1],
+        ):
             payload[position // 8] |= 1 << (position % 8)
-        return _OperationFilter(bytes(payload))
+        self._insertions[-1] += 1
+        return True
+
+    def freeze(self) -> _OperationFilter:
+        return _OperationFilter(
+            tuple(
+                _OperationFilterSegment(
+                    payload=bytes(payload),
+                    insertions=insertions,
+                    hashes=hashes,
+                )
+                for payload, insertions, hashes in zip(
+                    self._payloads,
+                    self._insertions,
+                    self._hashes,
+                    strict=True,
+                )
+            )
+        )
 
 
 @dataclass(frozen=True)
@@ -105,6 +186,7 @@ class _RecentRecord:
 
 @dataclass(frozen=True)
 class _StoreHead:
+    compatibility_token: str
     revision: int
     identity: _JournalIdentity
     operation_filter: _OperationFilter
@@ -112,7 +194,13 @@ class _StoreHead:
 
 
 class FileConversationStore(Generic[HeaderT, RecordT]):
-    """File-backed Store whose layout and codecs are Product supplied."""
+    """File-backed Store whose layout and codecs are Product supplied.
+
+    Persistent append acceleration is opt-in. Products must provide a stable
+    ``head_compatibility_token`` and bump it whenever writable codec, load-policy,
+    or record-id projection semantics change. Without a token the journal is
+    replayed before each append, preserving the conservative legacy behavior.
+    """
 
     def __init__(
         self,
@@ -126,6 +214,7 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
         clock: Clock | None = None,
         record_id: RecordId[RecordT] | None = None,
         tombstone_path: TombstonePath | None = None,
+        head_compatibility_token: str | None = None,
     ) -> None:
         self._create_path = create_path
         self._resolve_path = resolve_path
@@ -136,6 +225,9 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._record_id = record_id
         self._tombstone_path = tombstone_path
+        self._head_compatibility_token = _require_head_compatibility_token(
+            head_compatibility_token
+        )
 
     async def create(
         self,
@@ -274,10 +366,15 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                     _write_create_operation(
                         path,
                         operation,
-                        head=_build_store_head(
-                            journal,
-                            durable_records,
-                            record_id=self._record_id,
+                        head=(
+                            _build_store_head(
+                                journal,
+                                durable_records,
+                                record_id=self._record_id,
+                                compatibility_token=self._head_compatibility_token,
+                            )
+                            if self._head_compatibility_token is not None
+                            else None
                         ),
                     )
                 except Exception as exc:
@@ -344,7 +441,14 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                     if projected_id is not None
                     else None
                 )
-                head = _try_load_store_head(path)
+                head = (
+                    _try_load_store_head(
+                        path,
+                        compatibility_token=self._head_compatibility_token,
+                    )
+                    if self._head_compatibility_token is not None
+                    else None
+                )
                 needs_full_reconciliation = bool(
                     head is not None
                     and projected_id == operation
@@ -384,13 +488,17 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                         diagnostics=snapshot.diagnostics,
                     )
                     if reconciled is not None:
-                        if not snapshot.diagnostics:
+                        if (
+                            not snapshot.diagnostics
+                            and self._head_compatibility_token is not None
+                        ):
                             _try_write_store_head(
                                 path,
                                 _build_store_head(
                                     journal,
                                     snapshot.records,
                                     record_id=self._record_id,
+                                    compatibility_token=self._head_compatibility_token,
                                 ),
                             )
                         return reconciled
@@ -400,8 +508,10 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                             journal,
                             snapshot.records,
                             record_id=self._record_id,
+                            compatibility_token=self._head_compatibility_token,
                         )
                         if not snapshot.diagnostics
+                        and self._head_compatibility_token is not None
                         else None
                     )
                 else:
@@ -484,7 +594,14 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                 record_digests = tuple(
                     _record_digest(journal, record) for record in durable_records
                 )
-                head = _try_load_store_head(path)
+                head = (
+                    _try_load_store_head(
+                        path,
+                        compatibility_token=self._head_compatibility_token,
+                    )
+                    if self._head_compatibility_token is not None
+                    else None
+                )
                 prepared = (
                     self._prepare_batch_from_head(
                         key,
@@ -497,6 +614,7 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                     if head is not None
                     else None
                 )
+                replayed_authority = prepared is None
                 if prepared is None:
                     snapshot = _load_unlocked(journal)
                     if snapshot.header is None:
@@ -516,8 +634,10 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                             journal,
                             snapshot.records,
                             record_id=self._record_id,
+                            compatibility_token=self._head_compatibility_token,
                         )
                         if not snapshot.diagnostics
+                        and self._head_compatibility_token is not None
                         else None
                     )
                 else:
@@ -549,6 +669,8 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                             advanced_head,
                             refresh_identity=True,
                         )
+                elif replayed_authority and head is not None:
+                    _try_write_store_head(path, head)
         except (
             StoreCommitOutcomeUnknown,
             StoreConflictError,
@@ -965,12 +1087,23 @@ def _write_unlocked(
     )
 
 
-def _operation_filter_positions(operation_id: str) -> tuple[int, ...]:
+def _operation_filter_segment_shape(index: int) -> tuple[int, int]:
+    growth = index // _OPERATION_FILTER_SEGMENTS_PER_SIZE
+    bits = _OPERATION_FILTER_BASE_BITS << growth
+    optimal_hashes = round((bits / _OPERATION_FILTER_SEGMENT_CAPACITY) * math.log(2))
+    return bits, min(_OPERATION_FILTER_MAX_HASHES, max(1, optimal_hashes))
+
+
+def _operation_filter_positions(
+    operation_id: str,
+    *,
+    bit_count: int,
+    hashes: int,
+) -> tuple[int, ...]:
     digest = hashlib.sha256(operation_id.encode("utf-8")).digest()
-    return tuple(
-        int.from_bytes(digest[offset : offset + 4], "big") % _OPERATION_FILTER_BITS
-        for offset in range(0, _OPERATION_FILTER_HASHES * 4, 4)
-    )
+    first = int.from_bytes(digest[:16], "big")
+    second = int.from_bytes(digest[16:], "big") | 1
+    return tuple((first + index * second) % bit_count for index in range(hashes))
 
 
 def _record_digest(
@@ -1004,8 +1137,9 @@ def _build_store_head(
     records: Sequence[RecordT],
     *,
     record_id: RecordId[RecordT] | None,
+    compatibility_token: str,
 ) -> _StoreHead:
-    operation_filter = _OperationFilter.empty()
+    operation_filter = _OperationFilterBuilder(_OperationFilter.empty())
     seen_record_ids: set[str] = set()
     duplicate_record_ids: set[str] = set()
     recent_records: list[tuple[int, str, str]] = []
@@ -1019,7 +1153,7 @@ def _build_store_head(
                 duplicate_record_ids.add(projected_id)
             else:
                 seen_record_ids.add(projected_id)
-            operation_filter = operation_filter.add(projected_id)
+            operation_filter.add(projected_id)
             if index >= recent_start:
                 recent_records.append(
                     (
@@ -1029,9 +1163,10 @@ def _build_store_head(
                     )
                 )
     return _StoreHead(
+        compatibility_token=compatibility_token,
         revision=len(records),
         identity=_journal_identity(journal.path),
-        operation_filter=operation_filter,
+        operation_filter=operation_filter.freeze(),
         recent_records=tuple(
             _RecentRecord(
                 revision=revision,
@@ -1048,7 +1183,7 @@ def _advance_store_head(
     head: _StoreHead,
     records: Sequence[tuple[str | None, str | None]],
 ) -> _StoreHead:
-    operation_filter = head.operation_filter
+    operation_filter = _OperationFilterBuilder(head.operation_filter)
     recent_records = list(head.recent_records)
     revision = head.revision
     for projected_id, digest in records:
@@ -1058,7 +1193,7 @@ def _advance_store_head(
         if not isinstance(digest, str):
             raise RuntimeError("record digest is required for a stable record id")
         unique = not operation_filter.might_contain(projected_id)
-        operation_filter = operation_filter.add(projected_id)
+        operation_filter.add(projected_id)
         recent_records.append(
             _RecentRecord(
                 revision=revision,
@@ -1068,9 +1203,10 @@ def _advance_store_head(
             )
         )
     return _StoreHead(
+        compatibility_token=head.compatibility_token,
         revision=revision,
         identity=head.identity,
-        operation_filter=operation_filter,
+        operation_filter=operation_filter.freeze(),
         recent_records=tuple(recent_records[-_RECENT_RECORD_LIMIT:]),
     )
 
@@ -1093,6 +1229,8 @@ def _load_create_operation(
     value = _load_store_metadata(path)
     if value is None:
         return None
+    if "create_operation_id" not in value:
+        return None
     operation_id = value.get("create_operation_id")
     return require_operation_id(operation_id)
 
@@ -1101,15 +1239,12 @@ def _write_create_operation(
     path: Path,
     operation_id: str,
     *,
-    head: _StoreHead,
+    head: _StoreHead | None,
 ) -> None:
-    _write_json_sidecar(
-        _metadata_path(path),
-        {
-            "create_operation_id": operation_id,
-            "head": _encode_store_head(head),
-        },
-    )
+    metadata: dict[str, object] = {"create_operation_id": operation_id}
+    if head is not None:
+        metadata["head"] = _encode_store_head(head)
+    _write_json_sidecar(_metadata_path(path), metadata)
 
 
 def _load_store_metadata(path: Path) -> dict[str, object] | None:
@@ -1117,6 +1252,8 @@ def _load_store_metadata(path: Path) -> dict[str, object] | None:
         value = json.loads(_metadata_path(path).read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
+    except OSError:
+        raise
     except Exception as exc:
         raise StoreDataError("conversation Store metadata is invalid") from exc
     if not isinstance(value, dict):
@@ -1124,12 +1261,19 @@ def _load_store_metadata(path: Path) -> dict[str, object] | None:
     return value
 
 
-def _try_load_store_head(path: Path) -> _StoreHead | None:
+def _try_load_store_head(
+    path: Path,
+    *,
+    compatibility_token: str,
+) -> _StoreHead | None:
     try:
         metadata = _load_store_metadata(path)
         if metadata is None:
             return None
-        head = _decode_store_head(metadata.get("head"))
+        head = _decode_store_head(
+            metadata.get("head"),
+            compatibility_token=compatibility_token,
+        )
         if head.identity != _journal_identity(path):
             return None
         return head
@@ -1146,7 +1290,10 @@ def _try_write_store_head(
     """Best-effort cache update that never changes a durable journal outcome."""
 
     try:
-        metadata = _load_store_metadata(path)
+        try:
+            metadata = _load_store_metadata(path)
+        except StoreDataError:
+            metadata = {}
         if metadata is None:
             metadata = {}
         if refresh_identity:
@@ -1160,6 +1307,7 @@ def _try_write_store_head(
 def _encode_store_head(head: _StoreHead) -> dict[str, object]:
     value: dict[str, object] = {
         "version": _STORE_HEAD_VERSION,
+        "compatibility_token": head.compatibility_token,
         "revision": head.revision,
         "journal": {
             "device": head.identity.device,
@@ -1169,9 +1317,15 @@ def _encode_store_head(head: _StoreHead) -> dict[str, object]:
             "ctime_ns": head.identity.ctime_ns,
         },
         "operation_filter": {
-            "bits": _OPERATION_FILTER_BITS,
-            "hashes": _OPERATION_FILTER_HASHES,
-            "payload": base64.b64encode(head.operation_filter.payload).decode("ascii"),
+            "segments": [
+                {
+                    "bits": len(segment.payload) * 8,
+                    "hashes": segment.hashes,
+                    "insertions": segment.insertions,
+                    "payload": base64.b64encode(segment.payload).decode("ascii"),
+                }
+                for segment in head.operation_filter.segments
+            ],
         },
         "recent_records": [
             {
@@ -1187,7 +1341,11 @@ def _encode_store_head(head: _StoreHead) -> dict[str, object]:
     return value
 
 
-def _decode_store_head(value: object) -> _StoreHead:
+def _decode_store_head(
+    value: object,
+    *,
+    compatibility_token: str,
+) -> _StoreHead:
     if not isinstance(value, dict):
         raise ValueError("store head is missing")
     checksum = value.get("checksum")
@@ -1199,6 +1357,8 @@ def _decode_store_head(value: object) -> _StoreHead:
         raise ValueError("store head checksum is invalid")
     if _metadata_int(value, "version") != _STORE_HEAD_VERSION:
         raise ValueError("store head version is unsupported")
+    if value.get("compatibility_token") != compatibility_token:
+        raise ValueError("store head compatibility token does not match")
     revision = _metadata_int(value, "revision")
     journal = value.get("journal")
     operation_filter = value.get("operation_filter")
@@ -1207,20 +1367,44 @@ def _decode_store_head(value: object) -> _StoreHead:
         raise ValueError("store head metadata is invalid")
     if not isinstance(recent, list) or len(recent) > _RECENT_RECORD_LIMIT:
         raise ValueError("store head recent records are invalid")
-    if _metadata_int(operation_filter, "bits") != _OPERATION_FILTER_BITS:
-        raise ValueError("store head operation filter size is invalid")
-    if _metadata_int(operation_filter, "hashes") != _OPERATION_FILTER_HASHES:
-        raise ValueError("store head operation filter shape is invalid")
-    raw_payload = operation_filter.get("payload")
-    if not isinstance(raw_payload, str):
-        raise ValueError("store head operation filter is invalid")
-    try:
-        payload = base64.b64decode(raw_payload.encode("ascii"), validate=True)
-    except (UnicodeError, binascii.Error) as exc:
-        raise ValueError("store head operation filter is invalid") from exc
-    if len(payload) != _OPERATION_FILTER_BITS // 8:
-        raise ValueError("store head operation filter length is invalid")
-    decoded_filter = _OperationFilter(payload)
+    raw_segments = operation_filter.get("segments")
+    if not isinstance(raw_segments, list) or len(raw_segments) > 1_024:
+        raise ValueError("store head operation filter segments are invalid")
+    decoded_segments: list[_OperationFilterSegment] = []
+    for index, raw_segment in enumerate(raw_segments):
+        if not isinstance(raw_segment, dict):
+            raise ValueError("store head operation filter segment is invalid")
+        expected_bits, expected_hashes = _operation_filter_segment_shape(index)
+        bits = _metadata_int(raw_segment, "bits")
+        hashes = _metadata_int(raw_segment, "hashes")
+        insertions = _metadata_int(raw_segment, "insertions")
+        raw_payload = raw_segment.get("payload")
+        if (
+            bits != expected_bits
+            or hashes != expected_hashes
+            or insertions <= 0
+            or insertions > _OPERATION_FILTER_SEGMENT_CAPACITY
+            or (
+                index < len(raw_segments) - 1
+                and insertions != _OPERATION_FILTER_SEGMENT_CAPACITY
+            )
+            or not isinstance(raw_payload, str)
+        ):
+            raise ValueError("store head operation filter segment is invalid")
+        try:
+            payload = base64.b64decode(raw_payload.encode("ascii"), validate=True)
+        except (UnicodeError, binascii.Error) as exc:
+            raise ValueError("store head operation filter segment is invalid") from exc
+        if len(payload) != bits // 8:
+            raise ValueError("store head operation filter segment length is invalid")
+        decoded_segments.append(
+            _OperationFilterSegment(
+                payload=payload,
+                insertions=insertions,
+                hashes=hashes,
+            )
+        )
+    decoded_filter = _OperationFilter(tuple(decoded_segments))
     decoded_recent: list[_RecentRecord] = []
     prior_revision = 0
     for raw_item in recent:
@@ -1250,6 +1434,7 @@ def _decode_store_head(value: object) -> _StoreHead:
         )
         prior_revision = item_revision
     return _StoreHead(
+        compatibility_token=compatibility_token,
         revision=revision,
         identity=_JournalIdentity(
             device=_metadata_int(journal, "device"),
@@ -1268,6 +1453,19 @@ def _metadata_int(value: dict[str, object], key: str) -> int:
     if isinstance(item, bool) or not isinstance(item, int) or item < 0:
         raise ValueError(f"store head {key} is invalid")
     return item
+
+
+def _require_head_compatibility_token(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("head compatibility token must be a string or None")
+    token = value.strip()
+    if not token:
+        raise ValueError("head compatibility token must be non-empty")
+    if len(token) > 256:
+        raise ValueError("head compatibility token must be at most 256 characters")
+    return token
 
 
 def _store_head_checksum(value: dict[str, object]) -> str:

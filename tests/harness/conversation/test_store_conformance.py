@@ -87,6 +87,7 @@ def _file_factory(
     tmp_path: Path,
     *,
     record_id: Callable[[_Record], str | None] = _record_id,
+    head_compatibility_token: str = "test-conversation-store-v1",
 ) -> _StoreFactory:
     root = tmp_path / "conversations"
 
@@ -113,6 +114,7 @@ def _file_factory(
             journal_factory=journal_factory,
             clock=lambda: _NOW,
             record_id=record_id,
+            head_compatibility_token=head_compatibility_token,
         )
 
     return create
@@ -442,6 +444,7 @@ def test_file_append_uses_current_head_inside_one_exclusive_lock_without_replay(
         scan_paths=lambda ignored: (path,),
         key_for_path=lambda namespace, ignored: key,
         journal_factory=journal_factory,
+        head_compatibility_token="test-locking-store-v1",
     )
 
     async def scenario() -> None:
@@ -508,6 +511,7 @@ def test_file_batch_append_uses_current_head_and_one_write_inside_one_lock(
             lock_factory=lock_factory,
         ),
         record_id=_record_id,
+        head_compatibility_token="test-batch-store-v1",
     )
 
     store._create_sync(
@@ -571,6 +575,7 @@ def test_file_append_cost_does_not_scale_with_existing_record_count(
             load_policy=JournalLoadPolicy(header="required"),
         ),
         record_id=_record_id,
+        head_compatibility_token="test-large-store-v1",
     )
     existing = tuple(_Record(f"record-{index}", "x" * 256) for index in range(2_000))
     store._create_sync(
@@ -588,6 +593,69 @@ def test_file_append_cost_does_not_scale_with_existing_record_count(
     )
 
     assert decode_calls == 0
+
+
+def test_file_head_compatibility_change_forces_authoritative_replay(
+    tmp_path: Path,
+) -> None:
+    key = ConversationKey("coding", "compatibility-change")
+    first = cast(
+        FileConversationStore[_Header, _Record],
+        _file_factory(
+            tmp_path,
+            record_id=lambda record: record.record_id,
+            head_compatibility_token="record-id-field-v1",
+        )(),
+    )
+    first._create_sync(
+        key,
+        _Header("Header"),
+        (_Record("record-1", "shared-operation"),),
+        operation_id=_operation("create", key),
+    )
+    reopened = cast(
+        FileConversationStore[_Header, _Record],
+        _file_factory(
+            tmp_path,
+            record_id=lambda record: record.text,
+            head_compatibility_token="record-text-v2",
+        )(),
+    )
+
+    with pytest.raises(StoreOperationConflictError):
+        reopened._append_sync(
+            key,
+            _Record("record-2", "shared-operation"),
+            expected_revision=1,
+            operation_id="shared-operation",
+        )
+
+    assert reopened._load_sync(key).snapshot.records == (
+        _Record("record-1", "shared-operation"),
+    )
+
+
+def test_file_head_operation_filter_scales_without_saturating_at_fifty_thousand_ids() -> (
+    None
+):
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    builder = file_store_module._OperationFilterBuilder(
+        file_store_module._OperationFilter.empty()
+    )
+    for index in range(50_000):
+        builder.add(f"record-{index}")
+    operation_filter = builder.freeze()
+
+    assert len(operation_filter.segments) == 5
+    assert all(
+        operation_filter.might_contain(f"record-{index}")
+        for index in range(0, 50_000, 100)
+    )
+    false_positives = sum(
+        operation_filter.might_contain(f"unseen-{index}") for index in range(10_000)
+    )
+    assert false_positives < 100
 
 
 def test_file_append_still_rejects_an_old_reused_operation_from_before_recent_head(
@@ -687,6 +755,42 @@ def test_file_append_bootstraps_a_missing_head_once(
     assert load_calls == 1
 
 
+def test_file_append_head_only_metadata_preserves_unknown_create_outcome(
+    tmp_path: Path,
+) -> None:
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "legacy-create-outcome")
+    header = _Header("Header")
+    store._create_sync(
+        key,
+        header,
+        operation_id=_operation("create", key),
+    )
+    path = tmp_path / "conversations" / "coding" / "legacy-create-outcome.jsonl"
+    path.with_name(f"{path.name}.store.json").unlink()
+    record = _Record("record-1", "existing")
+    store._append_sync(
+        key,
+        record,
+        expected_revision=0,
+        operation_id="record-1",
+    )
+
+    with pytest.raises(StoreCommitOutcomeUnknown):
+        store._create_sync(
+            key,
+            header,
+            (record,),
+            operation_id="retry-create",
+        )
+    with pytest.raises(StoreAlreadyExistsError):
+        store._create_sync(
+            key,
+            _Header("Different"),
+            operation_id="different-create",
+        )
+
+
 def test_file_append_rebuilds_a_head_with_a_bad_checksum(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -723,6 +827,47 @@ def test_file_append_rebuilds_a_head_with_a_bad_checksum(
     )
 
     assert result.receipt.revision == 2
+    assert load_calls == 1
+
+
+def test_file_append_replaces_invalid_json_metadata_after_authoritative_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "invalid-metadata")
+    store._create_sync(
+        key,
+        _Header("Header"),
+        operation_id=_operation("create", key),
+    )
+    path = tmp_path / "conversations" / "coding" / "invalid-metadata.jsonl"
+    metadata_path = path.with_name(f"{path.name}.store.json")
+    metadata_path.write_text("{", encoding="utf-8")
+    load_unlocked = file_store_module._load_unlocked
+    load_calls = 0
+
+    def count_load(journal):
+        nonlocal load_calls
+        load_calls += 1
+        return load_unlocked(journal)
+
+    monkeypatch.setattr(file_store_module, "_load_unlocked", count_load)
+    store._append_sync(
+        key,
+        _Record("record-1", "first"),
+        expected_revision=0,
+        operation_id="record-1",
+    )
+    store._append_sync(
+        key,
+        _Record("record-2", "second"),
+        expected_revision=1,
+        operation_id="record-2",
+    )
+
     assert load_calls == 1
 
 
@@ -1042,3 +1187,64 @@ def test_file_batch_append_reconciles_a_durable_prefix_after_unknown_outcome(
 
     assert [receipt.revision for receipt in reconciled.receipts] == [1, 2]
     assert store._load_sync(key).snapshot.records == records
+
+
+def test_file_fully_reconciled_batch_repairs_head_for_the_next_append(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "lost-complete-batch-response")
+    store._create_sync(
+        key,
+        _Header("Header"),
+        operation_id=_operation("create", key),
+    )
+    append_many = file_store_module.append_jsonl_records
+
+    def append_all_then_lose_response(path, records, **kwargs):
+        append_many(path, records, **kwargs)
+        raise OSError("response lost after durable batch")
+
+    records = (_Record("record-1", "first"), _Record("record-2", "second"))
+    monkeypatch.setattr(
+        file_store_module,
+        "append_jsonl_records",
+        append_all_then_lose_response,
+    )
+    with pytest.raises(StoreCommitOutcomeUnknown):
+        store._append_batch_sync(
+            key,
+            records,
+            expected_revision=0,
+            operation_ids=("record-1", "record-2"),
+        )
+
+    monkeypatch.setattr(file_store_module, "append_jsonl_records", append_many)
+    load_unlocked = file_store_module._load_unlocked
+    load_calls = 0
+
+    def count_load(journal):
+        nonlocal load_calls
+        load_calls += 1
+        return load_unlocked(journal)
+
+    monkeypatch.setattr(file_store_module, "_load_unlocked", count_load)
+    reconciled = store._append_batch_sync(
+        key,
+        records,
+        expected_revision=0,
+        operation_ids=("record-1", "record-2"),
+    )
+    appended = store._append_sync(
+        key,
+        _Record("record-3", "third"),
+        expected_revision=2,
+        operation_id="record-3",
+    )
+
+    assert [receipt.revision for receipt in reconciled.receipts] == [1, 2]
+    assert appended.receipt.revision == 3
+    assert load_calls == 1

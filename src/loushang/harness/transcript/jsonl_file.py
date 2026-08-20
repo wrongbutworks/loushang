@@ -66,6 +66,11 @@ _WRITABLE_LOAD_POLICY = JournalLoadPolicy(
     invalid_record="raise",
     partial_tail="repair",
 )
+# Bump whenever writable header/record validation, payload decoding, load policy,
+# or record-id projection changes in a way that can alter replay semantics.
+_STORE_HEAD_COMPATIBILITY_TOKEN = (
+    "agent-transcript-jsonl-v1:payload-codecs-v1:record-id-field-v1:repair-tail-v1"
+)
 
 
 @contextmanager
@@ -358,6 +363,7 @@ def create_agent_transcript_file_store(
         ),
         record_id=lambda record: record.record_id,
         tombstone_path=layout.tombstone_path,
+        head_compatibility_token=_STORE_HEAD_COMPATIBILITY_TOKEN,
     )
 
 
