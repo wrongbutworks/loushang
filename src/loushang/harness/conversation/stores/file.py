@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import hashlib
+import hmac
 import json
 from collections.abc import Callable, Iterable, Sequence
 from contextlib import AbstractContextManager, suppress
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generic, TypeVar
@@ -52,6 +56,59 @@ JournalFactory = Callable[[Path], JsonlJournal[HeaderT, RecordT]]
 Clock = Callable[[], datetime]
 RecordId = Callable[[RecordT], str | None]
 TombstonePath = Callable[[ConversationKey], Path]
+
+_STORE_HEAD_VERSION = 1
+# The head is an advisory, fixed-size acceleration structure. Journal bytes remain
+# authoritative; any identity, checksum, or schema mismatch falls back to replay.
+_OPERATION_FILTER_BITS = 1 << 17
+_OPERATION_FILTER_HASHES = 7
+_RECENT_RECORD_LIMIT = 64
+
+
+@dataclass(frozen=True)
+class _JournalIdentity:
+    device: int
+    inode: int
+    size: int
+    mtime_ns: int
+    ctime_ns: int
+
+
+@dataclass(frozen=True)
+class _OperationFilter:
+    payload: bytes
+
+    @classmethod
+    def empty(cls) -> _OperationFilter:
+        return cls(bytes(_OPERATION_FILTER_BITS // 8))
+
+    def might_contain(self, operation_id: str) -> bool:
+        return all(
+            self.payload[position // 8] & (1 << (position % 8))
+            for position in _operation_filter_positions(operation_id)
+        )
+
+    def add(self, operation_id: str) -> _OperationFilter:
+        payload = bytearray(self.payload)
+        for position in _operation_filter_positions(operation_id):
+            payload[position // 8] |= 1 << (position % 8)
+        return _OperationFilter(bytes(payload))
+
+
+@dataclass(frozen=True)
+class _RecentRecord:
+    revision: int
+    record_id: str
+    digest: str
+    unique: bool
+
+
+@dataclass(frozen=True)
+class _StoreHead:
+    revision: int
+    identity: _JournalIdentity
+    operation_filter: _OperationFilter
+    recent_records: tuple[_RecentRecord, ...] = ()
 
 
 class FileConversationStore(Generic[HeaderT, RecordT]):
@@ -214,7 +271,15 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                     )
                 _write_unlocked(journal, header=header, records=durable_records)
                 try:
-                    _write_create_operation(path, operation)
+                    _write_create_operation(
+                        path,
+                        operation,
+                        head=_build_store_head(
+                            journal,
+                            durable_records,
+                            record_id=self._record_id,
+                        ),
+                    )
                 except Exception as exc:
                     raise StoreCommitOutcomeUnknown(
                         f"create outcome for conversation {key!r} is unknown"
@@ -266,23 +331,81 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
         path = self._required_path(key)
         journal = self._write_journal_factory(path)
         receipt: CommitReceipt
+        source_diagnostics: tuple[ConversationSourceDiagnostic, ...] = ()
         try:
             with _exclusive_lock(journal):
                 if not path.is_file():
                     raise StoreNotFoundError(f"conversation {key!r} was not found")
-                snapshot = _load_unlocked(journal)
-                if snapshot.header is None:
-                    raise StoreDataError(f"conversation {key!r} has no header")
-                reconciled = self._reconcile_append(
-                    key,
-                    snapshot.records,
-                    record,
-                    operation_id=operation,
-                    diagnostics=snapshot.diagnostics,
+                projected_id = (
+                    self._record_id(record) if self._record_id is not None else None
                 )
-                if reconciled is not None:
-                    return reconciled
-                revision = len(snapshot.records)
+                record_digest = (
+                    _record_digest(journal, record)
+                    if projected_id is not None
+                    else None
+                )
+                head = _try_load_store_head(path)
+                needs_full_reconciliation = bool(
+                    head is not None
+                    and projected_id == operation
+                    and head.operation_filter.might_contain(operation)
+                )
+                if needs_full_reconciliation and head is not None:
+                    matching_recent = tuple(
+                        item
+                        for item in head.recent_records
+                        if item.record_id == operation
+                    )
+                    if (
+                        len(matching_recent) == 1
+                        and matching_recent[0].unique
+                        and matching_recent[0].digest == record_digest
+                    ):
+                        return ConversationCommitResult(
+                            receipt=CommitReceipt(
+                                revision=matching_recent[0].revision,
+                                committed_at=self._clock(),
+                                record_id=projected_id,
+                            )
+                        )
+
+                if head is None or needs_full_reconciliation:
+                    snapshot = _load_unlocked(journal)
+                    if snapshot.header is None:
+                        raise StoreDataError(f"conversation {key!r} has no header")
+                    source_diagnostics = tuple(
+                        _source_diagnostic(item) for item in snapshot.diagnostics
+                    )
+                    reconciled = self._reconcile_append(
+                        key,
+                        snapshot.records,
+                        record,
+                        operation_id=operation,
+                        diagnostics=snapshot.diagnostics,
+                    )
+                    if reconciled is not None:
+                        if not snapshot.diagnostics:
+                            _try_write_store_head(
+                                path,
+                                _build_store_head(
+                                    journal,
+                                    snapshot.records,
+                                    record_id=self._record_id,
+                                ),
+                            )
+                        return reconciled
+                    revision = len(snapshot.records)
+                    head = (
+                        _build_store_head(
+                            journal,
+                            snapshot.records,
+                            record_id=self._record_id,
+                        )
+                        if not snapshot.diagnostics
+                        else None
+                    )
+                else:
+                    revision = head.revision
                 if revision != expected:
                     raise StoreConflictError(
                         f"conversation {key!r} is at revision {revision}, "
@@ -291,9 +414,15 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                 receipt = CommitReceipt(
                     revision=revision + 1,
                     committed_at=self._clock(),
-                    record_id=(
-                        self._record_id(record) if self._record_id is not None else None
-                    ),
+                    record_id=projected_id,
+                )
+                advanced_head = (
+                    _advance_store_head(
+                        head,
+                        ((projected_id, record_digest),),
+                    )
+                    if head is not None
+                    else None
                 )
                 try:
                     _append_unlocked(journal, record)
@@ -301,6 +430,8 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                     raise StoreCommitOutcomeUnknown(
                         f"append outcome for conversation {key!r} is unknown"
                     ) from exc
+                if advanced_head is not None:
+                    _try_write_store_head(path, advanced_head, refresh_identity=True)
         except (
             StoreCommitOutcomeUnknown,
             StoreConflictError,
@@ -314,9 +445,7 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
             raise _data_error("append to", key, exc) from exc
         return ConversationCommitResult(
             receipt=receipt,
-            diagnostics=tuple(
-                _source_diagnostic(diagnostic) for diagnostic in snapshot.diagnostics
-            ),
+            diagnostics=source_diagnostics,
         )
 
     def _append_batch_sync(
@@ -347,72 +476,66 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
         expected = require_revision(expected_revision, name="expected revision")
         path = self._required_path(key)
         journal = self._write_journal_factory(path)
+        source_diagnostics: tuple[ConversationSourceDiagnostic, ...] = ()
         try:
             with _exclusive_lock(journal):
                 if not path.is_file():
                     raise StoreNotFoundError(f"conversation {key!r} was not found")
-                snapshot = _load_unlocked(journal)
-                if snapshot.header is None:
-                    raise StoreDataError(f"conversation {key!r} has no header")
-                revision = len(snapshot.records)
-                if revision < expected:
-                    raise StoreConflictError(
-                        f"conversation {key!r} is at revision {revision}, "
-                        f"not {expected}"
+                record_digests = tuple(
+                    _record_digest(journal, record) for record in durable_records
+                )
+                head = _try_load_store_head(path)
+                prepared = (
+                    self._prepare_batch_from_head(
+                        key,
+                        head,
+                        durable_records,
+                        operations,
+                        record_digests,
+                        expected=expected,
                     )
-                by_record_id: dict[str, list[tuple[int, RecordT]]] = {}
-                for index, existing in enumerate(snapshot.records):
-                    existing_id = self._record_id(existing)
-                    if existing_id is not None:
-                        by_record_id.setdefault(existing_id, []).append(
-                            (index, existing)
-                        )
-                receipts: list[CommitReceipt] = []
-                matched = 0
-                for index, (record, operation) in enumerate(
-                    zip(durable_records, operations, strict=True)
-                ):
-                    occurrences = by_record_id.get(operation, [])
-                    if len(occurrences) > 1:
-                        raise StoreOperationConflictError(
-                            f"operation {operation!r} is not unique"
-                        )
-                    position = expected + index
-                    if occurrences and occurrences[0] != (position, record):
-                        raise StoreOperationConflictError(
-                            f"operation {operation!r} was reused for a different append"
-                        )
-                    if position >= revision:
-                        break
-                    if snapshot.records[position] != record:
-                        raise StoreConflictError(
-                            f"conversation {key!r} diverged inside append batch"
-                        )
-                    receipts.append(
-                        CommitReceipt(
-                            revision=position + 1,
-                            committed_at=self._clock(),
-                            record_id=operation,
-                        )
+                    if head is not None
+                    else None
+                )
+                if prepared is None:
+                    snapshot = _load_unlocked(journal)
+                    if snapshot.header is None:
+                        raise StoreDataError(f"conversation {key!r} has no header")
+                    source_diagnostics = tuple(
+                        _source_diagnostic(item) for item in snapshot.diagnostics
                     )
-                    matched += 1
-                if matched < len(durable_records) and revision != expected + matched:
-                    raise StoreConflictError(
-                        f"conversation {key!r} is at revision {revision}, "
-                        f"not {expected + matched}"
+                    receipts, appended = self._prepare_batch_from_records(
+                        key,
+                        snapshot.records,
+                        durable_records,
+                        operations,
+                        expected=expected,
                     )
-                appended = durable_records[matched:]
-                for offset, operation in enumerate(
-                    operations[matched:],
-                    start=matched,
-                ):
-                    receipts.append(
-                        CommitReceipt(
-                            revision=expected + offset + 1,
-                            committed_at=self._clock(),
-                            record_id=operation,
+                    head = (
+                        _build_store_head(
+                            journal,
+                            snapshot.records,
+                            record_id=self._record_id,
                         )
+                        if not snapshot.diagnostics
+                        else None
                     )
+                else:
+                    receipts, appended = prepared
+                advanced_head = (
+                    _advance_store_head(
+                        head,
+                        tuple(
+                            zip(
+                                operations[len(durable_records) - len(appended) :],
+                                record_digests[len(durable_records) - len(appended) :],
+                                strict=True,
+                            )
+                        ),
+                    )
+                    if head is not None and appended
+                    else None
+                )
                 if appended:
                     try:
                         _append_many_unlocked(journal, appended)
@@ -420,6 +543,12 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                         raise StoreCommitOutcomeUnknown(
                             f"append batch outcome for conversation {key!r} is unknown"
                         ) from exc
+                    if advanced_head is not None:
+                        _try_write_store_head(
+                            path,
+                            advanced_head,
+                            refresh_identity=True,
+                        )
         except (
             StoreCommitOutcomeUnknown,
             StoreConflictError,
@@ -434,8 +563,134 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
             raise _data_error("append batch to", key, exc) from exc
         return ConversationBatchCommitResult(
             receipts,
-            tuple(_source_diagnostic(item) for item in snapshot.diagnostics),
+            source_diagnostics,
         )
+
+    def _prepare_batch_from_head(
+        self,
+        key: ConversationKey,
+        head: _StoreHead,
+        records: Sequence[RecordT],
+        operations: Sequence[str],
+        record_digests: Sequence[str],
+        *,
+        expected: int,
+    ) -> tuple[list[CommitReceipt], tuple[RecordT, ...]] | None:
+        revision = head.revision
+        if revision < expected:
+            raise StoreConflictError(
+                f"conversation {key!r} is at revision {revision}, not {expected}"
+            )
+        receipts: list[CommitReceipt] = []
+        matched = 0
+        for index, (operation, digest) in enumerate(
+            zip(operations, record_digests, strict=True)
+        ):
+            position = expected + index
+            if position >= revision:
+                break
+            matching_recent = tuple(
+                item for item in head.recent_records if item.record_id == operation
+            )
+            if (
+                len(matching_recent) != 1
+                or not matching_recent[0].unique
+                or matching_recent[0].revision != position + 1
+                or matching_recent[0].digest != digest
+            ):
+                return None
+            receipts.append(
+                CommitReceipt(
+                    revision=position + 1,
+                    committed_at=self._clock(),
+                    record_id=operation,
+                )
+            )
+            matched += 1
+        if matched < len(records) and revision != expected + matched:
+            raise StoreConflictError(
+                f"conversation {key!r} is at revision {revision}, "
+                f"not {expected + matched}"
+            )
+        for operation in operations[matched:]:
+            if head.operation_filter.might_contain(operation):
+                return None
+        appended = tuple(records[matched:])
+        for offset, operation in enumerate(operations[matched:], start=matched):
+            receipts.append(
+                CommitReceipt(
+                    revision=expected + offset + 1,
+                    committed_at=self._clock(),
+                    record_id=operation,
+                )
+            )
+        return receipts, appended
+
+    def _prepare_batch_from_records(
+        self,
+        key: ConversationKey,
+        existing_records: Sequence[RecordT],
+        records: Sequence[RecordT],
+        operations: Sequence[str],
+        *,
+        expected: int,
+    ) -> tuple[list[CommitReceipt], tuple[RecordT, ...]]:
+        revision = len(existing_records)
+        if revision < expected:
+            raise StoreConflictError(
+                f"conversation {key!r} is at revision {revision}, not {expected}"
+            )
+        if self._record_id is None:
+            raise RuntimeError("batch append requires stable record ids")
+        by_record_id: dict[str, list[tuple[int, RecordT]]] = {}
+        for index, existing in enumerate(existing_records):
+            existing_id = self._record_id(existing)
+            if existing_id is not None:
+                by_record_id.setdefault(existing_id, []).append((index, existing))
+        receipts: list[CommitReceipt] = []
+        matched = 0
+        for index, (record, operation) in enumerate(
+            zip(records, operations, strict=True)
+        ):
+            occurrences = by_record_id.get(operation, [])
+            if len(occurrences) > 1:
+                raise StoreOperationConflictError(
+                    f"operation {operation!r} is not unique"
+                )
+            position = expected + index
+            if occurrences and occurrences[0] != (position, record):
+                raise StoreOperationConflictError(
+                    f"operation {operation!r} was reused for a different append"
+                )
+            if position >= revision:
+                break
+            if existing_records[position] != record:
+                raise StoreConflictError(
+                    f"conversation {key!r} diverged inside append batch"
+                )
+            receipts.append(
+                CommitReceipt(
+                    revision=position + 1,
+                    committed_at=self._clock(),
+                    record_id=operation,
+                )
+            )
+            matched += 1
+        if matched < len(records) and revision != expected + matched:
+            raise StoreConflictError(
+                f"conversation {key!r} is at revision {revision}, "
+                f"not {expected + matched}"
+            )
+        appended = tuple(records[matched:])
+        for offset, operation in enumerate(operations[matched:], start=matched):
+            receipts.append(
+                CommitReceipt(
+                    revision=expected + offset + 1,
+                    committed_at=self._clock(),
+                    record_id=operation,
+                )
+            )
+        return receipts, appended
 
     def _delete_sync(
         self,
@@ -710,6 +965,116 @@ def _write_unlocked(
     )
 
 
+def _operation_filter_positions(operation_id: str) -> tuple[int, ...]:
+    digest = hashlib.sha256(operation_id.encode("utf-8")).digest()
+    return tuple(
+        int.from_bytes(digest[offset : offset + 4], "big") % _OPERATION_FILTER_BITS
+        for offset in range(0, _OPERATION_FILTER_HASHES * 4, 4)
+    )
+
+
+def _record_digest(
+    journal: JsonlJournal[HeaderT, RecordT],
+    record: RecordT,
+) -> str:
+    encoded = journal.record_codec.encode_record(record)
+    payload = json.dumps(
+        encoded,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _journal_identity(path: Path) -> _JournalIdentity:
+    stat = path.stat()
+    return _JournalIdentity(
+        device=stat.st_dev,
+        inode=stat.st_ino,
+        size=stat.st_size,
+        mtime_ns=stat.st_mtime_ns,
+        ctime_ns=stat.st_ctime_ns,
+    )
+
+
+def _build_store_head(
+    journal: JsonlJournal[HeaderT, RecordT],
+    records: Sequence[RecordT],
+    *,
+    record_id: RecordId[RecordT] | None,
+) -> _StoreHead:
+    operation_filter = _OperationFilter.empty()
+    seen_record_ids: set[str] = set()
+    duplicate_record_ids: set[str] = set()
+    recent_records: list[tuple[int, str, str]] = []
+    recent_start = max(0, len(records) - _RECENT_RECORD_LIMIT)
+    if record_id is not None:
+        for index, record in enumerate(records):
+            projected_id = record_id(record)
+            if not isinstance(projected_id, str) or not projected_id.strip():
+                continue
+            if projected_id in seen_record_ids:
+                duplicate_record_ids.add(projected_id)
+            else:
+                seen_record_ids.add(projected_id)
+            operation_filter = operation_filter.add(projected_id)
+            if index >= recent_start:
+                recent_records.append(
+                    (
+                        index + 1,
+                        projected_id,
+                        _record_digest(journal, record),
+                    )
+                )
+    return _StoreHead(
+        revision=len(records),
+        identity=_journal_identity(journal.path),
+        operation_filter=operation_filter,
+        recent_records=tuple(
+            _RecentRecord(
+                revision=revision,
+                record_id=projected_id,
+                digest=digest,
+                unique=projected_id not in duplicate_record_ids,
+            )
+            for revision, projected_id, digest in recent_records[-_RECENT_RECORD_LIMIT:]
+        ),
+    )
+
+
+def _advance_store_head(
+    head: _StoreHead,
+    records: Sequence[tuple[str | None, str | None]],
+) -> _StoreHead:
+    operation_filter = head.operation_filter
+    recent_records = list(head.recent_records)
+    revision = head.revision
+    for projected_id, digest in records:
+        revision += 1
+        if not isinstance(projected_id, str) or not projected_id.strip():
+            continue
+        if not isinstance(digest, str):
+            raise RuntimeError("record digest is required for a stable record id")
+        unique = not operation_filter.might_contain(projected_id)
+        operation_filter = operation_filter.add(projected_id)
+        recent_records.append(
+            _RecentRecord(
+                revision=revision,
+                record_id=projected_id,
+                digest=digest,
+                unique=unique,
+            )
+        )
+    return _StoreHead(
+        revision=revision,
+        identity=head.identity,
+        operation_filter=operation_filter,
+        recent_records=tuple(recent_records[-_RECENT_RECORD_LIMIT:]),
+    )
+
+
 def _metadata_path(path: Path) -> Path:
     return path.with_name(f"{path.name}.store.json")
 
@@ -725,22 +1090,195 @@ def _create_operation_id(key: ConversationKey) -> str:
 def _load_create_operation(
     path: Path,
 ) -> str | None:
-    metadata_path = _metadata_path(path)
+    value = _load_store_metadata(path)
+    if value is None:
+        return None
+    operation_id = value.get("create_operation_id")
+    return require_operation_id(operation_id)
+
+
+def _write_create_operation(
+    path: Path,
+    operation_id: str,
+    *,
+    head: _StoreHead,
+) -> None:
+    _write_json_sidecar(
+        _metadata_path(path),
+        {
+            "create_operation_id": operation_id,
+            "head": _encode_store_head(head),
+        },
+    )
+
+
+def _load_store_metadata(path: Path) -> dict[str, object] | None:
     try:
-        value = json.loads(metadata_path.read_text(encoding="utf-8"))
+        value = json.loads(_metadata_path(path).read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
     except Exception as exc:
         raise StoreDataError("conversation Store metadata is invalid") from exc
-    operation_id = value.get("create_operation_id") if isinstance(value, dict) else None
-    return require_operation_id(operation_id)
+    if not isinstance(value, dict):
+        raise StoreDataError("conversation Store metadata is invalid")
+    return value
 
 
-def _write_create_operation(path: Path, operation_id: str) -> None:
-    _write_json_sidecar(
-        _metadata_path(path),
-        {"create_operation_id": operation_id},
+def _try_load_store_head(path: Path) -> _StoreHead | None:
+    try:
+        metadata = _load_store_metadata(path)
+        if metadata is None:
+            return None
+        head = _decode_store_head(metadata.get("head"))
+        if head.identity != _journal_identity(path):
+            return None
+        return head
+    except (OSError, StoreDataError, TypeError, ValueError):
+        return None
+
+
+def _try_write_store_head(
+    path: Path,
+    head: _StoreHead,
+    *,
+    refresh_identity: bool = False,
+) -> None:
+    """Best-effort cache update that never changes a durable journal outcome."""
+
+    try:
+        metadata = _load_store_metadata(path)
+        if metadata is None:
+            metadata = {}
+        if refresh_identity:
+            head = replace(head, identity=_journal_identity(path))
+        metadata["head"] = _encode_store_head(head)
+        _write_json_sidecar(_metadata_path(path), metadata)
+    except Exception:
+        return
+
+
+def _encode_store_head(head: _StoreHead) -> dict[str, object]:
+    value: dict[str, object] = {
+        "version": _STORE_HEAD_VERSION,
+        "revision": head.revision,
+        "journal": {
+            "device": head.identity.device,
+            "inode": head.identity.inode,
+            "size": head.identity.size,
+            "mtime_ns": head.identity.mtime_ns,
+            "ctime_ns": head.identity.ctime_ns,
+        },
+        "operation_filter": {
+            "bits": _OPERATION_FILTER_BITS,
+            "hashes": _OPERATION_FILTER_HASHES,
+            "payload": base64.b64encode(head.operation_filter.payload).decode("ascii"),
+        },
+        "recent_records": [
+            {
+                "revision": item.revision,
+                "record_id": item.record_id,
+                "digest": item.digest,
+                "unique": item.unique,
+            }
+            for item in head.recent_records
+        ],
+    }
+    value["checksum"] = _store_head_checksum(value)
+    return value
+
+
+def _decode_store_head(value: object) -> _StoreHead:
+    if not isinstance(value, dict):
+        raise ValueError("store head is missing")
+    checksum = value.get("checksum")
+    checksum_payload = {key: item for key, item in value.items() if key != "checksum"}
+    if not isinstance(checksum, str) or not hmac.compare_digest(
+        checksum,
+        _store_head_checksum(checksum_payload),
+    ):
+        raise ValueError("store head checksum is invalid")
+    if _metadata_int(value, "version") != _STORE_HEAD_VERSION:
+        raise ValueError("store head version is unsupported")
+    revision = _metadata_int(value, "revision")
+    journal = value.get("journal")
+    operation_filter = value.get("operation_filter")
+    recent = value.get("recent_records")
+    if not isinstance(journal, dict) or not isinstance(operation_filter, dict):
+        raise ValueError("store head metadata is invalid")
+    if not isinstance(recent, list) or len(recent) > _RECENT_RECORD_LIMIT:
+        raise ValueError("store head recent records are invalid")
+    if _metadata_int(operation_filter, "bits") != _OPERATION_FILTER_BITS:
+        raise ValueError("store head operation filter size is invalid")
+    if _metadata_int(operation_filter, "hashes") != _OPERATION_FILTER_HASHES:
+        raise ValueError("store head operation filter shape is invalid")
+    raw_payload = operation_filter.get("payload")
+    if not isinstance(raw_payload, str):
+        raise ValueError("store head operation filter is invalid")
+    try:
+        payload = base64.b64decode(raw_payload.encode("ascii"), validate=True)
+    except (UnicodeError, binascii.Error) as exc:
+        raise ValueError("store head operation filter is invalid") from exc
+    if len(payload) != _OPERATION_FILTER_BITS // 8:
+        raise ValueError("store head operation filter length is invalid")
+    decoded_filter = _OperationFilter(payload)
+    decoded_recent: list[_RecentRecord] = []
+    prior_revision = 0
+    for raw_item in recent:
+        if not isinstance(raw_item, dict):
+            raise ValueError("store head recent record is invalid")
+        item_revision = _metadata_int(raw_item, "revision")
+        record_id = require_operation_id(raw_item.get("record_id"))
+        digest = raw_item.get("digest")
+        unique = raw_item.get("unique")
+        if (
+            item_revision <= prior_revision
+            or item_revision > revision
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+            or not isinstance(unique, bool)
+            or not decoded_filter.might_contain(record_id)
+        ):
+            raise ValueError("store head recent record is invalid")
+        decoded_recent.append(
+            _RecentRecord(
+                revision=item_revision,
+                record_id=record_id,
+                digest=digest,
+                unique=unique,
+            )
+        )
+        prior_revision = item_revision
+    return _StoreHead(
+        revision=revision,
+        identity=_JournalIdentity(
+            device=_metadata_int(journal, "device"),
+            inode=_metadata_int(journal, "inode"),
+            size=_metadata_int(journal, "size"),
+            mtime_ns=_metadata_int(journal, "mtime_ns"),
+            ctime_ns=_metadata_int(journal, "ctime_ns"),
+        ),
+        operation_filter=decoded_filter,
+        recent_records=tuple(decoded_recent),
     )
+
+
+def _metadata_int(value: dict[str, object], key: str) -> int:
+    item = value.get(key)
+    if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+        raise ValueError(f"store head {key} is invalid")
+    return item
+
+
+def _store_head_checksum(value: dict[str, object]) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _load_tombstone(target: Path) -> dict[str, object] | None:

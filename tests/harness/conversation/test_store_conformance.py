@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -394,12 +395,13 @@ def test_invalid_expected_revision_is_rejected(
     asyncio.run(scenario())
 
 
-def test_file_append_loads_counts_and_appends_inside_one_exclusive_lock(
+def test_file_append_uses_current_head_inside_one_exclusive_lock_without_replay(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "session.jsonl"
     lock_depth = 0
     lock_entries: list[str] = []
+    decode_calls = 0
 
     @contextmanager
     def lock_factory(target: Path, mode: str):
@@ -419,7 +421,9 @@ def test_file_append_loads_counts_and_appends_inside_one_exclusive_lock(
             return super().encode_record(record)
 
         def decode_record(self, value):
+            nonlocal decode_calls
             assert lock_depth == 1
+            decode_calls += 1
             return super().decode_record(value)
 
     def journal_factory(target: Path):
@@ -456,9 +460,10 @@ def test_file_append_loads_counts_and_appends_inside_one_exclusive_lock(
 
     asyncio.run(scenario())
     assert lock_entries == ["exclusive"]
+    assert decode_calls == 0
 
 
-def test_file_batch_append_loads_and_writes_inside_one_exclusive_lock(
+def test_file_batch_append_uses_current_head_and_one_write_inside_one_lock(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -537,8 +542,218 @@ def test_file_batch_append_loads_and_writes_inside_one_exclusive_lock(
     )
 
     assert lock_entries == ["exclusive"]
-    assert load_calls == 1
+    assert load_calls == 0
     assert append_calls == 1
+
+
+def test_file_append_cost_does_not_scale_with_existing_record_count(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "session.jsonl"
+    decode_calls = 0
+
+    class CountingCodec(_RecordCodec):
+        def decode_record(self, value):
+            nonlocal decode_calls
+            decode_calls += 1
+            return super().decode_record(value)
+
+    key = ConversationKey("coding", "session-1")
+    store = FileConversationStore(
+        create_path=lambda ignored: path,
+        resolve_path=lambda ignored: path,
+        scan_paths=lambda ignored: (path,),
+        key_for_path=lambda namespace, ignored: key,
+        journal_factory=lambda target: JsonlJournal(
+            target,
+            header_codec=_HeaderCodec(),
+            record_codec=CountingCodec(),
+            load_policy=JournalLoadPolicy(header="required"),
+        ),
+        record_id=_record_id,
+    )
+    existing = tuple(_Record(f"record-{index}", "x" * 256) for index in range(2_000))
+    store._create_sync(
+        key,
+        _Header("Header"),
+        existing,
+        operation_id=_operation("create", key),
+    )
+
+    store._append_sync(
+        key,
+        _Record("record-2000", "new"),
+        expected_revision=len(existing),
+        operation_id="record-2000",
+    )
+
+    assert decode_calls == 0
+
+
+def test_file_append_still_rejects_an_old_reused_operation_from_before_recent_head(
+    tmp_path: Path,
+) -> None:
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "old-operation")
+    existing = tuple(
+        _Record(f"record-{index}", f"value-{index}") for index in range(200)
+    )
+    store._create_sync(
+        key,
+        _Header("Header"),
+        existing,
+        operation_id=_operation("create", key),
+    )
+
+    with pytest.raises(StoreOperationConflictError):
+        store._append_sync(
+            key,
+            _Record("record-0", "different"),
+            expected_revision=len(existing),
+            operation_id="record-0",
+        )
+
+    assert store._load_sync(key).snapshot.records == existing
+
+
+def test_file_append_does_not_fast_reconcile_a_non_unique_recent_operation(
+    tmp_path: Path,
+) -> None:
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "duplicate-operation")
+    existing = (
+        _Record("duplicate", "older value"),
+        *(_Record(f"record-{index}", f"value-{index}") for index in range(1, 199)),
+        _Record("duplicate", "recent value"),
+    )
+    store._create_sync(
+        key,
+        _Header("Header"),
+        existing,
+        operation_id=_operation("create", key),
+    )
+
+    with pytest.raises(StoreOperationConflictError):
+        store._append_sync(
+            key,
+            _Record("duplicate", "recent value"),
+            expected_revision=len(existing),
+            operation_id="duplicate",
+        )
+
+    assert store._load_sync(key).snapshot.records == existing
+
+
+def test_file_append_bootstraps_a_missing_head_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "legacy-metadata")
+    store._create_sync(
+        key,
+        _Header("Header"),
+        operation_id=_operation("create", key),
+    )
+    path = tmp_path / "conversations" / "coding" / "legacy-metadata.jsonl"
+    metadata_path = path.with_name(f"{path.name}.store.json")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata.pop("head")
+    metadata_path.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+    load_unlocked = file_store_module._load_unlocked
+    load_calls = 0
+
+    def count_load(journal):
+        nonlocal load_calls
+        load_calls += 1
+        return load_unlocked(journal)
+
+    monkeypatch.setattr(file_store_module, "_load_unlocked", count_load)
+    store._append_sync(
+        key,
+        _Record("record-1", "first"),
+        expected_revision=0,
+        operation_id="record-1",
+    )
+    store._append_sync(
+        key,
+        _Record("record-2", "second"),
+        expected_revision=1,
+        operation_id="record-2",
+    )
+
+    assert load_calls == 1
+
+
+def test_file_append_rebuilds_a_head_with_a_bad_checksum(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "tampered-head")
+    store._create_sync(
+        key,
+        _Header("Header"),
+        (_Record("record-0", "existing"),),
+        operation_id=_operation("create", key),
+    )
+    path = tmp_path / "conversations" / "coding" / "tampered-head.jsonl"
+    metadata_path = path.with_name(f"{path.name}.store.json")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["head"]["revision"] = 0
+    metadata_path.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+    load_unlocked = file_store_module._load_unlocked
+    load_calls = 0
+
+    def count_load(journal):
+        nonlocal load_calls
+        load_calls += 1
+        return load_unlocked(journal)
+
+    monkeypatch.setattr(file_store_module, "_load_unlocked", count_load)
+    result = store._append_sync(
+        key,
+        _Record("record-1", "new"),
+        expected_revision=1,
+        operation_id="record-1",
+    )
+
+    assert result.receipt.revision == 2
+    assert load_calls == 1
+
+
+def test_file_append_success_does_not_depend_on_the_advisory_head_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = cast(FileConversationStore[_Header, _Record], _file_factory(tmp_path)())
+    key = ConversationKey("coding", "head-write-failure")
+    store._create_sync(
+        key,
+        _Header("Header"),
+        operation_id=_operation("create", key),
+    )
+
+    def fail_head_write(*args, **kwargs):
+        raise RuntimeError("metadata device unavailable")
+
+    monkeypatch.setattr(file_store_module, "_write_json_sidecar", fail_head_write)
+    record = _Record("record-1", "durable")
+    result = store._append_sync(
+        key,
+        record,
+        expected_revision=0,
+        operation_id="record-1",
+    )
+
+    assert result.receipt.revision == 1
+    assert store._load_sync(key).snapshot.records == (record,)
 
 
 def test_file_maps_corrupted_persistence_to_data_error(tmp_path: Path) -> None:
