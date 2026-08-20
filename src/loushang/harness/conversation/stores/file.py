@@ -40,6 +40,7 @@ from loushang.harness.conversation.store import (
 from loushang.harness.journal import (
     JournalFileError,
     JsonlJournal,
+    JsonlSnapshot,
     append_jsonl_record,
     append_jsonl_records,
     journal_file_lock,
@@ -54,6 +55,8 @@ ResolvePath = Callable[[ConversationKey], Path | None]
 ScanPaths = Callable[[str], Iterable[Path]]
 KeyForPath = Callable[[str, Path], ConversationKey]
 JournalFactory = Callable[[Path], JsonlJournal[HeaderT, RecordT]]
+SnapshotLoader = Callable[[Path], JsonlSnapshot[HeaderT, RecordT]]
+DeleteArtifacts = Callable[[Path], None]
 Clock = Callable[[], datetime]
 RecordId = Callable[[RecordT], str | None]
 TombstonePath = Callable[[ConversationKey], Path]
@@ -215,6 +218,8 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
         record_id: RecordId[RecordT] | None = None,
         tombstone_path: TombstonePath | None = None,
         head_compatibility_token: str | None = None,
+        snapshot_loader: SnapshotLoader[HeaderT, RecordT] | None = None,
+        delete_artifacts: DeleteArtifacts | None = None,
     ) -> None:
         self._create_path = create_path
         self._resolve_path = resolve_path
@@ -228,6 +233,8 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
         self._head_compatibility_token = _require_head_compatibility_token(
             head_compatibility_token
         )
+        self._snapshot_loader = snapshot_loader
+        self._delete_artifacts = delete_artifacts
 
     async def create(
         self,
@@ -397,7 +404,11 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
     ) -> ConversationLoadResult[HeaderT, RecordT]:
         path = self._required_path(key)
         try:
-            snapshot = self._journal_factory(path).load()
+            snapshot = (
+                self._snapshot_loader(path)
+                if self._snapshot_loader is not None
+                else self._journal_factory(path).load()
+            )
         except FileNotFoundError as exc:
             raise StoreNotFoundError(f"conversation {key!r} was not found") from exc
         except Exception as exc:
@@ -842,6 +853,7 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                         raise StoreCommitOutcomeUnknown(
                             f"delete outcome for conversation {key!r} is unknown"
                         ) from exc
+                self._try_delete_artifacts(path)
                 return receipt
             raise StoreNotFoundError(f"conversation {key!r} was not found")
         journal = self._write_journal_factory(path)
@@ -863,6 +875,7 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                 )
                 _write_tombstone(tombstone_path, receipt)
                 path.unlink()
+                self._try_delete_artifacts(path)
         except (StoreCommitOutcomeUnknown, StoreConflictError, StoreNotFoundError):
             raise
         except FileNotFoundError as exc:
@@ -874,6 +887,16 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                 ) from exc
             raise _data_error("delete", key, exc) from exc
         return receipt
+
+    def _try_delete_artifacts(self, path: Path) -> None:
+        if self._delete_artifacts is None:
+            return
+        try:
+            self._delete_artifacts(path)
+        except Exception:
+            # Product caches are disposable.  Failure to remove one must not
+            # make an already durable conversation deletion indeterminate.
+            return
 
     def _scan_sync(self, namespace: str) -> tuple[ConversationKey, ...]:
         keys, _ = self._scan_entries_sync(namespace)

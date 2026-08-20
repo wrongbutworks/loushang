@@ -24,9 +24,15 @@ from loushang.harness.journal import JournalLoadPolicy, load_jsonl
 from loushang.harness.transcript.codecs import (
     create_agent_transcript_payload_registry,
 )
+from loushang.harness.transcript.jsonl_file import (
+    AgentTranscriptFileLayout,
+    create_agent_transcript_file_store,
+)
 from loushang.harness.transcript.kinds import MODEL_INPUT_COMPONENT_KIND
+from loushang.harness.transcript.model_input_v2 import ModelInputV2NodeIndex
 from loushang.harness.transcript.model_input_v2_types import (
     MODEL_INPUT_V2_PAYLOAD_VERSION,
+    DeferredModelInputNodeBundle,
     ModelInputNodeBundle,
     ModelInputNodeReference,
     create_model_input_json_chunk,
@@ -191,4 +197,46 @@ def test_valid_journal_avoids_the_detailed_validator_on_payloads(
     # here (several per payload node).
     assert calls <= 2 * (_RECORD_COUNT + 1), (
         f"detailed validator ran {calls} times for {_RECORD_COUNT} records"
+    )
+
+
+def test_persistent_model_input_index_accelerates_a_new_store_load(
+    tmp_path: Path,
+) -> None:
+    journal_path = tmp_path / "large.jsonl"
+    size = _write_large_journal(journal_path)
+    megabytes = size / (1024 * 1024)
+    key_id = "perf-session"
+
+    first_layout = AgentTranscriptFileLayout(tmp_path)
+    first_key = first_layout.key(key_id)
+    first_layout.bind_path(first_key, journal_path)
+    first_store = create_agent_transcript_file_store(first_layout)
+    assert first_store._load_sync(first_key).snapshot.revision == _RECORD_COUNT
+
+    second_layout = AgentTranscriptFileLayout(tmp_path)
+    second_key = second_layout.key(key_id)
+    second_layout.bind_path(second_key, journal_path)
+    second_store = create_agent_transcript_file_store(second_layout)
+    started = time.monotonic()
+    loaded = second_store._load_sync(second_key)
+    elapsed = time.monotonic() - started
+
+    assert loaded.snapshot.revision == _RECORD_COUNT
+    assert all(
+        isinstance(record.payload, DeferredModelInputNodeBundle)
+        for record in loaded.snapshot.records
+    )
+    # A strict replay of this fixture is ~0.23s/MB.  This budget leaves ample
+    # CI headroom while still rejecting a regression to typed full replay.
+    assert elapsed < 0.10 * megabytes + 0.25, (
+        f"loaded persistent index for {megabytes:.1f} MB in {elapsed:.2f}s; "
+        "expected the verified projection path"
+    )
+
+    started = time.monotonic()
+    ModelInputV2NodeIndex(loaded.snapshot.records)
+    index_elapsed = time.monotonic() - started
+    assert index_elapsed < 0.05 * megabytes + 0.10, (
+        f"built lazy node index for {megabytes:.1f} MB in {index_elapsed:.2f}s"
     )

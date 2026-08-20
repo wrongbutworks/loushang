@@ -37,6 +37,14 @@ from loushang.harness.journal import (
     LockMode,
     journal_file_lock,
 )
+from loushang.harness.transcript.model_input_v2_index_file import (
+    delete_agent_transcript_index,
+    load_agent_transcript_snapshot_with_index,
+)
+from loushang.harness.transcript.model_input_v2_types import (
+    MODEL_INPUT_V2_PROJECTION_VERSION,
+    MODEL_INPUT_V2_SCHEMA_VERSION,
+)
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
@@ -70,6 +78,11 @@ _WRITABLE_LOAD_POLICY = JournalLoadPolicy(
 # or record-id projection changes in a way that can alter replay semantics.
 _STORE_HEAD_COMPATIBILITY_TOKEN = (
     "agent-transcript-jsonl-v1:payload-codecs-v1:record-id-field-v1:repair-tail-v1"
+)
+_LOAD_INDEX_COMPATIBILITY_TOKEN = (
+    f"{_STORE_HEAD_COMPATIBILITY_TOKEN}:strict-json-v1:"
+    f"{MODEL_INPUT_V2_PROJECTION_VERSION}:schema-{MODEL_INPUT_V2_SCHEMA_VERSION}:"
+    "deferred-node-index-v1"
 )
 
 
@@ -364,6 +377,21 @@ def create_agent_transcript_file_store(
         record_id=lambda record: record.record_id,
         tombstone_path=layout.tombstone_path,
         head_compatibility_token=_STORE_HEAD_COMPATIBILITY_TOKEN,
+        snapshot_loader=_load_agent_transcript_store_snapshot,
+        delete_artifacts=delete_agent_transcript_index,
+    )
+
+
+def _load_agent_transcript_store_snapshot(
+    path: Path,
+) -> JsonlSnapshot[ConversationHeader, AgentTranscriptRecord]:
+    return load_agent_transcript_snapshot_with_index(
+        path,
+        strict_loader=lambda: agent_transcript_journal(path).load(),
+        header_codec=_HEADER_CODEC,
+        record_codec=cast(ConversationJsonlRecordCodec, _RECORD_CODEC),
+        lock_factory=agent_transcript_file_lock,
+        compatibility_token=_LOAD_INDEX_COMPATIBILITY_TOKEN,
     )
 
 

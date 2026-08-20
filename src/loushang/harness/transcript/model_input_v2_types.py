@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias, cast
+from typing import Literal, Protocol, TypeAlias, cast
 
 from loushang.foundation.json import JSONValue, validate_json_value
 from loushang.harness.transcript.model_input_types import (
@@ -215,6 +215,167 @@ class ModelInputNodeBundle:
         if len(identities) != len(set(identities)):
             raise ValueError("Model Input node bundle identities must be unique")
         object.__setattr__(self, "nodes", nodes)
+
+
+@dataclass(frozen=True)
+class DeferredModelInputSequenceLink:
+    """Runtime-only sequence links projected from a verified authority line."""
+
+    previous_tail: ModelInputNodeReference | None
+    appended_items: tuple[ModelInputNodeReference, ...]
+    total_item_count: int
+    sequence_hash: str
+
+    def __post_init__(self) -> None:
+        if (
+            self.previous_tail is not None
+            and self.previous_tail.node_kind != "sequence_tail"
+        ):
+            raise TypeError("deferred previous tail must reference a sequence tail")
+        items = _require_references(
+            self.appended_items,
+            name="deferred Model Input appended sequence items",
+            node_kind="json_value",
+        )
+        _require_non_negative_int(
+            self.total_item_count,
+            name="deferred Model Input sequence item count",
+        )
+        _require_sha256(
+            self.sequence_hash,
+            name="deferred Model Input sequence hash",
+        )
+        if self.previous_tail is None and self.total_item_count != len(items):
+            raise ValueError("deferred Model Input root tail count is inconsistent")
+        if self.previous_tail is not None and not items:
+            raise ValueError("deferred incremental sequence tail must append items")
+        object.__setattr__(self, "appended_items", items)
+
+
+@dataclass(frozen=True)
+class DeferredModelInputNode:
+    """Validated node identity retained by the disposable transcript index."""
+
+    ordinal: int
+    node_kind: ModelInputNodeKind
+    content_hash: str
+    value_hash: str | None = None
+    inline_json: str | None = None
+    total_item_count: int | None = None
+    sequence_hash: str | None = None
+    value_hash_verified: bool = False
+
+    def __post_init__(self) -> None:
+        _require_non_negative_int(
+            self.ordinal,
+            name="deferred Model Input node ordinal",
+        )
+        _require_node_kind(self.node_kind)
+        _require_sha256(self.content_hash, name="deferred Model Input node hash")
+        if self.value_hash is not None:
+            _require_sha256(self.value_hash, name="deferred Model Input value hash")
+        if self.inline_json is not None and not isinstance(self.inline_json, str):
+            raise TypeError("deferred Model Input inline JSON must be text")
+        if self.total_item_count is not None:
+            _require_non_negative_int(
+                self.total_item_count,
+                name="deferred Model Input sequence item count",
+            )
+        if self.sequence_hash is not None:
+            _require_sha256(
+                self.sequence_hash,
+                name="deferred Model Input sequence hash",
+            )
+        if not isinstance(self.value_hash_verified, bool):
+            raise TypeError("deferred Model Input value verification must be boolean")
+        if self.value_hash_verified and self.node_kind != "json_value":
+            raise ValueError(
+                "only deferred Model Input JSON values can have verified hashes"
+            )
+
+
+class DeferredModelInputNodeSource(Protocol):
+    """Resolve node bodies after an authority-bound index has been verified."""
+
+    def load_bundle_nodes(self, record_id: str) -> tuple[ModelInputNode, ...]: ...
+
+    def load_sequence_link(
+        self,
+        record_id: str,
+        ordinal: int,
+    ) -> DeferredModelInputSequenceLink: ...
+
+
+class DeferredModelInputNodeBundle(ModelInputNodeBundle):
+    """A node bundle expanded only when replay actually dereferences it.
+
+    It remains a ``ModelInputNodeBundle`` so transcript semantics and wire
+    encoders keep one stable payload contract. Construction is restricted to
+    an authority-bound, already validated transcript index.
+    """
+
+    __slots__ = ("_record_id", "_source", "_indexed_nodes")
+
+    _record_id: str
+    _source: DeferredModelInputNodeSource
+    _indexed_nodes: tuple[DeferredModelInputNode, ...]
+
+    def __init__(
+        self,
+        *,
+        record_id: str,
+        source: DeferredModelInputNodeSource,
+        indexed_nodes: Sequence[DeferredModelInputNode],
+        schema_version: int = MODEL_INPUT_V2_SCHEMA_VERSION,
+    ) -> None:
+        _require_text(record_id, name="deferred Model Input bundle record id")
+        _require_v2_schema(schema_version)
+        durable_index = tuple(indexed_nodes)
+        if not durable_index:
+            raise ValueError("deferred Model Input bundle must contain indexed nodes")
+        if tuple(item.ordinal for item in durable_index) != tuple(
+            range(len(durable_index))
+        ):
+            raise ValueError("deferred Model Input node ordinals must be contiguous")
+        object.__setattr__(self, "_record_id", record_id)
+        object.__setattr__(self, "_source", source)
+        object.__setattr__(self, "_indexed_nodes", durable_index)
+        object.__setattr__(self, "schema_version", schema_version)
+
+    @property
+    def nodes(self) -> tuple[ModelInputNode, ...]:
+        nodes = self._source.load_bundle_nodes(self._record_id)
+        if len(nodes) != len(self._indexed_nodes):
+            raise ValueError("deferred Model Input bundle node count changed")
+        return nodes
+
+    @property
+    def indexed_nodes(self) -> tuple[DeferredModelInputNode, ...]:
+        return self._indexed_nodes
+
+    def node_at(self, ordinal: int) -> ModelInputNode:
+        _require_non_negative_int(ordinal, name="Model Input node ordinal")
+        if ordinal >= len(self._indexed_nodes):
+            raise IndexError("Model Input node ordinal is outside the bundle")
+        return self.nodes[ordinal]
+
+    def sequence_link_at(self, ordinal: int) -> DeferredModelInputSequenceLink:
+        _require_non_negative_int(ordinal, name="Model Input sequence ordinal")
+        if ordinal >= len(self._indexed_nodes):
+            raise IndexError("Model Input sequence ordinal is outside the bundle")
+        return self._source.load_sequence_link(self._record_id, ordinal)
+
+    def __repr__(self) -> str:
+        return (
+            "DeferredModelInputNodeBundle("
+            f"record_id={self._record_id!r}, node_count={len(self._indexed_nodes)}, "
+            f"schema_version={self.schema_version})"
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ModelInputNodeBundle):
+            return NotImplemented
+        return self.schema_version == other.schema_version and self.nodes == other.nodes
 
 
 @dataclass(frozen=True)
@@ -774,6 +935,10 @@ __all__ = [
     "MODEL_INPUT_V2_PROJECTION_VERSION",
     "MODEL_INPUT_V2_SCHEMA_VERSION",
     "MODEL_INPUT_V2_SEQUENCE_ALGORITHM_VERSION",
+    "DeferredModelInputNode",
+    "DeferredModelInputNodeBundle",
+    "DeferredModelInputNodeSource",
+    "DeferredModelInputSequenceLink",
     "ModelInputJsonChunkNode",
     "ModelInputJsonValueNode",
     "ModelInputMappingEntry",
