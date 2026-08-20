@@ -9,9 +9,10 @@ import hmac
 import json
 import secrets
 import time
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Awaitable
+from typing import Any
 
 from loushang.harness.continuity.activation import ActivationLeaseStateError
 from loushang.harness.continuity.composition import ExperienceComposition

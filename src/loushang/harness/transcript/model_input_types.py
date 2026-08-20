@@ -73,17 +73,19 @@ def _canonical_dumps(value: object, *, path: str, seen: set[int]) -> str:
             canonical_model_input_json_primitive(value, name=path)
             raise AssertionError("unreachable")  # pragma: no cover
     if value_type is float:
-        if not math.isfinite(value):
+        float_value = cast(float, value)
+        if not math.isfinite(float_value):
             canonical_model_input_json_primitive(value, name=path)
             raise AssertionError("unreachable")  # pragma: no cover
-        return repr(value)
+        return repr(float_value)
     if value_type is str:
+        string_value = cast(str, value)
         try:
-            value.encode("utf-8")
+            string_value.encode("utf-8")
         except UnicodeEncodeError:
             canonical_model_input_json_primitive(value, name=path)
             raise AssertionError("unreachable")  # pragma: no cover
-        return _STRING_ENCODER.encode(value)
+        return _STRING_ENCODER.encode(string_value)
     if isinstance(value, Mapping):
         identity = id(value)
         if identity in seen:
