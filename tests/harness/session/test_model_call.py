@@ -21,6 +21,7 @@ from loushang.coding.compaction.profiles import (
     CODING_COMPACTION_SUMMARY_PROFILE,
     CODING_TURN_PREFIX_SUMMARY_PROFILE,
 )
+from loushang.foundation.json import JSONValue
 from loushang.harness.capabilities import (
     MODEL_INPUT_PREPARATION_REQUIREMENT,
     CapabilityBundleProvider,
@@ -45,6 +46,7 @@ from loushang.harness.session.model_call import (
     SessionModelCallRuntime,
     build_session_model_call_capability_binding,
 )
+from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
 from loushang.harness.transcript import (
     CONTEXT_BRANCH_SUMMARY_KIND,
     MODEL_CALL_OUTCOME_KIND,
@@ -103,6 +105,7 @@ class _ModelCallTestRoot:
         *,
         is_current: Callable[[], bool],
         registrations: tuple[RegistrationInventoryEntry, ...],
+        turn_performance: TurnStartPerformanceRuntime | None = None,
     ) -> None:
         self._profile = RuntimeProfileResolver().resolve(
             standard_capability_composition_plan(product_id="coding")
@@ -126,6 +129,7 @@ class _ModelCallTestRoot:
             is_current=is_current,
             registration_entries_provider=lambda: registrations,
             profile_fingerprint_provider=lambda: self.current_profile_fingerprint,
+            turn_performance=turn_performance,
         )
         self._runtime = SessionModelCallRuntime(
             transcript=session,
@@ -172,12 +176,22 @@ def _model_call_runtime(
     *,
     is_current: Callable[[], bool],
     registrations: tuple[RegistrationInventoryEntry, ...] = (),
+    turn_performance: TurnStartPerformanceRuntime | None = None,
 ) -> _ModelCallTestRoot:
     return _ModelCallTestRoot(
         session,
         is_current=is_current,
         registrations=registrations,
+        turn_performance=turn_performance,
     )
+
+
+class _PerformanceLog:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, str, dict[str, JSONValue]]] = []
+
+    def debug_event(self, scope: str, name: str, **data: JSONValue) -> None:
+        self.events.append((scope, name, data))
 
 
 def test_model_call_binding_rejects_resources_without_session_provider() -> None:
@@ -375,6 +389,63 @@ def test_current_session_prepares_and_rebuilds_main_model_call() -> None:
         assert "durable system prompt" not in repr(projected)
         await runtime.dispose()
         assert runtime.graph_runtime.is_closed
+
+    asyncio.run(scenario())
+
+
+def test_model_call_binding_reports_prepare_and_durable_transport_boundary() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        log = _PerformanceLog()
+        turn_performance = TurnStartPerformanceRuntime(
+            session_id="session-model-call",
+            turn_id_factory=lambda: "turn-model-call",
+            log=log,
+        )
+        timing = turn_performance.begin(source="tui")
+        timing.activate()
+        runtime = _model_call_runtime(
+            session,
+            is_current=lambda: True,
+            turn_performance=turn_performance,
+        )
+        adapter = _PreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = "session-model-call-performance-test"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("private prompt")
+        finally:
+            registry.unregister_api_adapters(source_id)
+            timing.finish("completed")
+
+        assert len(log.events) == 1
+        scope, name, data = log.events[0]
+        assert (scope, name) == ("turn.start.performance", "turn")
+        assert data["invocation_id"] is not None
+        assert data["provider_id"] == "test-provider"
+        assert data["endpoint_id"] == "test-endpoint"
+        assert data["api_id"] == adapter.api
+        assert data["model_id"] == "model-call-test"
+        assert data["local_ready_ms"] is not None
+        assert data["startup_ms"] is None
+        milestones = cast(dict[str, JSONValue], data["milestones"])
+        assert set(milestones) >= {
+            "model_call_prepare_started",
+            "model_call_prepared",
+            "model_input_commit_started",
+            "transport_ready",
+        }
+        assert "private prompt" not in repr(data)
+        await runtime.dispose()
 
     asyncio.run(scenario())
 

@@ -36,6 +36,7 @@ from loushang.harness.session.agent_event_router import (
 from loushang.harness.session.application_input import ApplicationInputRuntime
 from loushang.harness.session.prompt_controller import AgentPort, PromptController
 from loushang.harness.session.queue_controller import AgentQueuePort, QueueController
+from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
 from loushang.harness.transcript import (
     ApplicationMessage,
     AutoCompactionOutcome,
@@ -113,6 +114,7 @@ class TurnPolicyPort:
     before_agent_start_system_prompt_options: BeforeAgentStartOptions
     sync_extension_diagnostics: ExtensionDiagnosticsSync
     compact_before_prompt_async: PrePromptCompaction | None = None
+    turn_performance: TurnStartPerformanceRuntime | None = None
 
 
 @dataclass(frozen=True)
@@ -184,6 +186,7 @@ class SessionRuntime:
                 else None
             ),
             run_prompt=self.run_agent_prompt,
+            turn_performance=self.turn_policy.turn_performance,
         )
         self._application_inputs = ApplicationInputRuntime(
             commit_application_message=self.transcript.commit_application_message,
@@ -327,6 +330,8 @@ class SessionRuntime:
     async def handle_agent_event(
         self, event: AgentEvent, signal: AbortSignal
     ) -> None:
+        if self.turn_policy.turn_performance is not None:
+            self.turn_policy.turn_performance.observe_agent_event(event)
         await self._agent_event_router.handle(event, signal)
 
     async def dispatch_event(

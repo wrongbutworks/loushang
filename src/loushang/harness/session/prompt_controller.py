@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -8,6 +9,10 @@ from uuid import uuid4
 
 from loushang.ai.types import ImagePart, TextPart, UserMessage
 from loushang.harness.runtime.turn import TurnInput, TurnOrchestrator
+from loushang.harness.session.turn_performance import (
+    TurnStartPerformanceHandle,
+    TurnStartPerformanceRuntime,
+)
 from loushang.harness.transcript import ApplicationMessage, CompactionResult
 
 CommandExtractor = Callable[[str], tuple[str, str] | None]
@@ -60,6 +65,7 @@ class PromptController:
     sync_extension_diagnostics: ExtensionDiagnosticsSync
     compact_before_prompt_async: PrePromptCompaction | None = None
     run_prompt: RunPrompt | None = None
+    turn_performance: TurnStartPerformanceRuntime | None = None
 
     async def prompt(
         self,
@@ -70,31 +76,109 @@ class PromptController:
         source: str | None = None,
         preflight_result: Callable[[bool], None] | None = None,
     ) -> None:
+        timing = (
+            self.turn_performance.begin(source=source)
+            if self.turn_performance is not None
+            else None
+        )
         orchestrator: TurnOrchestrator[list[ImagePart], object] = TurnOrchestrator(
             interceptors=(
                 self._intercept_extension_command,
                 self._intercept_extension_input,
             ),
-            preflight=self._preflight,
+            preflight=lambda item: self._timed_preflight(item, timing),
             is_running=lambda: self.agent.is_streaming,
-            queue_turn=self._queue_turn,
+            queue_turn=lambda behavior, item: self._timed_queue_turn(
+                behavior,
+                item,
+                timing,
+            ),
             build_message=lambda item: _user_message(
                 item.text, images=item.attachments
             ),
             drain_pending=self.queue_controller.drain_next_turn_messages,
-            before_run=self.compact_before_prompt_async,
-            before_start=self._before_start,
-            run_turn=self.run_prompt or self.agent.prompt,
+            before_run=(
+                (lambda: self._timed_before_run(timing))
+                if self.compact_before_prompt_async is not None
+                else None
+            ),
+            before_start=lambda item: self._timed_before_start(item, timing),
+            run_turn=lambda messages: self._timed_run_turn(messages, timing),
             busy_error=(
                 "Agent is already processing. Specify streaming_behavior "
                 "('steer' or 'followUp') to queue the message."
             ),
         )
-        await orchestrator.run(
-            TurnInput(text=user_input, attachments=images, source=source),
-            streaming_behavior=streaming_behavior,
-            report_accepted=preflight_result,
-        )
+        outcome = "completed"
+        try:
+            await orchestrator.run(
+                TurnInput(text=user_input, attachments=images, source=source),
+                streaming_behavior=streaming_behavior,
+                report_accepted=preflight_result,
+            )
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            raise
+        except BaseException:
+            outcome = "failed"
+            raise
+        finally:
+            if timing is not None:
+                timing.finish(outcome)
+
+    async def _timed_preflight(
+        self,
+        turn_input: TurnInput[list[ImagePart]],
+        timing: TurnStartPerformanceHandle | None,
+    ) -> TurnInput[list[ImagePart]] | None:
+        try:
+            return await self._preflight(turn_input)
+        finally:
+            if timing is not None:
+                timing.mark("preflight_completed")
+
+    def _timed_queue_turn(
+        self,
+        behavior: str,
+        turn_input: TurnInput[list[ImagePart]],
+        timing: TurnStartPerformanceHandle | None,
+    ) -> None:
+        self._queue_turn(behavior, turn_input)
+        if timing is not None:
+            timing.mark_queued()
+
+    async def _timed_before_run(
+        self,
+        timing: TurnStartPerformanceHandle | None,
+    ) -> object | None:
+        if self.compact_before_prompt_async is None:
+            return None
+        try:
+            return await self.compact_before_prompt_async()
+        finally:
+            if timing is not None:
+                timing.mark("before_run_completed")
+
+    async def _timed_before_start(
+        self,
+        turn_input: TurnInput[list[ImagePart]],
+        timing: TurnStartPerformanceHandle | None,
+    ) -> list[object]:
+        try:
+            return await self._before_start(turn_input)
+        finally:
+            if timing is not None:
+                timing.mark("before_start_completed")
+
+    async def _timed_run_turn(
+        self,
+        messages: list[object],
+        timing: TurnStartPerformanceHandle | None,
+    ) -> None:
+        if timing is not None:
+            timing.activate()
+        run_turn = self.run_prompt or self.agent.prompt
+        await run_turn(messages)
 
     async def _intercept_extension_command(
         self,

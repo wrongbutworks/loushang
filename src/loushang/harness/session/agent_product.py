@@ -146,6 +146,7 @@ from loushang.harness.session.side_question import (
     SIDE_QUESTION_BOUNDARY_PROMPT,
     AgentSideQuestionProvider,
 )
+from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
 from loushang.harness.session.workspace_capability_ports import (
     SessionWorkspaceCapabilityPorts,
 )
@@ -278,6 +279,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
         runtime_id = "session:" + str(
             self.session_manager.get_session_record().session_id
         )
+        self._turn_start_performance = TurnStartPerformanceRuntime(
+            session_id=str(self.session_manager.get_session_record().session_id)
+        )
         initial_profile = capability_runtime.profile.snapshot()
         if (
             workspace_capability_binding is not None
@@ -339,6 +343,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     if workspace_capability_binding is not None
                     else None
                 ),
+                turn_performance=self._turn_start_performance,
             )
         )
         self._side_question_consumer: SessionSideQuestionCapabilityConsumer | None = (
@@ -777,6 +782,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 before_agent_start_system_prompt_options=(
                     self._before_agent_start_system_prompt_options
                 ),
+                turn_performance=self._turn_start_performance,
             ),
         )
 

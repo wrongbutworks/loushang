@@ -96,6 +96,7 @@ from loushang.harness.session.runtime import (
     TurnPolicyPort,
 )
 from loushang.harness.session.settings import SessionSettingsBinding
+from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace import ExecServiceBashOperations
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -268,6 +269,7 @@ class SessionProductInputs:
     package_controller: SessionPackageController | None
     execute_branch_summary: BranchSummaryExecutor
     before_agent_start_system_prompt_options: Callable[[], dict[str, object]]
+    turn_performance: TurnStartPerformanceRuntime | None = None
 
 
 @dataclass(frozen=True)
@@ -451,6 +453,7 @@ def _legacy_composition_inputs(
         before_agent_start_system_prompt_options=take(
             "before_agent_start_system_prompt_options"
         ),
+        turn_performance=remaining.pop("turn_performance", None),
     )
     if remaining:
         unexpected = ", ".join(sorted(remaining))
@@ -643,6 +646,7 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
                 foundation.diagnostics_bridge.sync_extension_diagnostics
             ),
             compact_before_prompt_async=compact_before_prompt,
+            turn_performance=ports.product.turn_performance,
         ),
         after_turn_policy=AfterTurnPolicyPort(
             emit_extension_agent_event=extension_event_sink.emit_agent_event,

@@ -62,6 +62,7 @@ from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION,
 )
 from loushang.harness.runtime import RuntimeProfileSnapshot
+from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
 from loushang.harness.transcript import (
     ModelInputRuntimeReferences,
 )
@@ -127,6 +128,7 @@ class SessionModelCallPreparer:
         is_current: CurrentSessionPredicate,
         registration_entries_provider: RegistrationEntriesProvider,
         profile_fingerprint_provider: CurrentProfileFingerprintProvider,
+        turn_performance: TurnStartPerformanceRuntime | None = None,
     ) -> None:
         _require_transcript_port(transcript, name="model-call preparation")
         if not isinstance(projector, RuntimeCapabilityGraphProjector):
@@ -142,6 +144,7 @@ class SessionModelCallPreparer:
         self._is_current = is_current
         self._registration_entries_provider = registration_entries_provider
         self._profile_fingerprint_provider = profile_fingerprint_provider
+        self._turn_performance = turn_performance
 
     def __call__(self, preparation: ModelCallPreparation) -> CallOptions:
         if not isinstance(preparation, ModelCallPreparation):
@@ -153,27 +156,38 @@ class SessionModelCallPreparer:
                 "durable Session cannot replace an existing prepared-request committer"
             )
 
-        graph = self._projector.snapshot()
-        registrations = compose_registration_inventory(
-            self._projector.registration_inventory(),
-            self._registration_entries_provider(),
-        )
-        committer = self._transcript.create_model_input_committer(
-            purpose=preparation.purpose,
-            logical_input=_logical_input(preparation),
-            runtime_references=ModelInputRuntimeReferences.from_snapshots(
-                graph,
-                registrations,
-                profile_fingerprint=self._profile_fingerprint_provider(),
-            ),
-        )
-        return replace(
-            preparation.options,
-            prepared_request_committer=_CurrentSessionCommitter(
-                committer=committer,
-                is_current=self._is_current,
-            ),
-        )
+        if self._turn_performance is not None:
+            self._turn_performance.model_call_prepare_started(preparation)
+        try:
+            graph = self._projector.snapshot()
+            registrations = compose_registration_inventory(
+                self._projector.registration_inventory(),
+                self._registration_entries_provider(),
+            )
+            committer = self._transcript.create_model_input_committer(
+                purpose=preparation.purpose,
+                logical_input=_logical_input(preparation),
+                runtime_references=ModelInputRuntimeReferences.from_snapshots(
+                    graph,
+                    registrations,
+                    profile_fingerprint=self._profile_fingerprint_provider(),
+                ),
+            )
+            options = replace(
+                preparation.options,
+                prepared_request_committer=_CurrentSessionCommitter(
+                    committer=committer,
+                    is_current=self._is_current,
+                    turn_performance=self._turn_performance,
+                ),
+            )
+        except BaseException:
+            if self._turn_performance is not None:
+                self._turn_performance.model_call_prepare_failed()
+            raise
+        if self._turn_performance is not None:
+            self._turn_performance.model_call_prepared()
+        return options
 
 
 class _CurrentSessionCommitter(
@@ -187,14 +201,25 @@ class _CurrentSessionCommitter(
         *,
         committer: PreparedRequestCommitter,
         is_current: CurrentSessionPredicate,
+        turn_performance: TurnStartPerformanceRuntime | None = None,
     ) -> None:
         self._committer = committer
         self._is_current = is_current
+        self._turn_performance = turn_performance
 
     async def commit_prepared_request(self, request: PreparedModelRequest) -> None:
         self._require_current()
-        await self._committer.commit_prepared_request(request)
+        if self._turn_performance is not None:
+            self._turn_performance.model_input_commit_started(request)
+        try:
+            await self._committer.commit_prepared_request(request)
+        except BaseException:
+            if self._turn_performance is not None:
+                self._turn_performance.model_input_commit_failed(request)
+            raise
         self._require_current()
+        if self._turn_performance is not None:
+            self._turn_performance.transport_ready(request)
 
     async def record_model_call_outcome(
         self,
@@ -261,6 +286,7 @@ def build_session_model_call_capability_binding(
     session_provider: CapabilityBundleProvider | None = None,
     resources_provider: CapabilityBundleProvider | None = None,
     workspace_provider: CapabilityBundleProvider | None = None,
+    turn_performance: TurnStartPerformanceRuntime | None = None,
 ) -> SessionModelCallCapabilityBinding:
     """Build data-only graph inputs without acquiring graph lifecycle authority."""
 
@@ -344,6 +370,7 @@ def build_session_model_call_capability_binding(
                         is_current=is_current,
                         registration_entries_provider=registration_entries_provider,
                         profile_fingerprint_provider=profile_fingerprint_provider,
+                        turn_performance=turn_performance,
                     ),
                 ),
             )
