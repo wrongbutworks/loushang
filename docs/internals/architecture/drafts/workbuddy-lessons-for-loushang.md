@@ -1,11 +1,14 @@
-# WorkBuddy 对 Loushang 的启示
+# 腾讯 WorkBuddy 案例对 Loushang 的启示
 
 ## 状态
 
 Draft / reference note.
 
-本文档沉淀对 WorkBuddy 产品形态、架构图和公开文档的观察，用作
+本文档沉淀对腾讯 WorkBuddy 产品形态、架构图和公开文档的案例观察，用作
 `loushang.harness`、`loushang.method`、`loushang.work` 后续设计输入。
+
+WorkBuddy 是腾讯产品，本文只把它作为智能工作伙伴类产品的一个参考案例，不将
+`WorkBuddy` 用作 Loushang 产品名、通用能力名或公共架构术语。
 
 本文档不是已接受架构决策。若本文档与当前代码、测试、ARD 或 live
 architecture note 冲突，以 live source 为准。

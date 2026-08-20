@@ -37,4 +37,7 @@ Current live references:
 - [Method Deviation And Evolution](method-deviation-and-evolution.md)
 - [Methodology System Reference Survey](loushang-methodology-system-reference-survey.md)
 - [Loushang Ontology Operational Infrastructure Architecture](../ontology/drafts/loushang-ontology-operational-infrastructure.md)
-- [WorkBuddy Lessons For Loushang](workbuddy-lessons-for-loushang.md)
+- [Tencent WorkBuddy Case Lessons For Loushang](workbuddy-lessons-for-loushang.md)
+- [Ontology-Native Intelligent Workplace Product Insight](ontology-native-intelligent-workplace-product-insight.md)
+- [Ontology-Driven Application Engineering](ontology-driven-application-engineering.md)
+- [Application Model And Artifact Compiler](application-model-and-artifact-compiler.md)
