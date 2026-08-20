@@ -34,7 +34,7 @@ def decode_model_input_node_bundle(value: JSONValue) -> ModelInputNodeBundle:
     payload = _object(
         value,
         name="Model Input v2 node bundle",
-        fields={"schemaVersion", "nodes"},
+        fields=_BUNDLE_FIELDS,
     )
     raw_nodes = _field(payload, "nodes")
     if not isinstance(raw_nodes, list) or not raw_nodes:
@@ -151,7 +151,7 @@ def _decode_node(value: object) -> ModelInputNode:
         payload = _object(
             raw,
             name="Model Input JSON chunk node",
-            fields={"nodeKind", "contentHash", "text"},
+            fields=_JSON_CHUNK_NODE_FIELDS,
         )
         return ModelInputJsonChunkNode(
             content_hash=_text(payload, "contentHash"),
@@ -161,14 +161,7 @@ def _decode_node(value: object) -> ModelInputNode:
         payload = _object(
             raw,
             name="Model Input JSON value node",
-            fields={
-                "nodeKind",
-                "contentHash",
-                "valueHash",
-                "decodedBytes",
-                "inlineJson",
-                "chunks",
-            },
+            fields=_JSON_VALUE_NODE_FIELDS,
         )
         return ModelInputJsonValueNode(
             content_hash=_text(payload, "contentHash"),
@@ -181,15 +174,7 @@ def _decode_node(value: object) -> ModelInputNode:
         payload = _object(
             raw,
             name="Model Input sequence tail node",
-            fields={
-                "nodeKind",
-                "contentHash",
-                "algorithmVersion",
-                "previousTail",
-                "appendedItems",
-                "totalItemCount",
-                "sequenceHash",
-            },
+            fields=_SEQUENCE_TAIL_NODE_FIELDS,
         )
         previous = _field(payload, "previousTail")
         return ModelInputSequenceTailNode(
@@ -204,12 +189,7 @@ def _decode_node(value: object) -> ModelInputNode:
         payload = _object(
             raw,
             name="Model Input mapping root node",
-            fields={
-                "nodeKind",
-                "contentHash",
-                "mappingHash",
-                "entries",
-            },
+            fields=_MAPPING_ROOT_NODE_FIELDS,
         )
         raw_entries = _field(payload, "entries")
         if not isinstance(raw_entries, list):
@@ -221,6 +201,29 @@ def _decode_node(value: object) -> ModelInputNode:
         )
     raise ValueError(f"unsupported Model Input v2 node kind: {node_kind!r}")
 
+
+
+_BUNDLE_FIELDS = frozenset({"schemaVersion", "nodes"})
+_JSON_CHUNK_NODE_FIELDS = frozenset({"nodeKind", "contentHash", "text"})
+_JSON_VALUE_NODE_FIELDS = frozenset(
+    {"nodeKind", "contentHash", "valueHash", "decodedBytes", "inlineJson", "chunks"}
+)
+_SEQUENCE_TAIL_NODE_FIELDS = frozenset(
+    {
+        "nodeKind",
+        "contentHash",
+        "algorithmVersion",
+        "previousTail",
+        "appendedItems",
+        "totalItemCount",
+        "sequenceHash",
+    }
+)
+_MAPPING_ROOT_NODE_FIELDS = frozenset(
+    {"nodeKind", "contentHash", "mappingHash", "entries"}
+)
+_REFERENCE_FIELDS = frozenset({"recordId", "ordinal", "nodeKind", "contentHash"})
+_MAPPING_ENTRY_FIELDS = frozenset({"name", "value"})
 
 def _encode_reference(reference: ModelInputNodeReference) -> dict[str, JSONValue]:
     return {
@@ -245,7 +248,7 @@ def _decode_reference(value: object) -> ModelInputNodeReference:
     payload = _object(
         value,
         name="Model Input v2 node reference",
-        fields={"recordId", "ordinal", "nodeKind", "contentHash"},
+        fields=_REFERENCE_FIELDS,
     )
     return ModelInputNodeReference(
         record_id=_text(payload, "recordId"),
@@ -259,7 +262,7 @@ def _decode_mapping_entry(value: object) -> ModelInputMappingEntry:
     payload = _object(
         value,
         name="Model Input mapping entry",
-        fields={"name", "value"},
+        fields=_MAPPING_ENTRY_FIELDS,
     )
     return ModelInputMappingEntry(
         name=_text(payload, "name"),
@@ -271,7 +274,7 @@ def _object(
     value: object,
     *,
     name: str,
-    fields: set[str],
+    fields: frozenset[str] | set[str],
 ) -> dict[str, JSONValue]:
     # Structural check only: payload trees reach this codec through
     # ConversationPayloadCodecRegistry.decode, which already validated the
@@ -279,14 +282,18 @@ def _object(
     if not isinstance(value, Mapping):
         raise TypeError(f"{name} must be a JSON object")
     payload = cast(dict[str, JSONValue], value)
-    unexpected = set(payload).difference(fields)
-    if unexpected:
+    # Exact field-set match without allocating sets on the happy path; the
+    # detailed diff is only computed when the node is actually malformed.
+    if len(payload) != len(fields) or not fields.issuperset(payload):
+        unexpected = set(payload).difference(fields)
+        if unexpected:
+            raise ValueError(
+                f"{name} contains unknown fields: {', '.join(sorted(unexpected))}"
+            )
+        missing = fields.difference(payload)
         raise ValueError(
-            f"{name} contains unknown fields: {', '.join(sorted(unexpected))}"
+            f"{name} is missing fields: {', '.join(sorted(missing))}"
         )
-    missing = fields.difference(payload)
-    if missing:
-        raise ValueError(f"{name} is missing fields: {', '.join(sorted(missing))}")
     return payload
 
 
