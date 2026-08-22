@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import style_text
+
+if TYPE_CHECKING:
+    from loushang.tui.input import InputIntentKind
+
+
+class _FocusableBody(Protocol):
+    def focus(self) -> None: ...
+
+    def blur(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +132,7 @@ class ConfirmDialog(Dialog):
         )
 
 
-def _input_intent(kind: str) -> object:
+def _input_intent(kind: InputIntentKind) -> object:
     from loushang.tui.input import InputIntent
 
     return InputIntent(kind=kind)
@@ -153,7 +163,7 @@ def _dialog_result(
     return RenderResult.from_lines(lines[: constraints.max_height], constraints=constraints)
 
 
-def _is_focusable(value: object) -> bool:
+def _is_focusable(value: object) -> TypeGuard[_FocusableBody]:
     return all(callable(getattr(value, name, None)) for name in ("focus", "blur"))
 
 
