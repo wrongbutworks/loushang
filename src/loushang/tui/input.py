@@ -3,38 +3,17 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import KW_ONLY, InitVar, dataclass, field
-from typing import Literal, Protocol, cast
+from typing import Generic, Literal, Protocol, TypeAlias, TypeVar, cast
 
 from loushang.tui.framework import SurfaceHost
 from loushang.tui.keybindings import KeybindingManager, normalize_key_id
 from loushang.tui.ui_parts import Composer
 
 InputEventKind = Literal["key", "text", "paste", "resize", "focus", "mouse", "signal"]
-InputIntentKind = Literal[
-    "submit",
-    "prompt_cancel",
-    "follow_up",
-    "steer",
-    "abort",
-    "surface_close",
-    "invalidate_render",
-    "select",
-    "complete",
-    "command",
-    "setting",
-    "approve",
-    "approve_session",
-    "approval_decision",
-    "permission_profile_action",
-    "reject",
-    "dialog_confirm",
-    "dialog_cancel",
-    "question_submit",
-    "question_cancel",
-    "command_select",
-    "command_cancel",
-    "consumed",
-]
+_InputIntentKindT = TypeVar("_InputIntentKindT", bound=str, covariant=True)
+# Temporary import-path compatibility; production annotations use precise envelopes.
+InputIntentKind: TypeAlias = str
+PromptInputIntentKind: TypeAlias = Literal["submit", "prompt_cancel", "invalidate_render"]
 KeyEventType = Literal["press", "repeat", "release"]
 
 ESC = "\x1b"
@@ -292,10 +271,22 @@ class InputEvent:
 
 
 @dataclass(frozen=True, slots=True)
-class InputIntent:
-    kind: InputIntentKind
+class InputIntent(Generic[_InputIntentKindT]):
+    kind: _InputIntentKindT
     text: str = ""
     note: str = ""
+
+
+PromptInputIntent: TypeAlias = InputIntent[PromptInputIntentKind]
+
+
+def _prompt_input_intent(
+    kind: PromptInputIntentKind,
+    *,
+    text: str = "",
+    note: str = "",
+) -> PromptInputIntent:
+    return InputIntent(kind=kind, text=text, note=note)
 
 
 @dataclass(frozen=True, slots=True)
@@ -693,7 +684,7 @@ class InputReader:
 
 @dataclass(frozen=True, slots=True)
 class _SurfaceRoute:
-    intents: tuple[InputIntent, ...] = ()
+    intents: tuple[InputIntent[str], ...] = ()
     consumed: bool = False
 
 
@@ -720,7 +711,7 @@ class InputRouter:
             return
         raise TypeError("InputRouter requires composer or target")
 
-    def route(self, event: InputEvent) -> tuple[InputIntent, ...]:
+    def route(self, event: InputEvent) -> tuple[InputIntent[str], ...]:
         target = self._target
         if event.kind == "key" and event.event_type == "release":
             return ()
@@ -758,7 +749,7 @@ class InputRouter:
             if is_cancel:
                 if cancelled_pending_jump:
                     return ()
-                return (InputIntent(kind="prompt_cancel"),)
+                return (_prompt_input_intent("prompt_cancel"),)
             if keybindings.matches(event.key, "tui.editor.jumpForward"):
                 self._jump_mode = "forward"
                 return ()
@@ -819,17 +810,17 @@ class InputRouter:
             target.insert_text(event.text)
             return ()
         if event.kind == "resize" or (event.kind == "signal" and event.signal == "sigwinch"):
-            return (InputIntent(kind="invalidate_render"),)
+            return (_prompt_input_intent("invalidate_render"),)
         return ()
 
-    def submit(self) -> tuple[InputIntent, ...]:
+    def submit(self) -> tuple[PromptInputIntent, ...]:
         target = self._target
         text = target.value
         if not text:
             return ()
         target.add_history(text)
         target.clear()
-        return (InputIntent(kind="submit", text=text),)
+        return (_prompt_input_intent("submit", text=text),)
 
     def _route_surface_first(self, event: InputEvent) -> _SurfaceRoute:
         if self.surface_host is None:
@@ -880,7 +871,7 @@ class InputRouter:
         return max(2, min(10, self.height))
 
 
-def _input_intents(result: object) -> tuple[InputIntent, ...]:
+def _input_intents(result: object) -> tuple[InputIntent[str], ...]:
     if result is None:
         return ()
     if isinstance(result, InputIntent):

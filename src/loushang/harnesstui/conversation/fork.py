@@ -115,7 +115,7 @@ class ForkPromptSurface:
         self._error = str(error).strip() or error.__class__.__name__
         self._request_render()
 
-    def handle_input(self, event: InputEvent) -> InputIntent | bool | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | bool | None:
         if self._activating:
             return InputIntent(kind="consumed", note="fork_activating")
         if self._preview_visible:
@@ -159,7 +159,7 @@ class ForkPromptSurface:
             cursor=body.cursor,
         )
 
-    def _handle_preview_input(self, event: InputEvent) -> InputIntent | bool | None:
+    def _handle_preview_input(self, event: InputEvent) -> InputIntent[str] | bool | None:
         if event.kind == "text":
             return InputIntent(kind="consumed", note="fork_preview")
         if event.kind != "key":

@@ -75,6 +75,54 @@ def test_tui_package_does_not_construct_conversation_input_intents() -> None:
     assert violations == []
 
 
+def test_tui_and_harnesstui_production_use_parameterized_input_intent_annotations() -> None:
+    violations: list[str] = []
+    for source_path in _production_input_paths():
+        violations.extend(
+            _bare_input_intent_reference_violations(
+                source_path.read_text(encoding="utf-8"),
+                filename=str(source_path),
+            )
+        )
+
+    assert violations == []
+
+
+def test_bare_input_intent_checker_distinguishes_types_from_runtime_uses() -> None:
+    rejected_sources = (
+        "def handle(intent: InputIntent) -> InputIntent: ...",
+        "Handler = Callable[[InputIntent], None]",
+    )
+    allowed_sources = (
+        "def handle(intent: InputIntent[str]) -> InputIntent[str]: ...",
+        'InputIntent(kind="surface_close")',
+        "isinstance(intent, InputIntent)",
+    )
+
+    for source in rejected_sources:
+        assert _bare_input_intent_reference_violations(source), source
+    for source in allowed_sources:
+        assert _bare_input_intent_reference_violations(source) == (), source
+
+
+def test_input_intent_kind_is_only_a_compatibility_alias_in_input_module() -> None:
+    input_source = Path("src/loushang/tui/input.py").read_text(encoding="utf-8")
+    assert "InputIntentKind: TypeAlias = str" in input_source
+
+    violations: list[str] = []
+    for source_path in _production_input_paths():
+        if source_path == Path("src/loushang/tui/input.py"):
+            continue
+        violations.extend(
+            _input_intent_kind_reference_violations(
+                source_path.read_text(encoding="utf-8"),
+                filename=str(source_path),
+            )
+        )
+
+    assert violations == []
+
+
 def test_conversation_intent_producer_checker_rejects_direct_constants() -> None:
     call_forms = (
         'InputIntent("steer")',
@@ -96,7 +144,7 @@ def test_conversation_intent_producer_checker_allows_generic_and_dynamic_forms()
         'tui.InputIntent(kind="abort")',
         "InputIntent(kind=kind, note=note)",
         'tui.InputIntent(kind=kind, note="edit_last_queued_prompt")',
-        'InputIntentKind = Literal["steer", "follow_up"]',
+        "InputIntentKind: TypeAlias = str",
         '"InputIntent(kind=\\"steer\\")"',
     )
 
@@ -266,6 +314,66 @@ def _conversation_intent_producer_violations(
             violations.append(f"{filename}:{node.lineno}: forbidden {kind} InputIntent producer")
         elif kind == "command" and note == "edit_last_queued_prompt":
             violations.append(f"{filename}:{node.lineno}: forbidden queued-edit InputIntent producer")
+    return tuple(violations)
+
+
+def _production_input_paths() -> tuple[Path, ...]:
+    return tuple(
+        sorted(
+            path
+            for root in (Path("src/loushang/tui"), Path("src/loushang/harnesstui"))
+            for path in root.rglob("*.py")
+        )
+    )
+
+
+def _bare_input_intent_reference_violations(
+    source: str,
+    *,
+    filename: str = "<source>",
+) -> tuple[str, ...]:
+    tree = ast.parse(source, filename=filename)
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if not _is_input_intent_constructor(node):
+            continue
+        parent = parents.get(node)
+        if isinstance(parent, ast.Call) and parent.func is node:
+            continue
+        if isinstance(parent, ast.Subscript) and parent.value is node:
+            continue
+        if (
+            isinstance(parent, ast.Call)
+            and isinstance(parent.func, ast.Name)
+            and parent.func.id == "isinstance"
+            and len(parent.args) >= 2
+            and parent.args[1] is node
+        ):
+            continue
+        violations.append(f"{filename}:{node.lineno}: bare InputIntent type reference")
+    return tuple(violations)
+
+
+def _input_intent_kind_reference_violations(
+    source: str,
+    *,
+    filename: str = "<source>",
+) -> tuple[str, ...]:
+    violations: list[str] = []
+    for node in ast.walk(ast.parse(source, filename=filename)):
+        if isinstance(node, ast.ImportFrom) and any(
+            alias.name == "InputIntentKind" for alias in node.names
+        ):
+            violations.append(f"{filename}:{node.lineno}: InputIntentKind import")
+        elif isinstance(node, ast.Name) and node.id == "InputIntentKind":
+            violations.append(f"{filename}:{node.lineno}: InputIntentKind reference")
+        elif isinstance(node, ast.Attribute) and node.attr == "InputIntentKind":
+            violations.append(f"{filename}:{node.lineno}: InputIntentKind reference")
     return tuple(violations)
 
 

@@ -223,7 +223,7 @@ class ContinuitySurface:
             if task is not None and not task.done():
                 task.cancel()
 
-    def handle_input(self, event: InputEvent) -> InputIntent | bool | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | bool | None:
         if self._activating:
             event = self._resolve_keybinding(event)
             if event.kind == "key" and event.key == "escape":

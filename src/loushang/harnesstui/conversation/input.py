@@ -144,7 +144,7 @@ class ConversationFollowupResult:
 class ConversationSurfaceResult:
     """Forward one intent emitted by an active surface."""
 
-    intent: InputIntent
+    intent: InputIntent[str]
     kind: Literal["surface"] = field(default="surface", init=False)
     render_requested: bool = field(default=True, init=False)
 

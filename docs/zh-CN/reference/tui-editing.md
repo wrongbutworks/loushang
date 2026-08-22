@@ -92,6 +92,19 @@ follow-up 使用 `conversation.input.followUp`（默认 Alt+Enter）。空闲时
 catalog 加载后再解析。剪贴板图片粘贴使用会话 action
 `conversation.input.pasteImage`（默认 Ctrl+V）。
 
+### 输入意图契约
+
+`InputIntent` 保持为一个运行时数据类，并以开放的 kind 类型参数表达所有者词表。
+通用 surface 和经过准入的 presentation adapter 使用 `InputIntent[str]`；各所有者
+可以为自己产生的 kind 定义更窄的 `Literal` 别名。`InputRouter` 直接产生的词表仅限
+`submit`、`prompt_cancel` 与 `invalidate_render`，surface 意图则原样转发，不重新解释。
+
+`InputIntentKind` 暂时仍可导入，但它只是 `str` 兼容别名，不再是中央允许列表。
+新的生产注解应使用 `InputIntent[str]` 或所有者本地的窄别名。外部 kind 建议使用
+`example_plugin.openArtifact` 这类所有者限定名；为保持兼容，运行时 envelope 仍
+有意接受任意字符串。未来的 Harness Plugin 声明不依赖 TUI；只有承担所有权的
+presentation adapter 才能在准入后把声明转换为 `InputIntent[str]`。
+
 Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文本 atom；大型 paste marker 是单个 atom，range edit 不会把它拆开。
 
 ## Pre-1.0 InputRouter 迁移
