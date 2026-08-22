@@ -897,6 +897,8 @@ def test_shared_conversation_interaction_separates_product_and_clipboard_policy(
     assert "class ScreenInputResult" not in screen_input
     assert "class ScreenInputRouter" not in screen_input
     assert "bind_clipboard_image_input_router(" in screen_input
+    assert "ConversationInputRouterFactoryPort" not in screen_input
+    assert "cast(" not in screen_input
     assert "PromptIntent" in intents
     assert "BashIntent" in intents
     assert "ConversationRoutingProfile" in shared

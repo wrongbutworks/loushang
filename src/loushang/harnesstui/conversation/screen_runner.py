@@ -16,6 +16,8 @@ from loushang.harnesstui.conversation.input import (
     ConversationInputIgnored,
     ConversationInputResult,
     ConversationInputRouter,
+    ConversationInputRouterFactoryPort,
+    ConversationInputRouterPort,
     ConversationLocalResult,
     ConversationPromptResult,
     ConversationScreenInputPort,
@@ -26,7 +28,7 @@ from loushang.harnesstui.surface.controller import promote_pending_page_surface
 from loushang.tui import _runner_utils
 from loushang.tui.core import RenderConstraints, RenderResult
 from loushang.tui.framework import SurfaceHost
-from loushang.tui.input import InputEvent, InputIntent, InputReader
+from loushang.tui.input import InputIntent, InputReader
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 from loushang.tui.render_loop import RenderLoop
 from loushang.tui.runtime import TuiRuntime
@@ -82,27 +84,6 @@ class ConversationScreenPort(ConversationScreenInputPort, Protocol):
 
 
 ConversationInputResultPort: TypeAlias = ConversationInputResult
-
-
-class ConversationInputRouterPort(Protocol):
-    """Route one decoded terminal input event to a neutral action."""
-
-    def handle(self, event: InputEvent) -> ConversationInputResult: ...
-
-
-class ConversationInputRouterFactoryPort(Protocol):
-    """Construct the product's conversation input adapter."""
-
-    def __call__(
-        self,
-        *,
-        app: ConversationScreenPort,
-        should_exit: ShouldExit,
-        is_local_command: LocalCommandPredicate,
-        keybindings: KeybindingManager | KeybindingConfig | None,
-        width: int,
-        height: int,
-    ) -> ConversationInputRouterPort: ...
 
 
 _finish_tui_exit = _runner_utils.finish_tui_exit

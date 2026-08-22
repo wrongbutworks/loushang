@@ -138,6 +138,13 @@ Submit, cancel, resize, surface routing, clipboard images, local commands,
 completion Enter, and running steer/follow-up policy are deliberately not part
 of those shared helpers because their ordering or meaning differs by owner.
 
+Production conversation-router construction uses one standard factory contract
+owned with HarnessTUI conversation input and re-exported by the screen runner.
+The clipboard-enabled builder is a compatible extension that only exposes
+optional environment and test dependencies. Product adapters bind their policy
+and profile, then pass that factory directly without a type cast. This contract
+is an input-composition seam; it does not define a plugin lifecycle.
+
 Composer selections use atom indexes. Normal text is split into grapheme-like
 text atoms; large paste markers are single atoms and are never split by range
 editing.
