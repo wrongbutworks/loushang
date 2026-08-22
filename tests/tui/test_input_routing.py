@@ -30,8 +30,13 @@ from loushang.tui import (
     TextInput,
 )
 from loushang.tui.input import (
+    apply_prompt_paste,
+    apply_prompt_text,
+    prompt_jump_direction_for_key,
     route_editor_editing_key,
     route_editor_selection_key,
+    route_prompt_explicit_completion_key,
+    route_prompt_vertical_navigation_key,
 )
 
 
@@ -634,6 +639,87 @@ def test_editor_key_helpers_route_to_target_operations() -> None:
     assert route_editor_selection_key(target, "shift+left")
 
     assert target.calls == ["move_left", "select_char_left"]
+
+
+def test_prompt_text_and_paste_primitives_apply_only_editor_mechanics() -> None:
+    target = FakePromptTarget()
+
+    apply_prompt_text(target, "alpha")
+    apply_prompt_text(target, "x", jump_direction="forward")
+    apply_prompt_paste(target, "beta\ngamma")
+
+    assert target.calls == [
+        "insert_text:alpha",
+        "jump_to_char:forward:x",
+        "paste:beta\ngamma",
+    ]
+
+
+def test_prompt_jump_direction_uses_configured_core_actions() -> None:
+    keybindings = KeybindingManager(
+        {
+            "tui.editor.jumpForward": ("alt+f",),
+            "tui.editor.jumpBackward": ("alt+b",),
+        }
+    )
+
+    assert prompt_jump_direction_for_key("alt+f", keybindings=keybindings) == "forward"
+    assert prompt_jump_direction_for_key("alt+b", keybindings=keybindings) == "backward"
+    assert prompt_jump_direction_for_key("enter", keybindings=keybindings) is None
+
+
+def test_prompt_explicit_completion_primitive_refreshes_before_applying() -> None:
+    target = FakePromptTarget()
+
+    assert not route_prompt_explicit_completion_key(target, "enter")
+    assert route_prompt_explicit_completion_key(target, "tab")
+    assert target.calls == [
+        "refresh_completions:True:True",
+        "apply_selected_completion",
+    ]
+
+
+def test_prompt_vertical_navigation_primitive_handles_history_and_pages() -> None:
+    target = FakePromptTarget(value="draft")
+
+    assert route_prompt_vertical_navigation_key(
+        target,
+        "up",
+        width=7,
+        height=3,
+    )
+    target.browsing_history = True
+    assert route_prompt_vertical_navigation_key(
+        target,
+        "down",
+        width=7,
+        height=3,
+    )
+    assert route_prompt_vertical_navigation_key(
+        target,
+        "pageUp",
+        width=7,
+        height=3,
+    )
+    assert route_prompt_vertical_navigation_key(
+        target,
+        "pageDown",
+        width=7,
+        height=1,
+    )
+    assert not route_prompt_vertical_navigation_key(
+        target,
+        "enter",
+        width=7,
+        height=3,
+    )
+    assert target.calls == [
+        "move_visual_up:7",
+        "history_previous",
+        "history_next",
+        "move_visual_page_up:7:3",
+        "move_visual_page_down:7:2",
+    ]
 
 
 def test_input_router_alt_angle_moves_to_line_boundaries() -> None:

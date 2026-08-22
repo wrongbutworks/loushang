@@ -285,6 +285,33 @@ def test_conversation_input_router_keeps_exit_and_local_policy_injected() -> Non
     assert app.state.running is False
 
 
+def test_conversation_input_router_translates_shared_prompt_editing_to_handled() -> None:
+    app = _ConversationApp()
+    app.composer.add_history("history")
+    app.composer.insert_text("abc def")
+    app.composer.move_to_line_start()
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+        width=7,
+        height=3,
+    )
+
+    jump = router.handle(InputEvent(kind="key", key="ctrl+]"))
+    jump_text = router.handle(InputEvent(kind="text", text="d"))
+    paste = router.handle(InputEvent(kind="paste", text="!"))
+    page = router.handle(InputEvent(kind="key", key="pageDown"))
+
+    app.composer.clear()
+    history = router.handle(InputEvent(kind="key", key="up"))
+
+    assert all(
+        isinstance(result, ConversationInputHandled)
+        for result in (jump, jump_text, paste, page, history)
+    )
+    assert app.composer.value == "history"
+
+
 def test_conversation_input_router_handles_local_command_while_run_is_active() -> None:
     app = _ConversationApp()
     app.start_prompt("question")
