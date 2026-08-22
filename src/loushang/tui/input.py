@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import InitVar, dataclass, field
+from dataclasses import KW_ONLY, InitVar, dataclass, field
 from typing import Literal, Protocol, cast
 
 from loushang.tui.framework import SurfaceHost
@@ -12,6 +12,7 @@ from loushang.tui.ui_parts import Composer
 InputEventKind = Literal["key", "text", "paste", "resize", "focus", "mouse", "signal"]
 InputIntentKind = Literal[
     "submit",
+    "prompt_cancel",
     "follow_up",
     "steer",
     "abort",
@@ -34,7 +35,6 @@ InputIntentKind = Literal[
     "command_cancel",
     "consumed",
 ]
-SubmitMode = Literal["submit", "follow_up", "steer"]
 KeyEventType = Literal["press", "repeat", "release"]
 
 ESC = "\x1b"
@@ -701,13 +701,12 @@ class _SurfaceRoute:
 class InputRouter:
     composer: Composer | None = None
     surface_host: SurfaceHost | None = None
-    running: bool = False
-    steering_supported: bool = False
+    _: KW_ONLY
     width: int = 80
     height: int = 24
     keybindings: KeybindingManager | None = None
-    _jump_mode: Literal["forward", "backward"] | None = None
     target: InitVar[PromptInputTarget | None] = None
+    _jump_mode: Literal["forward", "backward"] | None = field(default=None, init=False)
     _target: PromptInputTarget = field(init=False, repr=False)
 
     def __post_init__(self, target: PromptInputTarget | None) -> None:
@@ -726,16 +725,20 @@ class InputRouter:
         if event.kind == "key" and event.event_type == "release":
             return ()
         if event.kind == "key":
+            keybindings = self._keybindings()
+            is_cancel = keybindings.matches(event.key, "tui.select.cancel")
+            cancelled_pending_jump = False
             if self._jump_mode is not None:
-                keybindings = self._keybindings()
                 if keybindings.matches(event.key, "tui.editor.jumpForward") or keybindings.matches(
                     event.key,
                     "tui.editor.jumpBackward",
                 ):
                     self._jump_mode = None
-                    return ()
-                self._jump_mode = None
-            keybindings = self._keybindings()
+                    if not is_cancel:
+                        return ()
+                else:
+                    self._jump_mode = None
+                cancelled_pending_jump = is_cancel
             surface_route = self._route_surface_first(event)
             if surface_route.intents:
                 return surface_route.intents
@@ -752,16 +755,16 @@ class InputRouter:
                 return ()
             if target.has_completions and route_prompt_completion_key(target, event.key, keybindings=keybindings):
                 return ()
-            if keybindings.matches(event.key, "tui.select.cancel") and self.running:
-                return (InputIntent(kind="abort"),)
+            if is_cancel:
+                if cancelled_pending_jump:
+                    return ()
+                return (InputIntent(kind="prompt_cancel"),)
             if keybindings.matches(event.key, "tui.editor.jumpForward"):
                 self._jump_mode = "forward"
                 return ()
             if keybindings.matches(event.key, "tui.editor.jumpBackward"):
                 self._jump_mode = "backward"
                 return ()
-            if keybindings.matches(event.key, "tui.queue.editLast"):
-                return (InputIntent(kind="command", note="edit_last_queued_prompt"),)
             if keybindings.matches(event.key, "tui.input.tab"):
                 target.refresh_completions(force=True, explicit=True)
                 if target.has_completions:
@@ -819,20 +822,14 @@ class InputRouter:
             return (InputIntent(kind="invalidate_render"),)
         return ()
 
-    def submit(self, *, mode: SubmitMode = "submit") -> tuple[InputIntent, ...]:
+    def submit(self) -> tuple[InputIntent, ...]:
         target = self._target
         text = target.value
         if not text:
             return ()
         target.add_history(text)
         target.clear()
-        if not self.running:
-            return (InputIntent(kind="submit", text=text),)
-        if mode == "steer":
-            if self.steering_supported:
-                return (InputIntent(kind="steer", text=text),)
-            return (InputIntent(kind="follow_up", text=text, note="steer_unavailable"),)
-        return (InputIntent(kind="follow_up", text=text),)
+        return (InputIntent(kind="submit", text=text),)
 
     def _route_surface_first(self, event: InputEvent) -> _SurfaceRoute:
         if self.surface_host is None:

@@ -341,6 +341,14 @@ explicit entrypoints:
 - `loushang.harnesstui.conversation.screen_runner` owns the reusable terminal
   read/route/run loop over explicit screen, router, and result ports.
 
+`ConversationInputRouter` is the sole Harness conversation-input semantic
+owner. It interprets idle/running Enter, running-submit steer or follow-up,
+pending queue restore, and conversation cancellation. It reuses TUI
+`ComposerInputTarget` and editor helper functions, but does not delegate whole
+events to generic `loushang.tui.InputRouter` as a second run-state router.
+Generic TUI emits only neutral prompt/editor signals and has no conversation
+running state.
+
 These modules build conversation interaction from neutral UI values. They do
 not own a Harness Session, persistence, runtime construction, Product intent
 classes, model-facing image types, workspace paths, command policy, or product
@@ -521,6 +529,12 @@ outcomes through an optional product callback. Coding alone chooses the
 neutral attachments to `ImagePart` at the model-dispatch boundary. Its screen
 loop is a thin binding around `run_conversation_screen`; test-only aliases for
 shared runner and terminal helpers are not product APIs.
+
+Coding currently uses the router default `running_submit_mode="steer"` rather
+than injecting an explicit steering-capability policy. That injection remains
+deferred. Coding still supplies slash-command classification, final actions,
+and Product copy; the generic TUI router is not part of this conversation
+state machine.
 
 ## Plain Conversation Presentation
 
