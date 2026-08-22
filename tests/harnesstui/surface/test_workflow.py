@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import pytest
-
 import asyncio
 from dataclasses import dataclass, field, replace
 from types import SimpleNamespace
+
+import pytest
 
 from loushang.harness.commands import CommandDef, CommandKind
 from loushang.harness.continuity import ContinuityTarget

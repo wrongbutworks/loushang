@@ -29,6 +29,7 @@ SurfaceEventSource = Literal[
     "command",
     "settings",
     "session",
+    "session_cancel",
     "delete",
     "fork",
     "rename",
