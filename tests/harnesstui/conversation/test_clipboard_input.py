@@ -10,6 +10,8 @@ from loushang.harnesstui.conversation.attachments import (
 from loushang.harnesstui.conversation.input import (
     ClipboardImageInputProfile,
     ClipboardImageStatusCopy,
+    ConversationClipboardResult,
+    ConversationFollowupResult,
     bind_clipboard_image_input_router,
 )
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
@@ -91,9 +93,9 @@ def test_clipboard_image_input_binding_follows_the_replaced_app(
     assert replacement.composer.value == "@images/clipboard-sample.png "
     assert replacement.statuses == ["attached: images/clipboard-sample.png"]
     assert original.statuses == []
-    assert result.clipboard_outcome is not None
-    assert result.clipboard_outcome.attachment is not None
-    assert result.clipboard_outcome.attachment.path == expected
+    assert isinstance(result, ConversationClipboardResult)
+    assert result.outcome.attachment is not None
+    assert result.outcome.attachment.path == expected
 
 
 def test_clipboard_image_status_copy_formats_every_neutral_outcome(
@@ -159,6 +161,5 @@ def test_clipboard_image_input_binding_forwards_router_policy() -> None:
 
     result = router.handle(InputEvent(kind="key", key="enter"))
 
-    assert result.followup_text == "later"
-    assert result.steer_text is None
+    assert result == ConversationFollowupResult(text="later")
     assert app.state.pending_followups == ["later"]

@@ -3,11 +3,23 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
+
 from loushang.harnesstui.conversation.attachments import (
     PromptImageAttachment,
     PromptImageAttachmentOutcome,
 )
-from loushang.harnesstui.conversation.input import ConversationInputRouter
+from loushang.harnesstui.conversation.input import (
+    ConversationClipboardResult,
+    ConversationExitResult,
+    ConversationFollowupResult,
+    ConversationInputHandled,
+    ConversationInputIgnored,
+    ConversationInputRouter,
+    ConversationLocalResult,
+    ConversationPromptResult,
+    ConversationSurfaceResult,
+)
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.tui import Composer, InputEvent, InputIntent, SurfaceHost
 
@@ -47,6 +59,48 @@ def _attachment(tmp_path: Path, *, name: str = "image") -> PromptImageAttachment
     )
 
 
+def test_conversation_input_results_are_discriminated_and_payload_valid() -> None:
+    from loushang.harnesstui.conversation.input import (
+        ConversationAbortResult,
+        ConversationClipboardResult,
+        ConversationExitResult,
+        ConversationFollowupResult,
+        ConversationInputHandled,
+        ConversationInputIgnored,
+        ConversationLocalResult,
+        ConversationPromptResult,
+        ConversationSteerResult,
+        ConversationSurfaceResult,
+    )
+
+    assert ConversationInputHandled().kind == "handled"
+    assert ConversationInputHandled().render_requested is True
+    assert ConversationInputIgnored().kind == "ignored"
+    assert ConversationInputIgnored().render_requested is False
+    assert ConversationPromptResult(text="prompt").kind == "prompt"
+    assert ConversationLocalResult(text="/local").kind == "local"
+    assert ConversationSteerResult(text="steer").kind == "steer"
+    assert ConversationFollowupResult(text="later").kind == "follow_up"
+    assert ConversationSurfaceResult(intent=InputIntent(kind="select")).kind == (
+        "surface"
+    )
+    assert ConversationClipboardResult(
+        outcome=PromptImageAttachmentOutcome(kind="empty")
+    ).kind == "clipboard"
+    assert ConversationAbortResult().kind == "abort"
+    assert ConversationExitResult(exit_code=7).kind == "exit"
+
+    with pytest.raises(TypeError):
+        ConversationPromptResult(text="prompt", exit_code=7)  # type: ignore[call-arg]
+
+
+def test_conversation_input_result_field_bag_constructor_is_removed() -> None:
+    from loushang.harnesstui.conversation.input import ConversationInputResult
+
+    with pytest.raises(TypeError):
+        ConversationInputResult(prompt_text="prompt")  # type: ignore[misc]
+
+
 def test_conversation_input_router_submits_neutral_prompt_attachments(
     tmp_path: Path,
 ) -> None:
@@ -66,10 +120,11 @@ def test_conversation_input_router_submits_neutral_prompt_attachments(
     app.composer.insert_text("describe")
     submit_result = router.handle(InputEvent(kind="key", key="enter"))
 
-    assert paste_result.clipboard_outcome is not None
-    assert paste_result.clipboard_outcome.attachment is attachment
-    assert submit_result.prompt_text == "@image.png describe"
-    assert submit_result.prompt_attachments == (attachment,)
+    assert isinstance(paste_result, ConversationClipboardResult)
+    assert paste_result.outcome.attachment is attachment
+    assert isinstance(submit_result, ConversationPromptResult)
+    assert submit_result.text == "@image.png describe"
+    assert submit_result.attachments == (attachment,)
     assert app.state.running is True
     assert app.composer.value == ""
 
@@ -94,9 +149,9 @@ def test_conversation_input_router_preserves_running_followup_priority(
 
     result = router.handle(InputEvent(kind="key", key="alt+enter"))
 
-    assert result.followup_text == "@image.png later"
-    assert result.followup_attachments == (attachment,)
-    assert result.steer_text is None
+    assert isinstance(result, ConversationFollowupResult)
+    assert result.text == "@image.png later"
+    assert result.attachments == (attachment,)
     assert app.state.pending_followups == ["@image.png later"]
 
 
@@ -115,7 +170,8 @@ def test_conversation_input_router_routes_active_surface_before_composer() -> No
 
     result = router.handle(InputEvent(kind="key", key="enter"))
 
-    assert result.surface_intent == InputIntent(kind="select", text="choice")
+    assert isinstance(result, ConversationSurfaceResult)
+    assert result.intent == InputIntent(kind="select", text="choice")
     assert app.composer.value == "draft"
     assert app.state.running is False
 
@@ -133,8 +189,8 @@ def test_conversation_input_router_keeps_exit_and_local_policy_injected() -> Non
     app.composer.set_text("/quit")
     exit_result = router.handle(InputEvent(kind="key", key="enter"))
 
-    assert local_result.local_text == "/model"
-    assert exit_result.exit_code == 0
+    assert local_result == ConversationLocalResult(text="/model")
+    assert exit_result == ConversationExitResult(exit_code=0)
     assert app.state.running is False
 
 
@@ -150,9 +206,7 @@ def test_conversation_input_router_handles_local_command_while_run_is_active() -
 
     result = router.handle(InputEvent(kind="key", key="enter"))
 
-    assert result.local_text == "/agents"
-    assert result.steer_text is None
-    assert result.followup_text is None
+    assert result == ConversationLocalResult(text="/agents")
     assert app.state.running is True
     assert app.state.pending_steers == []
     assert app.state.pending_followups == []
@@ -170,7 +224,7 @@ def test_conversation_input_router_restores_pending_messages() -> None:
 
     result = router.handle(InputEvent(kind="key", key="alt+up"))
 
-    assert result.render_requested is True
+    assert isinstance(result, ConversationInputHandled)
     assert app.composer.value == "first\nsecond"
     assert app.state.pending_steers == []
     assert app.state.pending_followups == []
@@ -187,8 +241,7 @@ def test_conversation_input_router_reports_unconfigured_clipboard_as_unhandled()
 
     result = router.handle(InputEvent(kind="key", key="ctrl+v"))
 
-    assert result.render_requested is False
-    assert result.clipboard_outcome is None
+    assert isinstance(result, ConversationInputIgnored)
 
 
 def test_conversation_input_router_presents_each_clipboard_outcome_once(
@@ -221,5 +274,7 @@ def test_conversation_input_router_presents_each_clipboard_outcome_once(
 
     assert [outcome.kind for outcome, _text in presented] == ["attached", "empty"]
     assert presented[0][1] == "@image.png "
-    assert attached.clipboard_outcome is presented[0][0]
-    assert empty.clipboard_outcome is presented[1][0]
+    assert isinstance(attached, ConversationClipboardResult)
+    assert isinstance(empty, ConversationClipboardResult)
+    assert attached.outcome is presented[0][0]
+    assert empty.outcome is presented[1][0]
