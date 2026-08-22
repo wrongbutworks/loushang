@@ -4,7 +4,7 @@ from bisect import bisect_right
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import ClassVar, Literal, Protocol
+from typing import ClassVar, Literal, Protocol, overload
 
 from loushang.tui.cell_width import normalize_terminal_output, visible_width
 from loushang.tui.core import (
@@ -54,6 +54,12 @@ class _SegmentedTextLines(Sequence[str]):
     def __iter__(self) -> Iterator[str]:
         for segment in self.segments:
             yield from self._segment_lines(segment)
+
+    @overload
+    def __getitem__(self, index: int) -> str: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[str, ...]: ...
 
     def __getitem__(self, index: int | slice) -> str | tuple[str, ...]:
         if isinstance(index, slice):
@@ -131,9 +137,9 @@ DEFAULT_STRATEGY_ORDER: tuple[RenderPlanStrategyKind, ...] = (
 class RenderPlanContext:
     size: TerminalSize
     result: RenderResult
-    raw_current_lines: tuple[str, ...]
-    current_lines: tuple[str, ...]
-    previous_lines: tuple[str, ...]
+    raw_current_lines: Sequence[str]
+    current_lines: Sequence[str]
+    previous_lines: Sequence[str]
     previous_size: TerminalSize | None
     declared_cursor: CursorDeclaration | None
     cursor: CursorDeclaration
@@ -698,11 +704,11 @@ class RenderLoop:
         self._planned_materialized_line_count = 0
         self._planned_flattened_line_count = 0
         if not isinstance(result.lines, SegmentedRenderLines):
-            raw_lines = tuple(line.text for line in result.lines)
-            self._planned_flattened_line_count = len(raw_lines)
-            self._planned_materialized_line_count = len(raw_lines)
-            return raw_lines, _finalize_rendered_lines(
-                raw_lines,
+            flat_raw_lines = tuple(line.text for line in result.lines)
+            self._planned_flattened_line_count = len(flat_raw_lines)
+            self._planned_materialized_line_count = len(flat_raw_lines)
+            return flat_raw_lines, _finalize_rendered_lines(
+                flat_raw_lines,
                 previous_raw_lines=self.previous_raw_lines,
                 previous_finalized_lines=self.previous_rendered_lines,
             )
@@ -762,8 +768,8 @@ class RenderLoop:
     def _managed_viewport_repaint_diagnostics(
         self,
         *,
-        current_lines: tuple[str, ...],
-        previous_lines: tuple[str, ...],
+        current_lines: Sequence[str],
+        previous_lines: Sequence[str],
         size: TerminalSize,
         changed_range: tuple[int, int] | None,
         cursor: CursorDeclaration,
@@ -830,8 +836,8 @@ class RenderLoop:
     def _repaint_diagnostics(
         self,
         *,
-        current_lines: tuple[str, ...],
-        previous_lines: tuple[str, ...],
+        current_lines: Sequence[str],
+        previous_lines: Sequence[str],
         size: TerminalSize,
         changed_range: tuple[int, int] | None,
         cursor: CursorDeclaration,
@@ -872,8 +878,8 @@ class RenderLoop:
     def _diagnostics(
         self,
         *,
-        current_lines: tuple[str, ...],
-        previous_lines: tuple[str, ...],
+        current_lines: Sequence[str],
+        previous_lines: Sequence[str],
         size: TerminalSize,
         operation_class: str,
         operations: tuple[TerminalOperation, ...],
@@ -988,14 +994,14 @@ def _expand_changed_range_for_kitty_images(
 
 def _kitty_delete_sequences(lines: Sequence[str]) -> tuple[str, ...]:
     if isinstance(lines, _SegmentedTextLines):
-        deletes: list[str] = []
-        seen: set[int] = set()
+        segmented_deletes: list[str] = []
+        segmented_seen: set[int] = set()
         for _row, image_id, delete_sequence in lines.iter_kitty_images():
-            if image_id in seen:
+            if image_id in segmented_seen:
                 continue
-            seen.add(image_id)
-            deletes.append(delete_sequence)
-        return tuple(deletes)
+            segmented_seen.add(image_id)
+            segmented_deletes.append(delete_sequence)
+        return tuple(segmented_deletes)
     deletes: list[str] = []
     seen: set[int] = set()
     for line in lines:
@@ -1037,8 +1043,8 @@ def _line_uses_tmux_passthrough(line: str) -> bool:
 def _finalize_rendered_lines(
     lines: tuple[str, ...],
     *,
-    previous_raw_lines: tuple[str, ...] = (),
-    previous_finalized_lines: tuple[str, ...] = (),
+    previous_raw_lines: Sequence[str] = (),
+    previous_finalized_lines: Sequence[str] = (),
 ) -> tuple[str, ...]:
     finalized: list[str] = []
     reusable_count = min(len(lines), len(previous_raw_lines), len(previous_finalized_lines))
@@ -1090,7 +1096,7 @@ def _finalize_render_segment(segment: RenderLineSegmentLike) -> _LogicalLineSegm
     )
 
 
-def _viewport_top(lines: tuple[str, ...], size: TerminalSize) -> int:
+def _viewport_top(lines: Sequence[str], size: TerminalSize) -> int:
     return max(0, len(lines) - size.rows)
 
 
@@ -1107,7 +1113,7 @@ def _differential_viewport_top(
 
 
 def _full_write_operations(
-    lines: tuple[str, ...], *, cursor: CursorDeclaration | None, viewport_top: int
+    lines: Sequence[str], *, cursor: CursorDeclaration | None, viewport_top: int
 ) -> tuple[TerminalOperation, ...]:
     return _render_then_position_cursor(
         _write_lines(lines),
@@ -1118,7 +1124,7 @@ def _full_write_operations(
 
 
 def _repaint_operations(
-    lines: tuple[str, ...],
+    lines: Sequence[str],
     *,
     clear_scrollback: bool,
     cursor: CursorDeclaration | None,
@@ -1142,9 +1148,9 @@ def _repaint_operations(
 
 
 def _managed_viewport_repaint_operations(
-    lines: tuple[str, ...],
+    lines: Sequence[str],
     *,
-    previous_lines: tuple[str, ...],
+    previous_lines: Sequence[str],
     cursor: CursorDeclaration | None,
     viewport_top: int,
     previous_viewport_top: int,
@@ -1226,7 +1232,7 @@ def _managed_viewport_repaint_operations(
 
 
 def _append_operations(
-    lines: tuple[str, ...],
+    lines: Sequence[str],
     *,
     append_start: int,
     hardware_cursor_row: int,
@@ -1253,8 +1259,8 @@ def _append_operations(
 
 def _protected_append_plan(
     *,
-    current_lines: tuple[str, ...],
-    previous_lines: tuple[str, ...],
+    current_lines: Sequence[str],
+    previous_lines: Sequence[str],
     first_changed: int,
     appended_lines: int,
     cursor: CursorDeclaration | None,
@@ -1278,8 +1284,8 @@ def _protected_append_plan(
 
 def _protected_append_candidate(
     *,
-    current_lines: tuple[str, ...],
-    previous_lines: tuple[str, ...],
+    current_lines: Sequence[str],
+    previous_lines: Sequence[str],
     first_changed: int,
     appended_lines: int,
     cursor: CursorDeclaration | None,
@@ -1319,8 +1325,8 @@ def _cursor_update_operations(
 
 def _shrink_clear_operations(
     *,
-    previous_lines: tuple[str, ...],
-    current_lines: tuple[str, ...],
+    previous_lines: Sequence[str],
+    current_lines: Sequence[str],
     target_row: int,
     hardware_cursor_row: int,
     delete_kitty_image_sequences: tuple[str, ...] = (),
@@ -1344,8 +1350,8 @@ def _shrink_clear_operations(
 
 def _changed_range_operations(
     *,
-    current_lines: tuple[str, ...],
-    previous_lines: tuple[str, ...],
+    current_lines: Sequence[str],
+    previous_lines: Sequence[str],
     changed_range: tuple[int, int],
     previous_viewport_top: int,
     hardware_cursor_row: int,
@@ -1378,7 +1384,7 @@ def _changed_range_operations(
     )
 
 
-def _write_lines(lines: tuple[str, ...]) -> tuple[TerminalOperation, ...]:
+def _write_lines(lines: Sequence[str]) -> tuple[TerminalOperation, ...]:
     operations: list[TerminalOperation] = []
     for index, line in enumerate(lines):
         if index > 0:
@@ -1441,7 +1447,9 @@ def _cursor_position_operations(
     return tuple(operations)
 
 
-def _cursor_or_line_end(cursor: CursorDeclaration | None, lines: tuple[str, ...]) -> CursorDeclaration:
+def _cursor_or_line_end(
+    cursor: CursorDeclaration | None, lines: Sequence[str]
+) -> CursorDeclaration:
     if cursor is not None:
         return cursor
     row = max(0, len(lines) - 1)
@@ -1451,8 +1459,8 @@ def _cursor_or_line_end(cursor: CursorDeclaration | None, lines: tuple[str, ...]
 
 def _changed_range_hardware_cursor(
     *,
-    current_lines: tuple[str, ...],
-    previous_lines: tuple[str, ...],
+    current_lines: Sequence[str],
+    previous_lines: Sequence[str],
     render_end: int,
     declared_cursor: CursorDeclaration | None,
     size: TerminalSize,
@@ -1475,7 +1483,9 @@ def _should_clear_scrollback(*, policy: ClearScrollbackPolicy, repaint_kind: str
     return False
 
 
-def _hardware_row_after_write(lines: tuple[str, ...], *, cursor: CursorDeclaration | None) -> int:
+def _hardware_row_after_write(
+    lines: Sequence[str], *, cursor: CursorDeclaration | None
+) -> int:
     if cursor is not None:
         return cursor.row
     return max(0, len(lines) - 1)
