@@ -101,6 +101,13 @@ Physical keys remain independently configurable: Enter is
 `tui.input.newLine`; `ConversationInputRouter` resolves the running-state
 priority.
 
+Keybinding defaults are composed by owner. Generic TUI provides the Core
+`TUI_CORE_KEYBINDING_CATALOG`; HarnessTUI adds conversation or continuity
+catalogs when those surfaces are constructed. Duplicate action definitions
+fail during catalog composition, while user overrides are retained until the
+owning catalog is available. Clipboard-image paste is the conversation action
+`conversation.input.pasteImage` (Ctrl+V by default).
+
 Composer selections use atom indexes. Normal text is split into grapheme-like
 text atoms; large paste markers are single atoms and are never split by range
 editing.
@@ -121,6 +128,11 @@ Only `composer` and `surface_host` remain positional. `width`, `height`,
 `keybindings`, and `target` are keyword-only. Legacy calls such as
 `InputRouter(composer, None, True)` now raise `TypeError` instead of silently
 binding `True` to `width`.
+
+The former `app.clipboard.pasteImage` setting is replaced by
+`conversation.input.pasteImage`. This pre-1.0 rename reflects that clipboard
+images are a shared HarnessTUI conversation capability rather than a Coding
+application action.
 
 ## Default Editing Keys
 

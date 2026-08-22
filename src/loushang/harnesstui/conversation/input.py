@@ -14,8 +14,15 @@ from loushang.harnesstui.conversation.attachments import (
     new_prompt_image_name_token,
     stage_clipboard_image,
 )
+from loushang.harnesstui.conversation.clipboard_policy import (
+    STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE,
+    ClipboardImageInputProfile,
+    ClipboardImageStatusCopy,
+)
 from loushang.harnesstui.conversation.input_policy import (
     CONVERSATION_FOLLOW_UP_ACTION,
+    CONVERSATION_PASTE_IMAGE_ACTION,
+    CONVERSATION_QUEUE_EDIT_LAST_ACTION,
     DEFAULT_CONVERSATION_INPUT_POLICY,
     ConversationInputPolicy,
     RunningSubmitMode,
@@ -61,45 +68,8 @@ class ClipboardImageConversationInputPort(ConversationScreenInputPort, Protocol)
     def set_status(self, message: str | None) -> None: ...
 
 
-@dataclass(frozen=True, slots=True)
-class ClipboardImageStatusCopy:
-    """Caller-supplied copy for neutral clipboard attachment outcomes."""
-
-    empty: str
-    read_error_prefix: str
-    unsupported_prefix: str
-    write_error_prefix: str
-    attached_prefix: str
-    unknown_type: str
-
-    def message(self, outcome: PromptImageAttachmentOutcome) -> str | None:
-        if outcome.kind == "empty":
-            return self.empty
-        if outcome.kind == "read_error":
-            return f"{self.read_error_prefix}{outcome.error_message}"
-        if outcome.kind == "unsupported":
-            return f"{self.unsupported_prefix}{outcome.mime_type or self.unknown_type}"
-        if outcome.kind == "write_error":
-            return f"{self.write_error_prefix}{outcome.error_message}"
-        if outcome.attachment is not None:
-            return f"{self.attached_prefix}{outcome.attachment.display_path}"
-        return None
-
-
-ClipboardImageAppPath = Callable[[ConversationScreenInputPort], Path | str]
-
-
-@dataclass(frozen=True, slots=True)
-class ClipboardImageInputProfile:
-    """Product policy injected into app-aware clipboard image routing."""
-
-    directory: ClipboardImageAppPath
-    display_root: ClipboardImageAppPath
-    status_copy: ClipboardImageStatusCopy
-
-
 class ClipboardImageInputRouterBuilder(Protocol):
-    """Construct a clipboard-enabled router from one bound product profile."""
+    """Construct a clipboard-enabled router from one bound workspace profile."""
 
     def __call__(
         self,
@@ -292,7 +262,7 @@ class ConversationInputRouter:
                 self._jump_mode = None
                 return ConversationInputHandled()
             self._jump_mode = None
-        if keybindings.matches(event.key, "tui.queue.editLast"):
+        if keybindings.matches(event.key, CONVERSATION_QUEUE_EDIT_LAST_ACTION):
             self._restore_queued_messages()
             return ConversationInputHandled()
         if keybindings.matches(event.key, "tui.transcript.open"):
@@ -324,7 +294,7 @@ class ConversationInputRouter:
             if self.app.composer.has_completions:
                 self.app.composer.apply_selected_completion()
             return ConversationInputHandled()
-        if keybindings.matches(event.key, "app.clipboard.pasteImage"):
+        if keybindings.matches(event.key, CONVERSATION_PASTE_IMAGE_ACTION):
             return self._paste_clipboard_image()
         if keybindings.matches(event.key, "tui.editor.jumpForward"):
             self._jump_mode = "forward"
@@ -544,7 +514,7 @@ class ConversationInputRouter:
 
 
 def bind_clipboard_image_input_router(
-    profile: ClipboardImageInputProfile,
+    profile: ClipboardImageInputProfile = STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE,
     *,
     policy: ConversationInputPolicy = DEFAULT_CONVERSATION_INPUT_POLICY,
 ) -> ClipboardImageInputRouterBuilder:

@@ -61,7 +61,7 @@ def test_coding_input_binding_follows_a_replaced_app(tmp_path: Path) -> None:
     )
 
 
-def test_coding_input_binding_preserves_product_clipboard_status_copy(
+def test_coding_input_binding_uses_shared_clipboard_status_copy(
     tmp_path: Path,
 ) -> None:
     def fail_to_read():

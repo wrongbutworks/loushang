@@ -21,8 +21,12 @@ from loushang.harnesstui.conversation.input import (
     ConversationSurfaceResult,
 )
 from loushang.harnesstui.conversation.input_policy import (
+    CONVERSATION_FOLLOW_UP_ACTION,
+    CONVERSATION_PASTE_IMAGE_ACTION,
+    CONVERSATION_QUEUE_EDIT_LAST_ACTION,
     ConversationInputCapabilities,
     ConversationInputPolicy,
+    conversation_keybinding_manager,
 )
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.tui import Composer, InputEvent, InputIntent, SurfaceHost
@@ -50,6 +54,21 @@ class _ConversationApp:
 
     def queue_steer(self, text: str) -> None:
         self.state.queue_steer(text)
+
+
+def test_conversation_keybinding_catalog_owns_conversation_actions() -> None:
+    manager = conversation_keybinding_manager()
+
+    assert manager.keys_for(CONVERSATION_FOLLOW_UP_ACTION) == ("alt+enter",)
+    assert manager.keys_for(CONVERSATION_PASTE_IMAGE_ACTION) == ("ctrl+v",)
+    assert manager.keys_for(CONVERSATION_QUEUE_EDIT_LAST_ACTION) == ("alt+up",)
+    assert manager.keys_for("app.clipboard.pasteImage") == ()
+
+
+def test_conversation_keybinding_catalog_is_idempotent_for_bound_managers() -> None:
+    manager = conversation_keybinding_manager()
+
+    assert conversation_keybinding_manager(manager) is manager
 
 
 def _attachment(tmp_path: Path, *, name: str = "image") -> PromptImageAttachment:

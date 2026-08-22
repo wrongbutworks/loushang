@@ -17,6 +17,12 @@ from loushang.harness.continuity import (
     ContinuityTarget,
     StableContinuityReference,
 )
+from loushang.harnesstui.continuity.keybindings import (
+    CONTINUITY_DOMAIN_ACTION,
+    CONTINUITY_PREVIEW_ACTION,
+    CONTINUITY_SORT_ACTION,
+    continuity_keybinding_manager,
+)
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.tui import (
     CursorDeclaration,
@@ -91,11 +97,7 @@ class ContinuitySurface:
         self._theme = theme if theme is not None else CONTINUITY_PAGE_THEME
         self._include_summary = include_summary or (lambda _summary: True)
         self._selection_action = selection_action
-        self._keybindings = (
-            keybindings
-            if isinstance(keybindings, KeybindingManager)
-            else KeybindingManager(keybindings)
-        )
+        self._keybindings = continuity_keybinding_manager(keybindings)
         self._query = ContinuityQuery(page_size=page_size)
         self._summaries: list[ContinuitySummary] = []
         self._targets: dict[str, ContinuityTarget] = {}
@@ -277,12 +279,12 @@ class ContinuitySurface:
             f"{self._key_label('tui.select.cancel')} exit",
         ]
         if len(self._domain_options) > 1:
-            hints.append(f"{self._key_label('tui.continuity.domain')} domain")
+            hints.append(f"{self._key_label(CONTINUITY_DOMAIN_ACTION)} domain")
         if len(self._sort_options()) > 1:
-            hints.append(f"{self._key_label('tui.continuity.sort')} sort")
+            hints.append(f"{self._key_label(CONTINUITY_SORT_ACTION)} sort")
         hints.extend(
             (
-                f"{self._key_label('tui.continuity.preview')} preview",
+                f"{self._key_label(CONTINUITY_PREVIEW_ACTION)} preview",
                 f"{self._key_label('tui.select.up')}/"
                 f"{self._key_label('tui.select.down')} browse",
             )
@@ -683,9 +685,9 @@ class ContinuitySurface:
         if event.kind != "key":
             return event
         actions = (
-            ("tui.continuity.preview", "space"),
-            ("tui.continuity.domain", "tab"),
-            ("tui.continuity.sort", "ctrl+s"),
+            (CONTINUITY_PREVIEW_ACTION, "space"),
+            (CONTINUITY_DOMAIN_ACTION, "tab"),
+            (CONTINUITY_SORT_ACTION, "ctrl+s"),
             ("tui.select.confirm", "enter"),
             ("tui.select.cancel", "escape"),
             ("tui.select.up", "up"),

@@ -322,9 +322,12 @@ conversation Python package initializer.
 
 ## Conversation Interaction Control
 
-The reusable control plane for a full-screen conversation lives behind seven
+The reusable control plane for a full-screen conversation lives behind eight
 explicit entrypoints:
 
+- `loushang.harnesstui.conversation.clipboard_policy` owns the standard
+  workspace staging path and user-facing copy for conversation clipboard
+  images;
 - `loushang.harnesstui.conversation.input_policy` owns neutral projected input
   capabilities, steer-first/fallback policy, and conversation keybinding
   definitions;
@@ -353,14 +356,14 @@ Generic TUI emits only neutral prompt/editor signals and has no conversation
 running state.
 
 These modules build conversation interaction from neutral UI values. They do
-not own a Harness Session, persistence, runtime construction, Product intent
-classes, model-facing image types, workspace paths, command policy, or product
-copy. `ConversationRoutingProfile` receives the parser, exit predicate, local
-action mapping, follow-up projection, command effect resolver, and lifecycle
-as explicit callbacks, then compiles them into the existing
-`ConversationHostProfile`. In particular, Coding keeps `PromptIntent` and
-`BashIntent`, `ImagePart`, Session and observability setup, `.loushang` storage
-policy, and its interruption, queue, and error messages.
+not own a Harness Session, runtime construction, Product intent classes,
+model-facing image types, or command policy. `ConversationRoutingProfile`
+receives the parser, exit predicate, local action mapping, follow-up projection,
+command effect resolver, and lifecycle as explicit callbacks, then compiles
+them into the existing `ConversationHostProfile`. Harnesstui's standard
+clipboard profile owns `.loushang/clipboard` staging and generic outcome copy;
+Coding keeps `PromptIntent` and `BashIntent`, `ImagePart`, Session and
+observability setup, and its interruption, queue, and error messages.
 
 The action host is a dependency-inversion seam, not a second lifecycle or
 dispatch engine. Plain products may compose the existing run-control,
@@ -526,12 +529,12 @@ from being recreated accidentally.
 
 Coding's screen input binding now constructs the canonical
 `ConversationInputRouter` directly. Harnesstui keeps staged prompt images as
-neutral `PromptImageAttachment` values through routing and exposes clipboard
-outcomes through an optional product callback. Coding alone chooses the
-`.loushang/clipboard` workspace path, presents product status copy, and converts
-neutral attachments to `ImagePart` at the model-dispatch boundary. Its screen
-loop is a thin binding around `run_conversation_screen`; test-only aliases for
-shared runner and terminal helpers are not product APIs.
+neutral `PromptImageAttachment` values through routing, provides the standard
+workspace clipboard profile, and exposes clipboard outcomes through an optional
+caller callback. Coding consumes that shared profile and converts neutral
+attachments to `ImagePart` at the model-dispatch boundary. Its screen loop is a
+thin binding around `run_conversation_screen`; test-only aliases for shared
+runner and terminal helpers are not product APIs.
 
 Harness `SessionOperationRuntime` declares and enforces steering and follow-up
 input delivery through `SessionInputCapabilities`. The standard Agent binding
@@ -542,12 +545,14 @@ default and may bind another `ConversationInputPolicy` without changing the
 Harness capability declaration. Capability projection reads resolver binding
 metadata and must not resolve an active Session during application preparation.
 
-Harnesstui owns the `conversation.input.followUp` keybinding action and its
-Alt+Enter default. User keybinding settings may override the physical key,
-while running-state interpretation remains in `ConversationInputRouter`.
-Coding formats its hotkey help from the resolved keybindings instead of
-hard-coding Alt+Enter. Coding still supplies slash-command classification,
-final actions, and Product copy; the generic TUI router is not part of this
+Generic TUI exposes an immutable, duplicate-safe `KeybindingCatalog` and owns
+only its Core action definitions. Harnesstui composes separate conversation and
+continuity catalogs over Core. The conversation catalog owns
+`conversation.input.followUp`, `conversation.input.pasteImage`, and queue edit;
+the continuity catalog owns preview, domain, and sort. User settings remain raw
+until the applicable catalog is composed, so plugin actions can be configured
+without moving their defaults into TUI. Coding formats its hotkey help from the
+resolved conversation catalog. The generic TUI router is not part of this
 conversation state machine.
 
 ## Plain Conversation Presentation

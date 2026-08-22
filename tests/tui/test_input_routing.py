@@ -7,6 +7,7 @@ from typing import Any, Literal
 import pytest
 
 from loushang.tui import (
+    TUI_CORE_KEYBINDING_CATALOG,
     CommandSurface,
     CompletionItem,
     CompletionProvider,
@@ -16,6 +17,7 @@ from loushang.tui import (
     InputIntent,
     InputReader,
     InputRouter,
+    KeybindingCatalog,
     KeybindingConflict,
     KeybindingManager,
     RenderConstraints,
@@ -420,7 +422,6 @@ def test_keybinding_manager_normalizes_legacy_alt_arrow_aliases() -> None:
 
     assert manager.matches("alt_left", "tui.editor.cursorWordLeft")
     assert manager.matches("alt_right", "tui.editor.cursorWordRight")
-    assert manager.matches("alt_up", "tui.queue.editLast")
     assert manager.matches("alt_down", "tui.select.down")
 
 
@@ -447,6 +448,56 @@ def test_keybinding_manager_extends_definitions_without_losing_user_overrides() 
     assert manager.keys_for("conversation.input.followUp") == ()
     assert extended.keys_for("conversation.input.followUp") == ("ctrl+enter",)
     assert extended.keys_for("tui.input.submit") == ("enter",)
+
+
+def test_keybinding_catalog_composes_plugin_actions_with_user_overrides() -> None:
+    plugin_catalog = KeybindingCatalog.from_definitions(
+        {"plugin.action": "ctrl+p"}
+    )
+    catalog = TUI_CORE_KEYBINDING_CATALOG.compose(plugin_catalog)
+    manager = KeybindingManager(
+        {"plugin.action": ("alt+p",)},
+        catalog=catalog,
+    )
+
+    assert manager.keys_for("tui.input.submit") == ("enter",)
+    assert manager.keys_for("plugin.action") == ("alt+p",)
+
+
+def test_composed_catalog_reports_cross_owner_user_binding_conflicts() -> None:
+    catalog = TUI_CORE_KEYBINDING_CATALOG.compose(
+        KeybindingCatalog.from_definitions({"plugin.action": ("ctrl+p",)})
+    )
+    manager = KeybindingManager(
+        {
+            "tui.input.submit": ("ctrl+p",),
+            "plugin.action": ("ctrl+p",),
+        },
+        catalog=catalog,
+    )
+
+    assert manager.conflicts() == (
+        KeybindingConflict(
+            key="ctrl+p",
+            action_ids=("plugin.action", "tui.input.submit"),
+        ),
+    )
+
+
+def test_keybinding_catalog_rejects_duplicate_action_ownership() -> None:
+    first = KeybindingCatalog.from_definitions({"plugin.action": ("ctrl+p",)})
+    second = KeybindingCatalog.from_definitions({"plugin.action": ("alt+p",)})
+
+    with pytest.raises(ValueError, match="plugin.action"):
+        first.compose(second)
+
+
+def test_tui_core_keybinding_catalog_excludes_upper_layer_actions() -> None:
+    manager = KeybindingManager()
+
+    assert manager.keys_for("conversation.input.pasteImage") == ()
+    assert manager.keys_for("tui.queue.editLast") == ()
+    assert manager.keys_for("tui.continuity.preview") == ()
 
 
 def test_keybinding_manager_matches_terminal_underscore_undo_alias() -> None:

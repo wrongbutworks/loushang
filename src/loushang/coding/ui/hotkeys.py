@@ -3,6 +3,7 @@ from __future__ import annotations
 from loushang.coding.ui.screen_input import CODING_CONVERSATION_INPUT_POLICY
 from loushang.harnesstui.conversation.input_policy import (
     CONVERSATION_FOLLOW_UP_ACTION,
+    CONVERSATION_QUEUE_EDIT_LAST_ACTION,
     ConversationInputCapabilities,
     ConversationInputPolicy,
     conversation_keybinding_manager,
@@ -31,7 +32,7 @@ def format_hotkeys(
     )
     edit_queue_key = _action_key(
         manager,
-        "tui.queue.editLast",
+        CONVERSATION_QUEUE_EDIT_LAST_ACTION,
         separator="-",
     )
     primary_mode = policy.resolve_running_submit(capabilities)

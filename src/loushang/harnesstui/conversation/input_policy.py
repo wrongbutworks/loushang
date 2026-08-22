@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
 from loushang.tui.keybindings import (
+    KeybindingCatalog,
     KeybindingConfig,
     KeybindingManager,
 )
@@ -13,9 +14,16 @@ from loushang.tui.keybindings import (
 RunningSubmitMode: TypeAlias = Literal["steer", "follow_up"]
 
 CONVERSATION_FOLLOW_UP_ACTION = "conversation.input.followUp"
+CONVERSATION_PASTE_IMAGE_ACTION = "conversation.input.pasteImage"
+CONVERSATION_QUEUE_EDIT_LAST_ACTION = "tui.queue.editLast"
 CONVERSATION_KEYBINDING_DEFINITIONS = {
     CONVERSATION_FOLLOW_UP_ACTION: ("alt+enter",),
+    CONVERSATION_PASTE_IMAGE_ACTION: ("ctrl+v",),
+    CONVERSATION_QUEUE_EDIT_LAST_ACTION: ("alt+up",),
 }
+CONVERSATION_KEYBINDING_CATALOG = KeybindingCatalog.from_definitions(
+    CONVERSATION_KEYBINDING_DEFINITIONS
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,12 +67,15 @@ def conversation_keybinding_manager(
         if isinstance(keybindings, KeybindingManager)
         else KeybindingManager(keybindings)
     )
-    return manager.with_definitions(CONVERSATION_KEYBINDING_DEFINITIONS)
+    return manager.with_catalog(CONVERSATION_KEYBINDING_CATALOG)
 
 
 __all__ = [
     "CONVERSATION_FOLLOW_UP_ACTION",
+    "CONVERSATION_KEYBINDING_CATALOG",
     "CONVERSATION_KEYBINDING_DEFINITIONS",
+    "CONVERSATION_PASTE_IMAGE_ACTION",
+    "CONVERSATION_QUEUE_EDIT_LAST_ACTION",
     "ConversationInputCapabilities",
     "ConversationInputPolicy",
     "DEFAULT_CONVERSATION_INPUT_POLICY",
