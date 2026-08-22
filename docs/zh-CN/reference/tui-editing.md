@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | `TextInput` | 搜索、过滤、小型 prompt 等单行输入。 | Grapheme cluster |
 | `Composer` | 多行 prompt 编辑器、bottom-frame composer、paste marker、历史和 completion。 | Composer atom |
-| `InputRouter` | 按真实用户输入路径路由 Composer 的 key、text、paste、completion、history、submit 和 surface event。 | Composer atom |
+| `InputRouter` | 按真实用户输入路径处理编辑，并产生中立的 `submit`、`prompt_cancel` intent。 | Composer atom |
 | `SelectionRange` / `SelectionController` | 可复用的 anchor/focus selection 状态。 | 由所属 buffer 决定 |
 
 编辑索引不是终端显示列。CJK、emoji、组合字符和 paste marker 都保持稳定的逻辑索引；显示宽度只属于渲染和 hit-test 层。
@@ -73,7 +73,30 @@ assert composer.value == "alpha beta"
 result = composer.render(RenderConstraints(width=72, max_height=6))
 ```
 
+`InputRouter` 不理解会话运行态。非空 Enter 只产生一个 `submit` intent；
+未被消费的 Escape 或 Ctrl+C 产生 `prompt_cancel`。活跃 surface、聚焦编辑器、
+completion 和待完成的字符跳转仍拥有更高优先级，可以先消费取消键。应用适配层
+决定中立提交是启动任务、排队 follow-up 还是 steer 当前任务，也决定 prompt
+cancel 是退出、清空还是中断工作。基于 Harness 的会话应用应使用 Harnesstui 的
+`ConversationInputRouter` 承担运行态策略。
+
 Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文本 atom；大型 paste marker 是单个 atom，range edit 不会把它拆开。
+
+## Pre-1.0 InputRouter 迁移
+
+通用 Router 不再拥有会话状态。这是一次有意的 pre-1.0 边界收窄：
+
+| 旧 API | 基于 Harness 的替代方式 | 通用应用的替代方式 |
+| --- | --- | --- |
+| `InputRouter(running=...)` | 将状态投影给 `ConversationInputRouter`。 | 由应用状态解释通用 `submit`。 |
+| `steering_supported=...` | 支持时选择 `running_submit_mode="steer"`，否则选择 `"follow_up"`。 | 在应用适配层决定能力策略。 |
+| `submit(mode=...)` | 使用 HarnessTUI 的运行中提交路由。 | 调用无参数 `submit()`，再由应用解释结果。 |
+| 第三个/第四个位置状态参数 | 改用显式 HarnessTUI 配置。 | 改用仅限关键字的通用配置与应用状态。 |
+
+只有 `composer` 和 `surface_host` 仍可作为位置参数；`width`、`height`、
+`keybindings` 和 `target` 都必须使用关键字。旧调用
+`InputRouter(composer, None, True)` 现在会抛出 `TypeError`，不会把 `True`
+静默绑定到 `width`。
 
 ## 默认编辑快捷键
 

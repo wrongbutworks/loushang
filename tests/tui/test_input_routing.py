@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import inspect
+from dataclasses import dataclass, field, fields
 from typing import Any, Literal
 
 import pytest
@@ -455,6 +456,71 @@ def test_input_router_rejects_composer_and_target_together() -> None:
         InputRouter(composer=Composer(prompt="> "), target=FakePromptTarget())
 
 
+def test_input_router_constructor_exposes_only_generic_configuration() -> None:
+    parameters = inspect.signature(InputRouter).parameters
+
+    assert tuple(parameters) == (
+        "composer",
+        "surface_host",
+        "width",
+        "height",
+        "keybindings",
+        "target",
+    )
+    assert parameters["composer"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert parameters["surface_host"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert all(
+        parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+        for name in ("width", "height", "keybindings", "target")
+    )
+    router_fields = {router_field.name: router_field for router_field in fields(InputRouter)}
+    assert "running" not in router_fields
+    assert "steering_supported" not in router_fields
+    assert router_fields["_jump_mode"].init is False
+
+    with pytest.raises(TypeError):
+        InputRouter(Composer(prompt="> "), None, True)
+
+
+def test_input_router_submit_accepts_no_conversation_mode() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("later")
+    router = InputRouter(composer=composer)
+
+    assert tuple(inspect.signature(InputRouter.submit).parameters) == ("self",)
+    assert router.submit() == (InputIntent(kind="submit", text="later"),)
+
+    with pytest.raises(TypeError):
+        router.submit(mode="steer")  # type: ignore[call-arg]
+
+
+def test_input_router_submit_is_conversation_neutral() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("later")
+    router = InputRouter(composer=composer)
+
+    assert router.route(InputEvent(kind="key", key="enter")) == (
+        InputIntent(kind="submit", text="later"),
+    )
+
+
+@pytest.mark.parametrize("cancel_key", ["escape", "ctrl_c"])
+def test_input_router_unconsumed_cancel_emits_prompt_cancel(cancel_key: str) -> None:
+    router = InputRouter(composer=Composer(prompt="> "))
+
+    assert router.route(InputEvent(kind="key", key=cancel_key)) == (
+        InputIntent(kind="prompt_cancel"),
+    )
+
+
+def test_input_router_does_not_own_conversation_queue_editing() -> None:
+    composer = Composer(prompt="> ")
+    router = InputRouter(composer=composer)
+
+    assert router.route(InputEvent(kind="key", key="alt+up")) == ()
+    assert composer.value == ""
+
+
 def test_input_router_routes_text_paste_and_submit_through_target() -> None:
     target = FakePromptTarget()
     router = InputRouter(target=target)
@@ -530,14 +596,15 @@ def test_input_router_jump_mode_moves_to_next_or_previous_character() -> None:
     assert composer.value == "bc ef abc"
 
 
-def test_input_router_escape_cancels_jump_mode_without_editing() -> None:
+@pytest.mark.parametrize("cancel_key", ["escape", "ctrl_c"])
+def test_input_router_cancel_terminates_pending_jump_without_prompt_cancel(cancel_key: str) -> None:
     composer = Composer(prompt="> ")
     composer.insert_text("abc def")
     composer.move_to_line_start()
     router = InputRouter(composer=composer)
 
     assert router.route(InputEvent(kind="key", key="ctrl+]")) == ()
-    assert router.route(InputEvent(kind="key", key="escape")) == ()
+    assert router.route(InputEvent(kind="key", key=cancel_key)) == ()
     assert router.route(InputEvent(kind="text", text="d")) == ()
 
     assert composer.value == "dabc def"
@@ -740,16 +807,37 @@ def test_input_router_shift_tab_selects_previous_completion_without_applying() -
     assert composer.value == "/hello"
 
 
-def test_input_router_escape_closes_completion_before_running_abort() -> None:
+def test_input_router_escape_closes_completion_before_prompt_cancel() -> None:
     composer = Composer(prompt="> ")
     composer.insert_text("/he")
     composer.set_completion_items((CompletionItem(value="/help", label="/help"),))
-    router = InputRouter(composer=composer, running=True, width=20)
+    router = InputRouter(composer=composer, width=20)
 
     assert router.route(InputEvent(kind="key", key="escape")) == ()
 
     assert composer.value == "/he"
     assert not composer.has_completions
+
+
+@pytest.mark.parametrize("custom_overlap", [False, True])
+def test_input_router_completion_wins_after_pending_jump_cancel(custom_overlap: bool) -> None:
+    keybindings = (
+        KeybindingManager({"tui.editor.jumpForward": ("escape",)})
+        if custom_overlap
+        else KeybindingManager()
+    )
+    composer = Composer(prompt="> ")
+    composer.insert_text("abc def")
+    composer.move_to_line_start()
+    router = InputRouter(composer=composer, keybindings=keybindings)
+    pending_jump_key = "ctrl+alt+]" if custom_overlap else "ctrl+]"
+
+    assert router.route(InputEvent(kind="key", key=pending_jump_key)) == ()
+    composer.set_completion_items((CompletionItem(value="abc", label="abc"),))
+    assert router.route(InputEvent(kind="key", key="escape")) == ()
+    assert not composer.has_completions
+    assert router.route(InputEvent(kind="text", text="d")) == ()
+    assert composer.value == "dabc def"
 
 
 def test_input_router_enter_submits_text_without_applying_completion() -> None:
@@ -859,21 +947,21 @@ def test_input_router_ctrl_j_and_alt_enter_insert_explicit_newline() -> None:
     assert composer.value == "first\nsecond\n"
 
 
-def test_input_router_alt_up_requests_edit_last_queued_prompt() -> None:
-    composer = Composer(prompt="> ")
-    router = InputRouter(composer=composer)
-
-    assert router.route(InputEvent(kind="key", key="alt_up")) == (InputIntent(kind="command", note="edit_last_queued_prompt"),)
-    assert composer.value == ""
-
-
-def test_surface_receives_escape_before_active_run_abort() -> None:
+@pytest.mark.parametrize("custom_overlap", [False, True])
+def test_surface_receives_cancel_after_pending_jump(custom_overlap: bool) -> None:
+    keybindings = (
+        KeybindingManager({"tui.editor.jumpForward": ("escape",)})
+        if custom_overlap
+        else KeybindingManager()
+    )
     composer = Composer(prompt="> ")
     focus = EscConsumer()
     host = SurfaceHost()
     host.open_surface(Surface(renderable=DummyRenderable(), focus_target=focus))
-    router = InputRouter(composer=composer, surface_host=host, running=True)
+    router = InputRouter(composer=composer, surface_host=host, keybindings=keybindings)
+    pending_jump_key = "ctrl+alt+]" if custom_overlap else "ctrl+]"
 
+    assert router.route(InputEvent(kind="key", key=pending_jump_key)) == ()
     intents = router.route(InputEvent(kind="key", key="esc"))
 
     assert intents == (InputIntent(kind="surface_close"),)
@@ -962,14 +1050,58 @@ def test_input_router_does_not_submit_prompt_while_focused_editor_target_is_acti
     assert prompt.value == "prompt"
 
 
-def test_input_router_does_not_abort_running_prompt_while_focused_editor_target_is_active() -> None:
+@pytest.mark.parametrize("custom_overlap", [False, True])
+def test_focused_editor_receives_cancel_after_pending_jump(custom_overlap: bool) -> None:
+    class RecordingEditorFocus(DecliningEditorFocus):
+        def __init__(self, target: object) -> None:
+            super().__init__(target)
+            self.keys: list[str] = []
+
+        def handle_input(self, event: Any) -> bool:
+            if isinstance(event, InputEvent) and event.kind == "key":
+                self.keys.append(event.key)
+            return False
+
+    keybindings = (
+        KeybindingManager({"tui.editor.jumpForward": ("escape",)})
+        if custom_overlap
+        else KeybindingManager()
+    )
     prompt = Composer(prompt="> ")
+    prompt.insert_text("abc def")
+    prompt.move_to_line_start()
+    router = InputRouter(composer=prompt, keybindings=keybindings)
+    pending_jump_key = "ctrl+alt+]" if custom_overlap else "ctrl+]"
+    assert router.route(InputEvent(kind="key", key=pending_jump_key)) == ()
+
     field = TextInput()
+    focus = RecordingEditorFocus(field.editor_input_target())
     host = SurfaceHost()
-    host.open_surface(Surface(renderable=DummyRenderable(), focus_target=DecliningEditorFocus(field.editor_input_target())))
-    router = InputRouter(composer=prompt, surface_host=host, running=True)
+    handle = host.open_surface(Surface(renderable=DummyRenderable(), focus_target=focus))
+    router.surface_host = host
 
     assert router.route(InputEvent(kind="key", key="escape")) == ()
+    assert focus.keys == ["esc"]
+
+    handle.close(reason="test")
+    assert router.route(InputEvent(kind="text", text="d")) == ()
+    assert prompt.value == "dabc def"
+
+
+def test_custom_jump_cancel_overlap_without_pending_jump_emits_prompt_cancel() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("abc def")
+    composer.move_to_line_start()
+    router = InputRouter(
+        composer=composer,
+        keybindings=KeybindingManager({"tui.editor.jumpForward": ("escape",)}),
+    )
+
+    assert router.route(InputEvent(kind="key", key="escape")) == (
+        InputIntent(kind="prompt_cancel"),
+    )
+    assert router.route(InputEvent(kind="text", text="d")) == ()
+    assert composer.value == "dabc def"
 
 
 def test_input_router_prompt_jump_text_wins_before_focused_editor_fallback() -> None:
@@ -1004,22 +1136,6 @@ def test_input_router_does_not_leak_searchable_surface_text_to_prompt() -> None:
     assert tuple(item.selected_value for item in surface._filtered_items) == ("/status",)
 
 
-def test_ctrl_c_during_running_turn_routes_abort_intent() -> None:
-    composer = Composer(prompt="> ")
-    router = InputRouter(composer=composer, running=True)
-
-    intents = router.route(InputEvent(kind="key", key="ctrl_c"))
-
-    assert intents == (InputIntent(kind="abort"),)
-
-
-def test_escape_when_idle_does_not_create_abort_intent() -> None:
-    composer = Composer(prompt="> ")
-    router = InputRouter(composer=composer, running=False)
-
-    assert router.route(InputEvent(kind="key", key="esc")) == ()
-
-
 def test_alt_enter_inserts_explicit_newline_without_submit() -> None:
     composer = Composer(prompt="> ")
     composer.insert_text("first")
@@ -1037,36 +1153,3 @@ def test_resize_and_sigwinch_events_request_render_invalidation() -> None:
 
     assert router.route(InputEvent(kind="resize", columns=120, rows=50)) == (InputIntent(kind="invalidate_render"),)
     assert router.route(InputEvent(kind="signal", signal="sigwinch")) == (InputIntent(kind="invalidate_render"),)
-
-
-def test_enter_while_running_queues_follow_up_and_clears_composer() -> None:
-    composer = Composer(prompt="> ")
-    composer.insert_text("later")
-    router = InputRouter(composer=composer, running=True)
-
-    intents = router.route(InputEvent(kind="key", key="enter"))
-
-    assert intents == (InputIntent(kind="follow_up", text="later"),)
-    assert composer.value == ""
-
-
-def test_configured_steer_submit_routes_steer_when_supported() -> None:
-    composer = Composer(prompt="> ")
-    composer.insert_text("look at logs")
-    router = InputRouter(composer=composer, running=True, steering_supported=True)
-
-    intents = router.submit(mode="steer")
-
-    assert intents == (InputIntent(kind="steer", text="look at logs"),)
-    assert composer.value == ""
-
-
-def test_unavailable_steer_downgrades_to_visible_follow_up() -> None:
-    composer = Composer(prompt="> ")
-    composer.insert_text("look at logs")
-    router = InputRouter(composer=composer, running=True, steering_supported=False)
-
-    intents = router.submit(mode="steer")
-
-    assert intents == (InputIntent(kind="follow_up", text="look at logs", note="steer_unavailable"),)
-    assert composer.value == ""

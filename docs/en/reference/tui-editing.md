@@ -14,7 +14,7 @@ For lifecycle wiring, see [TUI Runner](tui-runner.md).
 | --- | --- | --- |
 | `TextInput` | Single-line fields such as search, filters, and small prompts. | Grapheme cluster |
 | `Composer` | Multi-line prompt editors, bottom-frame composers, paste markers, history, and completions. | Composer atom |
-| `InputRouter` | User-like routing for Composer key, text, paste, completion, history, submit, and surface events. | Composer atom |
+| `InputRouter` | User-like editor routing plus neutral `submit` and `prompt_cancel` intents. | Composer atom |
 | `SelectionRange` / `SelectionController` | Reusable anchor/focus selection state. | Supplied by the owning buffer |
 
 Editing indexes are not terminal cell columns. Wide CJK, emoji, combining
@@ -83,9 +83,35 @@ assert composer.value == "alpha beta"
 result = composer.render(RenderConstraints(width=72, max_height=6))
 ```
 
+`InputRouter` is conversation-neutral. A non-empty Enter produces one `submit`
+intent; an unconsumed Escape or Ctrl+C produces `prompt_cancel`. Active
+surfaces, focused editors, completions, and pending character jumps keep their
+existing priority and may consume cancellation first. The application decides
+whether a neutral submit starts work, queues a follow-up, or steers an active
+run, and whether prompt cancellation exits, clears, or aborts work.
+Harness-backed conversation applications should use Harnesstui's
+`ConversationInputRouter` for that run-state policy.
+
 Composer selections use atom indexes. Normal text is split into grapheme-like
 text atoms; large paste markers are single atoms and are never split by range
 editing.
+
+## Pre-1.0 InputRouter Migration
+
+The generic router no longer owns conversation state. This is an intentional
+pre-1.0 breaking boundary:
+
+| Old API | Harness-backed replacement | Generic application replacement |
+| --- | --- | --- |
+| `InputRouter(running=...)` | Project state into `ConversationInputRouter`. | Interpret generic `submit` from application state. |
+| `steering_supported=...` | Select `running_submit_mode="steer"` when supported, otherwise `"follow_up"`. | Make the capability decision in the application adapter. |
+| `submit(mode=...)` | Use the HarnessTUI running-submit route. | Call zero-argument `submit()` and apply application policy to its result. |
+| Third/fourth positional state arguments | Use explicit HarnessTUI configuration. | Use keyword-only generic configuration plus application state. |
+
+Only `composer` and `surface_host` remain positional. `width`, `height`,
+`keybindings`, and `target` are keyword-only. Legacy calls such as
+`InputRouter(composer, None, True)` now raise `TypeError` instead of silently
+binding `True` to `width`.
 
 ## Default Editing Keys
 
