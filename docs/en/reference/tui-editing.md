@@ -126,6 +126,18 @@ Harness Plugin declarations stay independent of TUI; only an owning
 presentation adapter may translate an admitted declaration into an
 `InputIntent[str]`.
 
+Prompt editing mechanics are shared below the two routers. Neutral helpers in
+`loushang.tui.input` apply text or character jumps, paste text, force explicit
+Tab completion, and perform vertical/history/page navigation. They mutate only
+the supplied editor target and return no TUI or conversation intent. Each
+router keeps its existing ordering and translates a handled action into its
+own result: generic `InputRouter` returns no intent, while
+`ConversationInputRouter` returns `ConversationInputHandled`.
+
+Submit, cancel, resize, surface routing, clipboard images, local commands,
+completion Enter, and running steer/follow-up policy are deliberately not part
+of those shared helpers because their ordering or meaning differs by owner.
+
 Composer selections use atom indexes. Normal text is split into grapheme-like
 text atoms; large paste markers are single atoms and are never split by range
 editing.

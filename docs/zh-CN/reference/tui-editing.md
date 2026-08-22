@@ -105,6 +105,17 @@ catalog 加载后再解析。剪贴板图片粘贴使用会话 action
 有意接受任意字符串。未来的 Harness Plugin 声明不依赖 TUI；只有承担所有权的
 presentation adapter 才能在准入后把声明转换为 `InputIntent[str]`。
 
+两个 Router 下方共享 Prompt 编辑机械。`loushang.tui.input` 中的中立 helper
+负责普通文本或字符跳转、粘贴、显式 Tab completion，以及垂直移动、历史和翻页。
+它们只修改传入的 editor target，不产生 TUI intent 或 conversation result。
+两个 Router 各自保留原有分支顺序，并把“已处理”转换为自己的结果：通用
+`InputRouter` 不返回 intent，`ConversationInputRouter` 返回
+`ConversationInputHandled`。
+
+提交、取消、resize、surface 路由、剪贴板图片、本地命令、completion Enter，
+以及运行中的 steer/follow-up 策略不会进入这些共享 helper，因为它们的顺序或
+含义由不同所有者决定。
+
 Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文本 atom；大型 paste marker 是单个 atom，range edit 不会把它拆开。
 
 ## Pre-1.0 InputRouter 迁移

@@ -35,9 +35,15 @@ from loushang.tui.input import (
     ComposerInputTarget,
     InputEvent,
     InputIntent,
+    PromptJumpDirection,
+    apply_prompt_paste,
+    apply_prompt_text,
+    prompt_jump_direction_for_key,
     route_editor_editing_key,
     route_editor_selection_key,
     route_prompt_completion_key,
+    route_prompt_explicit_completion_key,
+    route_prompt_vertical_navigation_key,
 )
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 
@@ -202,7 +208,7 @@ class ConversationInputRouter:
     height: int = 12
     prompt_image_stager: PromptImageAttachmentStager | None = None
     clipboard_outcome_presenter: ClipboardOutcomePresenter | None = None
-    _jump_mode: Literal["forward", "backward"] | None = None
+    _jump_mode: PromptJumpDirection | None = None
     _pending_prompt_images: PendingPromptImageRegistry = field(
         default_factory=PendingPromptImageRegistry,
         init=False,
@@ -228,18 +234,16 @@ class ConversationInputRouter:
         if self.app.active_surface is not None:
             return self._route_active_surface(event)
         if event.kind == "text":
-            if self._jump_mode is not None:
-                self.app.composer.jump_to_char(
-                    event.text,
-                    direction=self._jump_mode,
-                )
-                self._jump_mode = None
-                return ConversationInputHandled()
-            self.app.composer.insert_text(event.text)
+            apply_prompt_text(
+                self._composer_target,
+                event.text,
+                jump_direction=self._jump_mode,
+            )
+            self._jump_mode = None
             return ConversationInputHandled()
         if event.kind == "paste":
             self._jump_mode = None
-            self.app.composer.paste(event.text)
+            apply_prompt_paste(self._composer_target, event.text)
             return ConversationInputHandled()
         if event.kind == "resize":
             if event.columns:
@@ -251,14 +255,12 @@ class ConversationInputRouter:
             return ConversationInputIgnored()
 
         keybindings = self._keybindings()
+        jump_direction = prompt_jump_direction_for_key(
+            event.key,
+            keybindings=keybindings,
+        )
         if self._jump_mode is not None:
-            if keybindings.matches(
-                event.key,
-                "tui.editor.jumpForward",
-            ) or keybindings.matches(
-                event.key,
-                "tui.editor.jumpBackward",
-            ):
+            if jump_direction is not None:
                 self._jump_mode = None
                 return ConversationInputHandled()
             self._jump_mode = None
@@ -282,55 +284,32 @@ class ConversationInputRouter:
             "tui.input.submit",
         ):
             return self._submit_selected_completion()
-        if self.app.composer.has_completions and self._route_completion_key(
-            event,
-            keybindings,
+        if self.app.composer.has_completions and route_prompt_completion_key(
+            self._composer_target,
+            event.key,
+            keybindings=keybindings,
         ):
             return ConversationInputHandled()
         if keybindings.matches(event.key, "tui.select.cancel"):
             return self._abort_or_clear()
-        if keybindings.matches(event.key, "tui.input.tab"):
-            self.app.composer.refresh_completions(force=True, explicit=True)
-            if self.app.composer.has_completions:
-                self.app.composer.apply_selected_completion()
+        if route_prompt_explicit_completion_key(
+            self._composer_target,
+            event.key,
+            keybindings=keybindings,
+        ):
             return ConversationInputHandled()
         if keybindings.matches(event.key, CONVERSATION_PASTE_IMAGE_ACTION):
             return self._paste_clipboard_image()
-        if keybindings.matches(event.key, "tui.editor.jumpForward"):
-            self._jump_mode = "forward"
+        if jump_direction is not None:
+            self._jump_mode = jump_direction
             return ConversationInputHandled()
-        if keybindings.matches(event.key, "tui.editor.jumpBackward"):
-            self._jump_mode = "backward"
-            return ConversationInputHandled()
-        if keybindings.matches(event.key, "tui.editor.cursorUp"):
-            if self.app.composer.browsing_history:
-                self.app.composer.history_previous()
-            elif (
-                not self.app.composer.value
-                or not self.app.composer.move_visual_up(width=self.width)
-            ):
-                self.app.composer.history_previous()
-            return ConversationInputHandled()
-        if keybindings.matches(event.key, "tui.editor.cursorDown"):
-            if self.app.composer.browsing_history:
-                self.app.composer.history_next()
-            elif (
-                not self.app.composer.value
-                or not self.app.composer.move_visual_down(width=self.width)
-            ):
-                self.app.composer.history_next()
-            return ConversationInputHandled()
-        if keybindings.matches(event.key, "tui.editor.pageUp"):
-            self.app.composer.move_visual_page_up(
-                width=self.width,
-                visible_lines=self._composer_page_lines(),
-            )
-            return ConversationInputHandled()
-        if keybindings.matches(event.key, "tui.editor.pageDown"):
-            self.app.composer.move_visual_page_down(
-                width=self.width,
-                visible_lines=self._composer_page_lines(),
-            )
+        if route_prompt_vertical_navigation_key(
+            self._composer_target,
+            event.key,
+            keybindings=keybindings,
+            width=self.width,
+            height=self.height,
+        ):
             return ConversationInputHandled()
         if self.app.state.running and keybindings.matches(
             event.key, CONVERSATION_FOLLOW_UP_ACTION
@@ -348,17 +327,6 @@ class ConversationInputRouter:
         ):
             return ConversationInputHandled()
         return ConversationInputIgnored()
-
-    def _route_completion_key(
-        self,
-        event: InputEvent,
-        keybindings: KeybindingManager,
-    ) -> bool:
-        return route_prompt_completion_key(
-            self._composer_target,
-            event.key,
-            keybindings=keybindings,
-        )
 
     def _submit_selected_completion(self) -> ConversationInputResult:
         should_submit_after_completion = self.app.composer.value.lstrip().startswith(
@@ -443,9 +411,6 @@ class ConversationInputRouter:
         if isinstance(self.keybindings, KeybindingManager):
             return self.keybindings
         return KeybindingManager(self.keybindings)
-
-    def _composer_page_lines(self) -> int:
-        return max(2, min(10, self.height))
 
     def _route_active_surface(self, event: InputEvent) -> ConversationInputResult:
         handler = getattr(self.app.active_surface, "handle_input", None)
