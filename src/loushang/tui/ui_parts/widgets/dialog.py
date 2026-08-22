@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, TypeGuard
+from typing import Protocol, TypeGuard
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import style_text
-
-if TYPE_CHECKING:
-    from loushang.tui.input import InputIntentKind
 
 
 class _FocusableBody(Protocol):
@@ -132,7 +129,7 @@ class ConfirmDialog(Dialog):
         )
 
 
-def _input_intent(kind: InputIntentKind) -> object:
+def _input_intent(kind: str) -> object:
     from loushang.tui.input import InputIntent
 
     return InputIntent(kind=kind)

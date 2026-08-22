@@ -43,7 +43,7 @@ from loushang.tui.terminal_session import TerminalSession
 HandlerResult = Awaitable[int | None] | int | None
 PromptHandler = Callable[..., HandlerResult]
 TextHandler = Callable[..., HandlerResult]
-SurfaceIntentHandler = Callable[[InputIntent], HandlerResult]
+SurfaceIntentHandler = Callable[[InputIntent[str]], HandlerResult]
 AbortHandler = Callable[[], Awaitable[object] | object]
 ShouldExit = Callable[[str], bool]
 LocalCommandPredicate = Callable[[str], bool]
@@ -508,7 +508,7 @@ async def call_text_handler(
 
 async def run_surface_intent_handler(
     handler: SurfaceIntentHandler,
-    intent: InputIntent,
+    intent: InputIntent[str],
 ) -> int | None:
     result = await maybe_await(handler(intent))
     return result if isinstance(result, int) else None

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import inspect
-from dataclasses import dataclass, field, fields
+import pickle
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Literal
 
 import pytest
@@ -47,6 +48,30 @@ class EscConsumer(FocusableMixin):
         if isinstance(event, InputEvent) and event.kind == "key" and event.key == "esc":
             return InputIntent(kind="surface_close")
         return None
+
+
+def test_input_intent_preserves_runtime_dataclass_value_protocol() -> None:
+    intent = InputIntent(
+        kind="example_plugin.openArtifact",
+        text="artifact-42",
+        note="preview",
+    )
+
+    assert asdict(intent) == {
+        "kind": "example_plugin.openArtifact",
+        "text": "artifact-42",
+        "note": "preview",
+    }
+    assert repr(intent) == (
+        "InputIntent(kind='example_plugin.openArtifact', "
+        "text='artifact-42', note='preview')"
+    )
+    assert intent == InputIntent(
+        kind="example_plugin.openArtifact",
+        text="artifact-42",
+        note="preview",
+    )
+    assert pickle.loads(pickle.dumps(intent)) == intent
 
 
 class DecliningEditorFocus(FocusableMixin):
@@ -1097,6 +1122,31 @@ def test_input_router_surface_intent_wins_before_focused_editor_fallback() -> No
     assert router.route(InputEvent(kind="key", key="left")) == (InputIntent(kind="surface_close"),)
     assert field.value == ""
     assert host.entries == []
+
+
+def test_input_router_forwards_owner_qualified_surface_intent_unchanged() -> None:
+    class PluginSurfaceFocus(FocusableMixin):
+        def handle_input(self, event: Any) -> InputIntent[str] | None:
+            if isinstance(event, InputEvent) and event.kind == "key":
+                return InputIntent(
+                    kind="example_plugin.openArtifact",
+                    text="artifact-42",
+                    note="preview",
+                )
+            return None
+
+    host = SurfaceHost()
+    focus = PluginSurfaceFocus()
+    host.open_surface(Surface(renderable=DummyRenderable(), focus_target=focus))
+    router = InputRouter(composer=Composer(prompt="> "), surface_host=host)
+
+    assert router.route(InputEvent(kind="key", key="enter")) == (
+        InputIntent(
+            kind="example_plugin.openArtifact",
+            text="artifact-42",
+            note="preview",
+        ),
+    )
 
 
 def test_input_router_does_not_submit_prompt_while_focused_editor_target_is_active() -> None:

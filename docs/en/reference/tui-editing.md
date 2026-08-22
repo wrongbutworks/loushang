@@ -108,6 +108,24 @@ fail during catalog composition, while user overrides are retained until the
 owning catalog is available. Clipboard-image paste is the conversation action
 `conversation.input.pasteImage` (Ctrl+V by default).
 
+### Input intent contract
+
+`InputIntent` is one runtime data class with an open, typed kind parameter.
+Generic surfaces and admitted presentation adapters use `InputIntent[str]`;
+owners may define narrower `Literal` aliases for the kinds they produce.
+`InputRouter` directly produces only the narrow prompt kinds `submit`,
+`prompt_cancel`, and `invalidate_render`, while surface kinds are forwarded
+without reinterpretation.
+
+`InputIntentKind` remains temporarily importable as a `str` compatibility
+alias, not as a central registry of allowed kinds. New production annotations
+should use `InputIntent[str]` or an owner-local narrow alias. External kinds
+should be owner-qualified, such as `example_plugin.openArtifact`, although the
+runtime envelope intentionally accepts every string for compatibility. Future
+Harness Plugin declarations stay independent of TUI; only an owning
+presentation adapter may translate an admitted declaration into an
+`InputIntent[str]`.
+
 Composer selections use atom indexes. Normal text is split into grapheme-like
 text atoms; large paste markers are single atoms and are never split by range
 editing.

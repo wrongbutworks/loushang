@@ -235,10 +235,10 @@ class ScreenSurfaceWorkflow:
     def current(self) -> ScreenSurfaceView | object | None:
         return self.coordinator.current
 
-    async def handle_intent(self, intent: InputIntent) -> int | None:
+    async def handle_intent(self, intent: InputIntent[str]) -> int | None:
         return await self.coordinator.handle_intent(intent)
 
-    async def handle_surface_intent(self, intent: InputIntent) -> int | None:
+    async def handle_surface_intent(self, intent: InputIntent[str]) -> int | None:
         return await self.handle_intent(intent)
 
     def is_local_command(self, text: str) -> bool:

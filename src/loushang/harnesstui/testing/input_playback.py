@@ -381,7 +381,7 @@ def _attachment_count(attachments: tuple[object, ...] | None) -> int:
     return len(attachments or ())
 
 
-def _surface_intent_payload(intent: InputIntent | None) -> dict[str, str] | None:
+def _surface_intent_payload(intent: InputIntent[str] | None) -> dict[str, str] | None:
     if intent is None:
         return None
     return {"kind": intent.kind, "text": intent.text}
