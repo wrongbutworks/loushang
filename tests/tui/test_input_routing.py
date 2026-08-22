@@ -439,6 +439,16 @@ def test_keybinding_manager_matches_default_redo_key() -> None:
     assert not manager.matches("ctrl+shift+z", "tui.editor.redo")
 
 
+def test_keybinding_manager_extends_definitions_without_losing_user_overrides() -> None:
+    manager = KeybindingManager({"conversation.input.followUp": ("ctrl+enter",)})
+
+    extended = manager.with_definitions({"conversation.input.followUp": ("alt+enter",)})
+
+    assert manager.keys_for("conversation.input.followUp") == ()
+    assert extended.keys_for("conversation.input.followUp") == ("ctrl+enter",)
+    assert extended.keys_for("tui.input.submit") == ("enter",)
+
+
 def test_keybinding_manager_matches_terminal_underscore_undo_alias() -> None:
     manager = KeybindingManager()
 

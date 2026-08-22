@@ -322,9 +322,12 @@ conversation Python package initializer.
 
 ## Conversation Interaction Control
 
-The reusable control plane for a full-screen conversation lives behind six
+The reusable control plane for a full-screen conversation lives behind seven
 explicit entrypoints:
 
+- `loushang.harnesstui.conversation.input_policy` owns neutral projected input
+  capabilities, steer-first/fallback policy, and conversation keybinding
+  definitions;
 - `loushang.harnesstui.conversation.input` coordinates decoded input,
   completion, surfaces, running-submit modes, and neutral attachments;
 - `loushang.harnesstui.conversation.control` coordinates abort, steer, and
@@ -530,11 +533,22 @@ neutral attachments to `ImagePart` at the model-dispatch boundary. Its screen
 loop is a thin binding around `run_conversation_screen`; test-only aliases for
 shared runner and terminal helpers are not product APIs.
 
-Coding currently uses the router default `running_submit_mode="steer"` rather
-than injecting an explicit steering-capability policy. That injection remains
-deferred. Coding still supplies slash-command classification, final actions,
-and Product copy; the generic TUI router is not part of this conversation
-state machine.
+Harness `SessionOperationRuntime` declares and enforces steering and follow-up
+input delivery through `SessionInputCapabilities`. The standard Agent binding
+projects those Harness-owned declarations into Harnesstui's neutral
+`ConversationInputCapabilities`; the shared input policy is steer-first and
+falls back to follow-up when steering is unavailable. Coding accepts that
+default and may bind another `ConversationInputPolicy` without changing the
+Harness capability declaration. Capability projection reads resolver binding
+metadata and must not resolve an active Session during application preparation.
+
+Harnesstui owns the `conversation.input.followUp` keybinding action and its
+Alt+Enter default. User keybinding settings may override the physical key,
+while running-state interpretation remains in `ConversationInputRouter`.
+Coding formats its hotkey help from the resolved keybindings instead of
+hard-coding Alt+Enter. Coding still supplies slash-command classification,
+final actions, and Product copy; the generic TUI router is not part of this
+conversation state machine.
 
 ## Plain Conversation Presentation
 

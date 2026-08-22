@@ -1909,6 +1909,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.conversation.control`" in text
     assert "`loushang.harnesstui.conversation.dispatch`" in text
     assert "`loushang.harnesstui.conversation.input`" in text
+    assert "`loushang.harnesstui.conversation.input_policy`" in text
     assert "`loushang.harnesstui.conversation.run_context`" in text
     assert "`loushang.harnesstui.conversation.screen_runner`" in text
     assert "`loushang.harnesstui.conversation.application_host`" in text
@@ -1961,6 +1962,7 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/conversation/control.py"),
         Path("src/loushang/harnesstui/conversation/dispatch.py"),
         Path("src/loushang/harnesstui/conversation/input.py"),
+        Path("src/loushang/harnesstui/conversation/input_policy.py"),
         Path("src/loushang/harnesstui/conversation/plain_target.py"),
         Path("src/loushang/harnesstui/conversation/projection.py"),
         Path("src/loushang/harnesstui/conversation/queue.py"),
@@ -2024,6 +2026,7 @@ for module_name in (
     "loushang.harnesstui.conversation.control",
     "loushang.harnesstui.conversation.dispatch",
     "loushang.harnesstui.conversation.input",
+    "loushang.harnesstui.conversation.input_policy",
     "loushang.harnesstui.conversation.run_context",
     "loushang.harnesstui.conversation.screen_app",
     "loushang.harnesstui.conversation.screen_frame",
@@ -2054,6 +2057,25 @@ assert forbidden == [], forbidden
     )
 
     assert completed.returncode == 0, completed.stderr
+
+
+def test_conversation_input_policy_owns_actions_without_raw_router_keys() -> None:
+    policy_source = Path(
+        "src/loushang/harnesstui/conversation/input_policy.py"
+    ).read_text(encoding="utf-8")
+    router_source = Path(
+        "src/loushang/harnesstui/conversation/input.py"
+    ).read_text(encoding="utf-8")
+    tui_keybindings = Path("src/loushang/tui/keybindings.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'CONVERSATION_FOLLOW_UP_ACTION = "conversation.input.followUp"' in (
+        policy_source
+    )
+    assert "follow_up_keys" not in router_source
+    assert "running_submit_mode" not in router_source
+    assert "conversation.input.followUp" not in tui_keybindings
 
 
 def test_importing_catalog_interaction_entrypoints_stays_product_neutral() -> None:

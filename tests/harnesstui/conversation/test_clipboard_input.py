@@ -14,6 +14,7 @@ from loushang.harnesstui.conversation.input import (
     ConversationFollowupResult,
     bind_clipboard_image_input_router,
 )
+from loushang.harnesstui.conversation.input_policy import ConversationInputPolicy
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.tui import Composer, InputEvent, SurfaceHost
 from loushang.tui.clipboard_image import ClipboardImage
@@ -149,14 +150,20 @@ def test_clipboard_image_status_copy_formats_every_neutral_outcome(
     )
 
 
-def test_clipboard_image_input_binding_forwards_router_policy() -> None:
+def test_clipboard_image_input_binding_closes_over_router_policy() -> None:
     app = _ConversationApp("/workspace")
     app.start_prompt("running")
     app.composer.set_text("later")
-    router = _builder()(
+    router = bind_clipboard_image_input_router(
+        ClipboardImageInputProfile(
+            directory=lambda current: Path(current.state.cwd) / "images",
+            display_root=lambda current: Path(current.state.cwd),
+            status_copy=_COPY,
+        ),
+        policy=ConversationInputPolicy(primary_running_submit="follow_up"),
+    )(
         app,
         should_exit=lambda _text: False,
-        running_submit_mode="follow_up",
     )
 
     result = router.handle(InputEvent(kind="key", key="enter"))

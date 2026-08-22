@@ -80,6 +80,12 @@ completion 和待完成的字符跳转仍拥有更高优先级，可以先消费
 cancel 是退出、清空还是中断工作。基于 Harness 的会话应用应使用 Harnesstui 的
 `ConversationInputRouter` 承担运行态策略。
 
+Harness 通过 `SessionInputCapabilities` 声明 steer 与 follow-up 交付能力；
+Harnesstui 默认对运行中的普通提交采用 steer-first，并在 steer 不可用时确定性
+降级为 follow-up。物理键位独立配置：Enter 仍是 `tui.input.submit`，显式
+follow-up 使用 `conversation.input.followUp`（默认 Alt+Enter）。空闲时 Alt+Enter
+仍按 `tui.input.newLine` 插入换行，运行态优先级由 `ConversationInputRouter` 解释。
+
 Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文本 atom；大型 paste marker 是单个 atom，range edit 不会把它拆开。
 
 ## Pre-1.0 InputRouter 迁移
@@ -89,7 +95,7 @@ Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文
 | 旧 API | 基于 Harness 的替代方式 | 通用应用的替代方式 |
 | --- | --- | --- |
 | `InputRouter(running=...)` | 将状态投影给 `ConversationInputRouter`。 | 由应用状态解释通用 `submit`。 |
-| `steering_supported=...` | 支持时选择 `running_submit_mode="steer"`，否则选择 `"follow_up"`。 | 在应用适配层决定能力策略。 |
+| `steering_supported=...` | 由 Harness `SessionInputCapabilities` 声明能力，Harnesstui `ConversationInputPolicy` 选择 steer-first 与降级。 | 在应用适配层解释能力投影。 |
 | `submit(mode=...)` | 使用 HarnessTUI 的运行中提交路由。 | 调用无参数 `submit()`，再由应用解释结果。 |
 | 第三个/第四个位置状态参数 | 改用显式 HarnessTUI 配置。 | 改用仅限关键字的通用配置与应用状态。 |
 
