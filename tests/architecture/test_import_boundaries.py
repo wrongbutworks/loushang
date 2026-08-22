@@ -1906,6 +1906,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.conversation.window_budget`" in text
     assert "`loushang.harnesstui.conversation.source`" in text
     assert "`loushang.harnesstui.conversation.attachments`" in text
+    assert "`loushang.harnesstui.conversation.clipboard_policy`" in text
     assert "`loushang.harnesstui.conversation.control`" in text
     assert "`loushang.harnesstui.conversation.dispatch`" in text
     assert "`loushang.harnesstui.conversation.input`" in text
@@ -1959,6 +1960,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
 def test_harnesstui_capability_entrypoints_exist() -> None:
     paths = (
         Path("src/loushang/harnesstui/conversation/attachments.py"),
+        Path("src/loushang/harnesstui/conversation/clipboard_policy.py"),
         Path("src/loushang/harnesstui/conversation/control.py"),
         Path("src/loushang/harnesstui/conversation/dispatch.py"),
         Path("src/loushang/harnesstui/conversation/input.py"),
@@ -2023,6 +2025,7 @@ import importlib
 import sys
 
 for module_name in (
+    "loushang.harnesstui.conversation.clipboard_policy",
     "loushang.harnesstui.conversation.control",
     "loushang.harnesstui.conversation.dispatch",
     "loushang.harnesstui.conversation.input",
@@ -2073,9 +2076,26 @@ def test_conversation_input_policy_owns_actions_without_raw_router_keys() -> Non
     assert 'CONVERSATION_FOLLOW_UP_ACTION = "conversation.input.followUp"' in (
         policy_source
     )
+    assert 'CONVERSATION_PASTE_IMAGE_ACTION = "conversation.input.pasteImage"' in (
+        policy_source
+    )
     assert "follow_up_keys" not in router_source
     assert "running_submit_mode" not in router_source
     assert "conversation.input.followUp" not in tui_keybindings
+    assert "conversation.input.pasteImage" not in tui_keybindings
+    assert "app.clipboard.pasteImage" not in tui_keybindings
+    assert "tui.queue.editLast" not in tui_keybindings
+    assert "tui.continuity.preview" not in tui_keybindings
+
+
+def test_coding_screen_input_does_not_own_clipboard_image_policy() -> None:
+    source = Path("src/loushang/coding/ui/screen_input.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "ClipboardImageInputProfile" not in source
+    assert "ClipboardImageStatusCopy" not in source
+    assert "_CODING_CLIPBOARD_INPUT" not in source
 
 
 def test_importing_catalog_interaction_entrypoints_stays_product_neutral() -> None:

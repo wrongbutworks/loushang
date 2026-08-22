@@ -87,11 +87,13 @@ existing mechanical duplication where removing it would enlarge the change.
 - Do not remove legacy `steer`/`follow_up` members from the shared
   `InputIntentKind` envelope yet; stop the generic router from producing them.
 - Do not split `DEFAULT_KEYBINDINGS` into Core, HarnessTUI, and Product catalogs
-  yet.
+  in this tranche; follow-up #479 later introduced duplicate-safe catalog
+  composition.
 - Do not move approval, continuity, settings, dialog, question, or selection
   intent kinds between packages.
 - Do not change Coding slash-command classification, attachment conversion,
-  clipboard directory policy, or product copy.
+  clipboard directory policy, or product copy in this tranche; follow-up #479
+  later moved the standard clipboard profile and generic copy to HarnessTUI.
 - Do not change Harness Session, Agent loop, queue authority, or action host
   behavior.
 - Do not change any effective keyboard shortcut in the Coding conversation
@@ -350,7 +352,8 @@ conversation state.
 
 Deferred follow-ups:
 
-1. split Core, HarnessTUI, and Product keybinding definitions;
+1. split Core, HarnessTUI, and Product keybinding definitions — completed by
+   follow-up #479 for Core, conversation, and continuity catalogs;
 2. decide whether `InputIntentKind` should remain a shared structural envelope
    or split into narrower typed results;
 3. replace `ConversationInputResult`'s optional-field result bag only in a

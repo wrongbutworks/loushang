@@ -38,6 +38,13 @@ Physical keys remain separate from that capability policy. Generic
 Alt+Enter remains `tui.input.newLine`. The conversation router resolves that
 intentional overlap from explicit running state before newline handling.
 
+Default actions are composed through duplicate-safe `KeybindingCatalog`
+instances. Generic TUI owns the Core catalog; HarnessTUI owns the conversation
+catalog containing follow-up, queue edit, and
+`conversation.input.pasteImage`, plus a separate continuity catalog. Clipboard
+platform reads remain a TUI primitive, while the standard workspace staging
+profile and outcome copy belong to HarnessTUI rather than Coding.
+
 Pending follow-up and steering items are rendered in the pending queue area. The
 queue is transient bottom-frame UI and grows upward. Queued text remains visible
 until the product adapter reports it has been delivered, rejected, restored to

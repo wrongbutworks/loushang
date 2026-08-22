@@ -86,6 +86,12 @@ Harnesstui 默认对运行中的普通提交采用 steer-first，并在 steer �
 follow-up 使用 `conversation.input.followUp`（默认 Alt+Enter）。空闲时 Alt+Enter
 仍按 `tui.input.newLine` 插入换行，运行态优先级由 `ConversationInputRouter` 解释。
 
+快捷键默认值按所有者组合。通用 TUI 提供 Core
+`TUI_CORE_KEYBINDING_CATALOG`；HarnessTUI 在构造会话或 continuity surface 时
+追加相应 catalog。重复 action 定义会在组合时直接失败，用户覆盖则保留到对应
+catalog 加载后再解析。剪贴板图片粘贴使用会话 action
+`conversation.input.pasteImage`（默认 Ctrl+V）。
+
 Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文本 atom；大型 paste marker 是单个 atom，range edit 不会把它拆开。
 
 ## Pre-1.0 InputRouter 迁移
@@ -103,6 +109,10 @@ Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文
 `keybindings` 和 `target` 都必须使用关键字。旧调用
 `InputRouter(composer, None, True)` 现在会抛出 `TypeError`，不会把 `True`
 静默绑定到 `width`。
+
+原 `app.clipboard.pasteImage` 配置已替换为
+`conversation.input.pasteImage`。这是一次 pre-1.0 重命名，用于明确剪贴板图片是
+HarnessTUI 公共会话能力，而不是 Coding 应用私有 action。
 
 ## 默认编辑快捷键
 

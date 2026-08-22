@@ -7,6 +7,9 @@ from loushang.harnesstui.conversation.attachments import (
     PromptImageAttachment,
     PromptImageAttachmentOutcome,
 )
+from loushang.harnesstui.conversation.clipboard_policy import (
+    STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE,
+)
 from loushang.harnesstui.conversation.input import (
     ClipboardImageInputProfile,
     ClipboardImageStatusCopy,
@@ -68,6 +71,56 @@ def _builder():
             status_copy=_COPY,
         )
     )
+
+
+def test_standard_clipboard_image_profile_is_harnesstui_owned(
+    tmp_path: Path,
+) -> None:
+    app = _ConversationApp(str(tmp_path))
+    assert STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE.status_copy.attached_prefix == (
+        "Attached clipboard image: "
+    )
+    router = bind_clipboard_image_input_router()(
+        app,
+        should_exit=lambda _text: False,
+        clipboard_image_reader=lambda: ClipboardImage(
+            bytes=b"png",
+            mime_type="image/png",
+        ),
+        clipboard_image_name_factory=lambda: "shared",
+    )
+
+    result = router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    expected = tmp_path / ".loushang" / "clipboard" / "clipboard-shared.png"
+    assert expected.read_bytes() == b"png"
+    assert isinstance(result, ConversationClipboardResult)
+    assert app.composer.value == "@.loushang/clipboard/clipboard-shared.png "
+    assert app.statuses == [
+        "Attached clipboard image: .loushang/clipboard/clipboard-shared.png"
+    ]
+
+
+def test_clipboard_image_uses_the_conversation_action_override(
+    tmp_path: Path,
+) -> None:
+    app = _ConversationApp(str(tmp_path))
+    router = _builder()(
+        app,
+        should_exit=lambda _text: False,
+        keybindings={"conversation.input.pasteImage": ("ctrl+p",)},
+        clipboard_image_reader=lambda: ClipboardImage(
+            bytes=b"png",
+            mime_type="image/png",
+        ),
+        clipboard_image_name_factory=lambda: "override",
+    )
+
+    ignored = router.handle(InputEvent(kind="key", key="ctrl+v"))
+    attached = router.handle(InputEvent(kind="key", key="ctrl+p"))
+
+    assert ignored.kind == "ignored"
+    assert isinstance(attached, ConversationClipboardResult)
 
 
 def test_clipboard_image_input_binding_follows_the_replaced_app(
