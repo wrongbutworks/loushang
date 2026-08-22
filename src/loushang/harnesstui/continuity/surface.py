@@ -906,8 +906,8 @@ def _summary_descriptions(
     )
     show_status = any(status for _time, _context, status in rows)
     descriptions: list[str] = []
-    for time, context, status in rows:
-        facts = [_right_align(time, time_width)]
+    for time_text, context, status in rows:
+        facts = [_right_align(time_text, time_width)]
         if context_width:
             facts.append(
                 truncate_to_width(
