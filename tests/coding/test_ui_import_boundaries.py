@@ -420,6 +420,13 @@ def test_mode_is_only_the_coding_tui_composition_root() -> None:
     ):
         assert token in source
 
+    assert (
+        "screen_run_profile: ConversationScreenRunProfile = "
+        "CODING_SCREEN_RUN_PROFILE" in source
+    )
+    assert "profile=screen_run_profile" in source
+    assert "profile=CODING_SCREEN_RUN_PROFILE" not in source
+
     for token in (
         "class _CodingTuiSessionPort",
         "build_agent_screen_conversation_projection",

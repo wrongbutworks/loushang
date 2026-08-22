@@ -145,6 +145,12 @@ optional environment and test dependencies. Product adapters bind their policy
 and profile, then pass that factory directly without a type cast. This contract
 is an input-composition seam; it does not define a plugin lifecycle.
 
+Coding's `run_coding_tui()` accepts that immutable screen run profile at its
+composition-root boundary and defaults to `CODING_SCREEN_RUN_PROFILE`. A Product
+adapter may inject another profile without changing HarnessTUI or the screen
+binding; the entry point only passes the selected value through and performs no
+plugin discovery or lifecycle management.
+
 Composer selections use atom indexes. Normal text is split into grapheme-like
 text atoms; large paste markers are single atoms and are never split by range
 editing.

@@ -122,6 +122,11 @@ HarnessTUI 会话输入放在同一 owner 中，并由 screen runner 重导出�
 自己的策略和 profile 后直接传入该 Factory，不再使用类型强制转换。这个契约
 只是输入装配接缝，并不定义插件生命周期。
 
+Coding 的 `run_coding_tui()` 在组合根边界接受这个不可变的 screen run profile，
+默认值仍是 `CODING_SCREEN_RUN_PROFILE`。Product adapter 可以注入其他 profile，
+不必修改 HarnessTUI 或 screen binding；该入口只负责透传已选值，不执行插件
+发现或生命周期管理。
+
 Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文本 atom；大型 paste marker 是单个 atom，range edit 不会把它拆开。
 
 ## Pre-1.0 InputRouter 迁移
