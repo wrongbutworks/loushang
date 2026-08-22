@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Protocol, TypeAlias, cast
+from typing import Literal, Protocol, TypeAlias
 
 from loushang.harnesstui.conversation.attachments import (
     ClipboardImageNameFactory,
@@ -66,29 +66,6 @@ class ConversationScreenInputPort(Protocol):
     def queue_followup(self, text: str) -> None: ...
 
     def queue_steer(self, text: str) -> None: ...
-
-
-class ClipboardImageConversationInputPort(ConversationScreenInputPort, Protocol):
-    """Conversation input surface capable of presenting clipboard status."""
-
-    def set_status(self, message: str | None) -> None: ...
-
-
-class ClipboardImageInputRouterBuilder(Protocol):
-    """Construct a clipboard-enabled router from one bound workspace profile."""
-
-    def __call__(
-        self,
-        app: ClipboardImageConversationInputPort,
-        should_exit: Callable[[str], bool],
-        is_local_command: Callable[[str], bool] = ...,
-        keybindings: KeybindingManager | KeybindingConfig | None = ...,
-        width: int = ...,
-        height: int = ...,
-        clipboard_image_reader: ClipboardImageReader = ...,
-        clipboard_image_dir: Path | str | None = ...,
-        clipboard_image_name_factory: ClipboardImageNameFactory = ...,
-    ) -> ConversationInputRouter: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,6 +170,44 @@ ConversationInputResult: TypeAlias = (
     | ConversationAbortResult
     | ConversationExitResult
 )
+
+
+class ConversationInputRouterPort(Protocol):
+    """Route one decoded terminal input event to a conversation result."""
+
+    def handle(self, event: InputEvent) -> ConversationInputResult: ...
+
+
+class ConversationInputRouterFactoryPort(Protocol):
+    """Construct a product-neutral conversation input adapter."""
+
+    def __call__(
+        self,
+        *,
+        app: ConversationScreenInputPort,
+        should_exit: Callable[[str], bool],
+        is_local_command: Callable[[str], bool],
+        keybindings: KeybindingManager | KeybindingConfig | None,
+        width: int,
+        height: int,
+    ) -> ConversationInputRouterPort: ...
+
+
+class ClipboardImageInputRouterBuilder(ConversationInputRouterFactoryPort, Protocol):
+    """Standard router factory with optional clipboard test dependencies."""
+
+    def __call__(
+        self,
+        app: ConversationScreenInputPort,
+        should_exit: Callable[[str], bool],
+        is_local_command: Callable[[str], bool] = ...,
+        keybindings: KeybindingManager | KeybindingConfig | None = ...,
+        width: int = ...,
+        height: int = ...,
+        clipboard_image_reader: ClipboardImageReader = ...,
+        clipboard_image_dir: Path | str | None = ...,
+        clipboard_image_name_factory: ClipboardImageNameFactory = ...,
+    ) -> ConversationInputRouter: ...
 
 
 @dataclass(slots=True)
@@ -491,7 +506,7 @@ def bind_clipboard_image_input_router(
     """
 
     def build(
-        app: ClipboardImageConversationInputPort,
+        app: ConversationScreenInputPort,
         should_exit: Callable[[str], bool],
         is_local_command: Callable[[str], bool] = lambda _text: False,
         keybindings: KeybindingManager | KeybindingConfig | None = None,
@@ -505,8 +520,8 @@ def bind_clipboard_image_input_router(
     ) -> ConversationInputRouter:
         router: ConversationInputRouter
 
-        def current_app() -> ClipboardImageConversationInputPort:
-            return cast(ClipboardImageConversationInputPort, router.app)
+        def current_app() -> ConversationScreenInputPort:
+            return router.app
 
         def stage_image() -> PromptImageAttachmentOutcome:
             bound_app = current_app()
@@ -524,7 +539,7 @@ def bind_clipboard_image_input_router(
         def present_outcome(outcome: PromptImageAttachmentOutcome) -> None:
             message = profile.status_copy.message(outcome)
             if message is not None:
-                current_app().set_status(message)
+                current_app().state.set_status(message)
 
         router = ConversationInputRouter(
             app=app,
@@ -543,7 +558,6 @@ def bind_clipboard_image_input_router(
 
 
 __all__ = [
-    "ClipboardImageConversationInputPort",
     "ClipboardImageInputProfile",
     "ClipboardImageInputRouterBuilder",
     "ClipboardImageStatusCopy",
@@ -556,6 +570,8 @@ __all__ = [
     "ConversationInputIgnored",
     "ConversationInputResult",
     "ConversationInputRouter",
+    "ConversationInputRouterFactoryPort",
+    "ConversationInputRouterPort",
     "ConversationInputPolicy",
     "ConversationLocalResult",
     "ConversationPromptResult",

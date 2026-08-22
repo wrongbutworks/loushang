@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-from typing import cast
-
 from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
 from loushang.harnesstui.conversation.input import (
     bind_clipboard_image_input_router,
 )
 from loushang.harnesstui.conversation.input_policy import (
     DEFAULT_CONVERSATION_INPUT_POLICY,
-)
-from loushang.harnesstui.conversation.screen_runner import (
-    ConversationInputRouterFactoryPort,
 )
 
 CODING_INTERRUPTION_MESSAGE = (
@@ -24,10 +19,7 @@ build_screen_input_router = bind_clipboard_image_input_router(
     policy=CODING_CONVERSATION_INPUT_POLICY,
 )
 CODING_SCREEN_RUN_PROFILE = ConversationScreenRunProfile(
-    input_router_factory=cast(
-        ConversationInputRouterFactoryPort,
-        build_screen_input_router,
-    ),
+    input_router_factory=build_screen_input_router,
     interruption_message=CODING_INTERRUPTION_MESSAGE,
     cancellation_message=CODING_CANCELLATION_MESSAGE,
 )

@@ -116,6 +116,12 @@ presentation adapter 才能在准入后把声明转换为 `InputIntent[str]`。
 以及运行中的 steer/follow-up 策略不会进入这些共享 helper，因为它们的顺序或
 含义由不同所有者决定。
 
+生产环境中的会话 Router 构造只使用一个标准 Factory 契约。该契约与
+HarnessTUI 会话输入放在同一 owner 中，并由 screen runner 重导出。带剪贴板
+能力的 Builder 是兼容扩展，只额外暴露可选的环境与测试依赖。产品适配器绑定
+自己的策略和 profile 后直接传入该 Factory，不再使用类型强制转换。这个契约
+只是输入装配接缝，并不定义插件生命周期。
+
 Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文本 atom；大型 paste marker 是单个 atom，range edit 不会把它拆开。
 
 ## Pre-1.0 InputRouter 迁移
