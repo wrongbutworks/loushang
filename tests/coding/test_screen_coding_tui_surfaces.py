@@ -17,6 +17,9 @@ from loushang.harness.multiagent import (
     MultiAgentControl,
 )
 from loushang.harnesstui.conversation.fork import ForkPromptSurface
+from loushang.harnesstui.conversation.input_policy import (
+    ConversationInputCapabilities,
+)
 from loushang.harnesstui.multiagent import AgentTreeSurface
 from loushang.harnesstui.selection.model import (
     ModelSelectorSurface as SharedModelSelectorSurface,
@@ -388,6 +391,26 @@ def test_screen_surface_manager_opens_non_model_surfaces_in_runtime_overlay_host
 
         manager.close_surface()
         assert app.surface_host.entries == []
+
+
+def test_screen_surface_manager_renders_resolved_conversation_hotkeys() -> None:
+    class CustomHotkeySession(_Session):
+        def get_keybindings(self) -> dict[str, tuple[str, ...]]:
+            return {"conversation.input.followUp": ("ctrl+enter",)}
+
+    app = _app()
+    app.surface_host = SurfaceHost()
+    app.state.input_capabilities = ConversationInputCapabilities(
+        steer=True,
+        follow_up=False,
+    )
+    manager = _manager(app, CustomHotkeySession())
+
+    asyncio.run(manager.handle_text("/hotkeys"))
+
+    text = "\n".join(_surface_plain_lines(_only_overlay_view(app)))
+    assert "Running Ctrl+Enter: follow-up unavailable" in text
+    assert "Running Alt+Enter: queue follow-up" not in text
 
 
 def test_screen_surface_manager_opens_resume_as_full_screen_continuity_page() -> None:

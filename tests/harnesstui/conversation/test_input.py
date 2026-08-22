@@ -20,6 +20,10 @@ from loushang.harnesstui.conversation.input import (
     ConversationPromptResult,
     ConversationSurfaceResult,
 )
+from loushang.harnesstui.conversation.input_policy import (
+    ConversationInputCapabilities,
+    ConversationInputPolicy,
+)
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.tui import Composer, InputEvent, InputIntent, SurfaceHost
 
@@ -153,6 +157,74 @@ def test_conversation_input_router_preserves_running_followup_priority(
     assert result.text == "@image.png later"
     assert result.attachments == (attachment,)
     assert app.state.pending_followups == ["@image.png later"]
+
+
+def test_conversation_input_router_defaults_running_submit_to_steer() -> None:
+    app = _ConversationApp()
+    app.start_prompt("question")
+    app.composer.set_text("now")
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+    )
+
+    result = router.handle(InputEvent(kind="key", key="enter"))
+
+    assert result.kind == "steer"
+    assert app.state.pending_steers == ["now"]
+
+
+def test_conversation_input_router_falls_back_to_followup_without_steer() -> None:
+    app = _ConversationApp()
+    app.state.input_capabilities = ConversationInputCapabilities(
+        steer=False,
+        follow_up=True,
+    )
+    app.start_prompt("question")
+    app.composer.set_text("later")
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+    )
+
+    result = router.handle(InputEvent(kind="key", key="enter"))
+
+    assert result == ConversationFollowupResult(text="later")
+    assert app.state.pending_followups == ["later"]
+
+
+def test_conversation_input_router_uses_configured_followup_action() -> None:
+    app = _ConversationApp()
+    app.start_prompt("question")
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+        keybindings={"conversation.input.followUp": ("ctrl+enter",)},
+    )
+
+    app.composer.set_text("line")
+    newline = router.handle(InputEvent(kind="key", key="alt+enter"))
+    app.composer.insert_text("later")
+    follow_up = router.handle(InputEvent(kind="key", key="ctrl+enter"))
+
+    assert isinstance(newline, ConversationInputHandled)
+    assert follow_up == ConversationFollowupResult(text="line\nlater")
+    assert app.state.pending_followups == ["line\nlater"]
+
+
+def test_conversation_input_router_accepts_a_product_primary_submit_override() -> None:
+    app = _ConversationApp()
+    app.start_prompt("question")
+    app.composer.set_text("later")
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+        policy=ConversationInputPolicy(primary_running_submit="follow_up"),
+    )
+
+    result = router.handle(InputEvent(kind="key", key="enter"))
+
+    assert result == ConversationFollowupResult(text="later")
 
 
 def test_conversation_input_router_routes_active_surface_before_composer() -> None:

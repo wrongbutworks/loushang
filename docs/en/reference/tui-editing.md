@@ -92,6 +92,15 @@ run, and whether prompt cancellation exits, clears, or aborts work.
 Harness-backed conversation applications should use Harnesstui's
 `ConversationInputRouter` for that run-state policy.
 
+Harness declares steering and follow-up delivery through
+`SessionInputCapabilities`. Harnesstui uses a steer-first primary-submit policy
+and deterministically falls back to follow-up when steering is unavailable.
+Physical keys remain independently configurable: Enter is
+`tui.input.submit`, while explicit follow-up is
+`conversation.input.followUp` (Alt+Enter by default). Idle Alt+Enter remains
+`tui.input.newLine`; `ConversationInputRouter` resolves the running-state
+priority.
+
 Composer selections use atom indexes. Normal text is split into grapheme-like
 text atoms; large paste markers are single atoms and are never split by range
 editing.
@@ -104,7 +113,7 @@ pre-1.0 breaking boundary:
 | Old API | Harness-backed replacement | Generic application replacement |
 | --- | --- | --- |
 | `InputRouter(running=...)` | Project state into `ConversationInputRouter`. | Interpret generic `submit` from application state. |
-| `steering_supported=...` | Select `running_submit_mode="steer"` when supported, otherwise `"follow_up"`. | Make the capability decision in the application adapter. |
+| `steering_supported=...` | Project Harness `SessionInputCapabilities`; let Harnesstui `ConversationInputPolicy` select steer-first and fallback. | Interpret the projected capability in the application adapter. |
 | `submit(mode=...)` | Use the HarnessTUI running-submit route. | Call zero-argument `submit()` and apply application policy to its result. |
 | Third/fourth positional state arguments | Use explicit HarnessTUI configuration. | Use keyword-only generic configuration plus application state. |
 

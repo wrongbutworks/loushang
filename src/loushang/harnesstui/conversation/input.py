@@ -14,6 +14,13 @@ from loushang.harnesstui.conversation.attachments import (
     new_prompt_image_name_token,
     stage_clipboard_image,
 )
+from loushang.harnesstui.conversation.input_policy import (
+    CONVERSATION_FOLLOW_UP_ACTION,
+    DEFAULT_CONVERSATION_INPUT_POLICY,
+    ConversationInputPolicy,
+    RunningSubmitMode,
+    conversation_keybinding_manager,
+)
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.tui import Composer, SurfaceHost
 from loushang.tui.clipboard_image import read_clipboard_image
@@ -27,7 +34,6 @@ from loushang.tui.input import (
 )
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 
-RunningSubmitMode = Literal["steer", "follow_up"]
 PromptImageAttachmentStager = Callable[[], PromptImageAttachmentOutcome]
 ClipboardOutcomePresenter = Callable[[PromptImageAttachmentOutcome], None]
 
@@ -101,8 +107,6 @@ class ClipboardImageInputRouterBuilder(Protocol):
         should_exit: Callable[[str], bool],
         is_local_command: Callable[[str], bool] = ...,
         keybindings: KeybindingManager | KeybindingConfig | None = ...,
-        running_submit_mode: RunningSubmitMode = ...,
-        follow_up_keys: tuple[str, ...] = ...,
         width: int = ...,
         height: int = ...,
         clipboard_image_reader: ClipboardImageReader = ...,
@@ -223,8 +227,7 @@ class ConversationInputRouter:
     should_exit: Callable[[str], bool]
     is_local_command: Callable[[str], bool] = lambda _text: False
     keybindings: KeybindingManager | KeybindingConfig | None = None
-    running_submit_mode: RunningSubmitMode = "steer"
-    follow_up_keys: tuple[str, ...] = ("alt+enter",)
+    policy: ConversationInputPolicy = DEFAULT_CONVERSATION_INPUT_POLICY
     width: int = 80
     height: int = 12
     prompt_image_stager: PromptImageAttachmentStager | None = None
@@ -238,8 +241,7 @@ class ConversationInputRouter:
     _composer_target: ComposerInputTarget = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if not isinstance(self.keybindings, KeybindingManager):
-            self.keybindings = KeybindingManager(self.keybindings)
+        self.keybindings = conversation_keybinding_manager(self.keybindings)
         self._composer_target = ComposerInputTarget(self.app.composer)
 
     def replace_app(self, app: ConversationScreenInputPort) -> None:
@@ -360,7 +362,9 @@ class ConversationInputRouter:
                 visible_lines=self._composer_page_lines(),
             )
             return ConversationInputHandled()
-        if self.app.state.running and event.key in self.follow_up_keys:
+        if self.app.state.running and keybindings.matches(
+            event.key, CONVERSATION_FOLLOW_UP_ACTION
+        ):
             return self._submit_running(mode="follow_up")
         if keybindings.matches(event.key, "tui.input.newLine"):
             self.app.composer.insert_newline()
@@ -425,7 +429,12 @@ class ConversationInputRouter:
             self._clear_prompt_attachments()
             return ConversationLocalResult(text=text.strip())
         if self.app.state.running:
-            return self._submit_running(mode=self.running_submit_mode)
+            mode = self.policy.resolve_running_submit(self.app.state.input_capabilities)
+            return (
+                ConversationInputIgnored()
+                if mode is None
+                else self._submit_running(mode=mode)
+            )
         attachments = self._prompt_attachments_for_text(text)
         self.app.start_prompt(text)
         self._clear_prompt_attachments()
@@ -439,6 +448,8 @@ class ConversationInputRouter:
         *,
         mode: RunningSubmitMode,
     ) -> ConversationInputResult:
+        if not self.app.state.input_capabilities.supports(mode):
+            return ConversationInputIgnored()
         text = self.app.composer.value
         if not text.strip():
             return ConversationInputIgnored()
@@ -534,6 +545,8 @@ class ConversationInputRouter:
 
 def bind_clipboard_image_input_router(
     profile: ClipboardImageInputProfile,
+    *,
+    policy: ConversationInputPolicy = DEFAULT_CONVERSATION_INPUT_POLICY,
 ) -> ClipboardImageInputRouterBuilder:
     """Bind app-aware staging and status presentation to a router builder.
 
@@ -547,8 +560,6 @@ def bind_clipboard_image_input_router(
         should_exit: Callable[[str], bool],
         is_local_command: Callable[[str], bool] = lambda _text: False,
         keybindings: KeybindingManager | KeybindingConfig | None = None,
-        running_submit_mode: RunningSubmitMode = "steer",
-        follow_up_keys: tuple[str, ...] = ("alt+enter",),
         width: int = 80,
         height: int = 12,
         clipboard_image_reader: ClipboardImageReader = read_clipboard_image,
@@ -585,8 +596,7 @@ def bind_clipboard_image_input_router(
             should_exit=should_exit,
             is_local_command=is_local_command,
             keybindings=keybindings,
-            running_submit_mode=running_submit_mode,
-            follow_up_keys=follow_up_keys,
+            policy=policy,
             width=width,
             height=height,
             prompt_image_stager=stage_image,
@@ -611,6 +621,7 @@ __all__ = [
     "ConversationInputIgnored",
     "ConversationInputResult",
     "ConversationInputRouter",
+    "ConversationInputPolicy",
     "ConversationLocalResult",
     "ConversationPromptResult",
     "ConversationScreenInputPort",

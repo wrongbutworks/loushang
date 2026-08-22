@@ -114,6 +114,15 @@ class KeybindingManager:
     def resolved(self) -> dict[KeybindingAction, tuple[KeyId, ...]]:
         return dict(self._resolved)
 
+    def with_definitions(
+        self,
+        definitions: Mapping[KeybindingAction, Sequence[KeyId]],
+    ) -> "KeybindingManager":
+        """Return a manager with additional actions and the same user overrides."""
+
+        merged = {**self._definitions, **definitions}
+        return KeybindingManager(self._user_bindings, definitions=merged)
+
     def _rebuild(self) -> None:
         claims: dict[KeyId, set[KeybindingAction]] = {}
         for action, keys in self._user_bindings.items():

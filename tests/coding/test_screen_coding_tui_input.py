@@ -129,6 +129,30 @@ def test_screen_input_router_running_alt_enter_queues_followup() -> None:
     assert app.state.pending_followups == ["继续"]
 
 
+def test_screen_input_router_honors_product_followup_keybinding() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import build_screen_input_router
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: 12.0,
+    )
+    app.start_prompt("当前代码有啥？", started_at=10.0)
+    app.composer.set_text("继续")
+
+    result = build_screen_input_router(
+        app,
+        should_exit=lambda text: False,
+        keybindings={"conversation.input.followUp": ("ctrl+enter",)},
+    ).handle(InputEvent(kind="key", key="ctrl+enter"))
+
+    assert result == ConversationFollowupResult(text="继续")
+    assert app.state.pending_followups == ["继续"]
+
+
 def test_screen_input_router_escape_closes_completion_before_running_abort() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router

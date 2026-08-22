@@ -23,10 +23,20 @@ Conversation text is classified above that generic layer:
 - abort: control action that cancels or interrupts the active run
 - surface action: handled by the active surface before active-run controls
 
-Capability and downgrade policy also stays above generic TUI. Coding currently
-uses `ConversationInputRouter`'s default `running_submit_mode="steer"`; it has
-not yet injected an explicit steering-capability policy. Coding continues to
-own slash-command classification, final Product actions, and Product copy.
+Capability and downgrade policy also stays above generic TUI. Harness
+`SessionInputCapabilities` declares whether steering and follow-up delivery are
+available. The Agent application adapter projects those declarations into
+Harnesstui's neutral `ConversationInputCapabilities`, and
+`ConversationInputPolicy` applies a steer-first primary-submit preference with
+a deterministic follow-up fallback. Coding may inject a different policy, and
+continues to own slash-command classification, final Product actions, and
+Product copy.
+
+Physical keys remain separate from that capability policy. Generic
+`tui.input.submit` continues to own Enter. Harnesstui registers the contextual
+`conversation.input.followUp` action with Alt+Enter as its default, while idle
+Alt+Enter remains `tui.input.newLine`. The conversation router resolves that
+intentional overlap from explicit running state before newline handling.
 
 Pending follow-up and steering items are rendered in the pending queue area. The
 queue is transient bottom-frame UI and grows upward. Queued text remains visible
@@ -46,6 +56,10 @@ TUI's independent jump-mode cancellation never decides whether work is aborted.
 - follow-up while running clears the composer and displays queued text
 - steer while running displays separately from follow-up
 - unavailable steering is rejected or downgraded visibly
+- Harness input capability declarations are enforced by Session operations and
+  projected without importing Harness into the neutral input-policy module
+- configured `conversation.input.followUp` bindings replace the default key
+  while preserving idle newline behavior
 - edit-queue restores pending text into the composer
 - abort removes running chrome, commits interruption state, and restores focus
 - generic `InputRouter` produces no follow-up, steer, queue-edit, or

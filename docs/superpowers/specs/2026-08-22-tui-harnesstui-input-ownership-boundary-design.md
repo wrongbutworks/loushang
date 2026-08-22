@@ -180,14 +180,12 @@ No production change is required in this tranche. Coding continues to supply:
 - final action handlers and Product copy;
 - configured keybindings.
 
-Capability and downgrade decisions must remain above generic TUI. Current
-Coding uses HarnessTUI's default `running_submit_mode="steer"`; it does not yet
-inject an explicit capability policy. Moving that default into an explicit
-Coding policy remains deferred.
-
-Moving the default running-submit policy out of HarnessTUI and into an explicit
-Coding policy object is a possible later refinement, not a prerequisite for the
-TUI/HarnessTUI semantic cut.
+Capability and downgrade decisions must remain above generic TUI. At the time
+of this semantic cut, Coding used HarnessTUI's implicit
+`running_submit_mode="steer"`. Follow-up #477 replaced that deferred seam:
+Harness now declares steer/follow-up delivery capability, HarnessTUI owns a
+steer-first policy with capability-aware fallback, and Coding may override the
+policy without owning the capability fact.
 
 ## Decision Index
 
@@ -490,8 +488,8 @@ The English and Chinese TUI editing guides must say explicitly:
 
 KD-002 and KD-003 must agree with the same owner split: HarnessTUI interprets
 idle/running conversation keys; capability/downgrade policy remains above TUI;
-current Coding uses the HarnessTUI steer default, while explicit Coding policy
-injection remains deferred.
+Coding used the HarnessTUI steer default in this tranche; capability projection
+and optional Product policy injection were completed by follow-up #477.
 
 ### Historical design
 

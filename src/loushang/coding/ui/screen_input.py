@@ -9,6 +9,9 @@ from loushang.harnesstui.conversation.input import (
     ClipboardImageStatusCopy,
     bind_clipboard_image_input_router,
 )
+from loushang.harnesstui.conversation.input_policy import (
+    DEFAULT_CONVERSATION_INPUT_POLICY,
+)
 from loushang.harnesstui.conversation.screen_runner import (
     ConversationInputRouterFactoryPort,
 )
@@ -31,8 +34,11 @@ _CODING_CLIPBOARD_INPUT = ClipboardImageInputProfile(
     ),
 )
 
+CODING_CONVERSATION_INPUT_POLICY = DEFAULT_CONVERSATION_INPUT_POLICY
+
 build_screen_input_router = bind_clipboard_image_input_router(
-    _CODING_CLIPBOARD_INPUT
+    _CODING_CLIPBOARD_INPUT,
+    policy=CODING_CONVERSATION_INPUT_POLICY,
 )
 CODING_SCREEN_RUN_PROFILE = ConversationScreenRunProfile(
     input_router_factory=cast(
@@ -45,6 +51,7 @@ CODING_SCREEN_RUN_PROFILE = ConversationScreenRunProfile(
 
 __all__ = [
     "CODING_CANCELLATION_MESSAGE",
+    "CODING_CONVERSATION_INPUT_POLICY",
     "CODING_INTERRUPTION_MESSAGE",
     "CODING_SCREEN_RUN_PROFILE",
     "build_screen_input_router",

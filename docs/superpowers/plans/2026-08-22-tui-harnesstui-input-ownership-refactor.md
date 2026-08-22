@@ -602,10 +602,12 @@ Correct KD-003 before updating the HarnessTUI README:
 - HarnessTUI conversation adapters interpret idle/running Enter,
   follow-up/steer alternatives, queue restore, and conversation abort;
 - capability and downgrade policy stays above generic TUI;
-- current Coding uses HarnessTUI's default `running_submit_mode="steer"` and
-  does not yet inject an explicit capability policy;
-- explicit Coding policy injection remains deferred, while Coding continues to
-  supply slash-command classification, final actions, and copy;
+- at implementation time Coding used HarnessTUI's default
+  `running_submit_mode="steer"`; follow-up #477 later replaced that implicit
+  seam with Harness-declared capabilities, HarnessTUI steer-first fallback,
+  and optional Product policy injection;
+- Coding continues to supply slash-command classification, final actions, and
+  copy;
 - generic TUI emits neutral prompt/editor signals only.
 
 Then document `ConversationInputRouter` as the sole Harness conversation input
