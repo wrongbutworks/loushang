@@ -505,9 +505,11 @@ class ApprovalSurface:
         self,
     ) -> tuple[ApprovalChoice, ...]:
         if self.options:
-            choices = list(self.options)
-            self.selected_index = max(0, min(self.selected_index, len(choices) - 1))
-            return tuple(choices)
+            configured_choices = list(self.options)
+            self.selected_index = max(
+                0, min(self.selected_index, len(configured_choices) - 1)
+            )
+            return tuple(configured_choices)
         choices: list[ApprovalChoice] = [
             ApprovalChoice("allow_once", "Allow this action once", "y"),
         ]
